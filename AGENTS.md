@@ -2,6 +2,10 @@
 
 给 AI 编码助手的仓库说明。本目录是 **U-King 的公开开发仓**。
 
+> **两仓关系**（2026-09-01 sol 会审定案）：本公开仓是代码、开发与发布的唯一真相源；
+> 旧私有仓（u-king-mini）冻结为内部需求榜/运维资料/历史实验的档案库，**不再改产品代码**。
+> 发版只从本仓构建；push 前闸门 = `node scripts/check-leak.mjs .` + `cargo test --lib` + `pnpm build`。
+
 ## 这是什么
 
 U-King：面向小白用户的「AI 装机管家 + 多 AI 工作台」桌面应用（Tauri 2 + React 18 + TypeScript + Rust）。绿色版 exe 约 4.4MB，U 盘即插即用，Windows/Mac。
