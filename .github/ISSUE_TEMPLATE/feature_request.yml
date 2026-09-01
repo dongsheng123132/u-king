@@ -1,0 +1,17 @@
+name: 功能建议
+description: 想要一个新能力或改进
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题
+      description: 说场景，别说方案。「我每次都要…」比「加一个按钮」有用。
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: 现在你是怎么绕的
+    validations:
+      required: false

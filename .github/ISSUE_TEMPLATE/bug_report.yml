@@ -1,0 +1,49 @@
+name: Bug 报告
+description: 报告一个可以复现的问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢报告！**安全漏洞（key 泄漏等）请不要用这个模板**，见 [SECURITY.md](../blob/main/SECURITY.md)。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 现象 + 你做了什么操作。如有报错文字请完整粘贴。
+    validations:
+      required: true
+  - type: textarea
+    id: selfcheck
+    attributes:
+      label: 诊断输出
+      description: 在终端跑 `u-king-mini.exe --selfcheck`（或安装目录里的 U-King.exe），把输出的 JSON 贴上来。它会自动脱敏，不含 key。
+      placeholder: '{"version":"1.2.1", ...}'
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: U-King 版本
+      description: 应用内左下角版本号，或绿色版文件属性里的版本
+      placeholder: "1.2.1"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志 / 截图
+      description: 截图请勿包含 API key、对话内容等敏感信息
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 技术支持 / 微信
+    url: https://www.u-king.org
+    about: 使用问题优先看官网帮助；购买与充值问题走官网客服
+  - name: 安全漏洞
+    url: https://github.com/dongsheng123132/u-king/security/advisories/new
+    about: 密钥泄漏等安全问题请走私密渠道，勿公开发 issue

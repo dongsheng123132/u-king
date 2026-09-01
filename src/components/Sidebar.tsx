@@ -256,7 +256,9 @@ export function Sidebar({
   latestVersion,
   onUpdate,
   updating,
-  updatePct,
+  // updatePct 曾给「升级中 {pct}%」横幅用；2026-09-01 升级入口弱化成迷你图标后
+  // 进度数字没有落脚点，保留 prop 但显式弃用（App.tsx 仍传，别删签名——下次做悬浮进度还能用）。
+  /* updatePct, */
   updateFailed = 0,
   updateFailReason,
   onReinstall,
@@ -437,8 +439,8 @@ export function Sidebar({
               className={cn(
                 "w-10 h-10 grid place-items-center rounded-card transition-colors disabled:opacity-60",
                 updateFailed > 0
-                  ? "bg-amber-500/[0.12] text-amber-500 hover:bg-amber-500/[0.22]"
-                  : "bg-accent/[0.12] text-accent hover:bg-accent/[0.22]",
+                  ? "text-amber-500 hover:bg-amber-500/[0.12]"
+                  : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]",
               )}
             >
               <ArrowUpCircle size={18} className={updating ? "animate-pulse" : ""} />
@@ -651,10 +653,11 @@ export function Sidebar({
         </button>
       </div> */}
 
-      {/* 有新版：常驻升级入口。升级横幅只在管家页 StatusLine 露出，用户长期待在 U-Workspace
-          就永远看不到升级（客户实锤「没有升级按钮」）。侧栏在所有页都在，放这里保证随时点得到。 */}
+      {/* 有新版：常驻升级入口（2026-09-01 弱化：改成页脚版本号旁的迷你图标，
+          不再占一整块横幅 —— 用户拍板「升级太强势了，放小小的隐藏」。
+          入口仍在所有页可达（悬停有完整说明），但视觉权重降到与主题/语言同档。 */}
       {hasUpdate && (
-        <div className="px-2.5 pb-1">
+        <div className="px-2.5 pb-1 flex items-center justify-center">
           {/* ★ 自动升级失败过就换条路：主按钮改成「下载安装包重装」。
               别再劝「再试一次」—— 自动替换失败的原因（杀软锁 exe、目录不可写、路径含中文、
               替换脚本被拦）几乎都不是暂时性的，同一条路重试只是重复同一次失败，
@@ -670,42 +673,24 @@ export function Sidebar({
                   : t("升级到 v{ver}", { ver: latestVersion ?? "" })
             }
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-card text-left transition-colors disabled:opacity-60 border",
+              "w-9 h-9 grid place-items-center rounded-card transition-colors disabled:opacity-60 shrink-0",
               updateFailed > 0
-                ? "bg-amber-500/[0.12] text-amber-500 hover:bg-amber-500/[0.2] border-amber-500/25"
-                : "bg-accent/[0.12] text-accent hover:bg-accent/[0.2] border-accent/20",
+                ? "text-amber-500 hover:bg-amber-500/[0.12]"
+                : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]",
             )}
           >
-            <ArrowUpCircle size={16} className={cn("shrink-0", updating && "animate-pulse")} />
-            {/* 版本号不挤在这一行 —— 侧栏窄（实测 ~205px）时「有新版 · 一键升级」+ v0.9.82
-                放不下，标题会被拦腰折成两行。版本号挪到下面那行，反而更像一句话。 */}
-            <div className="text-[13px] font-semibold whitespace-nowrap">
-              {updating
-                ? updatePct != null
-                  ? t("升级中 {pct}%", { pct: updatePct })
-                  : t("升级中…")
-                : updateFailed > 0
-                  ? t("下载安装包重装")
-                  : t("有新版 · 一键升级")}
-            </div>
+            <ArrowUpCircle size={15} className={cn("shrink-0", updating && "animate-pulse")} />
           </button>
-          {/* 失败了要说清楚「为什么」和「会不会丢东西」——不说，客户只会以为软件坏了。 */}
           {updateFailed > 0 && !updating && (
-            <div className="mt-1 px-1 text-[11px] leading-snug text-ink-4">
-              {t("自动升级没换成功（{why}）。装新版不会丢配置和对话。", {
+            <button
+              onClick={onReinstall}
+              disabled={updating}
+              title={t("自动升级没换成功（{why}）。装新版不会丢配置和对话。", {
                 why: updateFailReason || t("原因未知"),
               })}
-            </div>
-          )}
-          {/* 「升不升」是个决定，得先让人看到**升了有什么用**。这条信息一直存在
-              （服务器 version.json 的 notes/history），但唯一入口是页脚那个 10px 的版本号，
-              没人会想到去点它 —— 等于有等于没有。放在按钮正下方，看完再决定。 */}
-          {!updating && (
-            <button
-              onClick={() => onShowChangelog?.()}
-              className="w-full mt-1 py-0.5 text-[11px] text-ink-4 hover:text-accent transition-colors"
+              className="text-[11px] text-amber-500/90 hover:text-amber-500 truncate max-w-[120px]"
             >
-              {latestVersion ? t("看看 v{ver} 改了什么", { ver: latestVersion }) : t("看看这版改了什么")}
+              {t("下载安装包重装")}
             </button>
           )}
         </div>
