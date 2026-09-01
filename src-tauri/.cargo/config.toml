@@ -1,0 +1,13 @@
+# U 盘产品必须「插上任何机器就能跑」——静态链接 MSVC C 运行时（CRT），让 exe 自包含，
+# 不依赖目标机装过 VC++ 运行库（vcruntime140.dll / vcruntime140_1.dll / msvcp140.dll）。
+#
+# 为什么显式写进仓库：2026-06-24 实测，干净 Windows Server（无 VC++ 运行库）上，动态链接的
+# `cargo build --release` 产物双击/启动直接报 0xC0000135（STATUS_DLL_NOT_FOUND，"点击没反应"），
+# 而静态链接的产物正常跑。历史上线上版本能跑是靠构建机上不可见的 RUSTFLAGS/环境，换机器或
+# 裸 cargo build 就漏 → 不可靠。写死在这里，任何人/CI/Mac mini 构建都自包含。
+#
+# 只对 Windows MSVC target 生效，不碰 Mac（aarch64/x86_64-apple-darwin）。
+# 注意：环境变量 RUSTFLAGS 会整体覆盖（非合并）这里的 rustflags；构建 Windows 版时别再设
+# RUSTFLAGS，否则会把 +crt-static 顶掉，回到动态链接的老坑。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

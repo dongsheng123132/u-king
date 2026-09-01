@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 可见度测试报告 · 云溪茶集（演示公司）</title>
+<style>
+  :root{--fg:#16162a;--mut:#6b7280;--line:#ececf3;--accent:#4f46e5;--green:#16a34a;--red:#dc2626;--bg:#f6f7fb}
+  *{box-sizing:border-box} body{font:15px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--fg);background:var(--bg);margin:0}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+  .brand{color:var(--accent);font-weight:700;font-size:13px;letter-spacing:.5px}
+  h1{font-size:22px;margin:6px 0 2px} .sub{color:var(--mut);font-size:13px;margin:0}
+  .hero{display:flex;gap:24px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;margin:18px 0}
+  .ring{width:130px;height:130px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+    background:conic-gradient(var(--accent) calc(var(--v)*1%), #e5e7eb 0)}
+  .ring b{background:#fff;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;flex-direction:column;line-height:1}
+  .ring .big{font-size:34px;color:var(--accent);font-weight:800} .ring small{color:var(--mut);font-size:11px;margin-top:3px}
+  .hero .lab{font-size:19px;font-weight:700;margin:0 0 6px} .hero .vd{color:var(--mut);font-size:14px;margin:0}
+  h2{font-size:17px;margin:26px 0 12px;padding-left:10px;border-left:4px solid var(--accent)}
+  .mc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .mc-top{display:flex;justify-content:space-between;align-items:baseline} .mn{font-weight:600} .ms{font-size:22px;font-weight:800;color:var(--accent)}
+  .track{height:8px;background:#eef;border-radius:6px;overflow:hidden;margin:8px 0} .track i{display:block;height:100%;background:linear-gradient(90deg,#818cf8,#4f46e5)}
+  .chips{display:flex;gap:6px;margin:2px 0 6px} .ck{font-size:11px;padding:2px 8px;border-radius:999px;background:#f1f1f7;color:var(--mut)}
+  .ck.ok{background:#dcfce7;color:var(--green)} .ck.no{background:#fee2e2;color:var(--red)} .ck.rec{background:#e0e7ff;color:var(--accent)}
+  .note{color:#444;font-size:13px;margin:0}
+  .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .gaps li{margin:4px 0}
+  .pay{margin-top:34px;background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:18px;padding:24px;color:#fff}
+  .pay h2{color:#fff;border:0;padding:0;margin:0 0 4px;font-size:20px} .pay .psub{opacity:.9;font-size:14px;margin:0 0 16px}
+  .prices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .pc{background:#fff;color:var(--fg);border-radius:14px;padding:16px;position:relative}
+  .pc.free{outline:2px solid #c7d2fe} .pb{position:absolute;top:-10px;right:12px;background:#16a34a;color:#fff;font-size:11px;padding:2px 8px;border-radius:999px}
+  .pc h4{margin:0 0 2px;font-size:16px} .pp{font-size:22px;font-weight:800;color:var(--accent);margin-bottom:8px}
+  .pc ul{list-style:none;padding:0;margin:0 0 12px;font-size:13px;color:#444} .pc li{padding:3px 0 3px 18px;position:relative}
+  .pc li:before{content:"✓";position:absolute;left:0;color:var(--green)}
+  .pcta{display:block;text-align:center;background:var(--accent);color:#fff;text-decoration:none;padding:9px;border-radius:9px;font-weight:600}
+  .pcta.done{background:#e5e7eb;color:#16a34a}
+  .pcta.alipay{background:#1677ff}
+  .pcta.wx{background:#07c160;color:#fff;cursor:default}
+  .pcontact{margin:14px 0 0;text-align:center;color:#fff;opacity:.95;font-size:14px}
+  .paybox{margin:16px auto 0;max-width:440px;background:#fff;color:var(--fg);border-radius:14px;padding:16px;display:flex;gap:14px;align-items:center}
+  .paybox .qr{width:122px;height:122px;flex:0 0 auto;border-radius:8px;object-fit:contain;background:#f6f7fb}
+  .paybox .paytxt b{font-size:15px} .paybox .paytxt p{margin:6px 0 0;font-size:13px;color:#444;line-height:1.5}
+  footer{margin-top:26px;color:var(--mut);font-size:12px;text-align:center}
+  details{margin-top:8px} summary{cursor:pointer;color:var(--mut);font-size:13px}
+  .rband{display:flex;gap:10px;align-items:flex-start;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 14px;margin:14px 0;font-size:13px;color:#3730a3}
+  .rband .rb-ic{font-size:18px;flex:0 0 auto;line-height:1.5}
+  .rband p{margin:0;line-height:1.5}
+  .rband b{color:#1e1b4b}
+  .insights{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .ins-lead{margin:0 0 12px;font-size:14px;color:#374151}
+  .ins-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .ins{background:#f9fafb;border-radius:10px;padding:12px 14px}
+  .ins b{display:block;font-size:13.5px;color:var(--accent);margin-bottom:4px}
+  .ins p{margin:0;font-size:12.5px;color:#4b5563;line-height:1.55}
+  .ins-foot{margin:12px 0 0;font-size:12px;color:var(--mut);line-height:1.5}
+  footer a{color:var(--accent);text-decoration:none} footer a:hover{text-decoration:underline}
+  .demo{background:#fef3c7;border:1px solid #f59e0b;color:#78350f;border-radius:12px;padding:12px 16px;margin:0 0 18px;font-size:13.5px;line-height:1.6}
+  .demo b{color:#7c2d12}
+  .demo-foot{margin:10px 0 0;font-size:12px;color:#92400e}
+</style></head>
+<body><div class="wrap">
+  <div class="demo">⚠️ <b>这是一份演示样例，不是对某家真实公司的检测结果。</b>
+    公司名称、各家 AI 的分数与原话全部为虚构的示例数据，仅用于说明报告长什么样、包含哪些维度。
+    <div class="demo-foot">想要一份针对你公司的真实报告？加微信 <b>hecare888</b>，我们逐一实测 6 家大模型后人工出具。</div></div>
+  <div class="brand">🔎 一搜商答 · AI 可见度测试（演示样例）</div>
+  <h1>云溪茶集（演示公司）</h1>
+  <p class="sub">杭州　·　茶叶零售 / 茶空间　·　对接 6 个大模型　·　2026-08-24</p>
+
+  <div class="hero">
+    <div class="ring" style="--v:62"><b><span class="big">62</span><small>/100 可见度</small></b></div>
+    <div><p class="lab">部分 AI 认识你，但不全面</p><p class="vd">国产大模型基本认得你，海外模型几乎没有你的信息；AI 说得出你是谁，但说不准你的主营、价格带和联系方式。</p></div>
+  </div>
+
+  <div class="rband">
+    <span class="rb-ic">📊</span>
+    <p>本报告的评分维度与优化建议，基于 <b>214,119 条中文 AI 引用记录</b> 与 <b>23,745 条跨平台引用特征</b> 的公开实证研究（CN-GEO · 跨平台引用实验）。</p>
+  </div>
+
+  <h2>各家 AI 的分数</h2>
+  <div class="mc">
+      <div class="mc-top"><span class="mn">DeepSeek · 深度求索</span><span class="ms">71</span></div>
+      <div class="track"><i style="width:71%"></i></div>
+      <div class="chips"><span class="ck ok">认识你</span><span class="ck rec">会推荐</span></div>
+      <p class="note">能说出是杭州茶叶品牌、有线下茶空间；但主营品类说成绿茶，与实际不符。</p>
+    </div><div class="mc">
+      <div class="mc-top"><span class="mn">qwen3.6-plus</span><span class="ms">68</span></div>
+      <div class="track"><i style="width:68%"></i></div>
+      <div class="chips"><span class="ck ok">认识你</span><span class="ck rec">会推荐</span></div>
+      <p class="note">知道品牌并能联想到杭州茶文化，给不出门店地址。</p>
+    </div><div class="mc">
+      <div class="mc-top"><span class="mn">glm-5-air</span><span class="ms">55</span></div>
+      <div class="track"><i style="width:55%"></i></div>
+      <div class="chips"><span class="ck ok">认识你</span></div>
+      <p class="note">听说过名字，描述含糊，未纳入推荐名单。</p>
+    </div><div class="mc">
+      <div class="mc-top"><span class="mn">minimax-m2</span><span class="ms">40</span></div>
+      <div class="track"><i style="width:40%"></i></div>
+      <div class="chips"><span class="ck no">不认识</span></div>
+      <p class="note">把它与另一家同名茶饮店混淆了。</p>
+    </div><div class="mc">
+      <div class="mc-top"><span class="mn">gpt-5.5-mini</span><span class="ms">35</span></div>
+      <div class="track"><i style="width:35%"></i></div>
+      <div class="chips"><span class="ck no">不认识</span></div>
+      <p class="note">没有相关信息，改为推荐了三家其他杭州茶企。</p>
+    </div><div class="mc">
+      <div class="mc-top"><span class="mn">gemini-3-flash</span><span class="ms">30</span></div>
+      <div class="track"><i style="width:30%"></i></div>
+      <div class="chips"><span class="ck no">不认识</span></div>
+      <p class="note">无法确认该品牌是否存在。</p>
+    </div>
+
+  <h2>它们普遍怎么看你 · 缺什么</h2>
+  <div class="box">
+    <p><b>共识描述：</b>多数模型知道「云溪茶集」是一家杭州的茶叶品牌，能说出线下有茶空间；但对经营品类的描述停留在「绿茶为主」，与你实际的白茶、岩茶产品线不符，且没有一家能给出准确的门店地址或预约方式。</p>
+    <p><b>普遍缺的关键信息：</b></p>
+    <ul class="gaps"><li>官网没有 llms.txt，AI 抓不到你希望它记住的那份「标准答案」</li><li>首页缺 Organization / LocalBusiness 结构化数据，AI 无法确认你是同一个实体</li><li>全网缺少可被引用的第三方信源（媒体报道、行业名录、百科条目）</li><li>地图侧信息不全：高德/百度的商家分类、营业时间与主营品类三处对不上</li></ul>
+    <details><summary>展开各模型原始回答</summary>
+      
+    </details>
+  </div>
+
+  <h2>为什么 AI 没把你排进去 · 研究洞察</h2>
+  <div class="insights">
+    <p class="ins-lead">基于 23,745 条被 AI 引用页面的特征分析，被 AI 深度吸收的页面有这些共性（你的页面可以对照自查）：</p>
+    <div class="ins-grid">
+      <div class="ins"><b>① 写成「证据页」不是「观点页」</b><p>含定义、数字、对比、操作步骤的页面，被 AI 引用影响力高 41%–62%。空泛总结很难被抽走。</p></div>
+      <div class="ins"><b>② 先够长，再谈够好</b><p>1000+ 词、6–10 个清晰小节的页面显著优于短内容；&lt;170 词的页面几乎不被深度吸收。</p></div>
+      <div class="ins"><b>③ 标题正文都要「对题」</b><p>页面与问题的语义贴合度是影响力最强预测因子（r=0.43）。关键词进标题、导语直接回答。</p></div>
+      <div class="ins"><b>④ 发布位置是筛选门槛</b><p>官网+新闻+行业垂类占被引来源 79%–88%。发在 AI 很少看的站点，后面优化很吃力。</p></div>
+      <div class="ins"><b>⑤ 同内容做平台分发版</b><p>ChatGPT 重单条深度，Google 重标题对齐，Perplexity 重广覆盖。一个页面不一定吃满三家。</p></div>
+    </div>
+    <p class="ins-foot">⚠ 反常识：纯 Q&amp;A 格式并未带来优势（-5.7%）；「短而精」不如「长而结构化」。完整研究见页底论文链接。</p>
+  </div>
+
+  <div class="pay">
+    <h2>让 AI 和地图都搜到你 —— 我们帮你做 GEO + MEO 优化</h2>
+    <p class="psub">以上是免费测试概览。付费后由我们上手：把你变成 AI 读得懂的企业主页（GEO）、同步高德/百度/腾讯三大地图商家信息（MEO），并持续复测追踪分数：</p>
+    <div class="prices"><div class="pc free">
+      <span class="pb">你正在看的</span>
+      <h4>免费测试</h4><div class="pp">¥0</div>
+      <ul><li>AI 可见度总分</li><li>各大模型认识度评分</li><li>网页 AI 友好度诊断</li><li>一句话诊断</li></ul>
+      <div class="pcta done">✓ 已完成</div>
+    </div><div class="pc ">
+      
+      <h4>基础优化</h4><div class="pp">¥199</div>
+      <ul><li>完整多模型 AI 可见度诊断报告</li><li>我们帮你建 1 个 AI 可读企业主页（GEO）</li><li>同步高德 / 百度 / 腾讯地图商家信息（MEO）</li><li>补内容清单 + 40+ 渠道体检面板 + llms.txt / 结构化数据</li></ul>
+      <div class="pcta wx">加微信 hecare888 一对一</div>
+    </div><div class="pc ">
+      
+      <h4>持续优化</h4><div class="pp">¥1999 / 年</div>
+      <ul><li>企业主页 + 行业高频问答持续更新</li><li>每月复测追踪 AI / 地图可见度分数</li><li>GEO + MEO 优化建议持续迭代落地</li><li>被各家 AI 引用 + 地图收录监测</li></ul>
+      <div class="pcta wx">加微信 hecare888 一对一</div>
+    </div></div>
+    <p class="pcontact">加微信 hecare888，把公司名和网址发我们，先免费出一份 AI 可见度诊断，再谈怎么做。</p>
+  </div>
+
+  <footer>由「一搜商答 / 1so」生成 · 2026-08-24。分数为本次抽样结果，AI 回答有波动，建议多次复测取趋势。<br>
+    方法论依据：<a href="https://arxiv.org/abs/2607.15771" target="_blank" rel="noopener">CN-GEO 中文生成式搜索引用研究</a> · <a href="https://arxiv.org/abs/2604.25707" target="_blank" rel="noopener">跨平台引用选择与吸收测量框架</a></footer>
+</div></body></html>

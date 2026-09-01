@@ -1,0 +1,70 @@
+node_modules/
+dist/
+dist-usb/
+src-tauri/target/
+src-tauri/gen/schemas/
+*.log
+# 网站构建产物（exe/msi 太大，发布走 deploy.sh 本地拷贝 + OSS 上传）
+website/download/*.exe
+website/download/*.msi
+# 已发布稳定版二进制保存在 OSS/下载服务器；本地仅供 deploy.sh 上传，避免把大文件塞进 Git。
+website/download/stable/
+website/.vercel/
+# 自检输出
+*selfcheck*.json
+uking-*.json
+# 但内置小程序的清单必须入库：它叫 uking-app.json，正好被上面那条通配吃掉。
+# 后果很隐蔽 —— 本机有文件照样编得过，只有从干净检出构建（Mac/CI）才会
+# 报 include_bytes 找不到文件，产物与仓库悄悄不一致。
+!src-tauri/apps/**/uking-app.json
+*.bak-before*
+
+# 临时调试产物（截图 / 一次性 json / 脚本，本地保留不入库）
+.tmp-*
+# 电商上架素材（淘宝/拼多多主图 + 上架方案，营销产物本地保留不入库）
+ecommerce-assets/
+dist-compare/
+# 一次性产物：演示卸载绿色版 exe、路演 PPT、导出 outputs（本地保留不入库）
+dist-demo-uninstaller/
+outputs/
+
+# 排版取证的截图产物（tools/shot-rtk.mjs 生成），只在本地看，不进仓库
+tools/*.png
+shots/
+
+# 探针 / 截图跑道的残留（2026-08-21 收拾）—— 不是产物也不是源码，
+# 是跑 shot-*.mjs / check-*.mjs 时落在仓库根的临时文件。留在磁盘上，别进 git。
+/--json
+/_after.json
+/board-probe.json
+/*.png
+/*.jpg
+/shots/
+
+# OTLP collector / replay 的运行凭据；报告和冻结数据集另行入库。
+/otel-traces/
+/scripts/replay/results/
+
+# 🔴 vercel.json 是 2026-06-17 站点搬新加坡时**删掉**的死配置，CLAUDE.md 明写「别再放回去」。
+# 但它在几个老 worktree 的磁盘上一直留着（未跟踪），谁跑一次 git add -A 就被当成「新增」暂存 ——
+# 08-21 那两次「main 上凭空长出整体回滚」里，vercel.json +13 行就是这么来的。挡住它。
+/vercel.json
+
+# 防误加：凭据/证书/环境文件/IDE 与 OS 残留
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.der
+*.keystore
+credentials*.json
+token*.json
+*.log.*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

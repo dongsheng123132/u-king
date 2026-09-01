@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>用 ClawX 做事：找技能 → 配模型 → 开干</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:780px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:28px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  .step { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:16px 0; position:relative; }
+  .step .n { position:absolute; top:-12px; left:18px; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .step.gold .n { background:var(--gold); color:#1a1408; }
+  .step h2 { font-size:18px; margin:6px 0 8px; }
+  .step p { margin:6px 0; color:var(--ink2); }
+  b { color:var(--ink); } .gold { color:var(--gold); } .ok { color:var(--ok); } .mut { color:var(--ink3); }
+  ol,ul { color:var(--ink2); padding-left:22px; margin:8px 0; } li { margin:5px 0; }
+  code { background:#0a0a0c; border:1px solid var(--line); border-radius:5px; padding:1px 6px; }
+  .btn { display:inline-flex; align-items:center; gap:7px; background:var(--accent); color:#fff; text-decoration:none; padding:9px 17px; border-radius:9px; font-weight:600; font-size:14px; margin:8px 8px 2px 0; }
+  .btn.alt { background:transparent; border:1px solid var(--line); color:var(--ink2); }
+  .btn.gold { background:var(--gold); color:#1a1408; }
+  .tip { border-left:3px solid var(--accent); background:rgba(94,106,210,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:18px 0; color:var(--ink2); font-size:14px; }
+  .cats { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+  .cat { font-size:12.5px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.06); color:var(--ink2); }
+  footer { margin-top:44px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🦞</div>
+    <h1>用 ClawX 做事，就三件事</h1>
+    <div class="sub">找一个「技能」 → 配一个「大模型 Key」 → 说一句话让它干活</div>
+  </header>
+
+  <div class="tip">
+    <b>先理解俩词，后面就不绕了：</b><br>
+    · <b>技能</b> = 一份「教 AI 怎么做某件事」的说明书（比如怎么做视频、怎么画漫画）。从 <b>skillhub.cn</b> 复制，粘进 ClawX。<br>
+    · <b>大模型 Key</b> = AI 的「大脑」和「油费」。去模型公司申请一串 <code>sk-</code>，粘进 ClawX，它就有脑子、能扣费干活了。<br>
+    技能负责「会做」，Key 负责「有脑子做」，两个都要有。
+  </div>
+
+  <div class="step">
+    <div class="n">1</div>
+    <h2>去技能市场找一个技能</h2>
+    <p>打开腾讯技能市场 <b>skillhub.cn</b>，注册（手机号即可）后搜你想做的事的关键词，挑一个现成技能：</p>
+    <div class="cats">
+      <span class="cat">🎬 视频</span><span class="cat">🖼️ 作图</span><span class="cat">📖 小说</span>
+      <span class="cat">🎨 漫画 / 分镜</span><span class="cat">💻 编程</span><span class="cat">✍️ 写作排版</span>
+    </div>
+    <p>进到技能详情页，把里面的<b>技能内容（提示词 / 配置）复制下来</b>。</p>
+    <p><a class="btn" href="https://skillhub.cn" target="_blank" rel="noopener">打开技能市场 skillhub.cn</a>
+       <a class="btn alt" href="https://skillhub.cn/skills/openclaw-v3" target="_blank" rel="noopener">举例：做视频用 openclaw-v3</a></p>
+  </div>
+
+  <div class="step">
+    <div class="n">2</div>
+    <h2>把技能粘进 ClawX</h2>
+    <p>回到 ClawX，新建一个对话 / 智能体，把刚复制的<b>技能内容粘进去</b>，让它「记住要按这个来做」。</p>
+    <p class="mut">不同技能放的位置略有差别，照技能页的说明放即可 —— 多数就是直接发给 ClawX、或贴进它的「系统提示 / 技能」栏。</p>
+  </div>
+
+  <div class="step gold">
+    <div class="n">3</div>
+    <h2>申请一个大模型 Key（关键一步）</h2>
+    <p>光有技能还不够，得给 ClawX 一个「大脑」。去任意一家模型公司申请 Key：</p>
+    <ul>
+      <li><b>火山引擎（豆包 · 即梦）</b> —— 作图、视频最值得用这家。</li>
+      <li><b>DeepSeek</b> —— 最便宜，写作 / 编程 / 日常对话够用。</li>
+      <li><b>智谱 GLM / Kimi</b> —— 各有免费额度 / 超长文本。</li>
+      <li><b>虾盘云（U-King 内置）</b> —— 嫌麻烦?这个<b>免注册免实名、开箱即用</b>，充值即用。</li>
+    </ul>
+    <p><b class="gold">划重点：国内平台基本都要先「实名认证」才发 Key</b>（身份证 / 刷脸）。没实名就拿不到 Key，这步绕不过去，先做完。详细注册 + 实名 + 申请步骤看下面这篇 ↓</p>
+    <p><a class="btn gold" href="apikey-guide.html" target="_blank" rel="noopener">各家 Key 申请教程（含实名认证）</a></p>
+  </div>
+
+  <div class="step">
+    <div class="n">4</div>
+    <h2>把 Key 粘进 ClawX，让它记住</h2>
+    <p>回到 ClawX，进<b>「模型设置 / 设置」</b>，选你申请的那家服务商，把 <code>sk-</code> 那串 Key <b>粘进去保存</b>。</p>
+    <p><b class="ok">保存后 ClawX 就记住了，下次不用再填。</b>以后你说「用刚才那个技能帮我做个视频」，它就自动用<b>这个技能 + 这个 Key</b> 去干活。</p>
+    <p class="mut">想换一家模型?重复第 3、4 步换个 Key 即可，技能不用动。</p>
+  </div>
+
+  <div class="step">
+    <div class="n">5</div>
+    <h2>开干 —— 说一句话就行</h2>
+    <p>都配好后，像聊天一样跟 ClawX 说你要做什么：</p>
+    <ul>
+      <li>「用 openclaw-v3 技能，帮我做一条介绍我家猫的短视频」</li>
+      <li>「按漫画技能，把这段故事画成 4 格漫画」</li>
+      <li>「用写作技能，帮我写一篇公众号推文」</li>
+    </ul>
+    <p>它会照着技能、用你配的模型一步步做出来。<b>第一次配置花几分钟，以后都是一句话的事。</b></p>
+  </div>
+
+  <footer>U-King 个人 AI 操作系统 · 官网 <a href="https://www.u-king.org">u-king.org</a><br>技能来自 skillhub.cn · Key 由各模型官方平台签发 · ClawX 只把 Key 存在你本机</footer>
+</div>
+</body>
+</html>

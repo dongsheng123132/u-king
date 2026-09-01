@@ -1,0 +1,50 @@
+{
+  "_comment": "U-King「最新动态」清单 —— app 内原生列表(Feed.tsx)读这份 JSON 渲染卡片。改内容不必发版,经发布流程同步到官网服务器。每条: title(必) summary tag date slug(同源 .html,走 open_online_page) 或 url(完整外链)。无 slug/url = 纯公告卡(不可点)。海外AI动态=纯公告卡,改内容随时 scp 不发版。",
+  "items": [
+    {
+      "title": "Anthropic Claude Opus 4.8 发布：编程与深度推理再登顶",
+      "summary": "Anthropic 最新旗舰 Claude Opus 4.8（及 Claude 5 系 Sonnet 5 / Haiku 4.5）在代码、长链推理、Agent 工具调用上进一步领先，是目前写代码最强的一档。U-King 里用 Claude Code 接虾盘云即可直接调用。",
+      "tag": "海外AI",
+      "date": "2026-07-11"
+    },
+    {
+      "title": "OpenAI GPT-5.6 家族上线：Sol / Luna / Terra 三档可选",
+      "summary": "OpenAI 推出 GPT-5.6 系列——Sol（最强）、Terra（均衡）、Luna（快而省），编程与多模态能力再升级。U-King 已同步接入虾盘云，在「AI 设置」换模型里直接选，Codex 桌面版也能用。",
+      "tag": "海外AI",
+      "date": "2026-07-10"
+    },
+    {
+      "title": "马斯克 xAI 发布 Grok 4.5",
+      "summary": "xAI 新一代 Grok 4.5 在推理与实时性上继续加码。U-King 已同步接入，在选模型列表里可直接切到 grok-4.5，无需翻墙、国内直连。",
+      "tag": "海外AI",
+      "date": "2026-07-09"
+    },
+    {
+      "title": "v0.9.13 发布：一键配好全部 AI + AI 作图 + 新手引导",
+      "summary": "新增「一键把虾盘云配进 Claude / Codex / ClawX / Hermes 全部工具」、AI 作图、首开新手引导；Hermes 驱动、ClawX 自动接管与自愈全部上线。",
+      "tag": "新版本",
+      "date": "2026-06-18"
+    },
+    {
+      "title": "充值更稳：国内专用通道已切换",
+      "summary": "部分网络下旧充值/接口域名会被运营商拦截。新版已切到国内稳定可达的通道,充不上值的同学升级即可解决。",
+      "tag": "公告",
+      "date": "2026-06-17",
+      "slug": "install-help.html"
+    },
+    {
+      "title": "装不上 AI 工具？看这份通用补救手册",
+      "summary": "代理 / Node / PowerShell 脚本策略 / 换源 四大坑逐条排查,含可一键复制的命令。",
+      "tag": "排错",
+      "date": "2026-06-16",
+      "slug": "install-help.html"
+    },
+    {
+      "title": "新手必看：三步开始用 AI",
+      "summary": "完全不用懂电脑。装好 ClawX → 打开记得点「允许访问网络」→ 像聊天一样打字。详见软件左侧「使用教程」。",
+      "tag": "教程",
+      "date": "2026-06-15",
+      "slug": "apikey-guide.html"
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+/** 英文覆盖字典 · 技能包 / 工具箱 / 本地大模型 / 技能市场（SkillPack/Toolbox/LocalLLM/Skills）。 */
+export const tools: Record<string, string> = {
+  // 通用（跨模块复用，只放一份）
+  "安装失败：": "Install failed: ",
+  "安装中…": "Installing…",
+
+  // ── SkillPack.tsx ──────────────────────────────────────────────
+  "已复制": "Copied",
+  "复制失败": "Copy failed",
+  "复制": "Copy",
+  "已复制 {id}": "Copied {id}",
+  "点击复制": "Click to copy",
+  "已复制说明文档 —— 粘给任意 AI 即可调用": "Instructions copied — paste into any AI to use it",
+  "已装进 {ready}（共 {count} 个）": "Installed into {ready} ({count} total)",
+  "；{exp} 已拷入但未验证": "; {exp} copied in but unverified",
+  "，并导出到 {dir}": ", and exported to {dir}",
+  "已导出到 {dir}（未探测到已装的 Claude/OpenClaw，按下方路径手动拷即可）":
+    "Exported to {dir} (no installed Claude/OpenClaw detected — copy manually to the paths below)",
+  "已导出技能包到：": "Skill pack exported to: ",
+  "导出失败：": "Export failed: ",
+  "AI 技能包": "AI Skill Pack",
+  "把作图 / 视频打包给任意 AI 工具 CLI 调用 · OpenClaw / ClawX / Hermes / Claude Code":
+    "Package image / video for any AI tool to call from the CLI · OpenClaw / ClawX / Hermes / Claude Code",
+  "充值": "Top up",
+  "这是一个": "This is a ",
+  "通用技能包": "universal skill pack",
+  "（SKILL.md + 能跑的脚本）。导出后把": " (SKILL.md + runnable scripts). After export, copy the ",
+  "文件夹拷进任意 AI 工具的技能目录，那个 AI 就能自己「画图 / 生成视频」。Key 已内置（脚本自动读本机设备 Key），对方无需再配。":
+    "folder into any AI tool's skills directory, and that AI can generate images / videos on its own. The key is built in (scripts auto-read this machine's device key), so nothing else needs configuring.",
+  "推荐": "Recommended",
+  "① 一键装进已装的 AI 工具": "① One-click install into your installed AI tools",
+  "正在安装…": "Installing…",
+  "自动探测 Claude / OpenClaw·ClawX / Hermes，把技能包拷进各自 skills 目录，并导出一份到 ~/.uking。装完直接对它说「画张图」。":
+    "Auto-detects Claude / OpenClaw·ClawX / Hermes, copies the skill pack into each one's skills directory, and exports a copy to ~/.uking. Once done, just tell it “draw a picture”.",
+  "一段文字": "A block of text",
+  "② 复制说明文档": "② Copy the instructions",
+  "复制一段说明（含调用命令 + Key + 模型）到剪贴板，粘给任意 AI 对话框，它照着调用。":
+    "Copy a block of instructions (call commands + key + models) to the clipboard, paste it into any AI chat box, and it will follow them.",
+  "导出中…": "Exporting…",
+  "或导出到我指定的文件夹": "Or export to a folder I choose",
+  "✓ 已装入：": "✓ Installed into: ",
+  "（实验性，已拷入但未验证是否生效）": " (experimental — copied in but not verified to work)",
+  "装完怎么用？在 AI 里这样说（不用记命令）":
+    "How to use it after installing? Just say this in the AI (no commands to memorize)",
+  "装好后打开 Claude Code / ClawX（或对话框），直接用大白话说，它会自己调技能包出图 / 出片 —— AI 会替你把一句话补成专业提示词、按用途选好尺寸：":
+    "After installing, open Claude Code / ClawX (or a chat box) and just say it in plain words — it will call the skill pack to make images / videos, expanding your one line into a professional prompt and picking the right size:",
+  "帮我画一只橘猫宇航员": "Draw me an orange-cat astronaut",
+  "做个抖音美食封面": "Make a Douyin food cover",
+  "把这张图背景换成星空（图生图）": "Change this image's background to a starry sky (image-to-image)",
+  "生成一段海浪的短视频": "Generate a short video of ocean waves",
+  "一次画春夏秋冬四张图": "Draw four images — spring, summer, autumn and winter — at once",
+  "想要别的比例 / 风格，直接追一句「换成竖版」「改成国潮风」即可 —— 以不变应万变，不用每次重敲上下文。":
+    "Want a different ratio / style? Just add “make it vertical” or “change to guochao style” — one approach handles it all, no need to retype the context each time.",
+  "没自动装上 / 用的是别的工具？手动把 uking-aigc 拷进对应目录（右上角复制路径）":
+    "Not auto-installed / using another tool? Manually copy uking-aigc into the matching directory (copy the path from the top-right)",
+  "OpenClaw / ClawX（便携版在 exe 同级 data/.openclaw/skills/）":
+    "OpenClaw / ClawX (portable version is in data/.openclaw/skills/ next to the exe)",
+  "（实验性，未验证是否识别；用不了请改用 Claude Code / ClawX）":
+    " (experimental — not verified to be recognized; if it doesn't work, use Claude Code / ClawX instead)",
+  "拷好后重启该工具，对它说「帮我画一张猫」「生成一段海浪视频」即可。其它工具放它自己的 skills 目录同理。":
+    "After copying, restart that tool and tell it “draw me a cat” or “generate an ocean-wave video”. Other tools work the same — put it in their own skills directory.",
+  "接口与模型（点击即复制）": "Endpoint & models (click to copy)",
+  "API 端点（Base URL）": "API endpoint (Base URL)",
+  "作图模型": "Image models",
+  "图片尺寸": "Image sizes",
+  "视频模型": "Video models",
+  // 1.0.3 自带技能包清单：装哪些由用户自己定（客户抱怨「装太多还删不掉」）
+  "自带技能包": "Bundled skill packs",
+  "装了 {on}/{all}": "{on} of {all} installed",
+  "装哪些由你定 —— 每个包都是给 AI 的一份说明书 + 脚本，不用的可以删掉，随时能装回来。":
+    "You decide which ones to keep — each pack is a manual plus scripts for the AI. Remove what you don't use; you can always put it back.",
+  "正在查…": "Checking…",
+  "装上": "Install",
+  "已装上 {name}": "Installed {name}",
+  "已删除 {name}": "Removed {name}",
+  "处理中…": "Working…",
+  "命令速查（拷到终端即可验证）": "Command cheatsheet (paste into a terminal to verify)",
+
+  // ── Toolbox.tsx ────────────────────────────────────────────────
+  "读取工具箱失败：": "Failed to load the toolbox: ",
+  "准备安装 {name}…": "Preparing to install {name}…",
+  "「{name}」需要的厨具都装好了 ✓": "All tools needed for “{name}” are already installed ✓",
+  "装齐「{bundle}」：{name}…": "Setting up “{bundle}”: {name}…",
+  "厨具工具箱": "Toolbox",
+  "给本机 AI 备齐「能力工具」—— 让它能剪视频、控浏览器、做 PPT、跑脚本":
+    "Equip your local AI with capability tools — so it can edit video, control the browser, make PPTs and run scripts",
+  "已装 {installed}/{total}": "{installed}/{total} installed",
+  "刷新": "Refresh",
+  "AI 时代很多活不用你自己开软件 —— ": "In the AI era, many tasks don't need you to open software yourself — ",
+  "让 AI 去做": "let AI do it",
+  "。但 AI 这个「厨师」得有「厨具」：剪视频要 ":
+    ". But the AI “chef” needs “kitchen tools”: editing video needs ",
+  "、控网页要 ": ", controlling web pages needs ",
+  "、做 PPT 要 ": ", making PPTs needs ",
+  "。按用途一键装好，装完直接对 AI 说「帮我把这几段视频拼成一条」「做个 PPT」即可。":
+    ". Install them by use case in one click, then just tell the AI “stitch these clips into one” or “make a PPT”.",
+  "按用途装齐一组厨具（选一个，高亮该装的）：":
+    "Set up a group of tools by use case (pick one; the ones to install are highlighted):",
+  "做漫剧 / 短视频": "Comics / short videos",
+  "视频剪辑 / 成片": "Video editing / rendering",
+  "做 PPT / 教案": "Make PPTs / lesson plans",
+  "网页自动化": "Web automation",
+  "终端 / 开发": "Terminal / development",
+  "作图/视频/配音已在 AIGC 技能包，再补拼接 + 浏览器找素材":
+    "Image/video/voiceover are already in the AIGC skill pack; add stitching + a browser to find materials",
+  "拼接、转码、加音轨": "Stitch, transcode, add audio tracks",
+  "AI 生成/转换 PPT、Word、PDF": "AI generates/converts PPT, Word, PDF",
+  "让 AI 控浏览器抓取/截图/填表": "Let AI control the browser to scrape/screenshot/fill forms",
+  "更强终端 + 版本控制": "A stronger terminal + version control",
+  "—— 还差：": " — still missing: ",
+  "—— 都装好了 ✓": " — all installed ✓",
+  "一键装齐缺的": "Install the missing ones",
+  "正在读取工具箱…": "Loading the toolbox…",
+  "视频音频": "Video & Audio",
+  "网页浏览": "Web Browsing",
+  "终端环境": "Terminal Environment",
+  "文档办公": "Documents & Office",
+  "开发工具": "Dev Tools",
+  "已装": "Installed",
+  "手动：": "Manual: ",
+  "一键安装 {name}": "One-click install {name}",
+  "本平台需手动安装（见左侧命令）": "Manual install required on this platform (see the command on the left)",
+  "装中": "Installing",
+  "一键装": "Install",
+  "安装走系统包管理器（Windows=winget · macOS=brew）。部分工具（如 Chrome/LibreOffice）安装时可能弹一次 UAC 授权，点「是」即可。装不上的用卡片里的手动命令，或到官网下载。":
+    "Installs go through the system package manager (Windows=winget · macOS=brew). Some tools (e.g. Chrome/LibreOffice) may prompt once for UAC — click “Yes”. If something won't install, use the manual command on its card or download from the official site.",
+
+  // ── LocalLLM.tsx ───────────────────────────────────────────────
+  "准备下载 Ollama 引擎…": "Preparing to download the Ollama engine…",
+  "打开终端失败：": "Failed to open terminal: ",
+  "正在体检你的电脑配置…": "Checking your computer's specs…",
+  "本地大模型 · 在自己电脑上跑 AI": "Local LLM · Run AI on your own computer",
+  "离线可用": "Works offline",
+  "完全免费": "Completely free",
+  "数据不出本机": "Data never leaves your machine",
+  "适合隐私敏感、断网、想白嫖的场景。效果受电脑配置限制 —— 要又快又聪明（满血 DeepSeek-V4），还是用「":
+    "Great for privacy-sensitive, offline, or zero-cost scenarios. Quality is capped by your hardware — for something both fast and smart (full-power DeepSeek-V4), ",
+  "虾盘云": "Xiapan Cloud",
+  "」更划算。": " is the more cost-effective choice.",
+  "这台电脑能跑多大的模型": "How big a model this computer can run",
+  "重新检测": "Re-check",
+  "内存": "RAM",
+  "显卡": "GPU",
+  "{v} 显存": "{v} VRAM",
+  "可加速": "Can accelerate",
+  "无独显": "No discrete GPU",
+  "{n} 核": "{n} cores",
+  "整机一览": "Machine at a glance",
+  "· 这台机器跑 AI 的家底": "· what this machine brings to AI",
+  "本机本地可跑：{m}（想要满血效果仍建议用虾盘云）": "Local model this machine can run: {m} (for full power, Xiapan Cloud is still recommended)",
+  "本机建议直接用「虾盘云」云端满血模型；本地大模型会偏慢": "This machine is better off using Xiapan Cloud's full-power models directly; local LLMs will be slow",
+  "推荐：": "Recommended: ",
+  "约 {gb} GB": "~{gb} GB",
+  "想换个模型？展开全部 {n} 个": "Want a different model? Show all {n}",
+  "一键玩转本地大模型": "One-click local LLM",
+  "引擎已装": "Engine installed",
+  "先装 Ollama 引擎": "First install the Ollama engine",
+  "约 700 MB · 免管理员 · 装到本地盘": "~700 MB · no admin · installs to local disk",
+  "Ollama 是跑本地模型的引擎，装一次即可。装完会自动在后台启动服务。":
+    "Ollama is the engine that runs local models — install it once. It auto-starts a background service after installing.",
+  "一键安装 Ollama 引擎": "One-click install Ollama engine",
+  "手动下载": "Download manually",
+  "下载模型": "Download model",
+  "已下载": "Downloaded",
+  "正在下载模型 {model}（在终端窗口看进度）": "Downloading model {model} (watch the progress in the terminal window)",
+  "下载这个模型": "Download this model",
+  "开始聊天": "Start chatting",
+  "在终端里直接对话，输入 /bye 退出": "Chat directly in the terminal; type /bye to exit",
+  "运行 / 聊天": "Run / chat",
+  "已下载：": "Downloaded: ",
+  "已为本地模型 {model} 打开终端": "Opened a terminal for local model {model}",
+  "已为 {m} 打开终端": "Opened a terminal for {m}",
+  "运行 {m}": "Run {m}",
+  "浏览模型库 · 官方文档": "Browse the model library · official docs",
+  "更多模型选择 · 配置说明 · 常见问题（Ollama 官网）": "More model choices · setup guide · FAQ (Ollama official site)",
+  "打开官网 →": "Open website →",
+
+  // ── Skills.tsx ─────────────────────────────────────────────────
+  "技能市场 · 让 AI 帮你做事": "Skill market · Let AI do things for you",
+  "不知道 AI 能干什么？去腾讯「技能市场」找现成技能包 —— 做视频、炒股看盘、写作排版、整理资料…注册后搜关键词、一键安装，照着用即可。":
+    "Not sure what AI can do? Head to Tencent's “Skill Market” for ready-made skill packs — making videos, watching stocks, writing & formatting, organizing files… Sign up, search a keyword, install in one click, and just use it.",
+  "打开技能市场 skillhub.cn": "Open the skill market skillhub.cn",
+  "1. 注册": "1. Sign up",
+  "2. 搜关键词": "2. Search a keyword",
+  "3. 安装使用": "3. Install & use",
+  "打开 skillhub.cn 注册一个账号（手机号即可）。": "Open skillhub.cn and register an account (a phone number works).",
+  "搜「做视频」「炒股」「写作」等，找到现成的技能包。":
+    "Search for “make videos”, “stocks”, “writing”, etc. to find ready-made skill packs.",
+  "按页面提示安装技能包，回到你的 AI 里照着用。":
+    "Follow the on-page instructions to install the skill pack, then use it back in your AI.",
+  "热门技能专题": "Popular skill topics",
+  "做视频 · 炒股 · 写作 · 更多玩法": "Videos · stocks · writing · more",
+};

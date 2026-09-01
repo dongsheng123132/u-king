@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dongsheng123132/uking-miniapp/v0.1.0/schema/uking-app.schema.json",
+  "profile": "action-parity/miniapp@0.1",
+  "app": {
+    "id": "org.example.app.resize",
+    "slug": "resize",
+    "name": "改尺寸",
+    "version": "0.1.0",
+    "summary": "把图片缩到指定大小，不变形",
+    "description": "拖进一张图，填个最大宽高，一键缩好保存。纯本地计算，不联网、不花额度。这也是《做你的第一个小程序》教程的成品。",
+    "author": "U-King",
+    "license": "Apache-2.0",
+    "locales": ["zh-CN"],
+    "min_host_version": "0.9.70"
+  },
+  "action_parity": "./action-parity.json",
+  "package": {
+    "kind": "web",
+    "web": { "root": "web", "entry": "index.html", "actions": "actions.mjs" }
+  },
+  "ui": {
+    "icon": "lucide:scaling",
+    "accent": "#0ea5e9",
+    "container": "embed",
+    "home_dock": true,
+    "quick_actions": [
+      { "action": "app.resize.image.fit", "label": "改尺寸", "icon": "lucide:scaling" }
+    ]
+  },
+  "permissions": {
+    "fs": { "app_data": true, "save_dialog": true, "open_dialog": true }
+  },
+  "market": {
+    "category": "image",
+    "tags": ["改尺寸", "压缩", "教程"],
+    "price": "free"
+  }
+}

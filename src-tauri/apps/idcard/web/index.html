@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>抠正</title>
+<!--
+  在证件四个角上各点一下 → 抠出来摆正。
+
+  坐标全程用**源图自然像素**，画布整体缩放只做预览 —— 预览和动作契约共用一套数字。
+  动作被 CLI / MCP 无头调用时根本没有「预览」这个概念，自然像素是唯一在所有面上都成立的坐标系。
+
+  不用框架：拖点就是 pointer 事件，原生够用；往第三方 HTML 里塞 400KB React
+  会毁掉「AI 能现场生成一个」的前提。
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    font: 13.5px/1.55 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: #0f1115; color: #e6e8ec; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid #21252d; background: #14171c; flex-shrink: 0; flex-wrap: wrap;
+  }
+  button {
+    border: 0; border-radius: 8px; padding: 7px 16px; font: inherit; font-weight: 600;
+    background: #f59e0b; color: #2a1a02; cursor: pointer;
+  }
+  button.ghost { background: #1a1e24; color: #c9ced8; border: 1px solid #2a2e36; font-weight: 400; }
+  button:disabled { opacity: .45; cursor: default; }
+  select {
+    background: #1a1e24; border: 1px solid #2a2e36; border-radius: 8px;
+    padding: 7px 10px; color: inherit; font: inherit;
+  }
+  /* 提示文字是次要信息：宽度不够时**它**先让步（省略号），
+     而不是把功能条挤到换行、再把「保存」甩到下一行右边（测试报告 #019）。 */
+  /* flex 是**先换行、后压缩**：提示文字一长，它整块跳到第二行，还把「保存」一起拖下去，
+     于是功能条被劈成两半、右下角孤零零一个按钮（测试报告 #019）。
+     所以干脆让它独占一行（flex-basis:100%）—— 按钮永远连在一起，提示永远看得全。 */
+  /* `order:1` 把提示文字排到所有按钮之后 —— 这是本条修复的关键。
+     原来它夹在「撤销」和「保存」中间，一换行就把功能条劈成两半、
+     再配上占位块，「保存」被甩到下一行最右角（实测 idcard/imagefix 都中招）。
+     排到最后之后，按钮永远是连续的一组，提示自然跟在后面，宽窄都不会落单。
+     不再用 flex-basis:100% 强行独占一行 —— 那会让 idcard 多出一整行（105→133px）。 */
+  .hint { color: #6f7683; font-size: 12px; order: 1; }
+  /* 「保存」**不再往最右边推**。原来用 <span style="flex:1"> 占位把它顶到右端，
+     那是单行布局的写法：按钮一多就换行，占位块独占一整行，保存被孤零零甩到
+     下一行最右角（idcard 实测会变成三行）。换成 margin-left:auto 也一样 ——
+     只要按钮行装不下，它照样落单。
+     所以干脆让它跟其它按钮排在一起：宽窗口少了点「右对齐」的好看，
+     但任何宽度下功能条都是**连续的一组**，不会被劈开。 */
+  #stage {
+    flex: 1; position: relative; overflow: hidden; display: flex;
+    align-items: center; justify-content: center;
+    background: #0b0d10 repeating-conic-gradient(#15181d 0% 25%, #0f1216 0% 50%) 50%/22px 22px;
+  }
+  #wrap { position: relative; line-height: 0; }
+  canvas { display: block; max-width: 100%; max-height: 100%; cursor: crosshair; }
+  #drop {
+    position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px;
+    align-items: center; justify-content: center; color: #767d8b; pointer-events: none;
+  }
+  #drop b { color: #b9bfca; font-size: 15px; }
+  footer {
+    padding: 8px 14px; border-top: 1px solid #21252d; background: #14171c;
+    display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 40px;
+  }
+  #msg { color: #8b909a; font-size: 12.5px; }
+  #msg.err { color: #fca5a5; }
+  #msg.ok { color: #fcd34d; }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="ghost" id="open">打开图片</button>
+  <select id="preset">
+    <option value="auto">按框出来的比例</option>
+    <option value="id-card">身份证 / 银行卡</option>
+    <option value="a4">A4</option>
+    <option value="square">正方形</option>
+  </select>
+  <button id="go" disabled>抠出来摆正</button>
+  <button class="ghost" id="reset" disabled>重点四角</button>
+  <span class="hint" id="tip">打开一张图，然后在证件的四个角上各点一下</span>
+  <button class="ghost" id="save" disabled>保存</button>
+</header>
+
+<div id="stage">
+  <div id="wrap"><canvas id="cv"></canvas></div>
+  <div id="drop"><b>把图片拖进来</b><span>或点左上角「打开图片」</span></div>
+</div>
+
+<footer><span id="msg"></span></footer>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+
+let img = null, dataUrl = null, scale = 1;
+let pts = [];        // 源图自然像素坐标
+let dragging = -1;
+
+const say = (t, cls = "") => { $("msg").textContent = t; $("msg").className = cls; };
+
+async function load(url) {
+  const im = new Image();
+  await new Promise((res, rej) => {
+    im.onload = res;
+    im.onerror = () => rej(new Error("这张图打不开"));
+    im.src = url;
+  });
+  img = im; dataUrl = url; pts = [];
+  const st = $("stage").getBoundingClientRect();
+  scale = Math.min(1, (st.width - 48) / im.naturalWidth, (st.height - 48) / im.naturalHeight);
+  cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+  cv.style.width = `${Math.round(im.naturalWidth * scale)}px`;
+  cv.style.height = `${Math.round(im.naturalHeight * scale)}px`;
+  $("drop").style.display = "none";
+  $("save").disabled = false;
+  draw();
+  say(`${im.naturalWidth}×${im.naturalHeight} · 在证件四个角上各点一下`);
+}
+
+function draw() {
+  if (!img) return;
+  ctx.drawImage(img, 0, 0);
+  const r = Math.max(7, 10 / scale), lw = Math.max(2, 3 / scale);
+  ctx.lineWidth = lw; ctx.strokeStyle = "#f59e0b";
+  if (pts.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    if (pts.length === 4) ctx.closePath();
+    ctx.stroke();
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  pts.forEach((p, i) => {
+    ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff"; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#b45309"; ctx.font = `${Math.round(r * 1.3)}px sans-serif`;
+    ctx.fillText(String(i + 1), p[0], p[1]);
+  });
+  $("go").disabled = pts.length !== 4;
+  $("reset").disabled = pts.length === 0;
+  $("tip").textContent =
+    pts.length === 4 ? "四角齐了，可以抠了（点还能拖）" : `已点 ${pts.length}/4 个角`;
+}
+
+const toNat = (e) => {
+  const r = cv.getBoundingClientRect();
+  return [Math.round((e.clientX - r.left) / scale), Math.round((e.clientY - r.top) / scale)];
+};
+
+cv.addEventListener("pointerdown", (e) => {
+  if (!img) return;
+  cv.setPointerCapture(e.pointerId);
+  const p = toNat(e);
+  // 点在已有点附近就是拖它，否则补一个新点 —— 点错了不用重来
+  const near = pts.findIndex((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 18 / scale);
+  if (near >= 0) { dragging = near; return; }
+  if (pts.length < 4) { pts.push(p); dragging = pts.length - 1; draw(); }
+});
+cv.addEventListener("pointermove", (e) => {
+  if (dragging < 0 || !img) return;
+  const p = toNat(e);
+  pts[dragging] = [
+    Math.max(0, Math.min(img.naturalWidth, p[0])),
+    Math.max(0, Math.min(img.naturalHeight, p[1])),
+  ];
+  draw();
+});
+cv.addEventListener("pointerup", () => { dragging = -1; });
+
+$("open").onclick = async () => {
+  try {
+    const f = await window.uking.file.open(["png", "jpg", "jpeg", "webp", "bmp"]);
+    if (f) await load(f.dataUrl);
+  } catch (e) { say(e.message, "err"); }
+};
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer?.files?.[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => load(r.result);
+  r.readAsDataURL(f);
+});
+
+$("reset").onclick = () => { pts = []; draw(); say(""); };
+
+$("go").onclick = async () => {
+  if (pts.length !== 4 || !dataUrl) return;
+  $("go").disabled = true;
+  say("处理中…");
+  try {
+    const r = await window.uking.action("app.idcard.card.extract", {
+      image: dataUrl,
+      corners: pts,
+      preset: $("preset").value,
+      max_side: 2400,
+    });
+    // 动作返回的是引用而不是像素，取图走 artifact 地址
+    await load(`uking://localhost/artifact/${r.artifact.id}`);
+    say(r.message, "ok");
+  } catch (e) {
+    say(e?.message || String(e), "err");
+  } finally {
+    $("go").disabled = pts.length !== 4;
+  }
+};
+
+$("save").onclick = async () => {
+  try {
+    const p = await window.uking.file.save("抠正结果.png", dataUrl);
+    say(p ? `已保存到 ${p}` : "已取消", p ? "ok" : "");
+  } catch (e) { say(e.message, "err"); }
+};
+
+window.addEventListener("resize", () => { if (dataUrl) load(dataUrl); });
+</script>
+</body>
+</html>

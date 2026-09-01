@@ -1,0 +1,141 @@
+/* U-King 学院 共享样式 —— 黑金御印风，复用官网 u-king.org 配色。
+   所有学院页面 <link> 引这一份，改一处全站生效。
+   2026-07-04 可读性大修：正文 16.5px/1.95、标题层级强化、手机端导航换行+表格横滚、
+   新增 html.light 宣纸浅色主题（toc.js 的「☀️ 浅色」按钮切换，存 localStorage）。
+   末尾的 --ink/--ink2/--card 等别名是给 assets/toc.js（目录/复制/换肤）用的，别删。 */
+:root{
+  --ink-0:#f4ecd8; --ink-1:#d3c9ad; --ink-2:#9b9278; --ink-3:#5e5847;
+  --bg-0:#0a0907; --bg-1:#100d09; --bg-2:#16120b; --bg-3:#1e1810;
+  --gold:#c9a227; --gold-hi:#f2d479; --gold-deep:#8a6d18;
+  --cinnabar:#b13a2e; --jade:#3c9b6e;
+  --line:rgba(201,162,39,.16); --line-2:rgba(201,162,39,.28);
+  --serif:"Noto Serif SC",serif; --mono:"JetBrains Mono",monospace;
+  --nav-bg:rgba(10,9,7,.82); --code-bg:#07060a;
+  /* toc.js 兼容别名 */
+  --ink:var(--ink-0); --ink2:var(--ink-1); --ink3:var(--ink-2);
+  --card:var(--bg-2); --ok:var(--jade);
+}
+/* 宣纸浅色主题：御印黑金的纸面版本，长文阅读更省眼 */
+html.light{
+  --ink-0:#241b09; --ink-1:#463a20; --ink-2:#756640; --ink-3:#96896a;
+  --bg-0:#f6f1e3; --bg-1:#f0ead9; --bg-2:#eae3cf; --bg-3:#e2d9c2;
+  --gold:#8a6d18; --gold-hi:#7d5f0e; --gold-deep:#8a6d18;
+  --cinnabar:#a03328; --jade:#2e7d59;
+  --line:rgba(122,95,20,.28); --line-2:rgba(122,95,20,.45);
+  --nav-bg:rgba(246,241,227,.9); --code-bg:#f2ecd8;
+}
+html{color-scheme:dark}
+html.light{color-scheme:light}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg-0); color:var(--ink-1);
+  font-family:var(--serif); font-size:16.5px; line-height:1.95; font-weight:500;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(900px 480px at 85% -8%, rgba(201,162,39,.09), transparent 60%),
+    radial-gradient(700px 500px at 0% 100%, rgba(177,58,46,.06), transparent 55%);
+  background-attachment:fixed;
+}
+a{color:var(--gold-hi);text-decoration:none}
+a:hover{color:var(--gold);text-decoration:underline;text-underline-offset:3px}
+[id]{scroll-margin-top:70px}
+
+/* 顶部导航条（手机端允许换行，不挤不叠） */
+.nav{
+  position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:14px 28px;
+  background:var(--nav-bg);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.nav .brand{font-family:var(--serif);font-weight:900;font-size:18px;color:var(--ink-0);letter-spacing:.04em}
+.nav .brand b{color:var(--gold)}
+.nav .links{margin-left:auto;display:flex;align-items:center;gap:20px;row-gap:6px;flex-wrap:wrap;font-size:14.5px}
+.nav .links a{color:var(--ink-1)}
+.nav .links a:hover{color:var(--gold-hi);text-decoration:none}
+
+/* 容器 */
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+.page{max-width:860px;margin:0 auto;padding:40px 24px 80px}
+
+/* 标题 */
+h1{font-family:var(--serif);font-weight:900;color:var(--ink-0);font-size:33px;line-height:1.35;letter-spacing:.02em}
+h2{font-family:var(--serif);font-weight:700;color:var(--gold-hi);font-size:23px;margin:40px 0 15px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+h3{font-weight:700;color:var(--ink-0);font-size:17.5px;margin:26px 0 10px}
+p{margin:13px 0;color:var(--ink-1)}
+ul,ol{margin:13px 0 13px 26px}
+li{margin:8px 0}
+li::marker{color:var(--gold)}
+strong,b{color:var(--ink-0)}
+em{color:var(--gold-hi);font-style:normal}
+
+/* 代码 */
+code{font-family:var(--mono);background:rgba(201,162,39,.10);color:var(--gold-hi);padding:2px 7px;border-radius:5px;font-size:.9em}
+pre{position:relative;font-family:var(--mono);background:var(--code-bg);border:1px solid var(--line);color:var(--ink-0);padding:15px 17px;border-radius:10px;overflow-x:auto;font-size:14px;line-height:1.75;margin:15px 0}
+pre code{background:none;color:inherit;padding:0;font-size:inherit}
+
+/* 提示框 */
+.tip,.warn,.ok,.note{border-radius:10px;padding:14px 17px;margin:16px 0;font-size:15px;line-height:1.85}
+.tip{background:rgba(60,155,110,.08);border:1px solid rgba(60,155,110,.3)}
+.warn{background:rgba(177,58,46,.08);border:1px solid rgba(177,58,46,.32)}
+.ok{background:rgba(201,162,39,.07);border:1px solid var(--line-2)}
+.note{background:rgba(128,118,90,.06);border:1px solid var(--line)}
+
+/* 模块卡片网格（首页用） */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;margin:24px 0}
+.card{
+  display:block;background:linear-gradient(160deg,var(--bg-2),var(--bg-1));
+  border:1px solid var(--line);border-radius:14px;padding:20px 22px;
+  transition:all .2s;text-decoration:none;
+}
+.card:hover{border-color:var(--line-2);transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,.3);text-decoration:none}
+.card .mno{font-family:var(--mono);font-size:12px;color:var(--gold-deep);letter-spacing:.1em}
+.card .mtitle{font-family:var(--serif);font-weight:700;font-size:18px;color:var(--ink-0);margin:6px 0 8px}
+.card .mdesc{font-size:14px;color:var(--ink-2);line-height:1.75}
+.card .mtag{display:inline-block;margin-top:12px;font-size:13px;color:var(--gold)}
+
+/* 学习路径徽章 */
+.level{display:inline-block;font-size:12px;font-family:var(--mono);padding:2px 10px;border-radius:999px;border:1px solid var(--line-2);color:var(--gold);margin-right:6px}
+
+/* 上一课/下一课 */
+.pager{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:24px;border-top:1px solid var(--line)}
+.pager a{flex:1;padding:15px 18px;border:1px solid var(--line);border-radius:10px;font-size:14.5px;color:var(--ink-1)}
+.pager a:hover{border-color:var(--line-2);text-decoration:none;color:var(--gold-hi)}
+.pager a.next{text-align:right}
+.pager .plabel{display:block;font-size:11.5px;color:var(--ink-3);font-family:var(--mono);margin-bottom:3px}
+
+/* 页脚 */
+.foot{border-top:1px solid var(--line);margin-top:60px;padding:28px 24px;text-align:center;font-size:13px;color:var(--ink-3)}
+.foot a{color:var(--ink-2)}
+
+/* 表格 */
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14.5px}
+th,td{border:1px solid var(--line);padding:9px 13px;text-align:left}
+th{background:rgba(201,162,39,.08);color:var(--ink-0);font-weight:700}
+
+/* hero（首页头图） */
+.hero{padding:60px 24px 30px;text-align:center}
+.hero .crown{font-size:13px;letter-spacing:.3em;color:var(--gold-deep);font-family:var(--mono)}
+.hero h1{margin:14px 0;font-size:40px}
+.hero p{max-width:620px;margin:0 auto;color:var(--ink-2);font-size:16.5px}
+
+/* 章节内目录（每模块首页用） */
+.toc{background:var(--bg-1);border:1px solid var(--line);border-radius:12px;padding:8px 4px}
+.toc a{display:block;padding:12px 18px;color:var(--ink-1);border-bottom:1px solid rgba(201,162,39,.06)}
+.toc a:last-child{border-bottom:none}
+.toc a:hover{background:rgba(201,162,39,.05);color:var(--gold-hi);text-decoration:none}
+.toc .num{font-family:var(--mono);color:var(--gold-deep);margin-right:10px;font-size:13px}
+
+@media(max-width:640px){
+  body{font-size:16px}
+  .hero{padding:44px 18px 22px}
+  .hero h1{font-size:29px} h1{font-size:26px} h2{font-size:21px;margin:32px 0 12px}
+  .nav{padding:11px 14px;gap:10px} .nav .links{gap:13px;font-size:13.5px}
+  .page{padding:28px 16px 64px}
+  .wrap{padding:0 16px}
+  pre{padding:12px 13px;font-size:13px}
+  table{display:block;overflow-x:auto}
+  .pager{flex-direction:column}
+  .pager a.next{text-align:left}
+}

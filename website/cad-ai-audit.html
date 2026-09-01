@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>普通 AI 数出 7 个窗，我们交付 168 个可复核对象｜承接 CAD AI 图纸审计</title>
+<meta name="description" content="承接国内外 CAD、DWG、DXF 图纸的 AI 统计、逐对象回图、表图核对、版本审查与规则预检。真实案例：168 个窗、22 个门、190/190 位置锚点，美国官方 DXF 对象级解构。">
+<meta name="keywords" content="CAD AI,AI审图,CAD图纸审核,门窗统计,图纸审查,DWG,DXF,美国图纸审核,本象协议">
+<meta property="og:title" content="能看图，不等于能审图：本象 CAD 对象级审计案例">
+<meta property="og:description" content="截图式 AI 回答 7/5；对象级审计交付 168/22、190/190 定位与可追溯证据。">
+<link rel="canonical" href="https://www.u-king.org/cad-ai-audit.html">
+<link rel="stylesheet" href="cad-ai-audit/site.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111113'/%3E%3Ccircle cx='22' cy='10' r='5' fill='%23c9a227'/%3E%3C/svg%3E">
+<style>
+.cad-hero{background:radial-gradient(ellipse 70% 55% at 80% 0%,rgba(34,211,238,.18),transparent 60%),#07111f;color:#f5f8fb;padding:72px 22px 56px;position:relative;overflow:hidden}.cad-hero:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(125,211,252,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(125,211,252,.04) 1px,transparent 1px);background-size:34px 34px}.cad-wrap{max-width:1080px;margin:0 auto;position:relative}.cad-hero h1{font-family:var(--serif);font-size:clamp(36px,6vw,62px);line-height:1.12;max-width:15em}.cad-hero h1 em{font-style:normal;color:#67e8f9}.cad-hero .lead{margin-top:20px;max-width:45em;font-size:19px;line-height:1.75;color:#b8c8d8}.audit-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:38px}.audit-metric{border:1px solid #29435a;background:#0b1a2a;border-radius:14px;padding:17px}.audit-metric b{display:block;font-family:var(--mono);font-size:28px;color:#67e8f9}.audit-metric span{font-size:13px;color:#91a4b6}.article-grid{display:grid;grid-template-columns:minmax(0,760px) 260px;gap:40px;align-items:start}.article-side{position:sticky;top:84px;border:1px solid var(--line);border-radius:14px;background:var(--paper-2);padding:20px}.article-side h3{font-size:16px}.article-side a{display:block;color:var(--text-soft);text-decoration:none;font-size:13.5px;padding:8px 0;border-bottom:1px solid var(--line)}.article-side a:hover{color:var(--gold-deep)}.evidence-img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:14px;margin:24px 0 8px;background:white}.caption{font-size:13px!important;color:var(--text-faint)!important;margin-bottom:28px!important}.compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}.compare>div{border-radius:14px;padding:22px;border:1px solid var(--line);background:var(--paper-2)}.compare .bad{border-color:#e9a4ad}.compare .good{border-color:#86cbb3}.compare .big{font:800 34px var(--mono);margin:8px 0}.compare .bad .big{color:#b63d52}.compare .good .big{color:#168965}.scope-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:22px 0}.scope{border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--paper-2)}.scope b{display:block;margin-bottom:6px}.scope span{font-size:13.5px;color:var(--text-soft)}.cta-panel{background:#07111f;color:#f5f8fb;border-radius:18px;padding:34px;margin-top:40px}.cta-panel h2{font-family:var(--serif);font-size:30px}.cta-panel p{color:#b8c8d8!important;margin-top:12px}.cta-panel .btn{margin-top:10px}.proof-note{border-left:4px solid var(--gold);background:#fdf8e8;padding:18px 20px;border-radius:0 12px 12px 0;margin:24px 0;color:#4b442f}.mini-meta{font:12px/1.7 var(--mono);color:var(--text-faint);word-break:break-all}@media(max-width:900px){.article-grid{grid-template-columns:1fr}.article-side{display:none}.audit-metrics{grid-template-columns:repeat(2,1fr)}.compare,.scope-grid{grid-template-columns:1fr}}@media(prefers-color-scheme:dark){.proof-note{background:#2c281d;color:#f2e8c9;border-color:#d1a934}.cad-hero .btn-ghost{color:#f5f8fb!important}.compare .bad .big{color:#fb8ca0}.compare .good .big{color:#5ee0b0}}
+</style>
+<style>
+html,body{overflow-x:hidden;max-width:100%}.cad-wrap,.article-grid,.audit-metric,.prose{min-width:0}.cad-wrap,.prose{width:100%;max-width:100%}.audit-metric b{font-size:clamp(22px,6vw,28px);white-space:nowrap}.prose pre{max-width:100%}
+@media(max-width:520px){.cad-hero{padding:54px 20px 44px}.cad-hero h1{font-size:34px;max-width:100%;word-break:break-all}.cad-hero .lead,.proof-note,.prose p{overflow-wrap:anywhere}.cad-hero .lead{font-size:17px}.audit-metrics{gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.audit-metric{padding:14px 10px;overflow:hidden}.audit-metric span{font-size:11.5px}.cad-hero .hero-cta{gap:10px}.cad-hero .btn{padding:11px 14px}.section{padding-left:20px;padding-right:20px;width:100%;max-width:100%}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span><span>U-King</span><span class="zh-name">本象协议案例</span></a><div class="nav-links"><a href="index.html">首页</a><a href="#scope" class="hide-sm">服务范围</a><a href="https://github.com/dongsheng123132/2origin" class="gh" target="_blank" rel="noopener">证据源码 ↗</a></div></div></nav>
+
+<header class="cad-hero"><div class="cad-wrap"><div class="eyebrow">真实案例 · 承接国内外 CAD AI 项目</div><h1>普通 AI 数出 <em>7 个窗</em><br>我们交付 168 个可复核对象</h1><p class="lead">门窗和设备统计、逐对象回图、表图一致性、版本差异、图签检查、规则预检。先拿一张代表性样图解决一个明确问题，有用，再扩整套图集。</p><div class="hero-cta"><a class="btn btn-primary" href="#pilot">拿一张样图做试点</a><a class="btn btn-ghost" href="#evidence">先看真实证据</a></div><div class="audit-metrics"><div class="audit-metric"><b>7 / 5</b><span>截图式多模态基线 · 窗 / 门</span></div><div class="audit-metric"><b>168 / 22</b><span>对象级审计 · 窗 / 门</span></div><div class="audit-metric"><b>190 / 190</b><span>实际对象位置锚点覆盖</span></div><div class="audit-metric"><b>10 / 10</b><span>美国官方 DXF 机器约束</span></div></div></div></header>
+
+<main class="section article-grid" id="evidence"><article class="prose">
+<p class="proof-note"><strong>我们接什么：</strong>国内外 CAD、DWG、DXF 图纸的对象统计、逐项回图、表图核对、版本审查和规则预检。原图不能外传时，可在授权环境本地处理，只交脱敏投影与证据包。</p>
+
+<h2 id="baseline">先看硬证据：为什么截图 AI 数不清复杂 CAD</h2>
+<p>2026 年 8 月 13 日，我们把复杂 CAD 的脱敏总览图交给 <code>qwen-vl-max</code>，问它窗、门数量，以及“第 97 个窗”的稳定 ID、坐标和分类依据。</p>
+<div class="compare"><div class="bad"><strong>截图 + 普通提示词</strong><div class="big">7 / 5</div><p>回答 7 个窗、5 个门；无法回答第 97 个窗，理由是截图没有 ID、坐标与实体属性。</p></div><div class="good"><strong>本象对象级审计</strong><div class="big">168 / 22</div><p>194 个候选中排除 4 个块定义；190 个实际对象全部恢复位置锚点。</p></div></div>
+<img class="evidence-img" src="cad-ai-audit/01-baseline-vs-origin-v2.png" alt="普通多模态截图基线与本象对象级CAD审计对比" width="1080" height="1350" decoding="async">
+<p class="caption">图 1 · 真实运行信息随图保留。基线 request ID：59f90fa1-f473-9b30-ba6f-1778dc0e5de5。</p>
+<p>模型并不笨。它其实正确指出了问题：如果要对象 ID 和坐标，必须读取原始 CAD 实体。把一张总览图当成完整 CAD，再要求模型稳定数清整图，本来就不合理。</p>
+
+<h2 id="objects">不是把 7 猜成 168，而是交付 168 个对象</h2>
+<pre><code>194 = 4 个块定义模板 + 190 个实际放置对象
+190 = 168 个窗 + 22 个门 + 0 个未分类</code></pre>
+<p>本象没有把 168 压成一行日志。每个门窗保留稳定 handle、分类依据、载荷指纹和位置证据。客户质疑“这樘窗为什么算进去”，可以直接定位对象，而不是重新问一次 AI。</p>
+<img class="evidence-img" src="cad-ai-audit/03-object-map.png" alt="190个实际门窗对象落回脱敏CAD基础几何">
+<p class="caption">图 2 · 190/190 个模型空间门窗对象恢复位置锚点，可按对象 ID 查询。</p>
+<img class="evidence-img" src="cad-ai-audit/04-single-object.png" alt="单个CAD门窗对象的坐标、证据和查询命令">
+<p class="caption">图 3 · 单对象 opening:38A：坐标、写入事务、解码依据和复核命令同时保留。</p>
+<blockquote>截图式 AI 给答案；对象级审计交对象。答案可以复制，对象可以继续查。</blockquote>
+<p>边界也写进交付包：168 是窗樘/窗洞对象，不是玻璃片；LibreDWG 独立确认的是总数 194，不是 168/22 分类；精确轮廓、朝向与 bbox 尚未恢复。</p>
+
+<h2 id="delivery">项目交付的不是聊天记录</h2>
+<div class="scope-grid"><div class="scope"><b>源文件身份</b><span>版本、格式、SHA-256。图换了，旧结论不冒充新结论。</span></div><div class="scope"><b>对象清单</b><span>稳定 ID、分类、关系和统计成员。</span></div><div class="scope"><b>回图证据</b><span>位置、客户可读截图和交互查询。</span></div><div class="scope"><b>机器判据</b><span>统计、缺失、命名、图签与跨图一致性。</span></div><div class="scope"><b>派生历史</b><span>谁在什么时候，凭什么写入结果。</span></div><div class="scope"><b>能力边界</b><span>未恢复、未覆盖和必须由专业人员判断的部分。</span></div></div>
+<img class="evidence-img" src="cad-ai-audit/02-deliverables.png" alt="CAD对象级审计包的六类交付内容">
+
+<h2 id="us">国外图纸：已经验证到哪里</h2>
+<p>美国案例来自 <a href="https://www.sandiego.gov/development-services/forms-publications/design-guidelines-templates" target="_blank" rel="noopener">City of San Diego 官方 DS-3179 Construction Plan DXF 模板</a>。导入后得到 187 个对象、319 条关系、10/10 条可判定约束，并识别 inch 单位、9 个页索引、7 项引用标准和待填写字段。</p>
+<img class="evidence-img" src="cad-ai-audit/05-us-certificate.png" alt="圣迭戈市官方DXF完整原图与本象对象级验真证据同屏">
+<p class="caption">图 4 · 左侧是官方 DXF 源实体和块参照的完整渲染，右侧是同一源文件的对象、关系、语义和能力边界。</p>
+<p>更正：上一版可视投影没有展开 DXF 块参照，又把多行 CAD 文字按单行 SVG 排版，因此看上去只剩重叠英文。源文件没有拿错，错的是渲染层。新版可见完整图框、Vicinity Map 区、Sheet Index、施工变更表、Street Data Table 与官方图签。</p>
+<p class="proof-note">这证明美国官方 DXF 的对象化和模板语义预检能力，不等于全美法规审查。本象工程验真不是 AHJ 批准，也不替代持证建筑师、工程师或 PE 的责任与签章。</p>
+
+<h2 id="scope">现在可以承接哪些 CAD AI 任务</h2>
+<ul><li>门窗、设备、构件等对象统计与逐项回图；</li><li>图层、命名、图签、页索引、待填字段检查；</li><li>平面图、门窗表、编号和说明之间的一致性预检；</li><li>两版图纸的新增、删除、分类变化和影响范围审查；</li><li>业主或辖区 CAD 标准的机器预检，与专业人员联合复核；</li><li>客户图纸不外传场景下的本地处理与脱敏证据交付。</li></ul>
+<img class="evidence-img" src="cad-ai-audit/06-service-scope.png" alt="国内外CAD AI图纸审核的服务范围与能力边界">
+
+<div class="cta-panel" id="pilot"><h2>带一张图和一个问题来，先做小样</h2><p>告诉我们：最想查什么、怎样算通过、哪些信息不能外传。我们先交对象清单、回图证据、问题样例、规则口径和能力边界；有用，再扩到整套图集。</p><p><strong>微信：</strong>hecare888　<strong>邮箱：</strong><a href="mailto:hefangsheng@gmail.com">hefangsheng@gmail.com</a></p><p>可承接门窗/设备统计、表图核对、图签检查、版本差异、规则预检及其他边界明确的 CAD AI 任务。作者团队还提供 U-King 多 AI 安装与使用工具，可一键安装和使用 Claude Code、Codex、Hermes。</p><a class="btn btn-primary" href="mailto:hefangsheng@gmail.com?subject=CAD%20AI%20图纸审计小样">邮件提交 CAD 小样需求</a></div>
+
+<p class="mini-meta">案例证据状态：2026-08-13 · 输入已验证：受控复杂 DWG、美国官方 DXF · 速度“10×”尚未完成同图盲测，因此本文不作该主张。</p>
+</article>
+
+<aside class="article-side"><h3>本文证据</h3><a href="#baseline">截图基线：7 / 5</a><a href="#objects">对象审计：168 / 22</a><a href="#delivery">客户收到什么</a><a href="#us">美国官方 DXF</a><a href="#scope">可承接任务</a><a href="#pilot">一张图先试点</a></aside></main>
+
+<footer class="footer"><div class="footer-inner"><div><div class="brand-line">U-King × <span class="zh">本象协议</span></div><p>AI 图纸任务，先做对象级小样，再扩整套图集。</p></div><div><h4>案例</h4><a href="cad-ai-audit.html">CAD AI 图纸审计</a><a href="index.html">U-King 首页</a></div><div><h4>联系</h4><a href="mailto:hefangsheng@gmail.com">hefangsheng@gmail.com</a><a href="https://github.com/dongsheng123132/2origin" target="_blank" rel="noopener">GitHub 证据 ↗</a></div></div><div class="footer-bottom"><div class="in"><span>© 2026 U-King · 2Origin</span><span>CAD AI Audit · Evidence before claims</span></div></div></footer>
+</body></html>

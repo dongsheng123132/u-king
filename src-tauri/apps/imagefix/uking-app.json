@@ -1,0 +1,85 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dongsheng123132/uking-miniapp/v0.1.0/schema/uking-app.schema.json",
+  "profile": "action-parity/miniapp@0.1",
+  "app": {
+    "id": "org.uking.app.imagefix",
+    "slug": "imagefix",
+    "name": "图片修补",
+    "version": "0.1.2",
+    "summary": "框一下就去水印 / 改文字",
+    "description": "拖个框选中水印或错字，一键去掉水印、或把文字换成你要的内容，导出成品图。改中文字优先走本地精确重绘（AI 画中文会糊），去水印走 AI 补全。原图分辨率不会被压缩。",
+    "author": "U-King",
+    "homepage": "https://www.u-king.org/apps/imagefix",
+    "license": "Apache-2.0",
+    "locales": [
+      "zh-CN"
+    ],
+    "min_host_version": "0.9.70"
+  },
+  "action_parity": "./action-parity.json",
+  "package": {
+    "kind": "web",
+    "web": {
+      "root": "web",
+      "entry": "index.html",
+      "actions": "actions.mjs"
+    }
+  },
+  "ui": {
+    "icon": "icon.png",
+    "accent": "#7c5cff",
+    "container": "both",
+    "window": {
+      "width": 1100,
+      "height": 760,
+      "resizable": true
+    },
+    "home_dock": true,
+    "quick_actions": [
+      {
+        "action": "app.imagefix.watermark.remove",
+        "label": "去水印",
+        "icon": "lucide:eraser"
+      },
+      {
+        "action": "app.imagefix.text.replace",
+        "label": "改文字",
+        "icon": "lucide:type"
+      }
+    ],
+    "annotation": {
+      "kind": "rect",
+      "target_field": "region",
+      "action": "app.imagefix.watermark.remove",
+      "prompt": "框住要去掉的水印",
+      "image_field": "image"
+    }
+  },
+  "permissions": {
+    "ai": {
+      "image_edit": true,
+      "image_generate": false,
+      "chat": false,
+      "video_generate": false,
+      "max_calls_per_run": 3
+    },
+    "fs": {
+      "app_data": true,
+      "save_dialog": true,
+      "open_dialog": true
+    },
+    "net": {
+      "allow": []
+    },
+    "host_actions": []
+  },
+  "market": {
+    "category": "image",
+    "tags": [
+      "去水印",
+      "改字",
+      "电商图"
+    ],
+    "price": "credits"
+  }
+}

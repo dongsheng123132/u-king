@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>U-King AI 管家</title>
+    <script>
+      // 早期兜底：ErrorBoundary 只能兜「React 已挂载后」的渲染错；若 JS 主包本身求值失败
+      // （某个 import 顶层抛错 → React 根本没 createRoot），页面就是纯黑、无任何信息（Mac 客户实锤）。
+      // 这段内联脚本在模块加载前就注册错误监听，并在 10s 后若 #root 仍为空 → 显示可读提示 + 重新加载，
+      // 而不是让用户对着一片黑。React 一旦正常挂载会接管 #root、自动清掉本兜底，无副作用。
+      //
+      // 🔴 **这段代码必须在我们支持的最老引擎上跑得动** —— 它正是给「新语法把主包干掉了」兜底的，
+      //    自己用了新语法就一起死。所以：全程 ES5（var / function）、用 XMLHttpRequest 不用 fetch、
+      //    不碰 window.__TAURI__（withGlobalTauri 是关的，那个全局根本不存在）。
+      //
+      // 2026-08-16 补上上报：0.9.99/0.9.100 的 Mac 版被两条正则 lookbehind 打白屏，
+      // bug 库里**一条记录都没有** —— 因为「首屏起不来」恰好是唯一采集不到的崩溃类型：
+      // report.rs 只管安装/AI/panic，ErrorBoundary 要 React 先挂上，而这里以前只显示不上报。
+      (function () {
+        var VER = "%APP_VERSION%"; // vite.config.ts 的 uking-html-version 插件从 package.json 注入
+        var lastErr = "";
+        function esc(s) {
+          return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        // 2026-08-16：第一次真收到这张兜底页的截图时，`<pre>` 里只有一行 message ——
+        // 既认不出**引擎**（同一句「正则非法」，JavaScriptCore 和 V8 的措辞完全不同）、
+        // 也认不出**版本**和**出错文件**，于是「这是不是我们已经修掉的那个」只能靠考古反推。
+        // 兜底页的产物只有这一张图，所以图里必须自带能定位构建和引擎的东西。
+        function engineOf(ua) {
+          // 顺序要紧：Chromium 的 UA 里同样有 AppleWebKit，先排 Edg/Chrome 才不会误判成 WebKit
+          if (ua.indexOf("Edg/") >= 0) return "WebView2/Chromium";
+          if (ua.indexOf("Chrome/") >= 0) return "Chromium";
+          if (ua.indexOf("AppleWebKit") >= 0) return "WKWebView/JavaScriptCore";
+          return "unknown-engine";
+        }
+        function record(msg, stack, at) {
+          var parts = [];
+          if (msg) parts.push(String(msg));
+          if (at) parts.push("at " + at);
+          // 栈里常常已经含 message，宁可重复一遍也别做「看着像就删」的裁剪 —— 裁错了就没证据了
+          if (stack) parts.push(String(stack));
+          if (parts.length) lastErr = parts.join("\n");
+        }
+        window.addEventListener("error", function (e) {
+          if (!e) return;
+          record(e.message, e.error && e.error.stack, e.filename ? e.filename + ":" + e.lineno + ":" + e.colno : "");
+        });
+        // 动态 import 失败 / 顶层 await 抛错走的是 rejection，不是 error —— 少了这条同样是白屏没线索
+        window.addEventListener("unhandledrejection", function (e) {
+          if (!e) return;
+          var r = e.reason;
+          record(r && r.message ? r.message : String(r), r && r.stack, "(unhandled rejection)");
+        });
+
+        // 走 report.rs 同一条链路（国内可达的 u-claw.org.cn 反代 → Vercel function → 建 Issue）。
+        // 契约照抄 report.rs::send：x-uking-version 头 + {app,version,os,kind,summary,detail,device}。
+        function reportBootFailure(err) {
+          try {
+            // device 只用于服务端按「kind|device|当天」去重：没有它，全世界的白屏一天只会并成一条，
+            // 我们就看不出是 1 台还是 50 台。这里存一个**本地随机串**，不是指纹，不含任何机器信息。
+            var KEY = "uking.boot-report-id";
+            var id = "";
+            try {
+              id = window.localStorage.getItem(KEY) || "";
+            } catch (e) {}
+            if (!id) {
+              id = "web-" + Math.random().toString(36).slice(2, 10);
+              try {
+                window.localStorage.setItem(KEY, id);
+              } catch (e) {}
+            }
+            var ua = navigator.userAgent || "";
+            var os = ua.indexOf("Mac") >= 0 ? "macos" : ua.indexOf("Windows") >= 0 ? "windows" : "unknown";
+            // 脱敏：堆栈里常带 /Users/张三/ 或 C:\Users\张三\（对齐 feedback.rs::desensitize 的意图）
+            var clean = String(err || "(no error captured — likely a native WebView render issue)")
+              .replace(/([/\\][Uu]sers[/\\])[^/\\]+/g, "$1*")
+              .slice(0, 2000);
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "https://u-claw.org.cn/uking/bug", true);
+            xhr.timeout = 15000;
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.setRequestHeader("x-uking-version", VER);
+            xhr.send(
+              JSON.stringify({
+                app: "u-king-mini",
+                version: VER,
+                os: os,
+                kind: "ui_boot_failed",
+                summary: "首屏起不来：" + clean.split("\n")[0].slice(0, 160),
+                detail: "UA: " + ua + "\n\n" + clean,
+                device: id,
+                shots: [],
+              })
+            );
+          } catch (e) {
+            /* 上报失败绝不能盖掉兜底界面本身 */
+          }
+        }
+        // 🔴 白屏的 app 自己升不了级 —— 升级按钮在没渲染出来的那个界面里。
+        // 而**开机就语法错的情况下 `location.reload()` 每次都会以完全相同的方式失败**，
+        // 所以在 2026-08-16 之前，兜底页唯一的按钮是一个可证明救不了它的按钮：
+        // 拿到坏版本的人被永久卡死，界面上没有任何地方告诉他去哪重下。
+        // （0.9.99/0.9.100 的 Mac 包就是这个下场；客户原话「点了升级就出现的，之前没有」。）
+        // 这条逃生路只依赖 Tauri 自己注入的 __TAURI_INTERNALS__ —— 它由宿主注入，
+        // **不经过我们那个已经加载失败的前端包**，所以主包炸掉时它仍然在。
+        var DL_URL = "https://u-claw.org.cn/uking/"; // 国内可达性铁律：给客户端的 URL 一律 .org.cn
+        var WECHAT_ID = "hecare888"; // 人工兜底通道；改这里一处即可
+        window.__ukingGetLatest = function () {
+          try {
+            var t = window.__TAURI_INTERNALS__;
+            if (t && typeof t.invoke === "function") {
+              t.invoke("plugin:opener|open_url", { url: DL_URL, with: null });
+              return;
+            }
+          } catch (e) {
+            /* 落到下面的复制兜底 */
+          }
+          try {
+            navigator.clipboard.writeText(DL_URL);
+            var b = document.getElementById("uking-dl-btn");
+            if (b) b.textContent = "链接已复制 · Copied";
+          } catch (e2) {
+            /* 再不行也没事：地址就明写在按钮下面那行，照着敲即可 */
+          }
+        };
+        window.setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.childElementCount === 0) {
+            root.innerHTML =
+              '<div style="position:fixed;inset:0;background:#0b0e16;color:#e6e8ef;' +
+              "font:13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:40px 32px;overflow:auto\">" +
+              '<div style="max-width:680px;margin:0 auto">' +
+              '<div style="font-size:18px;font-weight:700;margin-bottom:8px">U-King 界面未能加载 · Failed to load</div>' +
+              '<div style="color:#9aa0b4;margin-bottom:6px">先点「重新加载」；<b>如果重新加载后还是这一页，说明这个版本在你的系统上起不来 —— ' +
+              '请点「下载最新版」重装</b>（升级按钮在没能显示出来的界面里，点不到）。<br>' +
+              "Try Reload first. If this page comes back, this build can't start on your system — " +
+              "click “Get latest” and reinstall (the in-app updater lives in the UI that failed to render).</div>" +
+              // 这一行是给我们看的：版本 + 引擎。截图里没有它，就没法回答「这是哪个构建、哪个内核」
+              '<div style="color:#5d6478;margin-bottom:18px;font-size:12px">v' +
+              esc(VER) +
+              " · " +
+              esc(engineOf(navigator.userAgent || "")) +
+              "</div>" +
+              '<button onclick="location.reload()" style="background:#3b82f6;color:#fff;border:none;' +
+              'border-radius:8px;padding:8px 16px;cursor:pointer;font-weight:600">重新加载 · Reload</button>' +
+              '<button id="uking-dl-btn" onclick="window.__ukingGetLatest()" style="margin-left:10px;' +
+              'background:transparent;color:#e6e8ef;border:1px solid #2a2f3e;border-radius:8px;' +
+              'padding:8px 16px;cursor:pointer">下载最新版 · Get latest</button>' +
+              // 明写地址：opener 和剪贴板万一都不通，照着敲仍然走得通 —— 这是最后一条路，不能再依赖任何东西
+              '<div style="color:#5d6478;margin-top:8px;font-size:12px;user-select:text">' +
+              esc(DL_URL) +
+              "</div>" +
+              // 🔴 人工兜底：上面两条都是**自助**路径，而看到这一页的人恰恰是自助失败的那批。
+              // 自动上报只让「我们」知道出事了，客户那头仍是一块黑屏、不知道多久有人管；
+              // 留一个能立刻找到活人的地方，是这一页唯一还能给的确定性。
+              // 放在最后一行、灰色小字：不喧宾夺主，但截图必然带上它。
+              '<div style="color:#5d6478;margin-top:4px;font-size:12px;user-select:text">' +
+              esc("联系作者 · 微信 " + WECHAT_ID + "（Contact author · WeChat）") +
+              "</div>" +
+              '<pre style="margin-top:16px;background:#0f131d;border:1px solid #1e2430;border-radius:8px;' +
+              'padding:14px;white-space:pre-wrap;word-break:break-word;color:#c3c8d8">' +
+              esc(lastErr || "(no error captured — likely a native WebView render issue)") +
+              esc("\n\nUA: " + (navigator.userAgent || "")) +
+              "</pre></div></div>";
+            // 界面先给出来，再上报 —— 顺序反了的话上报里任何意外都会让用户继续对着黑屏
+            reportBootFailure(lastErr);
+          }
+        }, 10000);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

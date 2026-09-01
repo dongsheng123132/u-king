@@ -1,0 +1,149 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dongsheng123132/action-parity/v0.5.0/schema/action-parity.schema.json",
+  "spec_version": "0.5.0",
+  "application": {
+    "id": "org.example.app.resize",
+    "name": "改尺寸",
+    "version": "0.1.0",
+    "description": "Resize an image to fit within a bounding box, preserving aspect ratio. Pure local computation: no network, no credits."
+  },
+  "conformance_targets": [
+    "AP-1",
+    "AP-2"
+  ],
+  "surfaces": [
+    {
+      "id": "miniapp",
+      "kind": "gui",
+      "required_for_parity": true,
+      "description": "Drop an image, pick a size, save.",
+      "reachability": "in-process"
+    },
+    {
+      "id": "cli",
+      "kind": "cli",
+      "required_for_parity": true,
+      "description": "U-King.exe action run app.resize.image.fit --json --input-file <f>",
+      "reachability": "external"
+    }
+  ],
+  "actions": [
+    {
+      "id": "app.resize.image.fit",
+      "title": "Resize an image to fit a box",
+      "description": "Scale the image so it fits within max_w × max_h without distortion. Never enlarges beyond the source unless allow_upscale is set, because upscaling a photo produces a bigger file that looks worse. Delivers the result to the host artifact inbox and returns a reference.",
+      "tags": [
+        "image",
+        "resize"
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "max_w",
+          "max_h"
+        ],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "data: URL, or an absolute path to a local image."
+          },
+          "max_w": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8192
+          },
+          "max_h": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8192
+          },
+          "allow_upscale": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "artifact",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "artifact": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "path"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "image"
+              },
+              "w": {
+                "type": "integer"
+              },
+              "h": {
+                "type": "integer"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "from": {
+            "type": "object",
+            "description": "Source dimensions, so the caller can tell whether anything actually changed."
+          },
+          "to": {
+            "type": "object"
+          }
+        }
+      },
+      "effects": {
+        "class": "read",
+        "risk": "low",
+        "reversible": true,
+        "confirmation": "never",
+        "audit_required": false,
+        "notes": "No network, no credits. Reads the input and produces a new artifact; never modifies the source."
+      },
+      "execution": {
+        "headless": true,
+        "idempotent": true,
+        "cancellable": false,
+        "timeout_ms": 30000,
+        "headless_evidence": "U-King.exe action run app.resize.image.fit --json --no-input --input-file <f>"
+      },
+      "bindings": [
+        {
+          "surface": "miniapp",
+          "target": "uking-rpc:action/app.resize.image.fit"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run app.resize.image.fit --json --input-file <f>"
+        }
+      ]
+    }
+  ]
+}

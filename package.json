@@ -1,0 +1,76 @@
+{
+  "name": "u-king-mini",
+  "private": true,
+  "version": "1.2.1",
+  "description": "U-King — AI 装机管家 + 多 AI 工作台。让不会配环境的用户 10 分钟用上 Codex CLI / OpenClaw 等主流 AI 工具。",
+  "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "action-parity:generate": "node scripts/generate-action-parity.mjs --json",
+    "action-parity:check": "node scripts/generate-action-parity.mjs --check --json",
+    "action-parity:verify": "node scripts/generate-action-parity.mjs --verify --json",
+    "check:theme": "node scripts/check-theme-tokens.mjs",
+    "dev": "vite",
+    "build": "node scripts/check-module-coupling.mjs && node scripts/check-theme-tokens.mjs && node scripts/check-i18n-missing.mjs && node scripts/check-skill-scripts.mjs && node scripts/check-skill-manifest-sync.mjs && node scripts/check-provider-templates-sync.mjs && node scripts/check-expert-cli-hint.mjs && tsc && vite build && node scripts/check-webkit-compat.mjs",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "check:webkit": "node scripts/check-webkit-compat.mjs",
+    "check:skills": "node scripts/check-skill-scripts.mjs",
+    "check:provider-templates": "node scripts/check-provider-templates-sync.mjs",
+    "check:boot-report": "node scripts/check-boot-report.mjs",
+    "check:budget": "node scripts/check-budget.mjs",
+    "check:coupling": "node scripts/check-module-coupling.mjs",
+    "check:yield": "npx --yes tsx scripts/check-yield-chain.mts"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-dialog": "^2.7",
+    "@tauri-apps/plugin-opener": "^2.5",
+    "@tauri-apps/plugin-shell": "^2.3",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
+    "ag-psd": "^28.0.1",
+    "dxf-parser": "^1.1.2",
+    "fflate": "^0.8.2",
+    "jsqr": "^1.4.0",
+    "konva": "^10.3.0",
+    "lucide-react": "^1.16.0",
+    "mammoth": "^1.11.0",
+    "pdfjs-dist": "^5.4.149",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-image-crop": "^11.1.2",
+    "react-konva": "^19.2.5",
+    "three": "^0.180.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^4.6.0",
+    "action-parity": "github:dongsheng123132/action-parity#32235ded11e3cc5895acbbbd626f4dfbac36a857",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dongsheng123132/u-king.git"
+  },
+  "homepage": "https://www.u-king.org",
+  "bugs": {
+    "url": "https://github.com/dongsheng123132/u-king/issues"
+  }
+}

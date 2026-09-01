@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>改尺寸</title>
+<!--
+  界面只做三件事：收集输入、调动作、展示结果。
+  业务逻辑一行都不在这里 —— 它在 actions.mjs，那份 CLI 也在用。
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px; min-height: 100vh;
+    font: 14px/1.6 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: #0f1115; color: #e6e8ec;
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: #7b818d; font-size: 12.5px; }
+  #drop {
+    border: 1.5px dashed #2a2e36; border-radius: 12px; padding: 28px; text-align: center;
+    color: #7b818d; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: #0ea5e9; background: rgba(14,165,233,.06); }
+  #drop img { max-width: 100%; max-height: 220px; border-radius: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+  input[type=number] {
+    width: 92px; background: #1a1e24; border: 1px solid #2a2e36; border-radius: 8px;
+    padding: 8px 10px; color: inherit; font: inherit;
+  }
+  input:focus { outline: none; border-color: #0ea5e9; }
+  label { color: #a8adb8; font-size: 12.5px; }
+  button {
+    border: 0; border-radius: 8px; padding: 8px 18px; font: inherit; font-weight: 600;
+    background: #0ea5e9; color: #04202b; cursor: pointer;
+  }
+  button.ghost { background: #1a1e24; color: #c9ced8; border: 1px solid #2a2e36; font-weight: 400; }
+  button:disabled { opacity: .45; cursor: default; }
+  #msg { margin-top: 14px; font-size: 12.5px; color: #8b909a; min-height: 20px; }
+  #msg.err { color: #fca5a5; }
+  #msg.ok { color: #7dd3fc; }
+</style>
+</head>
+<body>
+  <h1>改尺寸</h1>
+  <p class="sub">把图片缩到指定范围内，等比不变形。纯本地计算，不联网、不花额度。</p>
+
+  <div id="drop">把图片拖进来，或点这里选一张</div>
+
+  <div class="row">
+    <label>最大宽</label><input type="number" id="w" value="1600" min="1" max="8192" />
+    <label>最大高</label><input type="number" id="h" value="1600" min="1" max="8192" />
+    <button id="go" disabled>缩一下</button>
+    <button class="ghost" id="save" disabled>保存</button>
+  </div>
+  <div id="msg"></div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+let dataUrl = null;   // 当前图（原图或结果）
+
+function say(t, cls = "") { $("msg").textContent = t; $("msg").className = cls; }
+
+function show(url, caption) {
+  dataUrl = url;
+  $("drop").innerHTML = `<img src="${url}" alt="预览">`;
+  $("go").disabled = false;
+  $("save").disabled = false;
+  if (caption) say(caption, "ok");
+}
+
+// ── 选图：两条路，拖进来 或 点开对话框 ──
+$("drop").addEventListener("click", async () => {
+  try {
+    const f = await window.uking.file.open(["png", "jpg", "jpeg", "webp"]);
+    if (f) show(f.dataUrl, "");
+  } catch (e) { say(e.message, "err"); }
+});
+document.addEventListener("dragover", (e) => { e.preventDefault(); $("drop").classList.add("over"); });
+document.addEventListener("dragleave", () => $("drop").classList.remove("over"));
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  $("drop").classList.remove("over");
+  const f = e.dataTransfer?.files?.[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => show(r.result, "");
+  r.readAsDataURL(f);
+});
+
+// ── 干活：调动作，不自己算 ──
+$("go").addEventListener("click", async () => {
+  if (!dataUrl) return;
+  $("go").disabled = true;
+  say("处理中…");
+  try {
+    const r = await window.uking.action("app.resize.image.fit", {
+      image: dataUrl,
+      max_w: Number($("w").value),
+      max_h: Number($("h").value),
+    });
+    // 动作返回的是引用而不是像素，取图要走 artifact 地址
+    show(`uking://localhost/artifact/${r.artifact.id}`, r.message);
+  } catch (e) {
+    say(e?.message || String(e), "err");
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+$("save").addEventListener("click", async () => {
+  try {
+    const p = await window.uking.file.save("resized.png", dataUrl);
+    say(p ? `已保存到 ${p}` : "已取消", p ? "ok" : "");
+  } catch (e) { say(e.message, "err"); }
+});
+</script>
+</body>
+</html>

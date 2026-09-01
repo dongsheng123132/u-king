@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>U-King 学院 · 从零学会用 AI</title>
+<meta name="description" content="U-King 学院：写给普通人的 AI 上手课。从「AI 是什么」到「驾驭 AI 高手」，教你申请 API Key、配置大模型、写提示词、用 Claude Code / Codex / 龙虾，把 AI 变成你的得力助手。" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/academy.css">
+<script>try{var t=localStorage.getItem("xy-theme");if(t?t==="light":matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.classList.add("light")}catch(e){}</script>
+<script defer src="assets/toc.js"></script>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="brand">U-King <b>学院</b></span>
+  <span class="links">
+    <a href="../index.html">← 回官网</a>
+    <a href="#handbooks">工具手册</a>
+    <a href="#path">学习路径</a>
+    <a href="#chaxun">速查区</a>
+    <a href="modules/m03-prompts.html">提示词大全</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <div class="crown">U · K I N G · A C A D E M Y</div>
+  <h1>从零，学会驾驭 AI</h1>
+  <p>写给普通人的一套 AI 上手课。不用懂编程、不用懂英文——跟着学，你也能让 AI 帮你写文章、做表格、出方案、写代码、搞自媒体。</p>
+</header>
+
+<main class="wrap">
+
+  <!-- 双入口说明 -->
+  <div class="ok" style="text-align:center;max-width:760px;margin:0 auto 36px">
+    两种学法：<b>① 按路径学</b> —— 从模块 0 一路往下，系统打好底子；
+    <b>② 按需查</b> —— 直接跳到「速查区」找提示词、工具用法、常见问题。
+  </div>
+
+  <!-- 工具手册（蓝皮书/红皮书）-->
+  <section id="handbooks">
+    <h2>📘 工具手册（蓝皮书 / 红皮书）</h2>
+    <div class="ok" style="max-width:760px;margin:0 0 16px">谁火就教谁：每个热门 AI 工具一套<b>蓝皮书（安装配置入门）+ 红皮书（进阶实战与变现）</b>，照着做就能上手。配套 <a href="https://www.u-king.org/?from=xueyuan">U-King</a> 一键安装，免环境配置。</div>
+    <div class="grid">
+      <!-- HANDBOOK-CARDS:START 由 handbooks-教程矩阵/build.mjs 自动生成，勿手改 -->
+      <a class="card" href="ai-image-blue.html"><div class="mtitle">🎨 AI 作图 手册</div><div class="mdesc">U-King 内置 AI 作图，用 OpenAI 的 gpt-image-2，国内直连、不用 OpenAI 账号，文生图/改图/电商图都行。蓝皮书装好配好，红皮书进阶实战与变现。</div><span class="mtag">蓝皮书 + 红皮书 →</span></a>
+      <a class="card" href="claude-code-blue.html"><div class="mtitle">🤖 Claude Code 手册</div><div class="mdesc">Anthropic 官方命令行 AI 编程工具，最强项目级编程，国内可用、不用登录。蓝皮书装好配好，红皮书进阶实战与变现。</div><span class="mtag">蓝皮书 + 红皮书 →</span></a>
+      <a class="card" href="clawx-blue.html"><div class="mtitle">🦞 ClawX 手册</div><div class="mdesc">图形版全能 AI 助手，像微信一样点点就能用，作图写作多模态都行。蓝皮书装好配好，红皮书进阶实战与变现。</div><span class="mtag">蓝皮书 + 红皮书 →</span></a>
+      <a class="card" href="codex-blue.html"><div class="mtitle">⌨️ Codex CLI 手册</div><div class="mdesc">OpenAI 官方命令行 AI 编程工具，国内可用、不用登录 OpenAI。蓝皮书装好配好，红皮书进阶实战与变现。</div><span class="mtag">蓝皮书 + 红皮书 →</span></a>
+      <a class="card" href="hermes-blue.html"><div class="mtitle">🪽 Hermes 手册</div><div class="mdesc">Nous Research 开源 AI agent，做自动化与获客系统，自带网页控制台。蓝皮书装好配好，红皮书进阶实战与变现。</div><span class="mtag">蓝皮书 + 红皮书 →</span></a>
+      <a class="card" href="obsidian-blue.html"><div class="mtitle">🧠 Obsidian + AI 手册</div><div class="mdesc">把 AI 接进 Obsidian 笔记库，打造会自动整理、写作、检索的第二大脑。蓝皮书装好配好，红皮书进阶实战与变现。</div><span class="mtag">蓝皮书 + 红皮书 →</span></a>
+    <!-- HANDBOOK-CARDS:END -->
+    </div>
+  </section>
+
+  <!-- 按路径学 -->
+  <section id="path">
+    <h2>📚 按路径学（建议从这里开始）</h2>
+
+    <div class="grid">
+      <a class="card" href="modules/m00-start.html">
+        <div class="mno">模块 0</div>
+        <div class="mtitle">开始之前</div>
+        <div class="mdesc">AI 能帮你做什么、U-King 装好后长啥样、虾盘云是什么——5 分钟看完，心里有底。</div>
+        <span class="mtag">入门必读 →</span>
+      </a>
+      <a class="card" href="modules/m01-what-is-ai.html">
+        <div class="mno">模块 1</div>
+        <div class="mtitle">AI 到底是什么</div>
+        <div class="mdesc">大模型、ChatGPT、token、上下文、幻觉……用大白话讲清楚这些词，不再一头雾水。</div>
+        <span class="mtag">通识 →</span>
+      </a>
+      <a class="card" href="modules/m02-first-chat.html">
+        <div class="mno">模块 2</div>
+        <div class="mtitle">第一次和 AI 对话</div>
+        <div class="mdesc">怎么提问、怎么追问、为什么有时 AI 答非所问——上手对话的基本功。</div>
+        <span class="mtag">实操 →</span>
+      </a>
+      <a class="card" href="modules/m03-prompts.html">
+        <div class="mno">模块 3</div>
+        <div class="mtitle">提示词技巧（核心）</div>
+        <div class="mdesc">驾驭 AI 的关键。提示词四要素、角色扮演法、场景化提示词大全，一键复制即用。</div>
+        <span class="mtag">核心技能 →</span>
+      </a>
+      <a class="card" href="modules/m04-scenarios.html">
+        <div class="mno">模块 4</div>
+        <div class="mtitle">用 AI 做日常事</div>
+        <div class="mdesc">写作改稿、做表格、自媒体文案、PPT、邮件、学习助手——按场景手把手教。</div>
+        <span class="mtag">场景实战 →</span>
+      </a>
+      <a class="card" href="modules/m05-claude-code.html">
+        <div class="mno">模块 5</div>
+        <div class="mtitle">工具实战 · Claude Code</div>
+        <div class="mdesc">编程之王怎么用：第一个任务、常用操作、Memory/Skills，以及中国网络的坑。</div>
+        <span class="mtag">工具 →</span>
+      </a>
+      <a class="card" href="modules/m06-codex-clawx.html">
+        <div class="mno">模块 6</div>
+        <div class="mtitle">工具实战 · Codex / 龙虾 / Hermes</div>
+        <div class="mdesc">Codex、ClawX（龙虾）、Hermes 各是什么、什么场景用哪个、怎么配虾盘云。</div>
+        <span class="mtag">工具 →</span>
+      </a>
+      <a class="card" href="modules/m07-vibe-coding.html">
+        <div class="mno">模块 7</div>
+        <div class="mtitle">AI 编程入门（不懂代码也能玩）</div>
+        <div class="mdesc">Vibe Coding：用大白话让 AI 做小工具、小网页，看不懂代码也能改出东西。</div>
+        <span class="mtag">进阶 →</span>
+      </a>
+      <a class="card" href="modules/m08-safety.html">
+        <div class="mno">模块 8</div>
+        <div class="mtitle">常见误区与安全</div>
+        <div class="mdesc">AI 会说错话（幻觉）、别泄露隐私和密钥、哪些事别全信 AI、合规边界。</div>
+        <span class="mtag">必读 →</span>
+      </a>
+      <a class="card" href="modules/m09-master.html">
+        <div class="mno">模块 9</div>
+        <div class="mtitle">驾驭 AI 高手</div>
+        <div class="mdesc">把 AI 当同事、搭工作流、副业与变现思路——AI 时代怎么让自己更值钱。</div>
+        <span class="mtag">认知升级 →</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- 速查区 -->
+  <section id="chaxun">
+    <h2>⚡ 速查区（用时直接查）</h2>
+    <div class="grid">
+      <a class="card" href="modules/m03-prompts.html#ku">
+        <div class="mtitle">🗂 提示词大全</div>
+        <div class="mdesc">按写作 / 办公 / 营销 / 学习分类的现成提示词，复制就能用。</div>
+        <span class="mtag">去查 →</span>
+      </a>
+      <a class="card" href="modules/cheatsheet.html">
+        <div class="mtitle">🛠 工具速查卡</div>
+        <div class="mdesc">Claude Code / Codex / 龙虾 常用命令和操作，一页看全。</div>
+        <span class="mtag">去查 →</span>
+      </a>
+      <a class="card" href="modules/faq.html">
+        <div class="mtitle">❓ 常见问题 FAQ</div>
+        <div class="mdesc">充值、配置、连不上、换模型……卡住了先来这里。</div>
+        <span class="mtag">去查 →</span>
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  U-King 学院 · 配套 <a href="../index.html">U-King AI 管家</a> · 本站部分内容参考并改编自 MIT 协议开源教程（见各页致谢）<br>
+  让每个普通人都用得上、用得好 AI。
+</footer>
+
+</body>
+</html>

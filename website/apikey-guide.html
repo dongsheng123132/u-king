@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>获取 API Key · 各模型教程</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:780px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:28px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:16px 0; }
+  .card.rec { border-color:rgba(212,166,74,.5); background:linear-gradient(180deg,rgba(212,166,74,.07),rgba(212,166,74,.02)); }
+  .head { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .ic { font-size:26px; }
+  .nm { font-size:18px; font-weight:700; }
+  .badge { font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; background:var(--gold); color:#1a1408; }
+  .badge.alt { background:rgba(255,255,255,.08); color:var(--ink3); font-weight:600; }
+  .card p { margin:6px 0; color:var(--ink2); }
+  b { color:var(--ink); } .gold { color:var(--gold); } .ok { color:var(--ok); } .mut { color:var(--ink3); }
+  ol { color:var(--ink2); padding-left:22px; margin:8px 0; } ol li { margin:5px 0; }
+  .btn { display:inline-flex; align-items:center; gap:7px; background:var(--accent); color:#fff; text-decoration:none; padding:9px 17px; border-radius:9px; font-weight:600; font-size:14px; margin:8px 8px 2px 0; }
+  .btn.alt { background:transparent; border:1px solid var(--line); color:var(--ink2); }
+  .btn.gold { background:var(--gold); color:#1a1408; }
+  .meta { font-size:12.5px; color:var(--ink3); margin-top:8px; }
+  .meta code { background:#0a0a0c; border:1px solid var(--line); border-radius:5px; padding:1px 6px; }
+  .tip { border-left:3px solid var(--accent); background:rgba(94,106,210,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:18px 0; color:var(--ink2); font-size:14px; }
+  footer { margin-top:44px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🔑</div>
+    <h1>获取 API Key · 各模型教程</h1>
+    <div class="sub">U-King 支持接任意国内大模型 —— 选一家、拿到 Key、在「AI 设置」里填上就能用</div>
+  </header>
+
+  <div class="card">
+    <p><b>什么是 API Key？</b> 就是各家大模型给你的一串「通行证」（多半 <code style="background:#0a0a0c;border:1px solid var(--line);border-radius:4px;padding:1px 5px">sk-</code> 开头）。U-King / ClawX 不绑死任何一家：<b class="ok">想用谁就填谁的 Key</b>，随时切换或还原官方。下面每家都给了直达申请页 + 步骤。</p>
+  </div>
+
+  <!-- 通用四步：所有平台都一样 -->
+  <div class="card" style="border-color:rgba(94,106,210,.5)">
+    <div class="head"><span class="ic">🧭</span><span class="nm">通用四步（每家都一样）</span></div>
+    <ol>
+      <li><b>注册账号</b> —— 打开对应平台，用手机号注册 / 登录。</li>
+      <li><b class="gold">实名认证（重点！）</b> —— 国内平台基本都要先实名（身份证 / 支付宝刷脸）才肯发 Key。<b>没实名 = 拿不到 Key、调不通模型</b>，这一步绕不过去，先做完它。</li>
+      <li><b>申请 Key</b> —— 进「API Key / 密钥」页，点【创建】，复制那串 <code style="background:#0a0a0c;border:1px solid var(--line);border-radius:4px;padding:1px 5px">sk-</code>（<b>多半只显示一次，立刻存好</b>）。多数平台还要账户里有余额或领免费额度才能用。</li>
+      <li><b>粘贴使用</b> —— 回 ClawX「模型设置」（或 U-King「AI 设置」）选对应服务商，把 Key 粘进去保存。<b>它会记住，下次直接用</b>，作图 / 视频 / 写作都走这个 Key。</li>
+    </ol>
+    <p class="meta">不想折腾实名注册的，直接用下面第一个「虾盘云」—— U-King 内置、免申请、开箱即用。</p>
+  </div>
+
+  <!-- 虾盘云：推荐 -->
+  <div class="card rec">
+    <div class="head"><span class="ic">🦐</span><span class="nm">虾盘云（U-King 内置）</span><span class="badge">推荐 · 免申请 · 国内直连</span></div>
+    <p>U-King 自带的驱动，<b>开箱即用、国内直连、不用注册第三方账号</b>。一个 Key 同时供 Claude Code（DeepSeek-V4 Pro 满血）和 Codex（GPT-5.3-Codex），充值即用，¥1 ≈ 50 万 token。适合不想折腾的人。</p>
+    <ol>
+      <li>在 U-King「AI 设置」选「虾盘云」，它会用<b>本机设备 Key</b>自动配好，无需手填。</li>
+      <li>余额不足时点「充值」，扫码付款即到账。</li>
+    </ol>
+    <p><a class="btn gold" href="https://u-claw.org.cn/recharge" target="_blank" rel="noopener">去充值 / 查看</a></p>
+    <p class="meta">这是我们自家服务，所以排第一推荐。<b class="mut">但完全不强制</b> —— 你想用下面任意一家官方的，照样随便切。</p>
+  </div>
+
+  <div class="tip">下面是各大模型<b>官方</b>的 Key 申请入口。拿到 Key 后，在 U-King「AI 设置」里选对应服务商、粘贴 Key 即可。它们都<b>原生支持 Claude Code 接入</b>，国产模型国内直连无需翻墙。</div>
+
+  <!-- 火山引擎 / 豆包 -->
+  <div class="card">
+    <div class="head"><span class="ic">🌋</span><span class="nm">火山引擎（豆包 · 即梦）</span><span class="badge alt">作图 / 视频强</span></div>
+    <p>字节跳动出品，<b>作图、视频、配音、对话都能打</b> —— 想用 AI 做图 / 出视频，这家最值得申请。模型在「火山方舟」开通。</p>
+    <ol>
+      <li>打开下方「申请 Key」，用手机号注册 / 登录火山引擎。</li>
+      <li><b class="gold">完成实名认证</b>（个人身份证即可），否则无法开通模型、领不到额度。</li>
+      <li>进「火山方舟」控制台，在<b>「开通管理」里开通要用的模型</b>（如豆包大模型、豆包·文生图、即梦视频），新用户常有免费额度。</li>
+      <li>进「API Key 管理」页，点新建，复制 Key。</li>
+    </ol>
+    <p><a class="btn" href="https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey" target="_blank" rel="noopener">申请 Key（方舟 API Key 页）</a><a class="btn alt" href="https://www.volcengine.com/product/ark" target="_blank" rel="noopener">火山方舟首页</a></p>
+    <p class="meta">作图 / 视频类技能（漫画、海报、短视频）推荐配这家或下方「虾盘云」内置作图。</p>
+  </div>
+
+  <!-- DeepSeek -->
+  <div class="card">
+    <div class="head"><span class="ic">🐋</span><span class="nm">DeepSeek 深度求索</span><span class="badge alt">国内最便宜</span></div>
+    <p>国内速度快、价格极低，官方直接支持 Claude Code。</p>
+    <ol>
+      <li>打开下方「申请 Key」，用手机号注册 / 登录。</li>
+      <li>进「API keys」页，点【创建 API key】，复制生成的 <code style="background:#0a0a0c;border:1px solid var(--line);border-radius:4px;padding:1px 5px">sk-</code> 串（只显示一次，记得存好）。</li>
+      <li>账户需有余额，首次注册一般送少量额度，可在「充值」里加。</li>
+    </ol>
+    <p><a class="btn" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">申请 Key（API keys 页）</a><a class="btn alt" href="https://platform.deepseek.com" target="_blank" rel="noopener">开放平台首页</a></p>
+    <p class="meta">Key 格式：<code>sk-</code> 开头</p>
+  </div>
+
+  <!-- 智谱 GLM -->
+  <div class="card">
+    <div class="head"><span class="ic">🧩</span><span class="nm">智谱 GLM</span><span class="badge alt">有免费额度</span></div>
+    <p>清华系，新用户常有免费额度，官方支持 Claude Code。</p>
+    <ol>
+      <li>打开「申请 Key」，注册 / 登录智谱开放平台。</li>
+      <li>进「API 密钥」页，点新建，复制密钥。</li>
+      <li>免费额度用完后可在控制台充值。</li>
+    </ol>
+    <p><a class="btn" href="https://open.bigmodel.cn/usercenter/apikeys" target="_blank" rel="noopener">申请 Key（API 密钥页）</a><a class="btn alt" href="https://open.bigmodel.cn" target="_blank" rel="noopener">开放平台首页</a></p>
+    <p class="meta">在智谱开放平台「API 密钥」页创建</p>
+  </div>
+
+  <!-- Kimi -->
+  <div class="card">
+    <div class="head"><span class="ic">🌙</span><span class="nm">Kimi（月之暗面）</span><span class="badge alt">超长上下文</span></div>
+    <p>Moonshot AI，擅长超长文本，官方支持 Claude Code。</p>
+    <ol>
+      <li>打开「申请 Key」，注册 / 登录 Moonshot 开放平台。</li>
+      <li>进「API Keys」页，新建并复制 <code style="background:#0a0a0c;border:1px solid var(--line);border-radius:4px;padding:1px 5px">sk-</code> 串。</li>
+      <li>账户需有余额，按用量计费。</li>
+    </ol>
+    <p><a class="btn" href="https://platform.moonshot.cn/console/api-keys" target="_blank" rel="noopener">申请 Key（API Keys 页）</a><a class="btn alt" href="https://platform.moonshot.cn" target="_blank" rel="noopener">开放平台首页</a></p>
+    <p class="meta">Key 格式：<code>sk-</code> 开头，在「API Keys」页创建</p>
+  </div>
+
+  <div class="card">
+    <p><b>拿到 Key 之后怎么用？</b></p>
+    <ol>
+      <li>回 U-King，进<b>「AI 设置」</b>。</li>
+      <li>选对应的服务商卡片（DeepSeek / 智谱 / Kimi…），把 Key <b>粘进去</b>，点应用。</li>
+      <li>U-King 会自动写好底层配置并<b>实测连通</b>（让模型真回一句话），通了就能用。</li>
+    </ol>
+    <p class="mut">U-King 只改它自己管理的那几个配置项，<b>不会动你工具里的其它设置</b>，也随时能一键「还原官方」。换个服务商重复上面三步即可。</p>
+  </div>
+
+  <footer>U-King 个人 AI 操作系统 · 官网 <a href="https://www.u-king.org">u-king.org</a><br>各模型 Key 由对应官方平台签发 · U-King 不经手你的 Key，只写进你本机的工具配置</footer>
+</div>
+</body>
+</html>

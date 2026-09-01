@@ -1,0 +1,93 @@
+# Mac 版云端构建 —— 本地是 Windows、Mac mini 不常在线，所以用 GitHub Actions 出包。
+# 手动触发：gh workflow run build-mac.yml && gh run watch
+# 产物：U-King dmg + U-King-Mac.zip（.app 压缩包），从 artifacts 下载后放 website/download/。
+name: build-mac
+on:
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: '提交 Apple 公证（慢，5~30min；关掉则只做 Developer ID 签名，curl 安装已够用）'
+        type: boolean
+        default: false
+
+jobs:
+  mac:
+    runs-on: macos-14 # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # universal-apple-darwin 需要两个切片：aarch64（host 自带）+ x86_64（显式加）。
+          # 出 universal 包才不坑 Intel Mac（arm64-only 装到 Intel 会「已损坏」，历史事故）。
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i -g pnpm@9
+      - run: pnpm install
+
+      # 用 Developer ID Application 证书签名（hardened runtime）。两个互斥步骤：
+      #  - 默认（notarize=false）：只注入签名 secret，绝不设 APPLE_ID/PASSWORD ——
+      #    Tauri 据此只签名、不公证（curl 安装已完美；浏览器下载只剩可一键跳过的提示）。
+      #    ⚠️ 把 APPLE_ID 置空字符串没用：Tauri 仍会拿空凭据去公证 → 401（2026-06-18 实测），
+      #    必须让这俩变量"根本不存在"，所以拆成两个 step。
+      #  - 勾选 notarize=true：额外注入 APPLE_ID/PASSWORD，Tauri 提交 Apple 公证 + staple。
+      #    公证服务器偶尔很慢（实测卡 45min+），故加 35min 超时。
+      - name: Build (signed only, no notarize)
+        if: ${{ inputs.notarize != 'true' }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+
+      - name: Build (signed + notarized)
+        if: ${{ inputs.notarize == 'true' }}
+        timeout-minutes: 35
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+
+      # 兜底：若没正式签名（secret 缺失，Tauri 给的是 rustc linker ad-hoc 签名，
+      # 资源封印缺失，macOS 15/26 会判「已损坏」），用 --force --deep 重建封印。
+      # 已 Developer ID 签名时跳过——否则会覆盖正式签名、毁掉公证 staple（客户实测 2026-06-18）。
+      - name: Fallback ad-hoc re-sign (only if not Developer ID signed)
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/U-King.app
+          if codesign -dvv "$APP" 2>&1 | grep -q "Developer ID Application"; then
+            echo "已 Developer ID 正式签名，跳过 ad-hoc 重签（保留公证）"
+          else
+            echo "未正式签名，ad-hoc 重建资源封印兜底"
+            codesign --force --deep --sign - "$APP"
+          fi
+          codesign --verify --deep --strict -vv "$APP"
+
+      # 无头自检：验证 macOS 代码路径（环境探测 / skill 加载 / 设备指纹 Key）
+      - name: Selfcheck
+        run: |
+          ./src-tauri/target/universal-apple-darwin/release/u-king-mini --selfcheck selfcheck-mac.json
+          cat selfcheck-mac.json
+
+      - name: Zip .app
+        run: |
+          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
+          ditto -c -k --keepParent U-King.app U-King-Mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-bundle
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/U-King-Mac.zip
+          retention-days: 14

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>工具速查卡 · U-King 学院</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/academy.css">
+<script>try{var t=localStorage.getItem("xy-theme");if(t?t==="light":matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.classList.add("light")}catch(e){}</script>
+<script defer src="../assets/toc.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">U-King <b>学院</b></span>
+  <span class="links">
+    <a href="../index.html">← 学院首页</a>
+    <a href="m03-prompts.html">提示词大全</a>
+    <a href="faq.html">常见问题</a>
+  </span>
+</nav>
+<article class="page">
+  <h1>工具速查卡</h1>
+
+  <p>这一页就是你的"作弊小抄"。不用从头读，遇到事的时候按 <b>Ctrl+F</b>（在网页里按住 Ctrl 再按 F，就会弹出搜索框）打几个字，直接跳到你要的那一行。建议收藏，用的时候扫一眼就走。</p>
+
+  <div class="note">先记住一个大前提：下面这些工具（Claude Code、Codex、ClawX 龙虾、Hermes）都是 <b>U-King AI 管家</b> 帮你一键装好的，底层都接的是<b>虾盘云中转</b>——国内直接连得上，充值（¥10 起）就能用，不用翻墙、不用自己折腾 API。所以你只管用命令，钱和网络的事 U-King 都替你搞定了。</p>
+
+  <h2>一、Claude Code 常用（写代码 / 干活最强的那个）</h2>
+
+  <p>Claude Code 是个在<b>终端</b>（黑底白字的命令窗口）里跑的 AI。打开终端，输入 <code>claude</code> 回车就进去了，然后直接拿中文跟它说话。下面是进去之后最常用的操作：</p>
+
+  <table>
+    <thead><tr><th>你想干什么</th><th>怎么操作</th></tr></thead>
+    <tbody>
+      <tr><td>启动它</td><td>终端里输入 <code>claude</code> 回车</td></tr>
+      <tr><td>跟它说话</td><td>直接打中文，比如"帮我写个登录页面"，回车</td></tr>
+      <tr><td>让它读某个文件</td><td>消息里打 <code>@</code> 然后选文件名（如 <code>@index.html</code>）</td></tr>
+      <tr><td>清空对话重新开始</td><td>输入 <code>/clear</code></td></tr>
+      <tr><td>查看所有快捷命令</td><td>输入 <code>/help</code></td></tr>
+      <tr><td>撤销它刚才改的东西</td><td>输入 <code>/undo</code></td></tr>
+      <tr><td>换个 AI 模型</td><td>输入 <code>/model</code> 再选</td></tr>
+      <tr><td>退出</td><td>输入 <code>/exit</code>，或连按两次 <b>Ctrl+C</b></td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip">小技巧：让它干一件大事的时候，把要求写清楚点（"用 Python、加注释、最后告诉我怎么运行"），它干得又快又准。说得越含糊，返工越多。</div>
+
+  <h2>二、Codex 常用（OpenAI 出的另一个代码 AI）</h2>
+
+  <p>Codex 用法和 Claude Code 几乎一模一样，也是终端里输入 <code>codex</code> 回车进去，然后中文对话。两者你随便用哪个都行，习惯了一个就行。</p>
+
+  <table>
+    <thead><tr><th>你想干什么</th><th>怎么操作</th></tr></thead>
+    <tbody>
+      <tr><td>启动它</td><td>终端里输入 <code>codex</code> 回车</td></tr>
+      <tr><td>带一句话直接开干</td><td><code>codex "帮我把这个文件夹的图片改成 jpg"</code></td></tr>
+      <tr><td>让它自动执行不用每步确认</td><td>启动加参数 <code>codex --full-auto</code>（放手让它干，新手先别用）</td></tr>
+      <tr><td>退出</td><td>按 <b>Ctrl+C</b> 两次</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn">提醒：<code>--full-auto</code>（全自动）模式它会自己删文件、自己运行命令，不再问你。重要资料先备份，确认它干的事你看得懂了，再开这个模式。</div>
+
+  <h2>三、ClawX 龙虾 常用（带界面的 AI 助手）</h2>
+
+  <p>ClawX（俗称"龙虾"）不用打命令，它是个<b>有窗口、能点的图形界面</b>，适合不爱碰终端的人。双击桌面图标打开就行。</p>
+
+  <table>
+    <thead><tr><th>你想干什么</th><th>怎么操作</th></tr></thead>
+    <tbody>
+      <tr><td>打开龙虾</td><td>双击桌面 ClawX / 龙虾 图标</td></tr>
+      <tr><td>开始聊天</td><td>下面的输入框打字，回车发送</td></tr>
+      <tr><td>新建一个对话</td><td>点左上角"＋ 新对话"</td></tr>
+      <tr><td>发图片 / 文件给它看</td><td>点输入框旁边的 📎 回形针，选文件</td></tr>
+      <tr><td>换模型</td><td>点对话框顶部的模型名字，下拉选择</td></tr>
+      <tr><td>看历史对话</td><td>左侧边栏，点对应标题</td></tr>
+      <tr><td>打开设置</td><td>左下角 ⚙ 齿轮图标</td></tr>
+    </tbody>
+  </table>
+
+  <div class="ok">要点：龙虾、Claude Code、Codex 用的是<b>同一个账户、同一笔余额</b>（都走虾盘云）。在哪个工具里花钱，扣的都是同一个池子，所以充一次值，三个工具都能用。</div>
+
+  <h2>四、U-King 里：切模型 / 充值 / 打开终端</h2>
+
+  <p>U-King 是那个总管的"AI 管家"主界面，装工具、配置、充值都在它里面。下面三件事最常被问：</p>
+
+  <h3>① 怎么切换模型</h3>
+  <ol>
+    <li>打开 U-King 主界面</li>
+    <li>找到「模型」或「设置」里的模型选择</li>
+    <li>下拉列表里选一个（比如便宜快的国产模型，或更聪明的旗舰模型）</li>
+    <li>选完即生效，下次对话就用新模型</li>
+  </ol>
+  <div class="note">不知道选哪个？日常聊天 / 写文案就用默认的国产模型，又快又省钱；写复杂代码、要它动脑子的活，再换更强的模型。</div>
+
+  <h3>② 怎么充值</h3>
+  <ol>
+    <li>打开 U-King，找到「充值」/「余额」入口</li>
+    <li>点进去会跳到充值页面，<b>最低 ¥10 起</b></li>
+    <li>扫码付款（微信 / 支付宝），到账即用，<b>不用填任何 API Key</b></li>
+    <li>充完回到工具，余额会自动更新，直接接着用</li>
+  </ol>
+  <div class="tip">充值是<b>按用量扣费</b>的，不是包月。¥10 够普通人用挺久，用完了再充就行，不会自动续费。</div>
+
+  <h3>③ 怎么打开终端（运行 claude / codex 的那个黑窗口）</h3>
+  <p>很多命令要在"终端"里敲，新手常常找不到它在哪。最省事的办法：</p>
+  <table>
+    <thead><tr><th>方式</th><th>步骤</th></tr></thead>
+    <tbody>
+      <tr><td>U-King 里直接开（推荐）</td><td>U-King 界面里点「打开终端」/「命令行」按钮，它会自动开好、环境也配好</td></tr>
+      <tr><td>Windows 自己开</td><td>按 <b>Win 键</b>，输入 <code>cmd</code> 或 <code>终端</code>，回车</td></tr>
+      <tr><td>在某个文件夹里开</td><td>进那个文件夹，地址栏输入 <code>cmd</code> 回车，就在这个位置打开了</td></tr>
+    </tbody>
+  </table>
+
+  <div class="ok">为什么推荐用 U-King 里的"打开终端"？因为它已经帮你把 <code>claude</code>、<code>codex</code> 这些命令配好了路径。自己开的 cmd 有时会提示"不是内部或外部命令"——那就是路径没配上，用 U-King 开的就没这问题。</div>
+
+  <h2>五、一句话救急表（卡住了先看这个）</h2>
+
+  <table>
+    <thead><tr><th>遇到的问题</th><th>先试这招</th></tr></thead>
+    <tbody>
+      <tr><td>提示"余额不足"/ Invalid token</td><td>去 U-King 充值，最低 ¥10，到账即用</td></tr>
+      <tr><td>打 <code>claude</code> 说"不是命令"</td><td>改用 U-King 里的"打开终端"按钮</td></tr>
+      <tr><td>AI 答得不对 / 跑偏了</td><td>输入 <code>/clear</code> 清空重新说，把要求写清楚</td></tr>
+      <tr><td>它改坏了我的文件</td><td>Claude Code 里输入 <code>/undo</code> 撤销</td></tr>
+      <tr><td>想退出 AI</td><td>连按两次 <b>Ctrl+C</b>，或输入 <code>/exit</code></td></tr>
+      <tr><td>连不上 / 一直转圈</td><td>检查网络；虾盘云国内直连，正常不用翻墙</td></tr>
+    </tbody>
+  </table>
+
+  <p>把这页存到收藏夹，下次用工具时打开扫一眼就行。需要更详细的步骤，回 <a href="../index.html">学院首页</a> 看对应的图文教程。</p>
+
+</article>
+<footer class="foot">U-King 学院 · 配套 <a href="../../index.html">U-King AI 管家</a></footer>
+</body>
+</html>

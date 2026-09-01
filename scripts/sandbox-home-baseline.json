@@ -1,0 +1,38 @@
+{
+  "reads": {
+    "agent/threads.rs": 2,
+    "artifacts.rs": 2,
+    "automation.rs": 2,
+    "backup.rs": 8,
+    "cleanup.rs": 19,
+    "codex_proxy.rs": 2,
+    "draw.rs": 2,
+    "image.rs": 2,
+    "install.rs": 5,
+    "installer.rs": 34,
+    "journal.rs": 2,
+    "lib.rs": 9,
+    "macopt.rs": 2,
+    "metrics.rs": 2,
+    "miniapp.rs": 2,
+    "podapp.rs": 1,
+    "providers.rs": 11,
+    "remote_assist.rs": 2,
+    "rtk.rs": 2,
+    "skillpack.rs": 1,
+    "tools.rs": 10,
+    "ulog.rs": 2,
+    "uninstall.rs": 5,
+    "usage_local.rs": 2,
+    "uuswitch.rs": 5,
+    "video.rs": 2
+  },
+  "history": [
+    {
+      "accepted": "首份基线：立项当天的存量"
+    },
+    {
+      "accepted": "剥注释从正则换成逐字符扫描（旧的把 https:// 当行注释起点、把字符串里的 /* 当块注释开头，藏掉了整段代码）。基线普涨不是代码变差，是扫描器终于看得见了。usage_local.rs 那 4 处里的 2 处是真问题（appdata_roaming/local 不认沙箱，跟当初删掉真实 hermes 技能的 legacy_skill_parents 同形），已修；剩 2 处是 home_dir 自己的兜底，它先查 UKING_TEST_HOME，与其它模块同形。"
+    }
+  ]
+}

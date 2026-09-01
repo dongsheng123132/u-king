@@ -1,0 +1,7 @@
+{
+  "model": "replay-deterministic-v1",
+  "cache": false,
+  "price_per_1k_token": 0.002,
+  "task_tokens": {"qa-01":120,"qa-02":118,"qa-03":115,"qa-04":125,"qa-05":120,"qa-06":118,"qa-07":110,"qa-08":112,"tool-01":180,"tool-02":176,"tool-03":184,"tool-04":190,"tool-05":180,"tool-06":176,"tool-07":188,"tool-08":182,"code-01":220,"code-02":205,"code-03":210,"code-04":230,"code-05":220,"code-06":205,"code-07":225,"code-08":215},
+  "ttft_ms": {"qa-01":42,"qa-02":41,"qa-03":39,"qa-04":44,"qa-05":42,"qa-06":41,"qa-07":38,"qa-08":40,"tool-01":63,"tool-02":61,"tool-03":64,"tool-04":66,"tool-05":63,"tool-06":61,"tool-07":65,"tool-08":62,"code-01":82,"code-02":78,"code-03":80,"code-04":85,"code-05":82,"code-06":78,"code-07":84,"code-08":81}
+}

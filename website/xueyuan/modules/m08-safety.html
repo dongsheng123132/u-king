@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>常见误区与安全 · U-King 学院</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/academy.css">
+<script>try{var t=localStorage.getItem("xy-theme");if(t?t==="light":matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.classList.add("light")}catch(e){}</script>
+<script defer src="../assets/toc.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">U-King <b>学院</b></span>
+  <span class="links">
+    <a href="../index.html">← 学院首页</a>
+    <a href="m03-prompts.html">提示词大全</a>
+    <a href="faq.html">常见问题</a>
+  </span>
+</nav>
+<article class="page">
+  <h1>常见误区与安全</h1>
+
+  <p>这一课没有任何花哨技巧，但它可能是整套教程里<b>最重要</b>的一课。会不会写提示词，最多影响你用得爽不爽；但安全这块要是踩坑，轻则丢面子（把错的东西交了上去），重则丢钱、丢隐私、甚至摊上法律麻烦。</p>
+
+  <p>微软、谷歌这些大公司给员工做 AI 培训时，都会把「AI 安全」单独拎出来讲一整节课，而不是顺带提一句。我们也这么做。请你<b>从头到尾读完</b>，花不了十分钟，但能帮你避开 90% 的坑。</p>
+
+  <div class="warn">一句话总结：AI 很聪明，但它<b>不是真的懂，也不对你负责</b>。出了事，背锅的是你，不是 AI。所以「该信什么、不该信什么、什么绝对不能给它」，你心里要有数。</div>
+
+  <h2>一、AI 会「一本正经地胡说八道」</h2>
+
+  <p>这是 AI 最坑人的毛病，专业上叫「<b>幻觉</b>」（hallucination，就是 AI 凭空编造）。注意：它不是故意骗你，它是<b>真的以为</b>自己说的对，而且说得理直气壮、有鼻子有眼。</p>
+
+  <p>它会给你编造：</p>
+  <ul>
+    <li>不存在的法律条文、不存在的书名、不存在的论文（连作者、年份、页码都给你编得整整齐齐）</li>
+    <li>错误的数字、日期、价格、历史事件</li>
+    <li>看起来能跑、实际有 bug 的代码</li>
+    <li>不存在的网址、电话、API 接口</li>
+  </ul>
+
+  <p><b>真实例子：</b>美国有律师让 ChatGPT 帮写诉状，AI 引用了 6 个判例，律师没核实直接交上法庭——结果 6 个判例全是 AI 编的，根本不存在，律师被法官罚款。这不是段子，是真事。</p>
+
+  <div class="ok">记住一句口诀：<b>越是重要、越要核实。</b>凡是要拿去用的「事实性信息」（数字、引用、法条、医嘱、网址），都自己再查一遍。AI 适合给你<b>思路和初稿</b>，不适合当<b>最终事实来源</b>。</div>
+
+  <p>怎么减少幻觉？小技巧：</p>
+  <ul>
+    <li>让它<b>给出处</b>：「请告诉我这个说法的来源，我要去核实。」（它编不出来时往往会改口）</li>
+    <li>让它<b>说不知道</b>：「如果你不确定，请直接说不知道，不要编。」</li>
+    <li>关键信息<b>自己搜一遍</b>，别偷懒。</li>
+  </ul>
+
+  <h2>二、绝对不能泄露的东西</h2>
+
+  <p>你跟 AI 聊天，本质是把内容发到了服务器上。所以有些东西，<b>一个字都别往对话框里贴</b>。</p>
+
+  <div class="warn"><b>红线：以下内容永远不要发给任何 AI</b>
+  <ul>
+    <li>密码、银行卡号、支付密码、短信验证码</li>
+    <li>各种 <b>API Key / 密钥 / token</b>（就是那串 <code>sk-</code> 开头的东西，等于你账户的钥匙）</li>
+    <li>身份证号、家庭住址、手机号等个人隐私</li>
+    <li>公司的客户名单、合同、内部数据、未公开的商业机密</li>
+    <li>别人的隐私信息（你没权替别人做主）</li>
+  </ul>
+  </div>
+
+  <p>为什么这么严？打个比方：你把客户名单贴给一个网上的 AI，就好比把它<b>大声念给一整个开放办公室听</b>——你不知道这些数据被存到哪、谁能看到、会不会被拿去训练。很多公司明文规定「禁止把内部资料贴进 AI」，就是这个原因。</p>
+
+  <div class="tip"><b>U-King 用户的优势：</b>用 Claude Code / 龙虾（ClawX）这类<b>本地跑</b>的 AI 工具时，你的代码和文件是在<b>自己电脑上</b>处理的，只有必要的内容才发去模型。比直接把整个项目复制粘贴到网页聊天框安全得多。但底线不变：<b>密钥、密码这类东西，连本地工具也别硬写进代码里</b>（下面第四点细说）。</p>
+
+  <h2>三、这些事，别全信 AI</h2>
+
+  <p>AI 能聊医疗、能聊法律、能聊投资，但它<b>不是医生、不是律师、不是理财顾问</b>，也不为后果负责。涉及「<b>身体、钱、自由</b>」的重大决策，AI 只能当参谋，<b>不能当拍板的人</b>。</p>
+
+  <div class="warn"><b>这几类事，AI 给的答案务必找真人专业人士确认：</b>
+  <ul>
+    <li><b>医疗健康</b>：吃什么药、要不要手术、症状是不是大病——去看医生，别自己照着 AI 抓药。</li>
+    <li><b>法律</b>：合同怎么签、官司怎么打、这事违不违法——找律师，别拿 AI 当判例。</li>
+    <li><b>财务投资</b>：买不买房、炒不炒股、这个项目靠不靠谱——AI 不懂你的具体情况，也不懂市场实时变化。</li>
+    <li><b>重大人生决策</b>：AI 没法替你承担后果，最终是你自己的人生。</li>
+  </ul>
+  </div>
+
+  <p>正确姿势：让 AI 帮你<b>把问题理清楚、列出要问医生/律师的清单、解释专业名词</b>，但最终的判断交给专业人士和你自己。</p>
+
+  <h2>四、API Key 和钱的安全</h2>
+
+  <p>玩 AI 工具，迟早会接触到 <b>API Key</b>（一串密钥，比如虾盘云给你的 <code>sk-xxxx</code>）。请把它当成<b>银行卡密码</b>看待——谁拿到了，谁就能用你的额度、花你的钱。</p>
+
+  <div class="warn"><b>关于 Key 的红线：</b>
+  <ul>
+    <li><b>别把 Key 给任何人</b>，包括「热心网友」「客服」「帮你调试的人」。真客服不会找你要 Key。</li>
+    <li><b>别把 Key 截图发群里、发朋友圈、贴论坛</b>。很多人的额度就是这么被刷光的。</li>
+    <li><b>别把 Key 硬写进代码再上传 GitHub</b>。网上有机器人专门扫 GitHub 上的 <code>sk-</code>，几分钟就能扫到并盗刷。</li>
+    <li>Key 要写进配置时，放在<b>专门的配置文件 / 环境变量</b>里，别明文散落。U-King 帮你装好工具后，密钥已经配在本地，不用你到处复制。</li>
+    <li>怀疑 Key 泄露了？<b>立刻去重新生成一个新 Key</b>，旧的作废。</li>
+  </ul>
+  </div>
+
+  <div class="ok"><b>关于花钱的安全感：</b>U-King 底层接的是<b>虾盘云中转</b>，国内直连、<b>充值即用、¥10 起充</b>。好处是你<b>充多少花多少</b>，不会绑信用卡自动扣费、不会半夜被刷出天价账单。新手建议先充小额（比如 ¥10）试水，玩明白了再多充。这本身就是一种省心的安全设计。</div>
+
+  <h2>五、合规边界：别用 AI 干坏事</h2>
+
+  <p>AI 是工具，工具本身没善恶，关键看你拿它干嘛。下面这些，<b>法律和平台都不允许</b>，碰了出事的是你：</p>
+
+  <ul>
+    <li>写诈骗话术、钓鱼短信、虚假宣传文案</li>
+    <li>生成假证件、伪造合同、伪造聊天记录去骗人</li>
+    <li>侵犯他人版权（把别人的作品改吧改吧当原创卖）、冒用他人身份</li>
+    <li>制作虚假信息、谣言、深度伪造（deepfake，把别人的脸 P 到视频上）去害人</li>
+    <li>写病毒、攻击别人系统、爬取并倒卖个人信息</li>
+  </ul>
+
+  <p>另外，AI 生成的内容拿去<b>正式发表、商用</b>时，要标注是 AI 生成、要自己负责内容真实性——这块各平台规矩越来越严，写公众号、拍视频的同学尤其注意。</p>
+
+  <h2>红线清单（贴墙上）</h2>
+
+  <div class="warn">
+  <ol>
+    <li><b>重要信息一律核实</b>——AI 会一本正经编造，数字/引用/法条/医嘱自己再查一遍。</li>
+    <li><b>密码、验证码、银行卡、隐私，永不发给 AI。</b></li>
+    <li><b>API Key 当银行卡密码看</b>——不给人、不截图、不传 GitHub，疑似泄露立刻换新。</li>
+    <li><b>公司客户数据、商业机密、别人的隐私，不往对话框贴。</b></li>
+    <li><b>医疗、法律、财务等重大决策，AI 只做参谋，拍板找专业人士。</b></li>
+    <li><b>先充小额试水</b>（¥10 起），花多少充多少，不绑卡不自动扣。</li>
+    <li><b>不用 AI 做违法违规的事</b>——诈骗、伪造、侵权、造谣，后果你自己扛。</li>
+    <li><b>AI 生成内容商用/发表，标注来源、自己对真实性负责。</b></li>
+  </ol>
+  </div>
+
+  <div class="tip">做到这八条，你就比 99% 的 AI 用户都更安全、更专业。AI 是给你<b>增加能力</b>的，别让它给你<b>增加风险</b>。带着这份清单，放心大胆地往下学。</div>
+
+  <div class="pager">
+    <a class="prev" href="m07-vibe-coding.html"><span class="plabel">上一课</span>AI 编程入门</a>
+    <a class="next" href="m09-master.html"><span class="plabel">下一课</span>驾驭 AI 高手</a>
+  </div>
+</article>
+<footer class="foot">U-King 学院 · 配套 <a href="../../index.html">U-King AI 管家</a></footer>
+</body>
+</html>

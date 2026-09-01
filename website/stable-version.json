@@ -1,0 +1,32 @@
+{
+  "version": "1.0.11",
+  "status": "known-good",
+  "published_at": "2026-08-26",
+  "notes": "遇到最新版启动或安装异常时，可手动回退到此稳定版。退出 U-King 后重新安装或替换绿色版即可；不要删除 ~/.uking，设备钱包、余额和本机任务会继续保留。注意：1.1.0 会在 ~/.claude/settings.json 写入两个压缩窗口键（归属标记在 ~/.uking/claude-env-provenance.json），回到 1.0.11 后这两个键不再被管理，最多残留一条 200000 默认值，无害。",
+  "downloads": {
+    "windows_portable": {
+      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/stable/1.0.11/U-King.exe",
+      "mirror": "https://u-claw.org.cn/download/stable/1.0.11/U-King.exe",
+      "size": 11562496,
+      "sha256": "79E4FCA09113A13592035BC966C1B90491601C8815E167517D0D902311336B85"
+    },
+    "windows_setup": {
+      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/stable/1.0.11/U-King-Setup.exe",
+      "mirror": "https://u-claw.org.cn/download/stable/1.0.11/U-King-Setup.exe",
+      "size": 5455294,
+      "sha256": "9BB171B8DC10B87957C0E0F86642C10FE0FF9B2BA56DB0079BEE23D0EAAC97E0"
+    },
+    "mac_zip": {
+      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/stable/1.0.11/U-King-Mac.zip",
+      "mirror": "https://u-claw.org.cn/download/stable/1.0.11/U-King-Mac.zip",
+      "size": 11815418,
+      "sha256": "EA596756A3D9F966D621B58D1E34422B5986E2AE2AF904BB7BE9D7B41EA295B7"
+    },
+    "mac_dmg": {
+      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/stable/1.0.11/U-King-Mac.dmg",
+      "mirror": "https://u-claw.org.cn/download/stable/1.0.11/U-King-Mac.dmg",
+      "size": 11925599,
+      "sha256": "52A49851A9525A4B26ACF6E2ACC8FC672188F1E75AA4D5F9281BC2BF1BF6BC56"
+    }
+  }
+}

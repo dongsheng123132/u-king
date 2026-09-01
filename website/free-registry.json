@@ -1,0 +1,85 @@
+{
+  "schema": "u-king.free-registry/v1",
+  "version": 3,
+  "checked": "2026-08-31",
+  "status": "reviewed",
+  "notice": "条目仅记录人工核验时的公开条件；不代表 U-King 提供、代管或承诺任何免费额度。",
+  "entries": [
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "template": "OpenRouter",
+      "summary": "聚合网关；可在模型列表中选择带 :free 后缀的路由。",
+      "key_url": "https://openrouter.ai/keys",
+      "region": "海外",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "需自行注册并领取 Key。免费路由、限额和地区可用性会变化；不要把它当作长期免费承诺。",
+      "review": "reviewed"
+    },
+    {
+      "id": "opencode-zen",
+      "name": "OpenCode Zen",
+      "template": "OpenCode Zen",
+      "summary": "OpenCode 官方模型网关，模型列表里有带 -free 后缀的免费档。",
+      "key_url": "https://opencode.ai/auth",
+      "region": "海外",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "登录后自行复制 Key；仅 OpenAI 兼容，不把它宣传为 Claude Code 的原生路线。",
+      "review": "reviewed"
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "template": "Google Gemini",
+      "summary": "AI Studio 可创建 API Key，并提供受规则约束的免费档。",
+      "key_url": "https://aistudio.google.com/apikey",
+      "region": "海外",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "免费政策、地区与账户要求以 Google 页面为准；只有 OpenAI 兼容层。",
+      "review": "reviewed"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "template": "Groq",
+      "summary": "推理速度见长；免费档约 30 RPM / 14400 RPD，适合个人日常对话与批量小任务。",
+      "key_url": "https://console.groq.com/keys",
+      "region": "海外",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "邮箱注册即可领 Key，无需信用卡（2026-08-30 核）。模型与限额以官方页为准；海外端点国内可达性因网络环境而异，连不上时挂代理再试。",
+      "review": "reviewed"
+    },
+    {
+      "id": "freellm-net",
+      "name": "FreeLLM 目录（freellm.net）",
+      "summary": "免费大模型 API 目录站：451+ 条目、每日更新，标注免不免信用卡、速率限制、上下文窗口，还带 Claude Code / Codex / OpenCode 一键配置生成器。想自己挑家免费档的，从这里逛起。",
+      "key_url": "https://freellm.net/free-llm-api-keys/",
+      "region": "海外",
+      "targets": [],
+      "note": "目录站，不收 Key、不提供 API；列出的各家用哪家领哪家。站点由开源项目（MIT，GitHub 2.6k 星）维护，数据每日自动核。",
+      "review": "reviewed"
+    },
+    {
+      "id": "free-router",
+      "name": "Free Router（本地免费路由网关）",
+      "summary": "开源本地网关：装在自己电脑上，把多家免费模型（OpenRouter 免费档等）汇成一个本地接口，某家限流/下线自动换下一家。适合已经拿到 OpenRouter Key、想要「填一次 Key、免费模型自动切换」的进阶用户。",
+      "key_url": "https://github.com/www222fff/free-router",
+      "region": "海外",
+      "targets": [],
+      "note": "进阶工具，不是一家新免费额度：必须有 OpenRouter Key（上方 OpenRouter 条目可领），它只是帮你在这把 Key 上自动选路。需要 Node 20+，GitHub 克隆后 node server.mjs 前台运行（Windows 关掉窗口就停）。只监听本机 127.0.0.1:8787。第三方开源项目（2026-08 新仓库），U-King 未做安全审计；OpenRouter 免费模型多数需代理。核验日期 2026-08-31（本机实测：网关可启动、免费目录自动刷新、已下架模型自动摘除）。",
+      "review": "reviewed"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenClaw 龙虾 · 手动安装教程</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:32px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  h2 { font-size:19px; margin:36px 0 14px; display:flex; align-items:center; gap:10px; }
+  .num { display:inline-flex; width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex:0 0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:14px 0; }
+  .card p { margin:8px 0; color:var(--ink2); }
+  b { color:var(--ink); } .gold { color:var(--gold); } .accent { color:#8b93e8; } .ok { color:var(--ok); }
+  .tip { border-left:3px solid var(--gold); background:rgba(212,166,74,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; color:var(--ink2); font-size:14px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; text-decoration:none; padding:11px 20px; border-radius:10px; font-weight:600; font-size:15px; margin:6px 8px 6px 0; }
+  .btn.alt { background:transparent; border:1px solid var(--line); color:var(--ink2); }
+  pre { background:#0a0a0c; border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow-x:auto; margin:12px 0; position:relative; }
+  pre code { color:#e7e9ee; font:13px/1.6 "Cascadia Code","Consolas",monospace; }
+  .cmt { color:var(--ink3); }
+  .copy { position:absolute; top:8px; right:8px; background:#222; border:1px solid var(--line); color:var(--ink2); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+  .copy:hover { background:#2c2c33; }
+  kbd { background:#222; border:1px solid var(--line); border-radius:5px; padding:1px 7px; font-size:13px; }
+  ol { color:var(--ink2); padding-left:22px; } ol li { margin:7px 0; }
+  .faq { margin:10px 0; }
+  .faq summary { cursor:pointer; font-weight:600; padding:12px 16px; background:var(--card); border:1px solid var(--line); border-radius:10px; list-style:none; }
+  .faq summary::-webkit-details-marker { display:none; }
+  .faq summary::before { content:"＋ "; color:var(--accent); } .faq[open] summary::before { content:"－ "; }
+  .faq .a { padding:10px 16px 4px; color:var(--ink3); font-size:14px; }
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🦞</div>
+    <h1>OpenClaw 龙虾 · 手动安装</h1>
+    <div class="sub">命令行版（openclaw）+ 图形版（ClawX）两种，自动装不上时照这里来</div>
+  </header>
+
+  <div class="card">
+    <p><b>OpenClaw 是什么？</b> 开源的 AI 助手 / 自动化平台。有两种形态：<b class="gold">命令行版 openclaw</b>（npm 装，跑在终端）和 <b class="gold">图形版 ClawX</b>（桌面 App，点点鼠标就能用）。U-King 已帮你接好国内驱动，<b class="ok">装好就能用。</b></p>
+  </div>
+
+  <h2><span class="num">1</span>图形版 ClawX（推荐小白）：直接下安装包</h2>
+  <div class="card">
+    <p>不想碰命令行就装这个。Windows 下 U-King 会优先静默安装；如果被杀软/权限拦住，就按下面按钮手动装：</p>
+    <p>
+      <a id="clawx-win" class="btn" href="https://oss.intelli-spectrum.com/latest/ClawX-0.4.12-win-x64.exe" target="_blank" rel="noopener">Windows x64 安装包</a>
+      <a id="clawx-mac-arm" class="btn alt" href="https://oss.intelli-spectrum.com/latest/ClawX-0.4.12-mac-arm64.dmg" target="_blank" rel="noopener">Mac Apple Silicon</a>
+      <a id="clawx-mac-x64" class="btn alt" href="https://oss.intelli-spectrum.com/latest/ClawX-0.4.12-mac-x64.dmg" target="_blank" rel="noopener">Mac Intel</a>
+    </p>
+    <p class="cmt">按钮会自动尝试从 <code>release-info.json</code> 更新到最新版；如果按钮失效，点 <a href="https://oss.intelli-spectrum.com/latest/release-info.json" target="_blank" rel="noopener">最新版清单</a>，复制里面对应系统的下载链接。</p>
+    <ol>
+      <li>下完 <code>ClawX-x.x.x-win-x64.exe</code>，双击运行。</li>
+      <li>若 Windows 提示「已保护你的电脑」，点【更多信息】→【仍要运行】（绿色软件未签名，正常）。</li>
+      <li>Mac 下打开 <code>.dmg</code> 后，把 <b>ClawX.app</b> 拖到 Applications / 应用程序。</li>
+      <li>装完打开 ClawX，回 U-King 点「重新检测」即可识别，驱动会自动配好。</li>
+    </ol>
+  </div>
+
+  <h2><span class="num">2</span>命令行版 openclaw：U-King 终端里装</h2>
+  <div class="card">
+    <p>需要 Node.js <b>22.19+</b>（U-King 一般自动装便携版）。在 U-King 终端逐条执行：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code><span class="cmt"># 1) 清代理（客户机 clash/v2ray 常把 npm 拦死）</span>
+npm config delete proxy --location=global
+npm config delete https-proxy --location=global
+
+<span class="cmt"># 2) 用国内镜像装 openclaw（绕开官方 git 安装，国内更稳）</span>
+npm install -g openclaw --registry=https://registry.npmmirror.com
+
+<span class="cmt"># 3) 验证</span>
+openclaw --version</code></pre>
+  </div>
+  <div class="tip">💡 想在终端里跑起 OpenClaw 网关，命令是 <code>openclaw gateway run --allow-unconfigured</code>（首次必须带 <code>--allow-unconfigured</code>，否则会因没配置而退出）。U-King 的「我的 AI」Dock 点 openclaw 图标会自动带好参数启动。</div>
+
+  <h2><span class="num">3</span>方式三：缺 Node.js 先装它</h2>
+  <div class="card">
+    <p>敲 <code>npm</code> 提示「不是内部或外部命令」就先装 Node.js（注意 OpenClaw 要 22.19 以上）：</p>
+    <p>
+      <a class="btn" href="https://nodejs.org/zh-cn/download" target="_blank" rel="noopener">Node.js 官网</a>
+      <a class="btn alt" href="https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-x64.msi" target="_blank" rel="noopener">国内镜像直链（v22 · Win x64）</a>
+    </p>
+    <p>装完关掉命令行窗口重开，再回方式二执行。</p>
+  </div>
+
+  <h2 style="margin-top:42px">❓ 常见问题</h2>
+  <details class="faq"><summary>ClawX 双击没反应 / 被拦？</summary>
+    <div class="a">未签名绿色软件常被 SmartScreen / 杀软误拦。点【更多信息→仍要运行】，或在杀软里把它加白名单。再不行用「方式二」装命令行版。</div></details>
+  <details class="faq"><summary><code>openclaw --version</code> 报错 / 提示 Node 版本太低？</summary>
+    <div class="a">OpenClaw 需要 Node 22.19+。装新版 Node（方式三）后重装 openclaw 即可。</div></details>
+  <details class="faq"><summary>启动网关报「gateway already running」？</summary>
+    <div class="a">上次没退干净留了锁文件。删掉它再启：删除 <code>%LOCALAPPDATA%\Temp\openclaw\gateway.*.lock</code>。</div></details>
+  <details class="faq"><summary>装好了，U-King 还说没装？</summary>
+    <div class="a">命令行 <code>openclaw --version</code> 能出版本号、或 ClawX 已经能打开，就算装好。回 U-King 点「重新检测」；还认不出就彻底关闭 U-King 重开。</div></details>
+
+  <footer>U-King 个人 AI 操作系统 · 官网 <a href="https://www.u-king.org">u-king.org</a> · 更多补救见 <a href="install-help.html">「装不上怎么办」</a><br>OpenClaw 为开源项目 · ClawX 桌面版来自其官方发行 · U-King 只帮你接好国内可用的驱动</footer>
+</div>
+<script>
+  fetch('https://oss.intelli-spectrum.com/latest/release-info.json', {cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if(!j || !j.downloads) return;
+      var map = {
+        'clawx-win': j.downloads.win && j.downloads.win.x64,
+        'clawx-mac-arm': j.downloads.mac && j.downloads.mac.arm64,
+        'clawx-mac-x64': j.downloads.mac && j.downloads.mac.x64
+      };
+      Object.keys(map).forEach(function(id){
+        if(map[id]) document.getElementById(id).href = map[id];
+      });
+    }).catch(function(){});
+  function cp(btn){
+    var code = btn.parentNode.querySelector('code');
+    var text = code.innerText.split('\n').filter(function(l){return l.trim() && l.trim().indexOf('#')!==0;}).join('\n');
+    navigator.clipboard.writeText(text).then(function(){
+      var old = btn.textContent; btn.textContent = '已复制 ✓';
+      setTimeout(function(){ btn.textContent = old; }, 1500);
+    }).catch(function(){ btn.textContent = '手动选中复制'; });
+  }
+</script>
+</body>
+</html>

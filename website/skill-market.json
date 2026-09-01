@@ -1,0 +1,54 @@
+{
+  "_comment": "U-King「热门技能专题」清单 —— 用 AI(③)页 Skills.tsx 的 Feed 读这份 JSON 渲染卡片。改内容不必发版,经发布流程同步到官网服务器。每条: title(必) summary tag date slug(同源 .html,走 open_online_page) 或 url(完整外链,如 skillhub.cn,国内可达)。无 slug/url = 纯公告卡(不可点)。第一条故意是「怎么用」总流程,点开 clawx-skill-workflow.html。",
+  "items": [
+    {
+      "title": "★ 新手必看：找技能 → 配模型 → 让 ClawX 帮你干活",
+      "summary": "一条龙看懂:去 skillhub.cn 找技能 → 复制粘贴进 ClawX → 申请一个大模型 Key 粘进去 → 以后说一句话它就照着技能做(作图/视频/写作)。第一次用先看这篇。",
+      "tag": "必看",
+      "date": "2026-06-20",
+      "slug": "clawx-skill-workflow.html"
+    },
+    {
+      "title": "做视频：用 openclaw-v3 技能,一句话出片",
+      "summary": "图文脚本、配音字幕、自动剪辑成片。复制这个技能粘进 ClawX,再配上能作图/视频的模型(推荐火山引擎豆包/即梦)即可。",
+      "tag": "视频",
+      "date": "2026-06-20",
+      "url": "https://skillhub.cn/skills/openclaw-v3"
+    },
+    {
+      "title": "AI 作图:生成 / 改图 / 出海报封面",
+      "summary": "文字生图、给图换风格、批量出封面。搜「作图」「绘画」「海报」找技能;模型推荐火山引擎(豆包·即梦)或虾盘云内置作图。",
+      "tag": "图片",
+      "date": "2026-06-20",
+      "url": "https://skillhub.cn"
+    },
+    {
+      "title": "写小说 / 网文:设定 + 大纲 + 连载续写",
+      "summary": "搭世界观、列大纲、按风格续写、润色改稿。搜「小说」「网文」「写作」装技能,配长文本强的模型(Kimi / DeepSeek)。",
+      "tag": "小说",
+      "date": "2026-06-20",
+      "url": "https://skillhub.cn"
+    },
+    {
+      "title": "画漫画 / 分镜:从剧本到一格格画面",
+      "summary": "把故事拆成分镜、生成画面、统一画风人设。搜「漫画」「分镜」「插画」找技能,配作图模型(火山豆包/即梦)。",
+      "tag": "漫画",
+      "date": "2026-06-20",
+      "url": "https://skillhub.cn"
+    },
+    {
+      "title": "编程:让 AI 帮你写代码 / 修 bug / 做小工具",
+      "summary": "写脚本、改报错、做网页和小程序、批量处理文件。搜「编程」「代码」「自动化」装技能,配 DeepSeek / 虾盘云即可。",
+      "tag": "编程",
+      "date": "2026-06-20",
+      "url": "https://skillhub.cn"
+    },
+    {
+      "title": "去哪申请大模型 Key?各家注册教程(含实名认证)",
+      "summary": "火山引擎(豆包·作图视频强)、DeepSeek、智谱 GLM、Kimi —— 注册→实名认证→申请 Key→粘进 ClawX,一页讲清。多数平台必须先实名才能拿 Key。",
+      "tag": "Key",
+      "date": "2026-06-20",
+      "slug": "apikey-guide.html"
+    }
+  ]
+}

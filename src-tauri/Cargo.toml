@@ -1,0 +1,54 @@
+[package]
+name = "u-king-mini"
+version = "1.2.1"
+description = "U-King 简化版 (U 盘版) — 个人 AI 操作系统管家，原生托盘 + 一键装到本地 + 右键菜单"
+authors = ["U-King Team"]
+edition = "2021"
+
+[lib]
+name = "u_king_mini_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# U 盘护符：带此 feature 编出「U 盘口味」（启动校验原装 U 盘）；不带 = 下载版（零门槛）。
+# 用法：U 盘版 `pnpm tauri build --features usb-guard`；下载版 `pnpm tauri build`（不变）。
+usb-guard = []
+# 独立的「演示卸载工具」绿色版：复用同一套清理后端，但启动后只显示清场界面，
+# 不安装托盘、不执行联网自检或更新检查。产物可单独分发给录制安装演示使用。
+demo-uninstaller = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+# 单实例：客户机上实测同时跑着 3 个 u-king-mini.exe（含升级前的旧版本）。关窗口 = 缩托盘不退出，
+# 于是每次双击都真起一个新进程 —— 每个都带自己的调度线程（同一条定时任务被跑 N 遍 = N 倍烧
+# token）、各自同步技能包互相覆写、旧版进程占着 exe 让卸载删不掉。官方插件，依赖树极瘦。
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# DSH 的 settings.yaml / .credentials.yaml 都是受它自己 schema 约束的 YAML。
+# 这里做结构化 merge，只更新 U-King 自己的 provider/凭据键，不用字符串拼接去猜缩进。
+serde_yaml = "0.9"
+# 应用内真终端（PTY）—— Rust 拥有伪终端，注入便携 Node/Python PATH，openclaw/hermes 可直接跑
+portable-pty = "0.8"
+# 备份内容寻址 + 完整性校验用的 blake3。pure=纯 Rust SIMD、不需 C 工具链；只 std 关键能力，依赖树极瘦。
+blake3 = { version = "1", default-features = false, features = ["std", "pure"] }
+# 内置纯 Rust .tar.gz 解压器（便携 Python 兜底）—— 不依赖客户机 System32\tar.exe 也不依赖
+# .NET/PowerShell，治「tar.exe 缺失(System32 损坏)、tar.gz 无 PowerShell 兜底」这类装不上
+# Python/Hermes 的机器（issue #182/#198）。flate2 用纯 Rust 的 miniz_oxide 后端（不引 C 工具链，
+# 对齐 blake3 pure）；tar 亦纯 Rust。仅 Windows 兜底路径用到，Mac 走系统 tar。
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = "0.4"
+
+[profile.release]
+# 体积优先：U 盘版要小。LTO + strip + opt-z 把 exe 压到最小。
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

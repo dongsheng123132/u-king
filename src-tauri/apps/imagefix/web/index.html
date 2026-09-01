@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>图片修补</title>
+<!--
+  拖框选区的参考实现。后续所有「图片类」小程序都可以从这里抄。
+
+  坐标模型是这份文件唯一真正重要的东西：
+    选区永远以「源图自然像素」存储，画布整体缩放做预览。
+  这样预览和动作契约共用一套数字，不用来回换算 ——
+  而且动作被 CLI / MCP 无头调用时根本没有「预览」这个概念，
+  自然像素是唯一在所有面上都成立的坐标系。
+
+  刻意不用 React / Konva：往第三方 HTML 里塞 400KB 框架，
+  就毁掉了「AI 能现场生成一个这玩意」的前提。
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    font: 13.5px/1.55 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: #0f1115; color: #e6e8ec; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid #21252d; background: #14171c; flex-shrink: 0; flex-wrap: wrap;
+  }
+  .seg { display: flex; border: 1px solid #2a2e36; border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #1a1e24; color: #a8adb8; padding: 7px 14px; cursor: pointer; font: inherit; }
+  .seg button.on { background: #7c5cff; color: #fff; }
+  button.act {
+    border: 0; border-radius: 8px; padding: 7px 16px; font: inherit; font-weight: 600; cursor: pointer;
+    background: #7c5cff; color: #fff;
+  }
+  button.act.ghost { background: #1a1e24; color: #c9ced8; border: 1px solid #2a2e36; font-weight: 400; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=text] {
+    background: #1a1e24; border: 1px solid #2a2e36; border-radius: 8px;
+    padding: 7px 12px; color: inherit; font: inherit; width: 180px;
+  }
+  input[type=text]:focus { outline: none; border-color: #7c5cff; }
+  /* 提示文字是次要信息：宽度不够时**它**先让步（省略号），
+     而不是把功能条挤到换行、再把「保存」甩到下一行右边（测试报告 #019）。 */
+  /* flex 是**先换行、后压缩**：提示文字一长，它整块跳到第二行，还把「保存」一起拖下去，
+     于是功能条被劈成两半、右下角孤零零一个按钮（测试报告 #019）。
+     所以干脆让它独占一行（flex-basis:100%）—— 按钮永远连在一起，提示永远看得全。 */
+  /* `order:1` 把提示文字排到所有按钮之后 —— 这是本条修复的关键。
+     原来它夹在「撤销」和「保存」中间，一换行就把功能条劈成两半、
+     再配上占位块，「保存」被甩到下一行最右角（实测 idcard/imagefix 都中招）。
+     排到最后之后，按钮永远是连续的一组，提示自然跟在后面，宽窄都不会落单。
+     不再用 flex-basis:100% 强行独占一行 —— 那会让 idcard 多出一整行（105→133px）。 */
+  .hint { color: #6f7683; font-size: 12px; order: 1; }
+  /* 「保存」**不再往最右边推**。原来用 <span style="flex:1"> 占位把它顶到右端，
+     那是单行布局的写法：按钮一多就换行，占位块独占一整行，保存被孤零零甩到
+     下一行最右角（idcard 实测会变成三行）。换成 margin-left:auto 也一样 ——
+     只要按钮行装不下，它照样落单。
+     所以干脆让它跟其它按钮排在一起：宽窗口少了点「右对齐」的好看，
+     但任何宽度下功能条都是**连续的一组**，不会被劈开。 */
+  #stage {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: #0b0d10 repeating-conic-gradient(#15181d 0% 25%, #0f1216 0% 50%) 50%/22px 22px;
+  }
+  #wrap { position: relative; line-height: 0; }
+  canvas { display: block; max-width: 100%; max-height: 100%; cursor: crosshair; }
+  #box {
+    position: absolute; border: 1.5px solid #7c5cff; background: rgba(124,92,255,.13);
+    display: none; cursor: move;
+  }
+  #box i {
+    position: absolute; width: 11px; height: 11px; background: #fff; border: 1.5px solid #7c5cff;
+    border-radius: 2px;
+  }
+  #drop {
+    position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px;
+    align-items: center; justify-content: center; color: #767d8b; pointer-events: none;
+  }
+  #drop b { color: #b9bfca; font-size: 15px; font-weight: 600; }
+  footer {
+    padding: 8px 14px; border-top: 1px solid #21252d; background: #14171c;
+    display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 40px;
+  }
+  #bar { flex: 1; height: 4px; background: #21252d; border-radius: 2px; overflow: hidden; display: none; }
+  #bar > div { height: 100%; width: 0; background: #7c5cff; transition: width .25s; }
+  #msg { color: #8b909a; font-size: 12.5px; }
+  #msg.err { color: #fca5a5; }
+  #msg.ok { color: #86efac; }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="act ghost" id="open">打开图片</button>
+  <div class="seg">
+    <button id="mWm" class="on">去水印</button>
+    <button id="mTx">改文字</button>
+  </div>
+  <input type="text" id="newText" placeholder="换成什么字" style="display:none" maxlength="200" />
+  <button class="act" id="apply" disabled>一键应用</button>
+  <button class="act ghost" id="undo" disabled>撤销</button>
+  <span class="hint" id="tip">先打开一张图，然后在图上拖一个框</span>
+  <button class="act ghost" id="save" disabled>保存</button>
+</header>
+
+<div id="stage">
+  <div id="wrap">
+    <canvas id="cv"></canvas>
+    <div id="box"><i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i><i data-h="w"></i><i data-h="e"></i><i data-h="sw"></i><i data-h="s"></i><i data-h="se"></i></div>
+  </div>
+  <div id="drop"><b>把图片拖进来</b><span>或点左上角「打开图片」</span></div>
+</div>
+
+<footer>
+  <div id="bar"><div></div></div>
+  <span id="msg"></span>
+</footer>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const cv = $("cv"), cx2d = cv.getContext("2d"), boxEl = $("box");
+
+let img = null;            // 当前 Image
+let dataUrl = null;        // 当前图的 data URL（动作的输入）
+let history = [];          // 撤销栈，存 data URL
+let scale = 1;             // 预览缩放：预览像素 = 自然像素 * scale
+let sel = null;            // 选区，单位=源图自然像素
+let mode = "wm";
+
+// ── 载入 ──────────────────────────────────────────────
+async function load(url) {
+  const im = new Image();
+  await new Promise((res, rej) => { im.onload = res; im.onerror = () => rej(new Error("这张图打不开")); im.src = url; });
+  img = im; dataUrl = url; sel = null;
+  const stage = $("stage").getBoundingClientRect();
+  scale = Math.min(1, (stage.width - 48) / im.naturalWidth, (stage.height - 48) / im.naturalHeight);
+  cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+  cv.style.width = `${Math.round(im.naturalWidth * scale)}px`;
+  cv.style.height = `${Math.round(im.naturalHeight * scale)}px`;
+  cx2d.drawImage(im, 0, 0);
+  $("drop").style.display = "none";
+  drawBox();
+  $("save").disabled = false;
+  say(`${im.naturalWidth}×${im.naturalHeight} · 在图上拖一个框`);
+}
+
+$("open").onclick = async () => {
+  try {
+    const f = await window.uking.file.open(["png", "jpg", "jpeg", "webp", "bmp"]);
+    if (f) { history = []; $("undo").disabled = true; await load(f.dataUrl); }
+  } catch (e) { say(e.message, "err"); }
+};
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer?.files?.[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = async () => { history = []; $("undo").disabled = true; await load(r.result); };
+  r.readAsDataURL(f);
+});
+
+// ── 选框：全部以自然像素记账，只有画的时候才乘 scale ──────────
+let drag = null;
+const toNat = (e) => {
+  const r = cv.getBoundingClientRect();
+  return {
+    x: Math.round((e.clientX - r.left) / scale),
+    y: Math.round((e.clientY - r.top) / scale),
+  };
+};
+
+cv.addEventListener("pointerdown", (e) => {
+  if (!img) return;
+  cv.setPointerCapture(e.pointerId);
+  const p = toNat(e);
+  drag = { mode: "new", ox: p.x, oy: p.y };
+  sel = { x: p.x, y: p.y, w: 0, h: 0 };
+});
+
+boxEl.addEventListener("pointerdown", (e) => {
+  if (!img || !sel) return;
+  e.stopPropagation();
+  boxEl.setPointerCapture(e.pointerId);
+  const p = toNat(e);
+  const h = e.target instanceof HTMLElement ? e.target.dataset.h : null;
+  drag = h ? { mode: "resize", h, s: { ...sel } } : { mode: "move", ox: p.x - sel.x, oy: p.y - sel.y };
+});
+
+function onMove(e) {
+  if (!drag || !img) return;
+  const p = toNat(e);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  if (drag.mode === "new") {
+    sel = {
+      x: cl(Math.min(drag.ox, p.x), 0, W), y: cl(Math.min(drag.oy, p.y), 0, H),
+      w: Math.abs(p.x - drag.ox), h: Math.abs(p.y - drag.oy),
+    };
+    sel.w = cl(sel.w, 0, W - sel.x); sel.h = cl(sel.h, 0, H - sel.y);
+  } else if (drag.mode === "move") {
+    sel.x = cl(p.x - drag.ox, 0, W - sel.w);
+    sel.y = cl(p.y - drag.oy, 0, H - sel.h);
+  } else {
+    const s = drag.s, h = drag.h;
+    let x1 = s.x, y1 = s.y, x2 = s.x + s.w, y2 = s.y + s.h;
+    if (h.includes("w")) x1 = cl(p.x, 0, x2 - 4);
+    if (h.includes("e")) x2 = cl(p.x, x1 + 4, W);
+    if (h.includes("n")) y1 = cl(p.y, 0, y2 - 4);
+    if (h.includes("s")) y2 = cl(p.y, y1 + 4, H);
+    sel = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+  }
+  drawBox();
+}
+cv.addEventListener("pointermove", onMove);
+boxEl.addEventListener("pointermove", onMove);
+const endDrag = () => {
+  if (drag && sel && (sel.w < 4 || sel.h < 4)) sel = null;
+  drag = null; drawBox();
+};
+cv.addEventListener("pointerup", endDrag);
+boxEl.addEventListener("pointerup", endDrag);
+
+function drawBox() {
+  const ok = !!(sel && sel.w >= 4 && sel.h >= 4);
+  boxEl.style.display = ok ? "block" : "none";
+  $("apply").disabled = !ok;
+  if (!ok) return;
+  Object.assign(boxEl.style, {
+    left: `${sel.x * scale}px`, top: `${sel.y * scale}px`,
+    width: `${sel.w * scale}px`, height: `${sel.h * scale}px`,
+  });
+  for (const i of boxEl.children) {
+    const h = i.dataset.h;
+    i.style.left = h.includes("w") ? "-6px" : h.includes("e") ? "calc(100% - 5px)" : "calc(50% - 5px)";
+    i.style.top = h.includes("n") ? "-6px" : h.includes("s") ? "calc(100% - 5px)" : "calc(50% - 5px)";
+    i.style.cursor = `${h}-resize`;
+  }
+  $("tip").textContent = `选区 ${sel.w}×${sel.h}`;
+}
+
+// ── 模式 ──────────────────────────────────────────────
+$("mWm").onclick = () => setMode("wm");
+$("mTx").onclick = () => setMode("tx");
+function setMode(m) {
+  mode = m;
+  $("mWm").classList.toggle("on", m === "wm");
+  $("mTx").classList.toggle("on", m === "tx");
+  $("newText").style.display = m === "tx" ? "" : "none";
+}
+
+// ── 应用 ──────────────────────────────────────────────
+$("apply").onclick = async () => {
+  if (!sel || !dataUrl) return;
+  const isText = mode === "tx";
+  const newText = $("newText").value.trim();
+  if (isText && !newText) { say("先填要换成什么字", "err"); $("newText").focus(); return; }
+
+  setBusy(true);
+  try {
+    const id = isText ? "app.imagefix.text.replace" : "app.imagefix.watermark.remove";
+    const input = { image: dataUrl, region: { ...sel } };
+    if (isText) input.new_text = newText;
+
+    const r = await window.uking.action(id, input);
+    history.push(dataUrl);
+    $("undo").disabled = false;
+    // 动作返回的是**引用不是像素** —— 这是给 AI 的硬约定（别把整张图塞进返回值）。
+    // 所以这里绝不能读 r.image：那个字段从来就不存在，读到 undefined 会让
+    // `im.src = undefined` 走 onerror，报成「这张图打不开」——
+    // AI 额度已经花掉了，结果却拿不回来。取图必须走产出箱地址。
+    await load(`uking://localhost/artifact/${r.artifact.id}`);
+    // 后续动作的入参、保存、撤销都要 data URL（decode/file.save 只吃 data URL 或绝对路径），
+    // 而 load 把 dataUrl 设成了 uking:// 地址，这里覆盖回来。
+    // canvas 是原始分辨率、选框画在覆盖层不在画布上，导出即原图。
+    dataUrl = cv.toDataURL("image/png");
+    const how = r.engine_used === "local" ? "本地精确重绘（没花额度）" : "AI 重绘";
+    say(`完成 · ${how}${r.notes ? " · " + r.notes : ""}`, "ok");
+  } catch (e) {
+    say(e?.message || String(e), "err");
+  } finally {
+    setBusy(false);
+  }
+};
+
+$("undo").onclick = async () => {
+  const prev = history.pop();
+  if (!prev) return;
+  await load(prev);
+  $("undo").disabled = history.length === 0;
+  say("已撤销");
+};
+
+$("save").onclick = async () => {
+  try {
+    const p = await window.uking.file.save("修补结果.png", dataUrl);
+    say(p ? `已保存到 ${p}` : "已取消", p ? "ok" : "");
+  } catch (e) { say(e.message, "err"); }
+};
+
+// ── 杂项 ──────────────────────────────────────────────
+function say(t, cls = "") { $("msg").textContent = t; $("msg").className = cls; }
+function setBusy(b) {
+  for (const id of ["apply", "open", "save", "undo", "mWm", "mTx"]) $(id).disabled = b || (id === "undo" && !history.length);
+  $("bar").style.display = b ? "block" : "none";
+  if (!b) $("bar").firstElementChild.style.width = "0";
+}
+// 宿主把动作里的 uking.ui.progress() 转发到这里
+window.uking?.onEvent?.((ev) => {
+  if (ev.type !== "progress") return;
+  $("bar").firstElementChild.style.width = `${ev.percent}%`;
+  if (ev.label) say(ev.label);
+});
+
+setMode("wm");
+window.addEventListener("resize", () => { if (img) load(dataUrl); });
+</script>
+</body>
+</html>

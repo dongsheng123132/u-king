@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>U-King AI 管家 · 一键装好 Codex / Claude Code，国内直连</title>
+<meta name="description" content="U-King 是面向国内用户的 AI 装机管家和工作台。对话式一键安装 Codex、Claude Code、OpenClaw 等 AI 工具，自动配置国内可用模型驱动，装完即用。" />
+<link rel="canonical" href="https://www.u-king.org/" />
+<meta property="og:title" content="U-King AI 管家 — AI 工具，装好就能用" />
+<meta property="og:description" content="一键安装 Codex、Claude Code、OpenClaw、Hermes，自动配好国内直连模型驱动，装完实测连通。免费下载。" />
+<meta property="og:url" content="https://www.u-king.org/" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z' fill='%23e2a93b'/%3E%3C/svg%3E" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"火火的(深圳)科技有限公司","alternateName":"U-King","url":"https://www.u-king.org/"}</script>
+<style>
+  :root{
+    --ink:#1d1d1f;
+    --body:#494c50;
+    --gray:#6e6e73;
+    --faint:#86868b;
+    --bg:#ffffff;
+    --bg-alt:#f5f5f7;
+    --line:rgba(0,0,0,.09);
+    --blue:#0071e3;
+    --blue-hover:#0077ed;
+    --gold:#e2a93b;
+    --green:#34c759;
+    --radius-card:22px;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro SC","SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI","Microsoft YaHei",sans-serif;
+    --mono:"SF Mono",SFMono-Regular,ui-monospace,Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  ::selection{background:rgba(0,113,227,.16)}
+  a{color:var(--blue); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{width:min(1080px, calc(100% - 44px)); margin:0 auto}
+  .mono{font-family:var(--mono)}
+  section{scroll-margin-top:60px}
+
+  /* ---------- 顶部导航（苹果式毛玻璃） ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(255,255,255,.78);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav{
+    width:min(1080px, calc(100% - 44px));
+    margin:0 auto; height:52px;
+    display:flex; align-items:center; gap:26px;
+  }
+  .logo{display:flex; align-items:center; gap:8px; color:var(--ink); font-weight:700; font-size:16px; letter-spacing:.01em}
+  .logo:hover{text-decoration:none}
+  .logo svg{width:20px; height:20px; display:block}
+  .nav-links{margin-left:auto; display:flex; align-items:center; gap:24px; font-size:13px}
+  .nav-links a{color:rgba(29,29,31,.82)}
+  .nav-links a:hover{color:var(--ink); text-decoration:none}
+  .nav-dl{
+    padding:5px 14px; border-radius:980px;
+    background:var(--blue); color:#fff !important; font-weight:600;
+    transition:background .2s ease;
+  }
+  .nav-dl:hover{background:var(--blue-hover); text-decoration:none}
+
+  /* ---------- Hero ---------- */
+  .hero{padding:88px 0 0; text-align:center}
+  .eyebrow{
+    margin:0 0 14px; font-size:15px; font-weight:600; color:var(--gold);
+    letter-spacing:.04em;
+  }
+  h1{
+    margin:0 auto; max-width:900px;
+    font-size:clamp(44px, 7.4vw, 88px);
+    line-height:1.06; letter-spacing:-.015em; font-weight:700;
+  }
+  .hero .sub{
+    max-width:640px; margin:22px auto 0;
+    color:var(--body); font-size:clamp(17px, 2.2vw, 21px); line-height:1.6;
+  }
+  .hero .sub b{color:var(--ink); font-weight:600}
+
+  .cta-stack{margin-top:34px}
+  .btn-primary{
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    min-width:280px; padding:17px 40px;
+    border-radius:980px; border:0; cursor:pointer;
+    background:var(--blue); color:#fff !important;
+    font-size:18px; font-weight:600; font-family:var(--sans);
+    box-shadow:0 12px 32px rgba(0,113,227,.28);
+    transition:background .2s ease, transform .2s ease, box-shadow .2s ease;
+  }
+  .btn-primary:hover{background:var(--blue-hover); transform:translateY(-1px); box-shadow:0 16px 38px rgba(0,113,227,.34); text-decoration:none}
+  .btn-primary svg{width:18px; height:18px; flex:none}
+  .dl-caption{margin:14px 0 0; color:var(--faint); font-size:13px}
+  .alt-links{margin:8px 0 0; font-size:14px}
+  .alt-links .sep{margin:0 12px; color:rgba(0,0,0,.18)}
+  .dl-status{min-height:20px; margin:10px 0 0; color:var(--green); font-size:13px; font-family:var(--mono)}
+
+  /* 老系统（Win7/8/8.1/XP）告警：这些机器下下来也跑不了，下载前就拦一道 */
+  .oldwin-alert{
+    display:none; max-width:600px; margin:0 auto 18px;
+    text-align:left; padding:16px 18px;
+    border:1px solid #f0c48a; border-radius:14px; background:#fff8ef; color:#5b3a12;
+    font-size:14px; line-height:1.7;
+  }
+  .oldwin-alert.on{display:block}
+  .oldwin-alert b{color:#b25000}
+  .oldwin-alert p{margin:0 0 8px}
+  .oldwin-alert p:last-child{margin-bottom:0}
+  .oldwin-alert .anyway{color:var(--faint); font-size:13px}
+  .oldwin-alert .anyway a{color:var(--faint); text-decoration:underline}
+  /* 系统不支持时主按钮不该再长得像「快点我下载」 */
+  .btn-primary.blocked{background:#9a9a9e; box-shadow:none; cursor:not-allowed}
+  .btn-primary.blocked:hover{background:#9a9a9e; transform:none; box-shadow:none}
+  .btn-primary.blocked svg{display:none}
+  .dock-btn.blocked{background:#9a9a9e; cursor:not-allowed}
+
+  .dl-help{
+    max-width:600px; margin:14px auto 0;
+    text-align:left; font-size:14px; color:var(--body);
+    border:1px solid var(--line); border-radius:14px; background:var(--bg-alt);
+  }
+  .dl-help summary{
+    cursor:pointer; list-style:none; padding:13px 18px;
+    color:var(--ink); font-weight:600; font-size:14px; text-align:center;
+  }
+  .dl-help summary::-webkit-details-marker{display:none}
+  .dl-help-body{padding:0 18px 16px}
+  .dl-help-body p{margin:0 0 10px}
+  .dl-help-body .warn{color:#b25000}
+  .cmd-row{display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; margin:10px 0 4px}
+  .cmd{
+    flex:1; min-width:240px; padding:12px 14px;
+    border-radius:10px; background:#1d1d1f; color:#7ee787;
+    font-family:var(--mono); font-size:13px;
+    overflow-x:auto; white-space:nowrap;
+  }
+  .copy{
+    min-height:44px; padding:0 18px; border:0; border-radius:10px;
+    background:var(--ink); color:#fff; font-weight:600; font-size:13px;
+    cursor:pointer; font-family:var(--sans);
+    transition:opacity .2s ease;
+  }
+  .copy:hover{opacity:.82}
+
+  /* ---------- Hero 产品视觉 ---------- */
+  .hero-visual{
+    position:relative;
+    width:min(960px, 100%);
+    margin:64px auto 0;
+    text-align:left;
+  }
+  .app-shot{
+    overflow:hidden; border-radius:16px;
+    background:#0b0d10;
+    box-shadow:0 40px 100px rgba(0,0,0,.22), 0 4px 18px rgba(0,0,0,.10);
+    border:1px solid rgba(0,0,0,.5);
+  }
+  .shot-top{
+    height:40px; display:flex; align-items:center; gap:7px; padding:0 14px;
+    background:#101317; border-bottom:1px solid rgba(255,255,255,.07);
+  }
+  .win-dot{width:11px; height:11px; border-radius:50%}
+  .win-dot:nth-child(1){background:#ff5f57}.win-dot:nth-child(2){background:#febc2e}.win-dot:nth-child(3){background:#28c840}
+  .shot-title{margin-left:10px; color:#8a9096; font-size:12px; font-family:var(--mono)}
+  .shot-body{display:grid; grid-template-columns:172px 1fr; min-height:430px}
+  .shot-side{padding:14px 10px; border-right:1px solid rgba(255,255,255,.07); background:#0d1014}
+  .side-title{margin:8px 8px 10px; font-size:10px; letter-spacing:.14em; color:#5d646b; font-family:var(--mono)}
+  .side-item{
+    height:33px; display:flex; align-items:center; gap:9px;
+    padding:0 10px; margin-bottom:5px; border-radius:8px;
+    color:#9ba1a6; font-size:12.5px;
+  }
+  .side-item.active{color:#15130c; background:linear-gradient(135deg,#f2d67e,#dfb04a); font-weight:700}
+  .side-dot{width:8px; height:8px; border-radius:3px; background:currentColor; opacity:.65; flex:none}
+  .side-item[data-c="claude"] .side-dot{background:#d97757; opacity:1}
+  .side-item[data-c="codex"] .side-dot{background:#4d8cf0; opacity:1}
+  .side-item[data-c="claw"] .side-dot{background:#ff5a5a; opacity:1}
+  .side-item[data-c="hermes"] .side-dot{background:#e6a23c; opacity:1}
+  .shot-main{padding:18px 20px}
+  .shot-bar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px}
+  .shot-bar strong{color:#f5f5f7; font-size:14px}
+  .pill{
+    padding:5px 10px; border-radius:980px; font-size:11px; font-family:var(--mono);
+    color:#b6e8cd; background:rgba(52,199,89,.12); border:1px solid rgba(52,199,89,.28);
+  }
+  .mock-card{
+    border:1px solid rgba(255,255,255,.08); border-radius:12px;
+    background:rgba(255,255,255,.04); padding:14px 16px; margin-bottom:11px;
+  }
+  .mock-card h3{margin:0 0 6px; font-size:13.5px; color:#f5f5f7}
+  .mock-card p{margin:0; color:#9ba1a6; font-size:12px; line-height:1.55}
+  .mock-card .okmark{color:var(--green); margin-right:6px}
+  .progress{height:6px; border-radius:980px; background:rgba(255,255,255,.08); overflow:hidden; margin-top:12px}
+  .progress span{display:block; width:76%; height:100%; border-radius:980px; background:linear-gradient(90deg,#34c759,#6fd3f2)}
+  .terminal{
+    margin-top:12px; padding:13px 15px; border-radius:12px;
+    border:1px solid rgba(255,255,255,.08); background:#07090b;
+    font-family:var(--mono); font-size:12px; color:#c9d1d9;
+  }
+  .terminal p{margin:0 0 7px}
+  .terminal p:last-child{margin-bottom:0}
+  .terminal .dim{color:#5d646b}
+  .terminal .ok{color:#3fd06f}
+
+  /* ---------- 数据条 ---------- */
+  .stats{
+    display:grid; grid-template-columns:repeat(4, minmax(0,1fr));
+    width:min(880px,100%); margin:56px auto 0; padding:0;
+  }
+  .stats .item{padding:6px 12px}
+  .stats .item + .item{border-left:1px solid var(--line)}
+  .stats strong{display:block; font-size:clamp(24px,3vw,32px); font-weight:700; letter-spacing:-.01em}
+  .stats span{display:block; margin-top:4px; color:var(--gray); font-size:13px}
+  .hero-end{height:88px}
+
+  /* ---------- 通用 section ---------- */
+  .band{padding:96px 0}
+  .band.alt{background:var(--bg-alt)}
+  .band-head{max-width:760px; margin:0 auto 52px; text-align:center}
+  .kicker{margin:0 0 10px; font-size:14px; font-weight:600; color:var(--gold); letter-spacing:.06em; text-transform:uppercase}
+  h2{
+    margin:0; font-size:clamp(32px, 4.6vw, 52px);
+    line-height:1.12; letter-spacing:-.012em; font-weight:700;
+  }
+  .band-head p{margin:16px auto 0; max-width:620px; color:var(--body); font-size:17px}
+
+  /* ---------- 工具卡 ---------- */
+  .tools-grid{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:16px}
+  .tool-card{
+    padding:26px 22px;
+    border-radius:var(--radius-card);
+    background:#fff;
+    box-shadow:0 2px 10px rgba(0,0,0,.045);
+    transition:transform .25s ease, box-shadow .25s ease;
+  }
+  .band:not(.alt) .tool-card{background:var(--bg-alt); box-shadow:none}
+  .tool-card:hover{transform:translateY(-4px); box-shadow:0 18px 44px rgba(0,0,0,.10)}
+  .tool-logo{
+    width:56px; height:56px; display:grid; place-items:center;
+    border-radius:15px; margin-bottom:16px;
+    background:color-mix(in srgb, var(--brand) 12%, #fff);
+    border:1px solid color-mix(in srgb, var(--brand) 24%, transparent);
+  }
+  .tool-logo img{width:32px; height:32px; display:block}
+  .tool-card h3{margin:0 0 4px; font-size:19px; letter-spacing:-.01em}
+  .tool-sub{margin:0 0 14px; color:var(--gray); font-size:13px}
+  .tool-list{margin:0; padding:0; list-style:none}
+  .tool-list li{
+    position:relative; padding:7px 0 7px 24px;
+    color:var(--body); font-size:13.5px; line-height:1.5;
+  }
+  .tool-list li::before{
+    content:""; position:absolute; left:0; top:11px;
+    width:15px; height:15px; border-radius:50%;
+    background:var(--brand);
+    -webkit-mask:none;
+  }
+  .tool-list li::after{
+    content:""; position:absolute; left:0; top:11px; width:15px; height:15px;
+    background:#fff;
+    -webkit-mask:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M9.6 16.9 4.7 12l1.5-1.5 3.4 3.4 7.7-7.7L18.8 7.7z'/%3E%3C/svg%3E") center/10px no-repeat;
+    mask:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M9.6 16.9 4.7 12l1.5-1.5 3.4 3.4 7.7-7.7L18.8 7.7z'/%3E%3C/svg%3E") center/10px no-repeat;
+  }
+
+  /* ---------- 能力 tiles ---------- */
+  .tiles{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px}
+  .tile{
+    padding:38px 36px;
+    border-radius:28px; background:var(--bg-alt);
+    transition:transform .25s ease;
+  }
+  .band.alt .tile{background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.045)}
+  .tile .ticon{
+    width:44px; height:44px; display:grid; place-items:center;
+    border-radius:12px; margin-bottom:20px; color:#fff;
+  }
+  .tile .ticon svg{width:22px; height:22px}
+  .tile h3{margin:0 0 8px; font-size:22px; letter-spacing:-.01em}
+  .tile p{margin:0; color:var(--body); font-size:15px; line-height:1.65}
+
+  /* ---------- 三步 ---------- */
+  .steps{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:16px; counter-reset:step}
+  .step{
+    counter-increment:step;
+    padding:30px 28px; border-radius:var(--radius-card);
+    background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.045);
+  }
+  .band:not(.alt) .step{background:var(--bg-alt); box-shadow:none}
+  .step::before{
+    content:counter(step);
+    display:grid; place-items:center;
+    width:34px; height:34px; margin-bottom:20px;
+    border-radius:50%; background:var(--ink); color:#fff;
+    font-weight:700; font-size:15px;
+  }
+  .step h3{margin:0 0 8px; font-size:20px}
+  .step p{margin:0; color:var(--body); font-size:14.5px}
+
+  /* ---------- 价格 ---------- */
+  .pricing{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:stretch}
+  .price-card{
+    padding:34px 32px; border-radius:28px;
+    background:var(--bg-alt);
+  }
+  .band.alt .price-card{background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.045)}
+  .price-card .chip{
+    display:inline-block; margin-bottom:14px; padding:4px 12px;
+    border-radius:980px; font-size:12px; font-weight:700;
+    color:#fff; background:var(--blue);
+  }
+  .price-card .chip.plain{background:rgba(0,0,0,.08); color:var(--body)}
+  .price-line{display:flex; align-items:flex-end; gap:8px; margin:0 0 4px}
+  .price-line strong{font-size:52px; line-height:1; letter-spacing:-.02em}
+  .price-line span{padding-bottom:6px; color:var(--gray); font-size:15px}
+  .token{margin:0 0 18px; color:var(--gray); font-size:14px}
+  .list{padding:0; margin:0; list-style:none; color:var(--body); font-size:14.5px}
+  .list li{position:relative; padding:7px 0 7px 26px}
+  .list li::before{
+    content:"✓"; position:absolute; left:2px; top:7px;
+    color:var(--green); font-weight:800;
+  }
+
+  /* ---------- Mac ---------- */
+  .mac-panel{
+    display:grid; grid-template-columns:.85fr 1.15fr; gap:34px;
+    padding:38px 36px; border-radius:28px; background:#fff;
+    box-shadow:0 2px 10px rgba(0,0,0,.045);
+  }
+  .band:not(.alt) .mac-panel{background:var(--bg-alt); box-shadow:none}
+  .mac-panel > *{min-width:0}
+  .mac-panel h3{margin:0 0 10px; font-size:24px; letter-spacing:-.01em}
+  .mac-panel p{margin:0; color:var(--body); font-size:15px}
+  .mac-panel details{margin-top:16px; border:1px solid var(--line); border-radius:12px}
+  .mac-panel summary{cursor:pointer; list-style:none; padding:13px 16px; font-weight:600; font-size:14px}
+  .mac-panel summary::-webkit-details-marker{display:none}
+  .mac-panel ol{margin:0; padding:0 18px 14px 36px; color:var(--body); font-size:14px}
+  .mac-panel li{margin:7px 0}
+  .mac-panel .warn{margin:0 16px 14px; color:#b25000; font-size:13px}
+
+  /* ---------- FAQ ---------- */
+  .faq-list{max-width:760px; margin:0 auto; border-top:1px solid var(--line)}
+  .faq-list details{border-bottom:1px solid var(--line)}
+  .faq-list summary{
+    cursor:pointer; list-style:none;
+    padding:20px 40px 20px 4px; position:relative;
+    font-weight:600; font-size:16.5px; color:var(--ink);
+  }
+  .faq-list summary::-webkit-details-marker{display:none}
+  .faq-list summary::after{
+    content:"+"; position:absolute; right:8px; top:50%;
+    transform:translateY(-52%);
+    font-size:22px; font-weight:400; color:var(--faint);
+    transition:transform .2s ease;
+  }
+  .faq-list details[open] summary::after{transform:translateY(-52%) rotate(45deg)}
+  .ans{padding:0 4px 20px; color:var(--body); font-size:15px; max-width:680px}
+  .ans code{font-family:var(--mono); font-size:13px; background:var(--bg-alt); padding:2px 7px; border-radius:6px; word-break:break-all}
+
+  /* ---------- 结尾 CTA ---------- */
+  .closing{padding:110px 0 120px; text-align:center; background:var(--bg-alt)}
+  .closing h2{max-width:700px; margin:0 auto}
+  .closing p{margin:18px auto 30px; max-width:520px; color:var(--body); font-size:17px}
+
+  /* ---------- 底部悬浮下载条 ---------- */
+  .dockbar{
+    position:fixed; left:50%; bottom:22px; z-index:60;
+    transform:translate(-50%, 140%);
+    display:flex; align-items:center; gap:16px;
+    padding:10px 10px 10px 20px;
+    border-radius:980px;
+    background:rgba(255,255,255,.86);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    backdrop-filter:saturate(180%) blur(20px);
+    box-shadow:0 12px 40px rgba(0,0,0,.16), 0 0 0 1px rgba(0,0,0,.06);
+    transition:transform .45s cubic-bezier(.2,.7,.2,1);
+    white-space:nowrap;
+  }
+  .dockbar.show{transform:translate(-50%, 0)}
+  .dockbar .dname{display:flex; align-items:center; gap:8px; font-weight:700; font-size:14px}
+  .dockbar .dname svg{width:17px; height:17px}
+  .dockbar .dver{color:var(--faint); font-size:12.5px; font-weight:400}
+  .dock-btn{
+    padding:9px 22px; border-radius:980px; border:0; cursor:pointer;
+    background:var(--blue); color:#fff !important; font-weight:600; font-size:14px;
+    font-family:var(--sans);
+    transition:background .2s ease;
+  }
+  .dock-btn:hover{background:var(--blue-hover); text-decoration:none}
+
+  /* ---------- 页脚 ---------- */
+  footer{background:var(--bg-alt); border-top:1px solid var(--line); padding:34px 0 44px; color:var(--gray); font-size:13px}
+  .closing + footer{border-top:1px solid var(--line)}
+  footer .cols{display:flex; justify-content:space-between; gap:18px; flex-wrap:wrap}
+  footer a{color:var(--gray); margin-right:18px}
+  footer a:hover{color:var(--ink)}
+  footer .fine{margin-top:14px; color:var(--faint)}
+
+  /* ---------- 进场动画 ---------- */
+  .reveal{opacity:0; transform:translateY(26px); transition:opacity .7s ease, transform .7s cubic-bezier(.2,.6,.2,1)}
+  .reveal.in{opacity:1; transform:none}
+  @media (prefers-reduced-motion: reduce){
+    .reveal{opacity:1; transform:none; transition:none}
+    html{scroll-behavior:auto}
+  }
+
+  /* ---------- 响应式 ---------- */
+  @media(max-width:980px){
+    .tools-grid{grid-template-columns:1fr 1fr}
+    .tiles{grid-template-columns:1fr}
+    .steps{grid-template-columns:1fr}
+    .pricing{grid-template-columns:1fr}
+    .mac-panel{grid-template-columns:1fr; gap:20px}
+    .stats{grid-template-columns:1fr 1fr; gap:18px 0}
+    .stats .item:nth-child(3){border-left:0}
+  }
+  @media(max-width:700px){
+    .wrap,.nav{width:min(100% - 32px, 1080px)}
+    .nav{height:48px}
+    .nav-links a:not(.nav-dl){display:none}
+    .hero{padding-top:56px}
+    .hero .sub{font-size:16.5px}
+    .btn-primary{width:100%; min-width:0}
+    .band{padding:64px 0}
+    .band-head{margin-bottom:34px}
+    .tools-grid{grid-template-columns:1fr}
+    .tile{padding:28px 24px}
+    .mac-panel{padding:26px 22px}
+    .cmd{min-width:0; width:100%}
+    .cmd-row{display:grid; grid-template-columns:1fr}
+    .shot-body{grid-template-columns:1fr; min-height:0}
+    .shot-side{display:none}
+    .stats{grid-template-columns:1fr 1fr; text-align:center}
+    .stats .item + .item{border-left:0}
+    .closing{padding:72px 0 80px}
+    .dockbar{left:14px; right:14px; transform:translate(0,140%); justify-content:space-between}
+    .dockbar.show{transform:translate(0,0)}
+    footer .cols{display:block}
+    footer a{display:inline-block; margin-bottom:8px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav" aria-label="主导航">
+    <a class="logo" href="#">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z" fill="#e2a93b" stroke="#1d1d1f" stroke-width="1.1" stroke-linejoin="round"/></svg>
+      U-King
+    </a>
+    <div class="nav-links">
+      <a href="#tools">AI 工具</a>
+      <a href="#what">能力</a>
+      <a href="#how">上手</a>
+      <a href="#price">价格</a>
+      <a href="#mac">Mac</a>
+      <a href="#faq">常见问题</a>
+      <a href="changelog.html">更新日志</a>
+      <a href="xueyuan/index.html">AI 学院</a>
+      <a href="cad-ai-audit.html">CAD 审图</a>
+      <a class="nav-dl" href="#download">下载</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ Hero ============ -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">U-King · AI 装机管家</p>
+      <h1>AI 工具，<br>装好就能用。</h1>
+      <p class="sub">
+        对话式一键安装 <b>Codex、Claude Code、OpenClaw、Hermes</b>，
+        自动配好国内直连模型驱动，装完实测连通。<br class="pc-br">不懂命令行，也能五分钟开工。
+      </p>
+
+      <div class="cta-stack" id="download">
+        <div class="oldwin-alert" id="oldwinAlert" role="alert">
+          <p><b>⚠️ 检测到你的电脑是 Windows 7 / 8 / 8.1，U-King 在这些系统上无法运行。</b></p>
+          <p>不是下载的问题，也不是杀毒软件的问题——下下来双击会直接弹「<b>无法定位程序输入点 ProcessPrng 于动态链接库 bcryptprimitives.dll 上</b>」，程序连启动都启动不了。微软已于 2023 年停止支持这些系统，U-King 的界面依赖的运行库在上面装不了。</p>
+          <p><b>唯一的办法是把系统升级到 Windows 10 或 11。</b>升级完再回来下载即可，无需其他操作。</p>
+          <p class="anyway">（若你确认自己其实是 Win10/11、只是浏览器版本太老导致误判，可 <a href="https://u-claw.org.cn/download/U-King-Setup.exe" data-file="U-King-Setup.exe">仍要下载</a>。）</p>
+        </div>
+        <a class="btn-primary" id="primaryBtn" data-file="U-King-Setup.exe" href="https://u-claw.org.cn/download/U-King-Setup.exe">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 19h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="primaryLabel">免费下载 Windows 版</span>
+        </a>
+        <p class="dl-caption"><span data-ver>V0.9.31</span> · <span id="capMeta">Windows 10 / 11 · 安装包仅 2 MB · 免费，无需注册</span></p>
+        <p class="alt-links" id="altLinks">
+          <a href="https://u-claw.org.cn/download/U-King.exe" data-file="U-King.exe">Windows 绿色版（U 盘随身）</a>
+          <span class="sep">|</span>
+          <a href="#mac">macOS 版</a>
+        </p>
+        <p class="dl-status" id="dlStatus" role="status"></p>
+
+        <details class="dl-help stable-download">
+          <summary>最新版有问题？下载已验证稳定版</summary>
+          <div class="dl-help-body">
+            <p>先退出 U-King，再安装稳定版或替换绿色版即可；若新版已经打不开，可以先卸载程序本体再装。<b>不要删除 <code>~/.uking</code> 数据目录</b>，设备钱包、余额和本机任务会继续保留。</p>
+            <p>
+              <a class="stable-file" data-stable-file="U-King-Setup.exe" href="stable-version.json">Windows 稳定版安装包</a>
+              <span class="sep">|</span>
+              <a class="stable-file" data-stable-file="U-King.exe" href="stable-version.json">Windows 稳定版绿色版</a>
+              <span class="sep">|</span>
+              <a class="stable-file" data-stable-file="U-King-Mac.dmg" href="stable-version.json">macOS 稳定版</a>
+            </p>
+            <p class="warn">稳定版不会自动覆盖最新版，只有你主动下载时才会回退。版本与校验值见 <a href="stable-version.json">stable-version.json</a>。</p>
+            <noscript><p class="warn">浏览器未启用 JavaScript，稳定版下载链接不可用——请直接下载上方最新版，或打开 <a href="stable-version.json">stable-version.json</a> 手动核对版本与校验值。</p></noscript>
+          </div>
+        </details>
+
+        <details class="dl-help">
+          <summary>下载被拦截，或双击没反应？</summary>
+          <div class="dl-help-body">
+            <p>未签名软件的提示属正常，两步即可：① Edge 提示“通常不会下载”时点 <b>保留</b>；② 双击没反应时，右键文件 → 属性 → 勾选 <b>解除锁定</b> → 确定，再双击；蓝色拦截窗口里点 <b>更多信息 → 仍要运行</b>。</p>
+            <p>下载按钮反复失败时，打开 PowerShell 粘贴下面命令回车，会自动尝试多条线路并打开安装包：</p>
+            <div class="cmd-row">
+              <code class="cmd" id="winCmd">irm https://u-claw.org.cn/uking/dl.ps1 | iex</code>
+              <button class="copy" type="button" data-copy="winCmd">复制命令</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="dl-help" id="oldwinHelp">
+          <summary>提示「无法定位程序输入点 ProcessPrng」？</summary>
+          <div class="dl-help-body">
+            <p><b>这是系统版本太老，不是文件损坏、也不是中毒。</b>完整报错是「无法定位程序输入点 <code>ProcessPrng</code> 于动态链接库 <code>bcryptprimitives.dll</code> 上」。这个系统接口<b>只有 Windows 10 及以上才有</b>，Windows 7 / 8 / 8.1 上没有，所以程序在启动前就被系统挡住了。</p>
+            <p><b>怎么确认自己的系统版本：</b>按 <b>Win + R</b>，输入 <code>winver</code> 回车，弹窗第一行会写「Windows 7」还是「Windows 10 / 11」。</p>
+            <p class="warn">⚠️ 遇到这个报错时，<b>重新下载、换下载线路、关掉杀毒、右键「解除锁定」全都没用</b>，报错会一模一样——请不要在这上面继续折腾。</p>
+            <p><b>唯一的解决办法是升级到 Windows 10 或 11。</b>另外要注意：安装包 <code>U-King-Setup.exe</code> 在老系统上<b>能顺利装完</b>，但装完点桌面图标启动时照样报这个错——「装上了却打不开」也是同一个原因。</p>
+          </div>
+        </details>
+
+        <details class="dl-help">
+          <summary>杀毒软件报“病毒”、文件被自动删掉？</summary>
+          <div class="dl-help-body">
+            <p><b>这是误报，不是真中毒。</b>报出来的名字（<code>Trojan:Win32/Cloxer</code>、<code>Wacatac.B!ml</code> 等带 <code>!ml</code> / Heur 的）是 Defender 的“启发式通用名”，意思是“行为看着像”，不是查到了具体病毒。U-King 要下载 Node、装 Claude / Codex 这些 AI 工具，这个“下载完就运行”的动作会被判定引擎盯上；程序本身没有加壳、不含任何密钥。我们已向微软提交误报申诉。</p>
+            <p><b>恢复三步（Windows 安全中心）：</b>① 开始菜单搜 <b>Windows 安全中心</b> → <b>病毒和威胁防护</b> → <b>保护历史记录</b>；② 找到 U-King 那条，展开「操作选项」，选 <b>允许在设备上</b>（不要选阻止/隔离/删除）；③ 重新下载运行即可。</p>
+            <p class="warn">⚠️ 如果看到的是 <code>PUAAdvertising:Win32/FlashHelper</code> 之类带 <b>PUA</b> 的条目，那是 Flash 助手等广告推送程序，<b>跟 U-King 无关，直接选「删除」</b>。</p>
+            <p>装机过程中报毒导致工具装不上，也可以先把安装目录加进白名单：Windows 安全中心 → 病毒和威胁防护 → 「病毒和威胁防护设置」下的 <b>管理设置</b> → 拉到底 <b>添加或删除排除项</b> → 添加文件夹 <code>%USERPROFILE%\.uking</code>。</p>
+          </div>
+        </details>
+      </div>
+
+      <!-- 产品视觉 -->
+      <div class="hero-visual reveal" aria-label="U-King 产品界面预览">
+        <div class="app-shot">
+          <div class="shot-top">
+            <span class="win-dot"></span><span class="win-dot"></span><span class="win-dot"></span>
+            <span class="shot-title">U-King — AI 装机管家</span>
+          </div>
+          <div class="shot-body">
+            <aside class="shot-side">
+              <div class="side-title">U-KING</div>
+              <div class="side-item active"><span class="side-dot"></span>装机向导</div>
+              <div class="side-item"><span class="side-dot"></span>我的 AI</div>
+              <div class="side-item"><span class="side-dot"></span>Codex 工作站</div>
+              <div class="side-item"><span class="side-dot"></span>AI 作图</div>
+              <div class="side-item"><span class="side-dot"></span>终端</div>
+              <div class="side-title">TOOLS</div>
+              <div class="side-item" data-c="claude"><span class="side-dot"></span>Claude Code</div>
+              <div class="side-item" data-c="codex"><span class="side-dot"></span>Codex</div>
+              <div class="side-item" data-c="claw"><span class="side-dot"></span>OpenClaw</div>
+              <div class="side-item" data-c="hermes"><span class="side-dot"></span>Hermes</div>
+            </aside>
+            <div class="shot-main">
+              <div class="shot-bar">
+                <strong>装机向导</strong>
+                <span class="pill">虾盘云 · deepseek-v4-pro · 已连通</span>
+              </div>
+              <div class="mock-card">
+                <h3>正在安装 Codex CLI</h3>
+                <p>已检测到便携 Node，正在写入用户 PATH 并验证命令可用……</p>
+                <div class="progress"><span></span></div>
+              </div>
+              <div class="mock-card">
+                <h3><span class="okmark">✓</span>驱动连通测试通过</h3>
+                <p>Anthropic / OpenAI 双链路均可用，余额在管家里实时显示。</p>
+              </div>
+              <div class="terminal">
+                <p><span class="dim">$</span> claude --version</p>
+                <p class="ok">Claude Code ready</p>
+                <p><span class="dim">$</span> 驱动连通实测</p>
+                <p class="ok">模型已回复：可以开始工作了 ✓</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据条 -->
+      <div class="stats reveal" aria-label="产品要点">
+        <div class="item"><strong>5 分钟</strong><span>从下载到 AI 回话</span></div>
+        <div class="item"><strong>0 配置</strong><span>Node · PATH · Key 全自动</span></div>
+        <div class="item"><strong>4 款工具</strong><span>一次装好，即刻可用</span></div>
+        <div class="item"><strong>¥0</strong><span>管家本体永久免费</span></div>
+      </div>
+      <div class="hero-end"></div>
+    </div>
+  </section>
+
+  <!-- ============ 工具 ============ -->
+  <section id="tools" class="band alt">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">AI Tools</p>
+        <h2>一次下载，装好四大 AI 工具。</h2>
+        <p>U-King 对话式安装 OpenClaw、Claude Code、Codex、Hermes，自动配好国内可用模型驱动，装完实测连通、开箱即用。</p>
+      </div>
+      <div class="tools-grid reveal">
+        <article class="tool-card" style="--brand:#ff5a5a">
+          <span class="tool-logo"><img src="logos/openclaw.svg" alt="OpenClaw" loading="lazy" /></span>
+          <h3>OpenClaw</h3>
+          <p class="tool-sub">本地化 AI 生态 &amp; 智能助手</p>
+          <ul class="tool-list">
+            <li>更强大、更安全的本地化 AI 助手</li>
+            <li>多种大模型接入，数据不外泄</li>
+            <li>集成丰富开发工具与插件</li>
+            <li>装好配好驱动，即可对话</li>
+          </ul>
+        </article>
+        <article class="tool-card" style="--brand:#d97757">
+          <span class="tool-logo"><img src="logos/claude.svg" alt="Claude" loading="lazy" /></span>
+          <h3>Claude Code</h3>
+          <p class="tool-sub">Anthropic 出品的代码助手</p>
+          <ul class="tool-list">
+            <li>顶级自然语言理解与推理</li>
+            <li>擅长分析、写作与复杂代码</li>
+            <li>适合长文本、复杂场景任务</li>
+            <li>内置国内直连驱动，免翻墙</li>
+          </ul>
+        </article>
+        <article class="tool-card" style="--brand:#4d8cf0">
+          <span class="tool-logo"><img src="logos/codex.svg" alt="Codex" loading="lazy" /></span>
+          <h3>Codex</h3>
+          <p class="tool-sub">OpenAI 出品的代码代理</p>
+          <ul class="tool-list">
+            <li>理解并生成高质量代码</li>
+            <li>多语言、高效补全</li>
+            <li>支持 PR 创建、测试、重构</li>
+            <li>一键配好国内可用模型</li>
+          </ul>
+        </article>
+        <article class="tool-card" style="--brand:#e6a23c">
+          <span class="tool-logo"><img src="logos/hermes.png" alt="Hermes Agent" loading="lazy" /></span>
+          <h3>Hermes Agent</h3>
+          <p class="tool-sub">面向基础模型的上下文工程</p>
+          <ul class="tool-list">
+            <li>强记忆 + 任务规划 + Skills</li>
+            <li>灵活的工作流与策略编排</li>
+            <li>网页版控制台，小白好上手</li>
+            <li>一键装好网页版，配好即用</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 能力 ============ -->
+  <section id="what" class="band">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">What U-King Does</p>
+        <h2>不是教程，<br>是直接替你把环境跑通。</h2>
+        <p>下载之后会发生什么，一眼就该看明白。U-King 把「安装、配置、连通、修复、开工」变成一条可见的流程。</p>
+      </div>
+      <div class="tiles reveal">
+        <article class="tile">
+          <div class="ticon" style="background:#34c759"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7h14M5 12h9M5 17h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+          <h3>对话式装机</h3>
+          <p>体检电脑、安装工具、补依赖、写 PATH，每一步都有进度和日志。缺 Node 自动装便携版，装完逐项验证，不靠运气。</p>
+        </article>
+        <article class="tile">
+          <div class="ticon" style="background:#0071e3"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M4 12h16M7 7l10 10M17 7 7 17" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+          <h3>国内直连驱动</h3>
+          <p>内置虾盘云，一键把全部 AI 工具配到可用；也能切 DeepSeek、智谱、Kimi，或一键还原官方配置。不用翻墙、不用信用卡。</p>
+        </article>
+        <article class="tile">
+          <div class="ticon" style="background:#ff6b5e"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12a7 7 0 0 1 12-5M19 12a7 7 0 0 1-12 5M17 4v5h-5M7 20v-5h5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>AI 自动修复</h3>
+          <p>安装失败时，日志交给 AI 诊断，给出修复命令；危险命令一律拦截，经你确认后才执行，修完自动重装验证。</p>
+        </article>
+        <article class="tile">
+          <div class="ticon" style="background:#e2a93b"><svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16v12H4zM8 21h8M12 17v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Codex 工作站</h3>
+          <p>对话、终端、文件、浏览器同屏协作，按项目保存 AI 工作现场。不会写提示词也没关系，任务生成器带你把话说清楚。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 上手 ============ -->
+  <section id="how" class="band alt">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">Get Started</p>
+        <h2>三步，从空电脑到 AI 开工。</h2>
+        <p>不用在官网学一堆概念。下载、点向导、选驱动，然后开始让 AI 处理你的事。</p>
+      </div>
+      <div class="steps reveal">
+        <article class="step"><h3>下载 U-King</h3><p>Windows 推荐 2 MB 安装包；绿色版适合放 U 盘随身带。Mac 用一条命令安装，避开未签名拦截。</p></article>
+        <article class="step"><h3>运行装机向导</h3><p>自动检测 Node、npm、Codex、Claude Code、Git 等环境，缺什么补什么，全程可见。</p></article>
+        <article class="step"><h3>选驱动，开工</h3><p>选虾盘云或填自己的 API Key。模型真实回复一句话之后，才算安装完成。</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 价格 ============ -->
+  <section id="price" class="band">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">Pricing</p>
+        <h2>管家免费，模型按量用。</h2>
+        <p>不订阅套餐。先把工具跑起来，用多少模型能力，就花多少钱。</p>
+      </div>
+      <div class="pricing reveal">
+        <article class="price-card">
+          <span class="chip">内置虾盘云驱动</span>
+          <div class="price-line"><strong>¥20</strong><span>起充</span></div>
+          <p class="token">约 1000 万 token · 余额永久有效</p>
+          <ul class="list">
+            <li>DeepSeek-V4 Pro 满血版，国内直连</li>
+            <li>支付宝 / 微信扫码充值，秒级到账</li>
+            <li>无需注册，使用本机专属 Key</li>
+            <li>余额和消耗趋势在管家里可见</li>
+          </ul>
+        </article>
+        <article class="price-card">
+          <span class="chip plain">U-King 本体</span>
+          <div class="price-line"><strong>免费</strong><span>长期使用</span></div>
+          <p class="token">已有自己的 API Key 也能直接填</p>
+          <ul class="list">
+            <li>对话式安装向导 + 自动验证</li>
+            <li>AI 自动修复安装失败</li>
+            <li>Codex / Claude Code / OpenClaw / Hermes 入口</li>
+            <li>DeepSeek、智谱、Kimi、官方配置随时切换</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Mac ============ -->
+  <section id="mac" class="band alt">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">macOS</p>
+        <h2>Mac，一条命令装好。</h2>
+        <p>未签名 App 直接双击 dmg 容易被系统拦截。命令行安装会自动下载、移入应用程序并打开。</p>
+      </div>
+      <div class="mac-panel reveal">
+        <div>
+          <h3>终端一键安装</h3>
+          <p>按 Command + 空格，搜索「终端」并打开，粘贴右侧命令，回车。</p>
+        </div>
+        <div>
+          <div class="cmd-row">
+            <code class="cmd" id="macCmd">curl -fsSL https://u-claw.org.cn/uking/install-mac.sh | sh</code>
+            <button class="copy" type="button" data-copy="macCmd">复制命令</button>
+          </div>
+          <details>
+            <summary>偏要用 dmg 拖拽安装时的修复办法</summary>
+            <ol>
+              <li>下载 <a href="https://u-claw.org.cn/download/U-King-Mac.dmg">U-King-Mac.dmg</a> 并拖入「应用程序」。</li>
+              <li>打开终端，执行：<br><code class="cmd" style="display:inline-block; margin-top:6px">xattr -rd com.apple.quarantine /Applications/U-King.app</code></li>
+            </ol>
+            <p class="warn">提示「已损坏」并不代表文件损坏，这是 macOS 对未签名应用的统一拦截。</p>
+          </details>
+          <p class="warn">下载中断或提示连接重置时，命令会自动换线路；三条都不通说明当前网络可能访问不了这些域名。稍后重试，或手动下载 dmg。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section id="faq" class="band">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">FAQ</p>
+        <h2>下载前，最常见的几个问题。</h2>
+      </div>
+      <div class="faq-list reveal">
+        <details open><summary>需要会写代码或懂命令行吗？</summary><div class="ans">不需要。U-King 面向「想用 AI 但不想折腾环境」的用户，安装和配置都由向导带着走。</div></details>
+        <details><summary>要翻墙吗？要信用卡吗？</summary><div class="ans">都不要。内置虾盘云 / DeepSeek 等国内可用驱动，充值支持支付宝和微信。</div></details>
+        <details><summary>充值怎么算？会乱扣吗？</summary><div class="ans"><code>¥1 = 50 万 token</code>，U-King 渠道 ¥20 起充。只有调用模型时才消耗 token，管家本体免费。</div></details>
+        <details><summary>本机专属 Key 是什么？</summary><div class="ans">U-King 会根据电脑生成一个稳定 Key，用于余额和充值。重装系统前建议备份；丢失时可凭订单联系客服找回。</div></details>
+        <details><summary>我已经有 DeepSeek / 智谱 / Kimi 的 API Key 了</summary><div class="ans">可以直接填自己的 Key 使用，仍然能享受一键安装、自动修复和工作台。</div></details>
+        <details><summary>能放进 U 盘随身带吗？</summary><div class="ans">能。Windows 绿色版是单文件，适合放在 U 盘里；也可以一键复制到本地目录。</div></details>
+        <details><summary>下载提示连接重置怎么办？</summary><div class="ans">下载按钮会自动选线。Windows 可在 PowerShell 执行 <code>irm https://u-claw.org.cn/uking/dl.ps1 | iex</code>；Mac 可在终端执行 <code>curl -fsSL https://u-claw.org.cn/uking/install-mac.sh | sh</code>。两条脚本都会尝试备用线路，全部不通时会提示手动下载。</div></details>
+        <details><summary>打开后白屏怎么办？</summary><div class="ans">通常是缺少 Microsoft Edge WebView2 运行时。安装包会自动补；绿色版白屏时可安装微软官方 WebView2 后重试。</div></details>
+        <details><summary>Windows 7 / 8 能用吗？报「无法定位程序输入点 ProcessPrng」怎么办？</summary><div class="ans"><b>不能用，需要 Windows 10 或 11。</b>在 Win7 / 8 / 8.1 上双击会弹「无法定位程序输入点 <code>ProcessPrng</code> 于动态链接库 <code>bcryptprimitives.dll</code> 上」——这是系统缺少 Win10 才有的接口，<b>不是文件损坏、也不是中毒</b>，重新下载、换线路、关杀毒都无效。安装包在老系统上能装完，但装完点图标启动照样报这个错。按 <b>Win + R</b> 输入 <code>winver</code> 可查看自己的系统版本；升级到 Win10 / 11 后即可正常使用。</div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 结尾 CTA ============ -->
+  <section class="closing">
+    <div class="wrap reveal">
+      <h2>现在，把 AI 装进你的电脑。</h2>
+      <p>免费下载 U-King，五分钟后让 AI 开始替你干活。</p>
+      <a class="btn-primary" id="closingBtn" data-file="U-King-Setup.exe" href="https://u-claw.org.cn/download/U-King-Setup.exe">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 19h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="closingLabel">免费下载 Windows 版</span>
+      </a>
+      <p class="dl-caption"><span data-ver>V0.9.31</span> · Windows 10 / 11 · macOS 12+</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a href="https://cloud.u-claw.org/#recharge">虾盘云充值</a>
+        <a href="https://u-claw.org">U-Claw 全家桶</a>
+        <a href="xueyuan/index.html">AI 学院</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="whats-new.html">最新动态</a>
+        <a href="cad-ai-audit.html">CAD AI 图纸审计</a>
+        <a href="skills/install-windows.json">安装清单</a>
+      </div>
+      <div>
+        <a href="terms.html">服务条款 · Terms</a>
+        <a href="privacy.html">隐私政策 · Privacy</a>
+        <a href="refund.html">退款政策 · Refunds</a>
+      </div>
+      <div>U-King AI 管家 · 让国内用户快速装好、用好 AI 工具<br />
+        <span style="opacity:.75">U-King is a product operated by 火火的(深圳)科技有限公司</span>
+      </div>
+    </div>
+    <p class="fine">Windows 10/11 · macOS 12+ · 无需管理员权限 · 下载自动选择最快线路</p>
+  </div>
+</footer>
+
+<!-- 底部悬浮下载条 -->
+<div class="dockbar" id="dockbar" aria-hidden="true">
+  <span class="dname">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z" fill="#e2a93b" stroke="#1d1d1f" stroke-width="1.1" stroke-linejoin="round"/></svg>
+    U-King <span class="dver" data-ver>V0.9.31</span>
+  </span>
+  <a class="dock-btn" id="dockBtn" data-file="U-King-Setup.exe" href="https://u-claw.org.cn/download/U-King-Setup.exe">免费下载</a>
+</div>
+
+<script>
+  // ---------- 系统识别：配置主按钮 ----------
+  (function(){
+    var ua = navigator.userAgent;
+    var isMac = /Macintosh|Mac OS X/.test(ua) && !/iPhone|iPad/.test(ua);
+    var isMobile = /Android|iPhone|iPad|Mobile/.test(ua);
+    var capMeta = document.getElementById('capMeta');
+    var altLinks = document.getElementById('altLinks');
+
+    function setBtn(id, labelId, label, href, file){
+      var btn = document.getElementById(id);
+      if(!btn) return;
+      var lab = document.getElementById(labelId);
+      if(lab) lab.textContent = label;
+      btn.setAttribute('href', href);
+      if(file) btn.setAttribute('data-file', file);
+      else btn.removeAttribute('data-file');
+    }
+
+    if(isMac){
+      setBtn('primaryBtn','primaryLabel','macOS 一键安装','#mac',null);
+      setBtn('closingBtn','closingLabel','macOS 一键安装','#mac',null);
+      var dockBtn = document.getElementById('dockBtn');
+      if(dockBtn){ dockBtn.textContent='一键安装'; dockBtn.setAttribute('href','#mac'); dockBtn.removeAttribute('data-file'); }
+      if(capMeta) capMeta.textContent = 'macOS 12+ · 约 6 MB · 免费，无需注册';
+      if(altLinks) altLinks.innerHTML =
+        '<a href="https://u-claw.org.cn/download/U-King-Setup.exe" data-file="U-King-Setup.exe">Windows 安装包</a>' +
+        '<span class="sep">|</span>' +
+        '<a href="https://u-claw.org.cn/download/U-King.exe" data-file="U-King.exe">Windows 绿色版（U 盘随身）</a>';
+    }else if(isMobile){
+      if(capMeta) capMeta.textContent = 'U-King 是电脑端软件，请用 Windows 或 Mac 电脑打开本页下载';
+    }else if(/Windows NT (5\.[12]|6\.[0123])(;|\))/.test(ua)){
+      // Win XP(5.1) / Vista(6.0) / 7(6.1) / 8(6.2) / 8.1(6.3)：exe 依赖 Win10+ 的
+      // ProcessPrng，下下来必然启动失败，下载前就拦住并解释清楚。
+      // 检测可靠性：新版 Chrome 会把 UA 里的 Windows 版本冻结成 NT 10.0，但那些浏览器
+      // 本来就装不到 Win7/8 上（Chrome/Edge 109 是最后一版支持，其 UA 仍报真实版本），
+      // 所以这里对我们真正关心的那批机器是准的；误判方向也安全——只多一层提示，
+      // 下载入口仍保留在告警框里。
+      var alertBox = document.getElementById('oldwinAlert');
+      if(alertBox) alertBox.classList.add('on');
+      setBtn('primaryBtn','primaryLabel','你的系统无法运行 U-King','#oldwinHelp',null);
+      setBtn('closingBtn','closingLabel','你的系统无法运行 U-King','#oldwinHelp',null);
+      ['primaryBtn','closingBtn'].forEach(function(id){
+        var b = document.getElementById(id);
+        if(b) b.classList.add('blocked');
+      });
+      var dockBtnOld = document.getElementById('dockBtn');
+      if(dockBtnOld){ dockBtnOld.textContent='系统不支持'; dockBtnOld.setAttribute('href','#oldwinHelp'); dockBtnOld.removeAttribute('data-file'); dockBtnOld.classList.add('blocked'); }
+      if(capMeta) capMeta.textContent = 'U-King 需要 Windows 10 / 11；你当前的系统版本不受支持';
+      if(altLinks) altLinks.style.display = 'none';
+      var helpBox = document.getElementById('oldwinHelp');
+      if(helpBox) helpBox.setAttribute('open','');
+    }
+  })();
+
+  // ---------- 智能选线下载 ----------
+  (function(){
+    var SOURCES = [
+      'https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/',
+      'https://u-claw.org.cn/download/',
+      'https://cloud.u-claw.org/download/'
+    ];
+    var statusEl = document.getElementById('dlStatus');
+    function setStatus(t){ if(statusEl) statusEl.textContent = t || ''; }
+    function probe(url, timeoutMs){
+      return new Promise(function(resolve){
+        var done=false, timer=setTimeout(function(){ if(!done){done=true; resolve(false);} }, timeoutMs);
+        fetch(url, {method:'HEAD', mode:'cors', cache:'no-store'})
+          .then(function(r){ if(!done){done=true; clearTimeout(timer); resolve(r.ok);} })
+          .catch(function(){
+            fetch(url, {method:'HEAD', mode:'no-cors', cache:'no-store'})
+              .then(function(){ if(!done){done=true; clearTimeout(timer); resolve(true);} })
+              .catch(function(){ if(!done){done=true; clearTimeout(timer); resolve(false);} });
+          });
+      });
+    }
+    function triggerDownload(url){
+      var a=document.createElement('a');
+      a.href=url; a.download=''; document.body.appendChild(a); a.click(); a.remove();
+    }
+    function smartDownload(file, fallbackHref){
+      setStatus('正在选择最快下载线路…');
+      var i=0;
+      function next(){
+        if(i>=SOURCES.length){
+          setStatus('自动选线未成功，已尝试默认线路；失败时请用上方 PowerShell 命令。');
+          triggerDownload(fallbackHref);
+          return;
+        }
+        var url=SOURCES[i]+file;
+        probe(url, 4000).then(function(ok){
+          if(ok){ setStatus('线路就绪，开始下载 '+file+' ✓'); triggerDownload(url); }
+          else { i++; next(); }
+        });
+      }
+      next();
+    }
+    document.addEventListener('click', function(e){
+      var el = e.target.closest ? e.target.closest('[data-file]') : null;
+      if(!el) return;
+      e.preventDefault();
+      smartDownload(el.getAttribute('data-file'), el.getAttribute('href'));
+    });
+  })();
+
+  // ---------- 复制命令 ----------
+  (function(){
+    document.querySelectorAll('[data-copy]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var el=document.getElementById(btn.getAttribute('data-copy'));
+        if(!el) return;
+        navigator.clipboard.writeText(el.textContent).then(function(){
+          var old=btn.textContent;
+          btn.textContent='已复制 ✓';
+          setTimeout(function(){btn.textContent=old;},1600);
+        });
+      });
+    });
+  })();
+
+  // ---------- 版本号（version.json 同源，失败保留内置文案） ----------
+  (function(){
+    fetch('version.json', {cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+      if(j && j.version){
+        document.querySelectorAll('[data-ver]').forEach(function(el){ el.textContent = 'V' + j.version; });
+      }
+    }).catch(function(){});
+  })();
+
+  // ---------- 稳定版链接（stable-version.json 同源，JS 不可用时保留版本清单） ----------
+  (function(){
+    fetch('stable-version.json', {cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+      if(!j || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(j.version || '')) return;
+      var base = 'https://u-claw.org.cn/download/stable/' + encodeURIComponent(j.version) + '/';
+      document.querySelectorAll('[data-stable-file]').forEach(function(el){
+        el.setAttribute('href', base + el.getAttribute('data-stable-file'));
+      });
+    }).catch(function(){});
+  })();
+
+  // ---------- 底部悬浮下载条 ----------
+  (function(){
+    var bar = document.getElementById('dockbar');
+    var cta = document.getElementById('download');
+    if(!bar || !cta) return;
+    var pastHero = false;
+    if('IntersectionObserver' in window){
+      new IntersectionObserver(function(entries){
+        pastHero = !entries[0].isIntersecting && entries[0].boundingClientRect.top < 0;
+        update();
+      }, {threshold:0}).observe(cta);
+    }
+    function nearBottom(){
+      return window.scrollY + window.innerHeight > document.documentElement.scrollHeight - 480;
+    }
+    function update(){
+      var show = pastHero && !nearBottom();
+      bar.classList.toggle('show', show);
+      bar.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+    var ticking=false;
+    window.addEventListener('scroll', function(){
+      if(ticking) return;
+      ticking=true;
+      requestAnimationFrame(function(){ update(); ticking=false; });
+    }, {passive:true});
+  })();
+
+  // ---------- 进场动画 ----------
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if(!('IntersectionObserver' in window)){
+      els.forEach(function(el){ el.classList.add('in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    }, {threshold:.12, rootMargin:'0px 0px -8% 0px'});
+    els.forEach(function(el){ io.observe(el); });
+  })();
+</script>
+</body>
+</html>

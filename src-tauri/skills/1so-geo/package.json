@@ -1,0 +1,17 @@
+{
+  "name": "1so",
+  "version": "0.1.0",
+  "description": "一搜商答 / 1so —— 本地 GEO 工具：把老板本地资料变成 AI 能读懂的商家答案，并检测公司在 AI 眼里的样子。",
+  "type": "module",
+  "bin": {
+    "1so": "bin/1so.mjs"
+  },
+  "scripts": {
+    "demo": "node bin/1so.mjs run --project examples/demo"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0",
+  "private": true
+}

@@ -1,0 +1,4279 @@
+{
+  "actions": [
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.command_guard.inspect --json --no-input"
+        }
+      ],
+      "description": "Read the resolved and preferred launchers for Claude, Codex, OpenClaw and Hermes without changing the machine.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.command_guard.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "platform",
+          "shims_dir",
+          "conflicts",
+          "commands"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect CLI command priority"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.network.inspect --json --no-input"
+        }
+      ],
+      "description": "Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.network.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "platform",
+          "environment_proxies",
+          "wsl",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect runtime network and WSL proxy handoff"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.ai_process.inspect --json --no-input"
+        }
+      ],
+      "description": "Read local crash dumps, Windows Error Reporting entries and running security software to tell a crashed AI CLI session apart from one killed by another program. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.ai_process.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "platform",
+          "window_hours",
+          "crash_evidence",
+          "unattributed_dumps",
+          "security_products_running",
+          "verdict",
+          "hint"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect AI process health and termination evidence"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.crash.inspect --json --no-input"
+        }
+      ],
+      "description": "Read U-King's local crash log, panic and UI-crash records, and whether previous runs exited cleanly. Reads only; does not depend on Windows Event Log.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.crash.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "version",
+          "ready",
+          "blockers",
+          "crashes",
+          "unclean_exits",
+          "events"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect U-King's own crash and unclean-exit history"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.instance.inspect --json --no-input"
+        }
+      ],
+      "description": "Report whether this process owns the background singletons (scheduler, skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.instance.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "role",
+          "ready",
+          "blockers",
+          "pid",
+          "disabled_in_sidecar"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect whether this U-King process is the primary instance or a parallel debug sidecar"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.chat.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether a chat turn is running right now, how long it has been silent and which phase it is stuck in, plus how the last few turns ended. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.chat.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ready",
+          "blockers",
+          "stall_secs",
+          "running",
+          "stalled_now",
+          "recent"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the current and recent chat turns"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.stack.inspect --json --no-input"
+        }
+      ],
+      "description": "Probe node / npm / claude / codex / git plus desktop apps and the portable runtime. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.stack.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "node",
+          "npm",
+          "claude",
+          "codex",
+          "git",
+          "claude_desktop",
+          "codex_app",
+          "portable_node"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect installed AI toolchain"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.hardware.inspect --json --no-input"
+        }
+      ],
+      "description": "Read RAM, GPU and CPU to recommend a local model tier. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.hardware.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ram_total_mb",
+          "gpu_vendor",
+          "gpu_accelerated",
+          "cpu_cores",
+          "os",
+          "recommend"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect hardware capability for local models"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.codex.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether the Codex desktop app is installed and whether U-King manages its driver config. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.codex.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "app_installed",
+          "driver_managed"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect Codex desktop app and driver takeover"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.driver.inspect --json --no-input"
+        }
+      ],
+      "description": "Read the active provider of Claude, Codex, ClawX and Hermes from their real config files. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.driver.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "active",
+          "clawx_installed",
+          "hermes_installed",
+          "claude_own_key",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect which AI driver each tool is using"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.footprint.inspect --json --no-input"
+        }
+      ],
+      "description": "Scan U-King's own footprint, changed configs and AI tools it installed. Reads only, deletes nothing.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.footprint.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "items",
+          "count"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect what U-King left on this machine"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.toolbox.inspect --json --no-input"
+        }
+      ],
+      "description": "Read which capability tools (ffmpeg / Chrome / PowerShell 7 / Python …) are installed. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.toolbox.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "items",
+          "count"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect capability tools"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.reel_presets.inspect --json --no-input"
+        }
+      ],
+      "description": "List the built-in schema-v1 visual-style presets for one-click reels. Reads only; selecting a preset never enables BGM or changes a user's supplied audio settings.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.creator.reel_presets.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "schema_version",
+          "count",
+          "presets"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect one-click reel presets"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.rtk.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether RTK is installed, enabled as a Claude Code hook, and how many tokens it saved. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.rtk.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "installed",
+          "enabled",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the token squeezer (RTK)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.rtk.demo --json --no-input"
+        }
+      ],
+      "description": "Run the real rtk over two built-in sample logs (a build log and a test run) and return the before/after text side by side. Proves what is cut and what is kept. Reads only; the samples are embedded, no user files are touched.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.rtk.demo",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ready",
+          "blockers",
+          "cases"
+        ],
+        "type": "object"
+      },
+      "title": "Demonstrate what the token squeezer actually cuts"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.hermes_browser.inspect --json --no-input"
+        }
+      ],
+      "description": "Tell apart 'Hermes can chat' from 'Hermes can open pages and screenshot'. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.hermes_browser.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "hermes_installed",
+          "browser_ready",
+          "config_dir",
+          "message",
+          "suggestions"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect Hermes browser takeover"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.clawx.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether the ClawX desktop app currently holds its config in memory. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.clawx.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "running"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect whether ClawX is running"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.inspect --json --no-input"
+        }
+      ],
+      "description": "Report Ollama, llama.cpp, vLLM and SGLang together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. vLLM and SGLang are reported as `unsupported_here` on Windows/macOS because upstream only ships Linux+CUDA — saying so is the answer, not hiding them. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.localllm.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "engines"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the four local LLM engines"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.catalog --json --no-input"
+        }
+      ],
+      "description": "The curated shelf of open-weight models U-King can download, plus which quantisations of each are already on this disk. The shelf itself is hot-delivered (server first, embedded copy as fallback) so it can be refreshed without shipping an exe. Sizes carried here are approximate by design — the exact quantisation list and byte sizes are asked of the model host at download time, because those change upstream and a stale number would blow up the customer's disk. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.localllm.catalog",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "description": "Ask for one model's real quantisation list (live from the model host: name, total bytes, whether it is already local). Omit to just list the shelf.",
+            "type": "string"
+          },
+          "refresh": {
+            "description": "Bypass the 12h shelf cache and re-fetch it.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "models"
+        ],
+        "type": "object"
+      },
+      "title": "List downloadable local models (the store shelf)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.download --json --no-input"
+        }
+      ],
+      "description": "Fetch one quantisation of a shelf model into the download folder, resuming a half-finished file rather than starting over, and verifying the finished bytes against the size the host reported. Idempotent: an already-complete file is skipped, so re-running costs nothing. A model is tens of GB — this can run for hours on a home connection.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 86400000
+      },
+      "id": "runtime.localllm.download",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dir": {
+            "description": "Change the download folder first. Models are tens of GB and the system drive is usually not where they belong.",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model_id": {
+            "description": "Shelf model id, e.g. qwen3.5-9b.",
+            "type": "string"
+          },
+          "quant": {
+            "description": "Which quantisation, e.g. Q4_K_M. Ask runtime.localllm.catalog with model_id for the real list — do not guess.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "quant"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "path"
+        ],
+        "type": "object"
+      },
+      "title": "Download a model from the store shelf"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.start --json --no-input"
+        }
+      ],
+      "description": "Start one of the local engines and return its OpenAI-compatible endpoint. Idempotent: if U-King already started that engine, the existing endpoint is returned and no second process is spawned. Refuses engines this machine cannot run instead of failing halfway. Run parameters given here are saved and reused next time, so the customer configures context length and port once rather than every launch.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 120000
+      },
+      "id": "runtime.localllm.start",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ctx": {
+            "description": "Context length in tokens. 0 leaves it to the engine. Bigger contexts cost memory even before the first token.",
+            "maximum": 1048576,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "engine": {
+            "description": "Which engine to start.",
+            "enum": [
+              "ollama",
+              "llamacpp",
+              "vllm",
+              "sglang"
+            ],
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "gpu_layers": {
+            "description": "Layers to offload to the GPU: -1 auto (the engine decides), 0 CPU only, 999 all of them. Forcing 999 on a card without the VRAM makes the server exit on load, which looks to the customer like the button did nothing — so auto is the default.",
+            "maximum": 999,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "model": {
+            "description": "Model to load: a .gguf path for llama.cpp, a HuggingFace folder for vLLM/SGLang. Ignored by Ollama, which loads per request.",
+            "type": "string"
+          },
+          "port": {
+            "description": "Port to serve on. Defaults to 18820; Ollama always uses 11434.",
+            "maximum": 65535,
+            "minimum": 1024,
+            "type": "integer"
+          },
+          "threads": {
+            "description": "CPU threads. 0 lets the engine pick.",
+            "maximum": 256,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "engine"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "endpoint"
+        ],
+        "type": "object"
+      },
+      "title": "Start a local inference server"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.stop --json --no-input"
+        }
+      ],
+      "description": "Stop the process U-King started for that engine. Idempotent: succeeds when nothing is running. Only ever kills the recorded PID, and only after re-checking that PID still carries the image name we launched — never by bare process name, which would take down a customer's own identically-named server.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.localllm.stop",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "engine": {
+            "description": "Which engine to stop.",
+            "enum": [
+              "ollama",
+              "llamacpp",
+              "vllm",
+              "sglang"
+            ],
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Stop the local inference server U-King started"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.install --json --no-input"
+        }
+      ],
+      "description": "Install the engine itself (not a model). Ollama installs unattended from mirrored sources; the others report what to do instead of pretending. Idempotent: already installed returns success without touching anything.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 2400000
+      },
+      "id": "runtime.localllm.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "engine": {
+            "description": "Which engine to install.",
+            "enum": [
+              "ollama",
+              "llamacpp",
+              "vllm",
+              "sglang"
+            ],
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "variant": {
+            "description": "llama.cpp build flavour. Defaults to vulkan when this machine has a GPU, cpu otherwise. CUDA is faster on NVIDIA but needs a ~540MB download (build + CUDA runtime) versus ~35MB for Vulkan, so it is opt-in rather than automatic.",
+            "enum": [
+              "vulkan",
+              "cuda",
+              "cpu"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Install a local LLM engine"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.localllm.model_add --json --no-input"
+        }
+      ],
+      "description": "`kind=dir` adds a folder to the scan list (models are tens of GB — the system drive is usually not where they live). `kind=gguf` imports one .gguf into Ollama via a generated Modelfile. Idempotent both ways: re-adding the same folder or re-importing the same model changes nothing.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 600000
+      },
+      "id": "runtime.localllm.model_add",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Add a model folder, or import a single GGUF into Ollama.",
+            "enum": [
+              "dir",
+              "gguf"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "Model name for kind=gguf. Letters, digits and - _ . : only, because it becomes a command argument.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Folder path for kind=dir, .gguf file path for kind=gguf.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Register a local model folder or import a GGUF into Ollama"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.expert.inspect --json --no-input"
+        }
+      ],
+      "description": "List expert packs under ~/.uking/experts. Each folder is one hired expert; reports which ones passed validation, which were rejected and why, and which declare skill packs that are not synced yet. Reads only; never writes.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.expert.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "dir",
+          "dir_exists",
+          "packs",
+          "rejected",
+          "truncated",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect hired experts (expert packs)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.hire.search --json --no-input"
+        }
+      ],
+      "description": "Search npm (and other registries) for skills/plugins that can be hired into this machine as experts. Returns not just what exists but **how to hire each one** (CLI / skill pack / harness tool). Read-only: never installs, never writes. An empty result reports whether the network answered, so 'nothing found' is never confused with 'could not reach'.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 20000
+      },
+      "id": "runtime.hire.search",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "description": "What kind of actor you need — e.g. `keywords:dsh-plugin ppt`, `公众号`, `cad`. Registry search syntax is passed through.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "query",
+          "hits",
+          "sources",
+          "truncated",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Search the open ecosystem for hireable actors"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.geo.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether the 1so-geo skill pack is installed. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.geo.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "installed",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the GEO skill pack"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.uu_remote.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether NetEase UU Remote is installed so the author can see this screen. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.uu_remote.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "installed",
+          "ready",
+          "blockers",
+          "portable_available",
+          "can_auto_install",
+          "download_page"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect screen-sharing assistance (UU Remote)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.podapp.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether PodApp is installed, its version, and the latest published version. Reads only; fetches the update manifest over the network.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 20000
+      },
+      "id": "runtime.podapp.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "installed",
+          "ready",
+          "blockers",
+          "version",
+          "update_available",
+          "can_auto_install"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect PodApp (泊舟 AI 小程序)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.automation.inspect --json --no-input"
+        }
+      ],
+      "description": "List every scheduled automation with its next run time, plus whether automations can actually fire on this machine. Reads only. Note: the scheduler lives in this process — jobs only fire while U-King is running (tray counts).",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.automation.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ready",
+          "blockers",
+          "count",
+          "enabled",
+          "runs_only_while_app_open",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect scheduled automations"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.optimizer.inspect --json --no-input"
+        }
+      ],
+      "description": "Run the read-only optimizer doctor (ukrt on Windows, native on macOS) and return its report. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.optimizer.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the AI optimizer engine report"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.journal.inspect --json --no-input"
+        }
+      ],
+      "description": "Append-only local record of what happened on this machine: which Action Core actions ran (from GUI / CLI / MCP) and which tools the AI called, with outcome and timing. Paths and commands are redacted before they are written. Records U-King actions only — never keyboard, windows, clipboard or other processes. Local only, never uploaded.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.journal.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "description": "Look-back window in days (default 1 = today).",
+            "maximum": 30,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ready",
+          "blockers",
+          "enabled",
+          "summary",
+          "recent",
+          "records_only_uking_actions",
+          "uploads"
+        ],
+        "type": "object"
+      },
+      "title": "Read the local activity timeline (who did what, when)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.origin.inspect --json --no-input"
+        }
+      ],
+      "description": "Read the persisted object-state of a task: goal, what the world looks like now, verified facts, decisions with reasons, and next steps. This is state, not a chat transcript — a different session or a different harness can resume from it. Without task_id, lists all tasks that have state. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.origin.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "compiled": {
+            "description": "Also return the context block that would be injected into a harness prompt (default false).",
+            "type": "boolean"
+          },
+          "task_id": {
+            "description": "Task id. Omit to list every task that has origin state.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "tasks",
+          "count"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect a task's origin state (2Origin)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.origin.save --json --no-input"
+        }
+      ],
+      "description": "Persist the object-state of a task so a later session or a different harness can resume without re-asking. Write what the world looks like now, not what was said. facts[].verified must be true only when a machine re-checked it. Pass expected_version (from origin.inspect) to refuse overwriting a state someone else changed. Writes only under ~/.uking/origin/ — never touches your files.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.origin.save",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "Version you based this edit on. Mismatch = someone else wrote first; the save is refused.",
+            "type": "integer"
+          },
+          "state": {
+            "description": "The task.origin object (spec/kind/id/goal/version/updated_at/current_state/next_steps required).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "title": "Save a task's origin state (2Origin)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.workbench.inspect --json --no-input"
+        }
+      ],
+      "description": "A workbench is a plain folder layout plus a WORKBENCH.md that tells any AI what each folder means — not an app. This lists the built-in templates, and if you pass a path, reports whether that folder can host one and exactly what installing would create. Read-only: previewing never creates the folder.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.workbench.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "manifest": {
+            "description": "A workbench definition built for this specific customer. Preferred over `template` — preview validates it and tells you exactly what is wrong before anything is written.",
+            "type": "object"
+          },
+          "overwrite_doc": {
+            "description": "Preview as if you asked to refresh WORKBENCH.md and the contract file.",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Folder to preview installing into. Omit to just list the built-in examples.",
+            "type": "string"
+          },
+          "template": {
+            "description": "Built-in example id to preview (default: the first one). Ignored when `manifest` is given.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "templates",
+          "default_template",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "List workbench templates and preview installing one"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.workbench.scan --json --no-input"
+        }
+      ],
+      "description": "Count files by extension, biggest subfolders, how much changed in the last 30 days, and how deep it nests — the evidence for shaping a workbench around what this person actually does. Only stats files; never opens one, because it does not yet know which are private. Never reads this machine's AI usage records either: the only inputs are the folder the customer pointed at and what he says. Caps out at 20000 files and reports `truncated` when it does — not seeing something is not the same as it not being there.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 20000
+      },
+      "id": "runtime.workbench.scan",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Folder to inventory. Usually the messy folder he works in today, which is NOT where the workbench will go.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "root",
+          "files",
+          "by_ext",
+          "top_dirs",
+          "changed_in_30d",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "title": "Take a read-only inventory of a folder the customer actually works in"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.workbench.install --json --no-input"
+        }
+      ],
+      "description": "Create the folder layout, per-folder READMEs, the compiled WORKBENCH.md, and the AGENTS.md / CLAUDE.md entry files that AI CLIs auto-load when they open the folder — that pair is what actually makes the conventions reach the model, so each carries the folder table inline rather than just pointing at WORKBENCH.md. Idempotent: re-running only fills in what's missing and never rewrites a file the user edited; if an entry file exists but never mentions WORKBENCH.md, the result says so in `warnings` instead of pretending the install worked. Refuses a drive root, the home directory, or any non-empty folder that isn't already a U-King workbench — there is deliberately no force flag.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 20000
+      },
+      "id": "runtime.workbench.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "manifest": {
+            "description": "The workbench definition built for this specific customer — folder conventions, the rule for each folder, naming, which skills it uses, and what it explicitly cannot do. Preferred: a workbench should be shaped around what this person actually does. Validated before anything is written.",
+            "type": "object"
+          },
+          "overwrite_doc": {
+            "description": "Refresh WORKBENCH.md and the contract file. Per-folder READMEs are still never touched.",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Folder that will become the workbench root. Must be empty, non-existent, or an existing U-King workbench.",
+            "type": "string"
+          },
+          "template": {
+            "description": "Built-in example id, used only when no `manifest` is given (a starting point for someone who does not want to describe their work yet).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "workbench",
+          "path",
+          "created",
+          "updated",
+          "skipped",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "title": "Install a workbench template into a folder"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.ai_tasks.inspect --json --no-input"
+        }
+      ],
+      "description": "List tasks from every AI on this computer — Claude Code, Codex CLI and Hermes session records plus tasks the AI logged itself on the uking-board. Reads local files only; never prompt bodies beyond the first line used as a title, never uploads.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.ai_tasks.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "description": "Look-back window in days (default 7).",
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "days",
+          "tasks",
+          "sources",
+          "counts",
+          "notes"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect what every AI on this machine is working on"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.usage_local.inspect --json --no-input"
+        }
+      ],
+      "description": "Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever the user has enabled in ~/.uking/usage-tools.json. Reads metadata only, never prompt text, never uploads.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.usage_local.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "description": "Look-back window in days (default 30).",
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "days",
+          "total_cny",
+          "total_calls",
+          "items",
+          "source"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect local AI spend by model"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.usage_meter.inspect --json --no-input"
+        }
+      ],
+      "description": "Aggregate local AI session logs into a utility-meter style report: daily readings, today/yesterday/7d/window totals, spend by model / tool / project, prompt-cache hit rate and savings, burn pace, and deterministic money-saving tips. Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi (whichever the user enabled). `sources` lists EVERY AI tool detected on the machine — including ones that can never be counted — each with the reason, so the totals are never mistaken for the whole picture. Tools the user marked as flat-rate subscriptions still report tokens but always cost 0. Reads metadata only, never prompt text, never uploads, never hits the network.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.usage_meter.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "balance_cny": {
+            "description": "Remaining account balance in CNY. Supply it to get days_left; omitted means days_left is null (never guessed).",
+            "type": "number"
+          },
+          "days": {
+            "description": "Look-back window in days (default 30).",
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "detail": {
+            "description": "Return up to N per-call ledger rows in `events` (newest first; 0 = none). Each row is one model call — EXCEPT Hermes, whose rows are whole-session rollups (`session_rollup: true`). `events_meta.truncated` says how many rows were cut: the rows are NOT the whole window, only its total is.",
+            "maximum": 2000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "days",
+          "ready",
+          "blockers",
+          "window",
+          "today",
+          "daily",
+          "by_model",
+          "by_project",
+          "cache",
+          "pace",
+          "sources",
+          "source"
+        ],
+        "type": "object"
+      },
+      "title": "Read the local token meter (usage over time, by project, cache and pace)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.diagnostics.collect --json --no-input"
+        }
+      ],
+      "description": "Collect the same redacted diagnostics the feedback page sends: versions, install logs, crash forensics. Never includes full keys, tokens, emails or user paths.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.diagnostics.collect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "text",
+          "chars"
+        ],
+        "type": "object"
+      },
+      "title": "Collect a redacted diagnostics report"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.driver.apply --json --no-input"
+        }
+      ],
+      "description": "Write the chosen provider's endpoint, key and model into Claude Code / Codex / ClawX / Hermes / DeepSeek Harness config. Reversible: 'official' removes only U-King-owned state.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 120000
+      },
+      "id": "runtime.driver.apply",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "description": "Key for the provider. Never logged.",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Optional model override.",
+            "type": "string"
+          },
+          "provider_id": {
+            "description": "Preset id, e.g. xiapan / deepseek / official.",
+            "type": "string"
+          },
+          "targets": {
+            "description": "Any supported AI tool id. DSH Web and terminal share the dsh target.",
+            "items": {
+              "enum": [
+                "claude",
+                "codex",
+                "clawx",
+                "hermes",
+                "dsh",
+                "qwen",
+                "crush",
+                "opencode",
+                "pi",
+                "cline"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider_id",
+          "api_key",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "applied"
+        ],
+        "type": "object"
+      },
+      "title": "Switch the AI driver for one or more tools"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.context_menu.set --json --no-input"
+        }
+      ],
+      "description": "Register or unregister the 'Open with U-King' shell entry under HKCU. Windows only; fully reversible.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.context_menu.set",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "description": "true = register, false = unregister.",
+            "type": "boolean"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "title": "Turn the Explorer right-click entry on or off"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.rtk.set_enabled --json --no-input"
+        }
+      ],
+      "description": "Merge or remove U-King's RTK hook in the user's ~/.claude/settings.json. Touches only our own keys.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.rtk.set_enabled",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "description": "true = enable the hook, false = remove it.",
+            "type": "boolean"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "enabled",
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Turn the token squeezer on or off"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.driver.apply_everywhere --json --no-input"
+        }
+      ],
+      "description": "Detect which AI tools are installed and write the provider endpoint, key and model into them. Which tools are installed is always detected on this machine, never taken from the caller; `targets` only narrows down which of them the user agreed to change.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 180000
+      },
+      "id": "runtime.driver.apply_everywhere",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "description": "Leave empty to use this device's built-in key (generated offline).",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Optional model override.",
+            "type": "string"
+          },
+          "provider_id": {
+            "description": "Preset id. Defaults to xiapan.",
+            "type": "string"
+          },
+          "targets": {
+            "description": "Optional. Only configure these tools. Omit to configure every detected tool.",
+            "items": {
+              "enum": [
+                "claude",
+                "codex",
+                "clawx",
+                "hermes",
+                "dsh",
+                "pi",
+                "opencode",
+                "cline",
+                "qwen",
+                "crush"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "configured",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Configure installed AI tools at once"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.provider.save --json --no-input"
+        }
+      ],
+      "description": "Upsert one user-defined provider into ~/.uking/providers.json. Built-in presets are rejected.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.provider.save",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "The ProviderPreset to save.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "saved"
+        ],
+        "type": "object"
+      },
+      "title": "Create or update a custom provider preset"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.provider.delete --json --no-input"
+        }
+      ],
+      "description": "Remove one provider from the user's list. With `tool`, only that AI's list is touched (the other AIs keep it, and custom presets keep their definition + key). Without `tool`, it is removed from every AI's list and custom presets are deleted outright. Built-in presets are tombstoned and never come back on their own until the user restores them. Never touches any AI tool's own config files.",
+      "effects": {
+        "audit_required": true,
+        "class": "destructive",
+        "confirmation": "always",
+        "reversible": false,
+        "risk": "high"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.provider.delete",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Provider id (built-in or custom).",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Only remove it from this AI's list. Omit to remove from every AI's list (and delete custom definitions).",
+            "enum": [
+              "claude",
+              "codex",
+              "clawx",
+              "hermes",
+              "dsh",
+              "pi",
+              "opencode",
+              "cline"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
+      "title": "Remove a provider from the list"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.provider.restore --json --no-input"
+        }
+      ],
+      "description": "Put a previously removed preset (e.g. xiapan) back into a list. With `tool`, only that AI's list gets it back; omit to restore it everywhere. Idempotent. Custom providers that were deleted outright cannot be restored — they are gone for good and must be re-entered.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.provider.restore",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Provider id to restore (must still have a definition).",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Only restore it into this AI's list. Omit to restore into every AI's list.",
+            "enum": [
+              "claude",
+              "codex",
+              "clawx",
+              "hermes",
+              "dsh",
+              "pi",
+              "opencode",
+              "cline"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "restored"
+        ],
+        "type": "object"
+      },
+      "title": "Restore a removed provider"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.provider.effective --json --no-input"
+        }
+      ],
+      "description": "Parse each AI tool's OWN config file and report the provider/model it would really use at startup, plus any file that overrides ours (e.g. opencode.jsonc beats opencode.json). This is NOT a read-back of what U-King wrote: byte-level verification only proves the file contains our bytes, not that the tool reads those fields. `readable:false` means we have no read-back path for that tool — that is 'unknown', not 'not configured'.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.provider.effective",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "description": "Only read back this one target. Omit to read them all.",
+            "enum": [
+              "claude",
+              "codex",
+              "clawx",
+              "hermes",
+              "dsh",
+              "pi",
+              "opencode",
+              "cline"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "targets"
+        ],
+        "type": "object"
+      },
+      "title": "Read back what each AI tool would actually run"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.rtk.uninstall --json --no-input"
+        }
+      ],
+      "description": "Remove U-King's RTK hook from ~/.claude/settings.json and delete the rtk binary. Touches nothing else the user configured.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.rtk.uninstall",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Uninstall the token squeezer"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.uu_remote.install --json --no-input"
+        }
+      ],
+      "description": "Download and install NetEase UU Remote (~86 MB installer; the vendor ships no portable build). Tries a silent NSIS install and falls back to the visible installer. Connecting is still done by the user inside UU Remote — this never touches their account.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 900000
+      },
+      "id": "runtime.uu_remote.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Install UU Remote so the author can see this screen"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.podapp.install --json --no-input"
+        }
+      ],
+      "description": "Download the latest PodApp installer (manifest source order puts the China-reachable mirror first) and install it silently. PodApp updates itself afterwards — this is only the first install / a manual catch-up.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 600000
+      },
+      "id": "runtime.podapp.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Install or update PodApp (泊舟 AI 小程序)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.podapp.launch --json --no-input"
+        }
+      ],
+      "description": "Start the installed PodApp dock. Idempotent: launching again just focuses the running instance.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.podapp.launch",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Launch PodApp (泊舟 AI 小程序)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.optimizer.apply --json --no-input"
+        }
+      ],
+      "description": "Run one forward-only repair from the optimizer (fix / optimize / defender) and return its human-readable report. Records a before/after doctor score anchor, so the effect is auditable afterwards. `undo` is deliberately not offered here: it peels one journal layer per call and is therefore not replay-safe.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 300000
+      },
+      "id": "runtime.optimizer.apply",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "fix = repair what is broken; optimize = apply the full tuning pass; defender = add U-King's AI tool folders to the antivirus exclusion list.",
+            "enum": [
+              "fix",
+              "optimize",
+              "defender"
+            ],
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "action",
+          "output"
+        ],
+        "type": "object"
+      },
+      "title": "Apply one AI-runtime optimization"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.env.install_tools --json --no-input"
+        }
+      ],
+      "description": "Install portable Node, Git (which brings bash.exe that Claude Code's Bash tool needs), PowerShell 7 and the CLI command guard under ~/.uking/runtime. No administrator rights needed. Best-effort: one failure does not stop the others, and every field honestly reports ok / skip / fail: <reason> — `skip` means the step does not exist on this platform, not that it succeeded.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 900000
+      },
+      "id": "runtime.env.install_tools",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "node",
+          "git",
+          "pwsh",
+          "command_guard"
+        ],
+        "type": "object"
+      },
+      "title": "Install the portable tools the optimizer asks for"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.identity.inspect --json --no-input"
+        }
+      ],
+      "description": "Read who this U-King is (name, owner, role, traits), where its manual and logs live, and whether the manual has been published so other AIs can discover it. Reads only; never returns secret values.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.identity.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "spec_version",
+          "ready",
+          "blockers",
+          "identity",
+          "files",
+          "published",
+          "secrets"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect U-King's identity and its AI-facing manual"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.identity.save --json --no-input"
+        }
+      ],
+      "description": "Write the user-editable identity (name, owner, role, traits, notes) to ~/.uking/identity.json. Plain text by design — it is meant to be read by other AIs.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.identity.save",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "name": {
+            "description": "What this U-King is called on this machine.",
+            "type": "string"
+          },
+          "notes": {
+            "description": "Free text the owner wants every AI to read.",
+            "type": "string"
+          },
+          "owner": {
+            "description": "How the owner wants to be addressed.",
+            "type": "string"
+          },
+          "role": {
+            "description": "One-line duty, e.g. 'maritime paperwork'.",
+            "type": "string"
+          },
+          "traits": {
+            "description": "Free-form key/value attributes.",
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "saved"
+        ],
+        "type": "object"
+      },
+      "title": "Save U-King's identity"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.identity.publish --json --no-input"
+        }
+      ],
+      "description": "Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent. Secret values are never written into these files.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.identity.publish",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "files"
+        ],
+        "type": "object"
+      },
+      "title": "Publish the AI-facing manual (llms.txt)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.identity.link --json --no-input"
+        }
+      ],
+      "description": "Insert (or remove) a one-line pointer to ~/.uking/llms.txt inside the global memory files of the AI tools installed on this machine (Claude Code / Codex / AGENTS.md). Additive and fully reversible: our text lives inside a marked block, the user's own content is never modified.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.identity.link",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "linked": {
+            "description": "true = insert the pointer, false = remove it. Defaults to true.",
+            "type": "boolean"
+          },
+          "targets": {
+            "description": "Optional subset of target ids (claude / codex / agents). Empty = every installed tool.",
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "discovery"
+        ],
+        "type": "object"
+      },
+      "title": "Let other AIs discover U-King"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.identity.secret_set --json --no-input"
+        }
+      ],
+      "description": "Write one credential into ~/.uking/secrets.json (private, never rendered into llms.txt). An empty value deletes the entry. Returns only names, never values.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.identity.secret_set",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Credential name, e.g. xiapan / openai.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The secret. Empty string deletes it. Never logged or echoed.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "secrets"
+        ],
+        "type": "object"
+      },
+      "title": "Set or clear one credential"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.device.key_rotate --json --no-input"
+        }
+      ],
+      "description": "Ask the server for a fresh random access key, move the wallet balance onto it, write it into the local config, then revoke the old key. Two-phase and replay-safe: the old key keeps working until the new one has been verified.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.device.key_rotate",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Rotate this device's cloud access key"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.device.key_adopt --json --no-input"
+        }
+      ],
+      "description": "Save an access key you already have (from another computer, another copy, or generated on the website) as this machine's key. The key is verified against the server before anything is written — a typo never gets saved.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.device.key_adopt",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The sk- access key to use on this machine.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Use an existing cloud access key on this machine"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.device.wallet_reset_local --json --no-input"
+        }
+      ],
+      "description": "Clear U-King-managed consumers of the current wallet, then remove only this machine's wallet reference. The server wallet, key and balance are not deleted. The next online convergence creates a new zero-balance device wallet.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.device.wallet_reset_local",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Remove the device wallet from this machine"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.org.inspect --json --no-input"
+        }
+      ],
+      "description": "Read whether this machine is enrolled into an enterprise org (~/.uking/org.json), and which org owns it. Unmanaged by default; personal editions see ready=false with a clear blocker. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.org.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "mode",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect enterprise managed state (org)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.org.enroll --json --no-input"
+        }
+      ],
+      "description": "Record the enterprise org identity in ~/.uking/org.json (mode=managed). Idempotent: re-enrolling the same org_id is a no-op. Records identity only — it does NOT turn on any telemetry or policy download (those are gated by explicit consent in later steps).",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.org.enroll",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "org_id": {
+            "description": "Enterprise-assigned org identifier. Required, trimmed.",
+            "type": "string"
+          },
+          "org_name": {
+            "description": "Optional display name.",
+            "type": "string"
+          },
+          "policy_url": {
+            "description": "Optional policy endpoint, reserved for later steps.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "org_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "mode",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Enroll this machine into an enterprise org"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.org.disenroll --json --no-input"
+        }
+      ],
+      "description": "Reset ~/.uking/org.json to the unmanaged default. Idempotent: disenrolling an already-unmanaged machine is a no-op.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.org.disenroll",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "mode",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Leave the enterprise org (back to personal)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.automation.save --json --no-input"
+        }
+      ],
+      "description": "Upsert one scheduled automation (name, prompt, engine, optional working folder, schedule, optional use_memory). Idempotent by id. Note: an automation with a working folder is authorised to read/write files and run commands in that folder unattended. use_memory=true makes each run start from a per-job memory file (~/.uking/automation/<id>-memory.md) so a long job advances across runs; off by default.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.automation.save",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "job": {
+            "description": "The automation. Schedule kinds: interval (minutes>=5) / daily (at HH:MM) / weekly (at HH:MM + weekdays 0=Sunday).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "job"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "job"
+        ],
+        "type": "object"
+      },
+      "title": "Create or update a scheduled automation"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.automation.remove --json --no-input"
+        }
+      ],
+      "description": "Remove one scheduled automation by id. Idempotent: deleting a missing id succeeds. Past run records are kept on disk.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.automation.remove",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "title": "Delete a scheduled automation"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.automation.set_enabled --json --no-input"
+        }
+      ],
+      "description": "Turn one automation on or off. Turning it on re-arms it for its next slot. Idempotent.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.automation.set_enabled",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "job"
+        ],
+        "type": "object"
+      },
+      "title": "Enable or disable a scheduled automation"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.desktop.pin --json --no-input"
+        }
+      ],
+      "description": "Create a desktop shortcut pointing at the currently running executable.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.desktop.pin",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Pin this portable exe to the desktop"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run media.image.describe --json --no-input"
+        }
+      ],
+      "description": "Send one explicitly selected local image to U-King Vision (Qwen visual chain) and return text only. The selected image is never forwarded to the text-only chat model. This consumes model quota; request_id makes in-process retry safe.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 190000
+      },
+      "id": "media.image.describe",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "image": {
+            "description": "Absolute local image path (PNG/JPG/WEBP/GIF/BMP/HEIC).",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Optional, defaults to describe.",
+            "enum": [
+              "describe",
+              "ocr"
+            ],
+            "type": "string"
+          },
+          "question": {
+            "description": "Optional question for the vision model.",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Caller-generated id. Replaying it with identical input returns the in-process cached result instead of another model call.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image",
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "text",
+          "model",
+          "mode",
+          "elapsed",
+          "source",
+          "cached"
+        ],
+        "type": "object"
+      },
+      "title": "Describe an image with U-King Vision"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.skillpack.install --json --no-input"
+        }
+      ],
+      "description": "Export the bundled skill packs and copy them into each detected tool's skills directory. Pass `name` to install just one pack (the reverse of runtime.skillpack.uninstall); omit it to sync all. Scripts carry no keys; they read ~/.uking/device.json at runtime.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 120000
+      },
+      "id": "runtime.skillpack.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Optional. Install only this pack, e.g. uking-ppt. Omit to sync all packs.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "default_dir",
+          "installed"
+        ],
+        "type": "object"
+      },
+      "title": "Install U-King's skill packs into the installed AI tools"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.expert.dismiss --json --no-input"
+        }
+      ],
+      "description": "Delete a hired expert pack from ~/.uking/experts/. Built-in experts are compiled-in constants and cannot be dismissed; asking for one returns dismissed:false rather than an error.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.expert.dismiss",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Expert id (folder name under ~/.uking/experts). Only [a-z0-9-], 1..=64.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "dismissed"
+        ],
+        "type": "object"
+      },
+      "title": "Dismiss a hired expert"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.skillpack.inspect --json --no-input"
+        }
+      ],
+      "description": "Report every bundled skill pack with a one-line summary and how many tool directories currently hold it. `installed` means the folder is really on disk, not that we once called install.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.skillpack.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "packs",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "List U-King's bundled skill packs and whether each is installed"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.skillpack.uninstall --json --no-input"
+        }
+      ],
+      "description": "Delete a single bundled skill pack from every tool's skills directory (current and legacy locations). Only U-King's own packs can be removed; unknown names are rejected rather than glob-matched.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.skillpack.uninstall",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Pack name, e.g. uking-ppt. Must be one of U-King's bundled packs.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
+      "title": "Remove one of U-King's skill packs from the AI tools"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.readiness.inspect --json --no-input"
+        }
+      ],
+      "description": "Answers the one question the install flow never answered: is U-Workspace usable on this machine right now. Each check reports whether the thing WORKS, not whether it was installed — `claude` is really executed, the driver is read from disk, the balance is really queried. Every failed check carries a concrete fix.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 25000
+      },
+      "id": "runtime.readiness.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "checks",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Can the workbench actually be used right now?"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.miniapp.inspect --json --no-input"
+        }
+      ],
+      "description": "Report every installed mini-app: id, name, version, icon, which ActionParity actions it registers, and which host capabilities it was granted. `enabled:false` means it is installed but switched off — its actions stay out of the table.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.miniapp.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "apps",
+          "broken",
+          "ready",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "List installed mini-apps and whether each one can actually run"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.miniapp.uninstall --json --no-input"
+        }
+      ],
+      "description": "Move the mini-app's folder to the trash area and drop it from the registry, so its actions leave the action table. Its user data under .data/<id>/ is kept unless purge_data is true.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.miniapp.uninstall",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Mini-app id from runtime.miniapp.inspect.",
+            "type": "string"
+          },
+          "purge_data": {
+            "description": "Also delete the app's user data. Default false — reinstalling normally keeps your stuff.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
+      "title": "Uninstall a mini-app"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.dsh.plugin_install --json --no-input"
+        }
+      ],
+      "description": "Run `dsh plugin --profile <profile> add <spec>` so the user gets a DSH plugin without opening a terminal. Only that one command is run; the spec comes from our curated list or from what the user pasted.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 180000
+      },
+      "id": "runtime.dsh.plugin_install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "profile": {
+            "description": "DSH profile to install into. Defaults to web.",
+            "type": "string"
+          },
+          "spec": {
+            "description": "What to install, e.g. github:owner/repo or an npm package name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Install a plugin into DSH (DeepSeek Harness)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.miniapp.install --json --no-input"
+        }
+      ],
+      "description": "Install a mini-app the user picked from disk. Third-party packages are gated: a manifest that asks for any non-read host action is rejected outright, so installing one can never hand it the ability to change this machine without asking.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.miniapp.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path to a .ukapp package or an unpacked mini-app folder.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "title": "Install a mini-app from a local .ukapp package or folder"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.miniapp.restore --json --no-input"
+        }
+      ],
+      "description": "Clear the 'user deleted this' tombstones and reinstall any built-in mini-app that is missing or outdated. This is the way back from uninstall; apps you installed yourself are untouched.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 120000
+      },
+      "id": "runtime.miniapp.restore",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "restored",
+          "forgot_removals"
+        ],
+        "type": "object"
+      },
+      "title": "Reinstall the mini-apps that ship inside U-King"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.footprint.remove --json --no-input"
+        }
+      ],
+      "description": "Delete or revert the footprint items you picked. Config items revert to their pre-U-King state; AI tools go through their own official uninstaller. Returns whether the app must exit to finish.",
+      "effects": {
+        "audit_required": true,
+        "class": "destructive",
+        "confirmation": "always",
+        "reversible": false,
+        "risk": "high"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 600000
+      },
+      "id": "runtime.footprint.remove",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "ids": {
+            "description": "Footprint ids from runtime.footprint.inspect.",
+            "type": "array"
+          },
+          "preserve_user_data": {
+            "description": "Archive chat/history to Documents before wiping.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "will_exit"
+        ],
+        "type": "object"
+      },
+      "title": "Remove selected U-King footprints"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.backup.create --json --no-input"
+        }
+      ],
+      "description": "Snapshot ClawX user data and ~/.openclaw into a timestamped folder under the chosen root.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 1800000
+      },
+      "id": "runtime.backup.create",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dest_root": {
+            "description": "Destination root, usually the USB drive.",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dest_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      },
+      "title": "Back up ClawX chats and settings to a drive"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.backup.restore --json --no-input"
+        }
+      ],
+      "description": "Replace the current ClawX / OpenClaw data with a snapshot. The existing data is moved aside first, but this still overwrites what you are using right now.",
+      "effects": {
+        "audit_required": true,
+        "class": "destructive",
+        "confirmation": "always",
+        "reversible": false,
+        "risk": "high"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 1800000
+      },
+      "id": "runtime.backup.restore",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_dir": {
+            "description": "Snapshot folder from runtime.backup list.",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "backup_dir"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      },
+      "title": "Restore ClawX chats and settings from a snapshot"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.clawx.apply_managed --json --no-input"
+        }
+      ],
+      "description": "ClawX holds its config in memory and flushes it back on exit, so writing while it runs is silently undone. This closes it, writes both config layers, then relaunches.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 180000
+      },
+      "id": "runtime.clawx.apply_managed",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "description": "Leave empty to use this device's built-in key.",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Optional model override.",
+            "type": "string"
+          },
+          "provider_id": {
+            "description": "Preset id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "applied",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Configure ClawX the managed way (close, write, relaunch)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.aitool.uninstall --json --no-input"
+        }
+      ],
+      "description": "Remove the npm package / stub, ~/.uking/tools/<x>, shims and leftovers; GUI apps go through their own official uninstaller.",
+      "effects": {
+        "audit_required": true,
+        "class": "destructive",
+        "confirmation": "always",
+        "reversible": false,
+        "risk": "high"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 900000
+      },
+      "id": "runtime.aitool.uninstall",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "tool_id": {
+            "description": "Tool id from the home page cards.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "title": "Uninstall one AI tool and everything that makes it look installed"
+    }
+  ],
+  "application": {
+    "id": "org.u-king.desktop",
+    "name": "U-King",
+    "version": "1.2.0"
+  },
+  "conformance_targets": [
+    "AP-1",
+    "AP-2"
+  ],
+  "generated_from": {
+    "generator": "U-King Action Registry host projection",
+    "revision": "1.2.0"
+  },
+  "spec_version": "0.5.0",
+  "state": {
+    "events": [],
+    "queries": [
+      "runtime.command_guard.inspect",
+      "runtime.network.inspect",
+      "runtime.ai_process.inspect",
+      "runtime.crash.inspect",
+      "runtime.instance.inspect",
+      "runtime.stack.inspect",
+      "runtime.hardware.inspect",
+      "runtime.codex.inspect",
+      "runtime.driver.inspect",
+      "runtime.footprint.inspect",
+      "runtime.toolbox.inspect",
+      "runtime.rtk.inspect",
+      "runtime.rtk.demo",
+      "runtime.hermes_browser.inspect",
+      "runtime.clawx.inspect",
+      "runtime.geo.inspect",
+      "runtime.uu_remote.inspect",
+      "runtime.podapp.inspect",
+      "runtime.automation.inspect",
+      "runtime.optimizer.inspect",
+      "runtime.origin.inspect",
+      "runtime.ai_tasks.inspect",
+      "runtime.usage_local.inspect",
+      "runtime.usage_meter.inspect",
+      "runtime.diagnostics.collect",
+      "runtime.identity.inspect",
+      "runtime.chat.inspect",
+      "runtime.journal.inspect",
+      "runtime.org.inspect",
+      "runtime.workbench.inspect",
+      "runtime.workbench.scan",
+      "runtime.expert.inspect",
+      "runtime.hire.search",
+      "runtime.localllm.inspect",
+      "runtime.localllm.catalog",
+      "runtime.creator.reel_presets.inspect"
+    ]
+  },
+  "surfaces": [
+    {
+      "exclusion_reason": "U-King is migrating existing GUI controls incrementally; only Actions with verified data-action-id markers are declared on desktop.",
+      "id": "desktop",
+      "kind": "gui",
+      "required_for_parity": false
+    },
+    {
+      "id": "cli",
+      "kind": "cli",
+      "required_for_parity": true
+    }
+  ]
+}

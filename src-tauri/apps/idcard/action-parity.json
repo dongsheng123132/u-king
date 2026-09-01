@@ -1,0 +1,169 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dongsheng123132/action-parity/v0.5.0/schema/action-parity.schema.json",
+  "spec_version": "0.5.0",
+  "application": {
+    "id": "org.uking.app.idcard",
+    "name": "抠正",
+    "version": "0.1.1",
+    "description": "Extract a card, ID or sign from a photo and flatten it with a perspective correction. Pure local geometry: no network, no credits."
+  },
+  "conformance_targets": [
+    "AP-1"
+  ],
+  "surfaces": [
+    {
+      "id": "miniapp",
+      "kind": "gui",
+      "required_for_parity": true,
+      "description": "Drag the four corners onto the card, pick a preset, done.",
+      "reachability": "in-process"
+    },
+    {
+      "id": "cli",
+      "kind": "cli",
+      "required_for_parity": true,
+      "description": "U-King.exe action run app.idcard.card.extract --json --input-file <f>",
+      "reachability": "external"
+    }
+  ],
+  "actions": [
+    {
+      "id": "app.idcard.card.extract",
+      "title": "Extract and flatten a card from a photo",
+      "description": "Given four corner points of a card, ID or sign in the photo, apply a projective transform so it comes out rectangular and upright. Corners are supplied by the caller rather than auto-detected: corner detection fails silently on real photos (reflections, shadows, background lines) and a silently wrong result is worse than asking for three seconds of dragging. Pure local geometry — no network, no credits.",
+      "tags": [
+        "image",
+        "perspective",
+        "document"
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "corners"
+        ],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "data: URL, or an absolute path to a local image."
+          },
+          "corners": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Four corner points in SOURCE-IMAGE NATURAL PIXELS. Any order unless `ordered` is true.",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "ordered": {
+            "type": "boolean",
+            "default": false,
+            "description": "Set when corners are already top-left, top-right, bottom-right, bottom-left."
+          },
+          "preset": {
+            "enum": [
+              "auto",
+              "id-card",
+              "a4",
+              "square"
+            ],
+            "default": "auto",
+            "description": "id-card is the ID-1 standard (85.6x54mm) used by Chinese ID cards and bank cards."
+          },
+          "max_side": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 8192,
+            "default": 2400
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "artifact",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "artifact": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "path"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "image"
+              },
+              "w": {
+                "type": "integer"
+              },
+              "h": {
+                "type": "integer"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "corners_used": {
+            "type": "array",
+            "description": "The corners after ordering — lets the caller see how the points were interpreted."
+          },
+          "to": {
+            "type": "object"
+          }
+        }
+      },
+      "effects": {
+        "class": "read",
+        "risk": "low",
+        "reversible": true,
+        "confirmation": "never",
+        "audit_required": false,
+        "notes": "Pure geometry. Reads the input and produces a new artifact; never modifies the source."
+      },
+      "execution": {
+        "headless": true,
+        "idempotent": true,
+        "cancellable": false,
+        "timeout_ms": 30000,
+        "headless_evidence": "U-King.exe action run app.idcard.card.extract --json --no-input --input-file <f>"
+      },
+      "bindings": [
+        {
+          "surface": "miniapp",
+          "target": "uking-rpc:action/app.idcard.card.extract"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run app.idcard.card.extract --json --input-file <f>"
+        }
+      ]
+    }
+  ]
+}

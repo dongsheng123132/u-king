@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Codex 桌面版 · 手动安装教程</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:32px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  h2 { font-size:19px; margin:36px 0 14px; display:flex; align-items:center; gap:10px; }
+  .num { display:inline-flex; width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex:0 0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:14px 0; }
+  .card p { margin:8px 0; color:var(--ink2); }
+  b { color:var(--ink); }
+  .gold { color:var(--gold); }
+  .accent { color:#8b93e8; }
+  .ok { color:var(--ok); }
+  .tip { border-left:3px solid var(--gold); background:rgba(212,166,74,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; color:var(--ink2); font-size:14px; }
+  .warn { border-left:3px solid #e5544b; background:rgba(229,84,75,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; color:var(--ink2); font-size:14px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; text-decoration:none; padding:11px 20px; border-radius:10px; font-weight:600; font-size:15px; margin:6px 8px 6px 0; }
+  .btn.alt { background:transparent; border:1px solid var(--line); color:var(--ink2); }
+  .btn:hover { filter:brightness(1.1); }
+  kbd { background:#222; border:1px solid var(--line); border-radius:5px; padding:1px 7px; font-size:13px; }
+  ol { color:var(--ink2); padding-left:22px; }
+  ol li { margin:7px 0; }
+  .faq { margin:10px 0; }
+  .faq summary { cursor:pointer; font-weight:600; padding:12px 16px; background:var(--card); border:1px solid var(--line); border-radius:10px; list-style:none; }
+  .faq summary::-webkit-details-marker { display:none; }
+  .faq summary::before { content:"＋ "; color:var(--accent); }
+  .faq[open] summary::before { content:"－ "; }
+  .faq .a { padding:10px 16px 4px; color:var(--ink3); font-size:14px; }
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🤖</div>
+    <h1>Codex 桌面版 · 手动安装</h1>
+    <div class="sub">自动安装没成功时，照这个页面点几下就能装好</div>
+  </header>
+
+  <div class="card">
+    <p><b>为什么要手动装？</b> Codex 桌面版是 OpenAI 官方图形应用。Windows 自动安装依赖微软商店 / winget，可能被公司安全策略或杀毒软件挡住；Mac 则需要下载 DMG 后拖到 Applications。<b class="ok">按你的系统任选一种方式，成功一个就行。</b></p>
+  </div>
+
+  <div class="card">
+    <p><b class="ok">正常主流程：</b>在 U-King 的「Codex 专区」点一键安装后，U-King 会先试微软商店；商店不可用时自动下载 MSIX 镜像兜底；安装成功后会自动写好虾盘云配置。余额够就能直接用，余额不够会红色提示去充值。</p>
+    <p>这个页面只在自动安装被系统策略、杀毒、商店异常拦住时使用。你手动把 Codex 装好后，回到 U-King 点「刷新」，再点「一键接虾盘云」即可恢复同一个闭环。</p>
+  </div>
+
+  <h2><span class="num">1</span>方式一（最推荐）：微软商店一键装</h2>
+  <div class="card">
+    <p>点下面的按钮，会自动打开 <b>微软商店</b> 并跳到 Codex 页面：</p>
+    <p>
+      <a class="btn" href="ms-windows-store://pdp/?productid=9PLM9XGG6VKS">打开微软商店（应用内）</a>
+      <a class="btn alt" href="https://apps.microsoft.com/detail/9PLM9XGG6VKS" target="_blank" rel="noopener">商店网页版（用浏览器）</a>
+    </p>
+    <ol>
+      <li>在打开的 Codex 页面，点蓝色的 <b class="accent">获取 / 安装</b> 按钮。</li>
+      <li>如果提示登录微软账号，登录一下即可（免费账号就行）。</li>
+      <li>之后会<b>在后台自动下载安装</b>，进度条跑完就算装好了（包较大，慢网耐心等几分钟）。</li>
+    </ol>
+  </div>
+  <div class="tip">💡 商店 App 打不开？就点上面第二个「<b>商店网页版</b>」，用浏览器打开同一个官方页面，点【获取】会唤起商店继续装。</div>
+
+  <h2><span class="num">2</span>Windows 方式二：直接下载安装包</h2>
+  <div class="card">
+    <p>商店两种都不行，就直接下安装包（约 664MB）：</p>
+    <p>
+      <a class="btn" href="https://get.microsoft.com/installer/download/9PLM9XGG6VKS?cid=website_cta_psi" target="_blank" rel="noopener">官方下载（Windows）</a>
+      <a class="btn alt" href="https://codexapp.agentsmirror.com/latest/win">国内镜像（.msix）</a>
+    </p>
+    <ol>
+      <li>点上面按钮，浏览器开始下载（慢网请耐心等待，别关页面）。</li>
+      <li>下完后，在浏览器右上角「<b>下载</b>」里找到这个文件，<b>双击它</b>。</li>
+      <li>弹出安装窗口后点 <b class="accent">安装</b>，等进度走完。</li>
+    </ol>
+  </div>
+
+  <h2><span class="num">3</span>macOS：下载官方 DMG</h2>
+  <div class="card">
+    <p>Mac 不走静默安装。点对应芯片的官方包，下完后打开 DMG，把 <b>Codex.app</b> 拖到 <b>Applications / 应用程序</b>：</p>
+    <p>
+      <a class="btn" href="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg" target="_blank" rel="noopener">Mac Apple Silicon（M 系列）</a>
+      <a class="btn alt" href="https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg" target="_blank" rel="noopener">Mac Intel</a>
+      <a class="btn alt" href="https://developers.openai.com/codex/app" target="_blank" rel="noopener">OpenAI 官方页面</a>
+    </p>
+    <ol>
+      <li>不知道芯片？点屏幕左上角苹果图标 →「关于本机」。显示 M1/M2/M3/M4 就选 Apple Silicon；显示 Intel 就选 Intel。</li>
+      <li>如果提示来自互联网，点「打开」。若被隔离拦住，可在系统设置 → 隐私与安全性里允许打开。</li>
+      <li>装完回 U-King 点「刷新 / 重新检测」。还没识别就彻底退出 U-King 再打开。</li>
+    </ol>
+  </div>
+
+  <h2><span class="num">4</span>装好后：重启 U-King 才能识别 ⚠️</h2>
+  <div class="warn">
+    <p><b>重要：</b>微软商店是「<b>后台慢慢装</b>」的；Mac 拖入 Applications 后也可能需要重新检测。刚装完 U-King 可能<b>暂时还检测不到</b>（显示「未安装」是正常的，别慌）。</p>
+    <p>请这样做：</p>
+    <ol>
+      <li>等商店里的 Codex <b>进度条 100% 装完</b>（商店里会变成「打开」按钮）。</li>
+      <li>回到 U-King，点界面里的「<b class="gold">重新检测</b>」。</li>
+      <li>要是还没识别，<b class="gold">把 U-King 整个关掉再重新打开</b>（彻底退出，不是缩到托盘）——重开后基本就能认出 Codex 了。</li>
+    </ol>
+  </div>
+  <div class="tip">💡 想彻底退出 U-King：右键屏幕右下角托盘里的 U-King 图标 → 退出；或先点「缩到托盘」再从托盘退出，然后双击桌面 / U 盘里的 <b>U-King.exe</b> 重新打开。</div>
+
+  <h2><span class="num">5</span>能打开 Codex 但提示余额不足？</h2>
+  <div class="card">
+    <p>这不是安装失败，也不是 Key 失效。Codex 使用的是 GPT 系编程模型，单次请求会预扣一小笔余额；如果当前余额不够这次请求，U-King 会红色提示充值。</p>
+    <ol>
+      <li>回 U-King 点「虾盘云余额 / 充值」。</li>
+      <li>充值到账后重新打开 Codex 或重新发一次任务。</li>
+      <li>仍然失败时，在 U-King「Codex 专区」点「一键接虾盘云」重新写配置。</li>
+    </ol>
+  </div>
+
+  <h2 style="margin-top:42px">❓ 常见问题</h2>
+
+  <details class="faq"><summary>点「获取」后没反应 / 一直转圈？</summary>
+    <div class="a">微软商店偶尔抽风。在商店里点左上角刷新、或关掉商店重开，再点一次【获取】。还不行就改用「方式二」直接下安装包双击装。</div></details>
+
+  <details class="faq"><summary>提示「需要登录」？</summary>
+    <div class="a">用任意微软账号登录即可（注册免费）。Codex 应用本身免费下载，用 AI 的额度由 U-King 的虾盘云驱动提供，跟微软账号无关。</div></details>
+
+  <details class="faq"><summary>双击安装包提示「无法安装」？</summary>
+    <div class="a">多半是系统关了「旁加载应用」。打开 Windows 设置 → 隐私和安全性 → 开发者选项，把「旁加载应用」或「开发人员模式」打开，再双击一次安装包。或者直接走「方式一」从商店装。</div></details>
+
+  <details class="faq"><summary>装好了，U-King 还是说没装？</summary>
+    <div class="a">先确认商店里 Codex 已经是「打开」状态（=装完了）。然后<b>彻底关闭 U-King 再重新打开</b>——商店应用刚装完，需要重启程序才能被识别。重开后进「AI 设置 → Codex 体检」点「重新体检」即可。</div></details>
+
+  <footer>
+    U-King 个人 AI 操作系统 · 官网 <a href="https://www.u-king.org">u-king.org</a><br>
+    Codex 桌面版来自微软商店（OpenAI 官方）· U-King 只帮你接好国内可用的驱动
+  </footer>
+</div>
+</body>
+</html>

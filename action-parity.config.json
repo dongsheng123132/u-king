@@ -1,0 +1,37 @@
+{
+  "$schema": "https://action-parity.org/schema/action-parity.agent-profile.schema.json",
+  "format": "action-parity.agent-profile/v1",
+  "manifest": "src/generated/action-parity.json",
+  "registry": {
+    "export": [
+      "node",
+      "scripts/generate-action-parity.mjs",
+      "--print-manifest"
+    ],
+    "source_paths": [
+      "src-tauri/src/actions.rs",
+      "src-tauri/src/lib.rs"
+    ]
+  },
+  "generated_paths": [
+    "src/generated/action-parity.json",
+    "src/generated/action-client.ts"
+  ],
+  "commands": {
+    "generate": [
+      "pnpm",
+      "run",
+      "action-parity:generate"
+    ],
+    "generate_check": [
+      "pnpm",
+      "run",
+      "action-parity:check"
+    ],
+    "verify": [
+      "pnpm",
+      "run",
+      "action-parity:verify"
+    ]
+  }
+}

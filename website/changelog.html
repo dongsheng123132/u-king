@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>更新日志 · U-King AI 管家</title>
+<meta name="description" content="U-King AI 管家每个版本改了什么 —— 修了哪些毛病、加了哪些功能，按版本从新到旧。" />
+<meta property="og:title" content="U-King 更新日志" />
+<meta property="og:description" content="每个版本改了什么，一条一条写清楚。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z' fill='%23e2a93b'/%3E%3C/svg%3E" />
+<!--
+  更新日志页。
+
+  ★ 数据源只有一个：**同目录的 version.json** —— 和 app 内「更新日志」弹层、
+    以及自升级判据读的是同一份文件（宪法第 8 条：同一事实只存一份，否则必然漂移）。
+    这里**绝不**把版本历史再抄一遍进 HTML：抄了就会有一天网站说 A、软件说 B。
+
+  ★ 正文按「能给用户看」的标准写：说清用户遇到的现象、修好了没、该怎么办；
+    不写内部实现细节（供应商、内部配置、服务端部署）。
+
+  改内容 = 改 version.json 再 deploy，不用动这个文件。
+-->
+<style>
+  :root{
+    --ink:#1d1d1f; --body:#494c50; --gray:#6e6e73; --faint:#86868b;
+    --bg:#ffffff; --bg-alt:#f5f5f7; --line:rgba(0,0,0,.09);
+    --blue:#0071e3; --gold:#e2a93b;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro SC","SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI","Microsoft YaHei",sans-serif;
+    --mono:"SF Mono",SFMono-Regular,ui-monospace,Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{width:min(820px, calc(100% - 44px));margin:0 auto}
+
+  header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.78);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:1px solid var(--line)}
+  .nav{width:min(1080px, calc(100% - 44px));margin:0 auto;height:52px;display:flex;align-items:center;gap:26px}
+  .logo{display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:700;font-size:16px}
+  .logo:hover{text-decoration:none}
+  .logo svg{width:20px;height:20px;display:block}
+  .nav-links{margin-left:auto;display:flex;align-items:center;gap:22px;font-size:13px}
+  .nav-links a{color:rgba(29,29,31,.82)}
+  .nav-dl{padding:5px 14px;border-radius:980px;background:var(--blue);color:#fff !important;font-weight:600}
+  .nav-dl:hover{text-decoration:none}
+
+  .hero{padding:56px 0 28px;text-align:center}
+  .hero h1{font-size:40px;line-height:1.1;letter-spacing:-.02em;margin:0 0 12px}
+  .hero p{color:var(--gray);font-size:16px;margin:0}
+  .latest-pill{display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:6px 14px;
+    border-radius:980px;background:var(--bg-alt);font-size:13px;color:var(--body)}
+  .latest-pill b{font-family:var(--mono);color:var(--ink)}
+
+  .list{padding:8px 0 72px}
+  .rel{border-top:1px solid var(--line);padding:26px 0}
+  .rel:first-child{border-top:none}
+  .rel-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .rel-v{font-size:22px;font-weight:700;letter-spacing:-.01em;font-family:var(--mono)}
+  .rel-date{font-size:13px;color:var(--faint);font-family:var(--mono)}
+  .tag{font-size:11px;font-weight:600;padding:2px 9px;border-radius:980px;background:rgba(226,169,59,.16);color:#8a6314}
+  .rel-body{color:var(--body);font-size:15px;white-space:pre-wrap;word-break:break-word}
+  .rel-body b{color:var(--ink)}
+
+  .state{padding:60px 0;text-align:center;color:var(--gray);font-size:15px}
+  .state a{font-weight:600}
+
+  footer{border-top:1px solid var(--line);padding:34px 0 56px;color:var(--faint);font-size:13px}
+  footer .row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px}
+
+  @media (max-width:600px){
+    .hero{padding:38px 0 20px}
+    .hero h1{font-size:30px}
+    .nav-links a:not(.nav-dl){display:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="index.html">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z" fill="#e2a93b" stroke="#1d1d1f" stroke-width="1.1" stroke-linejoin="round"/></svg>
+      U-King
+    </a>
+    <div class="nav-links">
+      <a href="index.html#tools">AI 工具</a>
+      <a href="index.html#how">上手</a>
+      <a href="index.html#faq">常见问题</a>
+      <a href="xueyuan/index.html">AI 学院</a>
+      <a class="nav-dl" href="index.html#download">下载</a>
+    </div>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>更新日志</h1>
+    <p>每个版本改了什么，一条一条写清楚。</p>
+    <div class="latest-pill" id="pill" hidden>
+      最新版本 <b id="pill-v"></b><span id="pill-d"></span>
+    </div>
+  </div>
+
+  <div class="list" id="list">
+    <div class="state" id="state">正在加载…</div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <a href="index.html">首页</a>
+      <a href="index.html#download">下载 U-King</a>
+      <a href="xueyuan/index.html">AI 学院</a>
+      <a href="whats-new.html">最新动态</a>
+    </div>
+    <div>软件里点左下角版本号，也能看到同一份更新日志。</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var listEl = document.getElementById('list');
+  var stateEl = document.getElementById('state');
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  // 正文里用 **粗体** 标重点（和 app 内一致的写法）。先转义再加标记，别让日志正文能注入 HTML。
+  function body(s) {
+    return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  }
+
+  function fail(msg) {
+    stateEl.innerHTML = esc(msg) + '<br /><br /><a href="index.html#download">去下载页</a>';
+  }
+
+  // 加个时间戳绕开 CDN/浏览器缓存 —— 刚发的版本，客户刷新看不到就等于没发。
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      var history = Array.isArray(d.history) ? d.history.slice() : [];
+
+      // 服务器只给了 notes、没给 history 时，至少把最新这一条渲染出来，
+      // 而不是整页空着 —— 但**不编造**任何历史条目。
+      if (history.length === 0 && d.version && d.notes) {
+        history = [{ version: d.version, notes: d.notes }];
+      }
+      if (history.length === 0) {
+        fail('暂时没有拿到更新日志。');
+        return;
+      }
+
+      if (d.version) {
+        var pill = document.getElementById('pill');
+        document.getElementById('pill-v').textContent = 'v' + d.version;
+        var top = history[0];
+        if (top && top.version === d.version && top.date) {
+          document.getElementById('pill-d').textContent = ' · ' + top.date + ' 发布';
+        }
+        pill.hidden = false;
+      }
+
+      listEl.innerHTML = history.map(function (h, i) {
+        return '<article class="rel">'
+          + '<div class="rel-head">'
+          + '<span class="rel-v">v' + esc(h.version) + '</span>'
+          + (h.date ? '<span class="rel-date">' + esc(h.date) + '</span>' : '')
+          + (i === 0 ? '<span class="tag">最新</span>' : '')
+          + '</div>'
+          + '<div class="rel-body">' + body(h.notes || '（无说明）') + '</div>'
+          + '</article>';
+      }).join('');
+
+      document.title = 'v' + d.version + ' 更新日志 · U-King AI 管家';
+    })
+    .catch(function (e) {
+      fail('更新日志暂时加载不出来（' + e.message + '）。');
+    });
+})();
+</script>
+
+</body>
+</html>

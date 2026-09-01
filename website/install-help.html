@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>装不上怎么办 · 通用补救</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:32px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  h2 { font-size:19px; margin:36px 0 14px; display:flex; align-items:center; gap:10px; }
+  .num { display:inline-flex; width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex:0 0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:14px 0; }
+  .card p { margin:8px 0; color:var(--ink2); }
+  b { color:var(--ink); }
+  .gold { color:var(--gold); }
+  .accent { color:#8b93e8; }
+  .ok { color:var(--ok); }
+  .tip { border-left:3px solid var(--gold); background:rgba(212,166,74,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; color:var(--ink2); font-size:14px; }
+  pre { background:#0a0a0c; border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow-x:auto; margin:12px 0; position:relative; }
+  pre code { color:#e7e9ee; font:13px/1.6 "Cascadia Code","Consolas",monospace; }
+  .cmt { color:var(--ink3); }
+  .copy { position:absolute; top:8px; right:8px; background:#222; border:1px solid var(--line); color:var(--ink2); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+  .copy:hover { background:#2c2c33; }
+  kbd { background:#222; border:1px solid var(--line); border-radius:5px; padding:1px 7px; font-size:13px; }
+  ol { color:var(--ink2); padding-left:22px; } ol li { margin:7px 0; }
+  .faq { margin:10px 0; }
+  .faq summary { cursor:pointer; font-weight:600; padding:12px 16px; background:var(--card); border:1px solid var(--line); border-radius:10px; list-style:none; }
+  .faq summary::-webkit-details-marker { display:none; }
+  .faq summary::before { content:"＋ "; color:var(--accent); }
+  .faq[open] summary::before { content:"－ "; }
+  .faq .a { padding:10px 16px 4px; color:var(--ink3); font-size:14px; }
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🛠️</div>
+    <h1>装不上怎么办</h1>
+    <div class="sub">90% 的安装失败都是下面这 4 个原因之一 —— 对症补一下就好</div>
+  </header>
+
+  <div class="card">
+    <p>U-King 的命令行工具（Claude Code / Codex CLI / OpenClaw / Hermes）都是用 <b class="gold">npm / pip</b> 自动装的。装不上时别急着重装，先看是不是中了下面的常见坑。<b class="ok">每条都附了可一键复制的命令。</b></p>
+  </div>
+
+  <h2><span class="num">1</span>客户机有代理（clash / v2ray）→ npm 被拦死</h2>
+  <div class="card">
+    <p>这是<b>最常见</b>的原因。代理会把 npm 的下载请求劫持，表现为：装到一半卡住不动、报 <code>ETIMEDOUT</code> / <code>ECONNRESET</code> / <code>lookup ""</code>。</p>
+    <p>在终端里逐条执行，清掉写死在全局配置里的代理：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code>npm config delete proxy --location=global
+npm config delete https-proxy --location=global
+npm config delete proxy
+npm config delete https-proxy
+npm cache clean --force</code></pre>
+    <p>清完再回 U-King 点「重试」即可。<b>临时关掉代理软件</b>再装也行。</p>
+  </div>
+
+  <h2><span class="num">2</span>没装 Node.js → 敲 npm 提示「不是内部或外部命令」</h2>
+  <div class="card">
+    <p>Claude Code / Codex CLI / OpenClaw 都依赖 Node.js。U-King 一般会自动装便携版；若没成，自己装一下：</p>
+    <p>
+      <a class="btn" style="display:inline-flex;background:var(--accent);color:#fff;text-decoration:none;padding:9px 16px;border-radius:9px;font-weight:600;margin:4px 8px 4px 0;" href="https://nodejs.org/zh-cn/download" target="_blank" rel="noopener">Node.js 官网</a>
+      <a class="btn" style="display:inline-flex;background:transparent;border:1px solid var(--line);color:var(--ink2);text-decoration:none;padding:9px 16px;border-radius:9px;font-weight:600;margin:4px 8px 4px 0;" href="https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-x64.msi" target="_blank" rel="noopener">国内镜像直链（v22 Win x64）</a>
+    </p>
+    <p>下 <b>LTS 版</b>（Windows 选 <code>.msi</code>），一路下一步装完，<b>关掉所有命令行窗口重开</b>，再回 U-King 重试。</p>
+  </div>
+
+  <h2><span class="num">3</span>PowerShell 禁脚本 → 报「无法加载 xxx.ps1」</h2>
+  <div class="card">
+    <p>装完工具一运行就报「因为在此系统上禁止运行脚本」。免管理员放开一次即可（只影响当前用户）：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code></pre>
+    <p>提示确认时输入 <kbd>Y</kbd> 回车。或者改用 <b>CMD（命令提示符）</b>敲命令，CMD 不受这个限制。</p>
+  </div>
+
+  <h2><span class="num">4</span>国内镜像同步滞后 / 缺包 → 换源或走官方</h2>
+  <div class="card">
+    <p>个别新版本国内镜像还没同步，会报缺包。可临时改用官方源（必要时挂代理）装：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code><span class="cmt"># 用官方 npm 源装（示例：Claude Code，其它工具换包名即可）</span>
+npm install -g @anthropic-ai/claude-code
+
+<span class="cmt"># 或显式指定国内镜像源</span>
+npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com</code></pre>
+  </div>
+
+  <div class="tip">💡 各工具的<b>逐条手动安装命令</b>见下面对应的专页（U-King 里点「装不上？看教程」会直接打开）：
+    <br>· <a href="claude-code-install.html">Claude Code 手动安装</a>
+    <br>· <a href="codex-cli-install.html">Codex CLI 手动安装</a>
+    <br>· <a href="codex-install.html">Codex 桌面版 手动安装</a>（商店 / 镜像 MSIX / 重启识别）
+    <br>· <a href="openclaw-install.html">OpenClaw 手动安装</a>
+    <br>· <a href="hermes-install.html">Hermes 手动安装</a>
+    <br>· <a href="apikey-guide.html">各模型 API Key 获取指引</a>
+  </div>
+
+  <h2 style="margin-top:42px">❓ 还是不行？</h2>
+  <details class="faq"><summary>装上了，U-King 还是说没装？</summary>
+    <div class="a">在命令行里敲 <code>工具名 --version</code>（如 <code>claude --version</code>）能打印版本号才算真装好。确认后回 U-King 点「重新检测」；还认不出就<b>彻底关闭 U-King 再重新打开</b>（右下角托盘图标 → 退出，再双击 U-King.exe）。</div></details>
+  <details class="faq"><summary>磁盘满了？</summary>
+    <div class="a">这些工具加运行时要几百 MB。C 盘空间不足时 npm 会报莫名其妙的错。清一下垃圾或换个盘再装。</div></details>
+  <details class="faq"><summary>实在装不上，能找人帮忙吗？</summary>
+    <div class="a">可以。U-King 里点「报告问题」会把日志自动发给我们，或到官网 <a href="https://www.u-king.org">u-king.org</a> 联系。我们也支持远程协助装机。</div></details>
+
+  <footer>U-King 个人 AI 操作系统 · 官网 <a href="https://www.u-king.org">u-king.org</a></footer>
+</div>
+<script>
+  function cp(btn){
+    var code = btn.parentNode.querySelector('code');
+    var text = code.innerText.split('\n').filter(function(l){return l.trim() && l.trim().indexOf('#')!==0;}).join('\n');
+    navigator.clipboard.writeText(text).then(function(){
+      var old = btn.textContent; btn.textContent = '已复制 ✓';
+      setTimeout(function(){ btn.textContent = old; }, 1500);
+    }).catch(function(){ btn.textContent = '手动选中复制'; });
+  }
+</script>
+</body>
+</html>

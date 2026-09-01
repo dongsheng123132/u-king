@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>最新动态 · U-King</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:32px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  h2 { font-size:19px; margin:30px 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:14px 0; }
+  .card p { margin:8px 0; color:var(--ink2); }
+  .date { color:var(--ink3); font-size:13px; }
+  .tag { display:inline-block; font-size:12px; padding:2px 10px; border-radius:20px; background:rgba(94,106,210,.18); color:#8b93e8; margin-right:8px; }
+  .tag.new { background:rgba(62,207,142,.16); color:var(--ok); }
+  b { color:var(--ink); }
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🦞</div>
+    <h1>最新动态</h1>
+    <div class="sub">新功能 · 活动 · 公告 —— 内容随时更新，无需升级软件</div>
+  </header>
+
+  <!-- 维护提示：这个文件在服务器（u-claw.org.cn/uking/whats-new.html）实时下发，
+       改完直接生效，客户端不必发版。每条动态复制下面的 .card 块往上加即可。 -->
+
+  <div class="card">
+    <div class="date">2026-06-18 <span class="tag new">新</span></div>
+    <h2>动态中心上线</h2>
+    <p>从此 U-King 的新功能、活动、教程更新都会在这里第一时间同步，<b>不用升级软件</b>也能看到最新内容。</p>
+  </div>
+
+  <div class="card">
+    <p style="color:var(--ink3)">更多动态陆续更新中…</p>
+  </div>
+
+  <footer>U-King · 让 AI 装机像插 U 盘一样简单</footer>
+</div>
+</body>
+</html>

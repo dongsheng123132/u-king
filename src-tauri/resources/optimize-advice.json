@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "_note": "云端「AI 工具最新提示」内嵌兜底。真相源是服务器 https://u-claw.org.cn/uking/optimize-advice.json（version 更大才覆盖内嵌）。只读提示层：Codex/Claude 再冒新坑，改这里 version+1 即到全客户机，不发 exe。when 探针全白名单只读（tool_installed/tool_missing/file_exists），绝不执行下发命令。os 空=全平台。",
+  "advices": [
+    {
+      "id": "claude-unknown-model-window-enforcement",
+      "os": [],
+      "severity": "warn",
+      "title": "Claude Code 跑一段时间就自动退出 / 任务老是中断？",
+      "detail": "如果你用 Claude Code 配国产模型（DeepSeek 等），最近出现「聊着聊着会话就断了」「定时任务跑一半没了」，多半不是你的网络也不是余额：Claude Code 自己升级后，对它不认识的第三方模型强制按 20 万上下文封顶，到线就强制压缩对话，而压缩这一步在国产模型上会失败，会话就结束了。我们比对过新旧两版 Claude Code，这套机制在旧版里完全不存在 —— 所以你之前连开很多天都没事，不是错觉；它自动升级，所以大家是在几天内先后遇到的，跟 U-King 装了哪一版没关系。\n\n我们没有替你改 Claude Code 的这个设置：那是别人产品的内部开关，我们悄悄替所有人关掉只会带来更难查的问题，你的电脑该由你说了算。想自己先抗住的，用记事本打开 ~/.claude/settings.json（Windows 是 C:\\Users\\你的用户名\\.claude\\settings.json），在 env 那一段里加一行：\n\n    \"CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT\": \"1\"\n\n这是 Claude Code 官方提供的开关，作用是恢复它升级前的行为。改完重开会话即可。改之前建议先把这个文件复制一份备份。我们已同时向上游反馈。",
+      "url": "",
+      "when": [{ "kind": "tool_installed", "name": "claude" }]
+    },
+    {
+      "id": "codex-app-serialport-crash",
+      "os": ["windows"],
+      "severity": "warn",
+      "title": "Codex 桌面版闪退 / 切会话卡（串口 · Codex Micro）",
+      "detail": "如果你用的是 Codex 桌面版（不是 U-King 工作台里的 Codex CLI）且频繁闪退：这是 OpenAI 官方已知 bug —— 桌面版打包的串口原生模块在 Windows 上加载失败（事件查看器 Event ID 1000，异常码 0xC06D007F）。坏文件在签名安装包内，用户无法自己修。建议改用 Codex CLI（U-King 工作台里就是），或等 OpenAI 修复后升级桌面版。",
+      "url": "https://github.com/openai/codex/issues/33415",
+      "when": [{ "kind": "tool_installed", "name": "codex" }]
+    },
+    {
+      "id": "codex-temp-slow",
+      "os": ["windows"],
+      "severity": "info",
+      "title": "Codex 突然变慢？先清 %TEMP%",
+      "detail": "%TEMP% 堆了大量临时文件时，Codex 读文件 / apply_patch 会频繁超时重试，把原本很快的小操作拖得特别长（不是卡死，是被拖慢）。处理：Win+R 输入 %TEMP% 回车，删掉能删的临时文件（占用中的自动跳过）。清完通常立刻恢复。",
+      "url": "",
+      "when": [{ "kind": "tool_installed", "name": "codex" }]
+    }
+  ]
+}

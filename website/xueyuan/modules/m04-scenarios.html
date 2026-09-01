@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>用 AI 做日常事 · U-King 学院</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/academy.css">
+<script>try{var t=localStorage.getItem("xy-theme");if(t?t==="light":matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.classList.add("light")}catch(e){}</script>
+<script defer src="../assets/toc.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">U-King <b>学院</b></span>
+  <span class="links">
+    <a href="../index.html">← 学院首页</a>
+    <a href="m03-prompts.html">提示词大全</a>
+    <a href="faq.html">常见问题</a>
+  </span>
+</nav>
+<article class="page">
+  <h1>用 AI 做日常事</h1>
+
+  <p>上一课我们学了「怎么把话说清楚」（提示词技巧）。这一课更实在：直接把 AI 当成你身边的<strong>万能助理</strong>，手把手带你干五件天天要干的事——写东西、做表格、发自媒体、整办公材料、当学习老师。</p>
+
+  <p>每个场景我都给你两样东西：<strong>① 照着抄就能用的「怎么说」（提示词模板）</strong>，<strong>② 你大概会得到什么样的结果（预期效果）</strong>。你只要把模板里【方括号】的内容换成你自己的，发给 AI 就行。</p>
+
+  <div class="note">本课的 AI 指你在 U-King 里装好的任意一个助手——<b>Claude Code</b>、<b>Codex</b>、<b>ClawX（龙虾）</b> 或 <b>Hermes</b> 都行。它们底层都接了「虾盘云」中转，国内直接能用，充值即用（¥10 起）。打开对话框，把下面的话粘进去就开始。</p></div>
+
+  <h2>场景一：写作改稿（邮件 / 报告 / 文案）</h2>
+  <p>很多人卡在「不知道怎么开头」。其实你不用自己憋，把<strong>背景信息</strong>丢给 AI，让它写初稿，你再改，比从零写快十倍。</p>
+
+  <h3>① 写一封正经邮件</h3>
+  <p>关键是告诉 AI 三件事：<strong>发给谁、要说什么事、想要什么语气</strong>。</p>
+  <pre><code>帮我写一封邮件。
+收件人：客户王经理（我们的供应商）
+事情：这个月的货延迟了，预计晚 3 天到，想道个歉并说明原因（工厂临时停电）
+语气：诚恳、专业，但别太卑微
+要求：200 字以内，给个清楚的标题</code></pre>
+  <div class="tip">预期效果：AI 会给你一个带标题、有称呼、有正文、有落款的完整邮件，道歉到位又不啰嗦。觉得哪句不对，直接说「第二段太硬了，改软一点」，它会重写那一段。</div>
+
+  <h3>② 把大白话润色成正式文案</h3>
+  <pre><code>把下面这段话改写成正式的产品介绍，面向中老年用户，语气亲切可信，别用网络黑话：
+
+「我们这个 U 盘插上电脑就能用 AI，不用懂电脑，充 10 块钱就能聊。」</code></pre>
+  <div class="ok">小窍门：写文案时一定要说清「给谁看」。同一句话，给年轻人和给长辈，AI 写出来的风格完全不一样。</div>
+
+  <h2>场景二：做表格、整理数据</h2>
+  <p>AI 不光会写字，还会<strong>把乱七八糟的信息整理成表格</strong>。你把零散的内容一股脑发过去，让它归类。</p>
+  <pre><code>把下面这些报名信息整理成一个表格，列出：姓名、电话、报名课程、是否已交费。
+没写到的就填「未知」。
+
+张三 138xxxx 报了书法 交了
+李四 电话139xxxx 想学画画 还没交钱
+王五 报名摄影班 1370000xxxx</code></pre>
+  <div class="tip">预期效果：AI 会输出一个整齐的表格（四列对齐）。你可以接着说「按是否交费排序」「帮我算一下交了费的有几个」，它都能做。整理好后让它「导出成 CSV 格式」，复制到 Excel 里就能打开。</div>
+  <div class="warn">注意：涉及真实的客户电话、身份证号等隐私信息，能打码就打码。AI 是帮你干活的工具，但敏感数据最好别原样上传。</div>
+
+  <h2>场景三：自媒体（小红书 / 短视频 / 标题）</h2>
+  <p>做自媒体最累的是「天天想内容」。AI 是个不知疲倦的<strong>文案搭子</strong>。</p>
+
+  <h3>① 小红书种草文案</h3>
+  <pre><code>我要发一篇小红书，推荐我家楼下的一家牛肉面馆。
+帮我写文案：
+- 开头要抓人，带点情绪
+- 中间说说面好吃在哪（汤浓、肉大块、便宜）
+- 结尾引导大家去吃
+- 配 8 个相关话题标签（带 # 号）
+- 多用 emoji，语气像跟闺蜜聊天</code></pre>
+  <div class="tip">预期效果：一篇「啊啊啊被这家面馆封神了😭」式的小红书风格文案，自带分段、emoji 和 #话题标签，复制就能发。</div>
+
+  <h3>② 短视频脚本 + 标题</h3>
+  <pre><code>我要拍一条 30 秒的短视频，主题是「3 个让手机变快的小技巧」。
+帮我写脚本，分镜头列出：每个画面拍什么、配什么口播文字。
+再给我 5 个能上热门的标题，要有点击欲望。</code></pre>
+  <div class="ok">要点：让 AI「给 5 个标题让你挑」，比让它「给 1 个」强得多。多生成几个，你选最顺眼的，这是用 AI 的黄金习惯。</div>
+
+  <h2>场景四：办公提效（PPT 大纲 / 会议纪要 / 长文总结）</h2>
+
+  <h3>① 列 PPT 大纲</h3>
+  <p>别上来就做 PPT，先让 AI 帮你搭骨架。</p>
+  <pre><code>我要做一个关于「公司年度安全培训」的 PPT，大概讲 15 分钟。
+帮我列一个大纲：分几页、每页标题是什么、每页讲哪几个要点。
+受众是普通员工，别太学术。</code></pre>
+  <div class="tip">预期效果：一份分页大纲（比如封面 / 为什么重要 / 三大风险 / 应急流程 / 总结）。骨架有了，你照着往里填内容，速度飞快。</div>
+
+  <h3>② 把会议录音 / 笔记整理成纪要</h3>
+  <pre><code>下面是我开会时随手记的乱七八糟的笔记，帮我整理成正式会议纪要。
+要分成三块：① 讨论的事项 ② 做出的决定 ③ 谁负责、什么时候完成（待办）。
+
+[把你的笔记粘到这里]</code></pre>
+
+  <h3>③ 总结一篇很长的文章</h3>
+  <pre><code>帮我用 5 句话总结下面这篇文章的核心意思，再列出 3 个最值得记住的点：
+
+[粘贴长文]</code></pre>
+  <div class="ok">看不完的长文、合同、说明书，都可以丢给 AI 让它「划重点」。还能追问「这里面有没有对我不利的条款」。</div>
+
+  <h2>场景五：学习助手（讲概念 / 出练习题 / 翻译）</h2>
+  <p>AI 是个<strong>有耐心、不嫌你笨</strong>的私人老师，问多少遍都不烦。</p>
+
+  <h3>① 把难懂的概念讲明白</h3>
+  <pre><code>用最通俗的话，给一个完全不懂的人解释什么是「区块链」。
+要求：打个生活里的比方，别用专业术语，控制在 200 字以内。</code></pre>
+  <div class="tip">预期效果：一段带比喻的大白话解释。没听懂就继续追问「能再举个例子吗」「那它和数据库有啥区别」，越问越明白。</div>
+
+  <h3>② 出练习题自测</h3>
+  <pre><code>我在学初中英语。帮我出 5 道一般现在时的练习题，
+带选项（ABCD），先别给答案，我做完再核对。</code></pre>
+
+  <h3>③ 翻译（带语境，不死板）</h3>
+  <pre><code>帮我把下面这句中文翻译成英文，要求是地道的口语，
+用在给国外客户的微信上，别太书面：
+
+「东西已经发出去了，到了麻烦您确认一下，有问题随时找我。」</code></pre>
+  <div class="ok">翻译时一定要说「用在什么场合」。同一句话用在合同里和用在聊天里，AI 翻得完全不同——告诉它语境，结果才地道。</div>
+
+  <h2>记住一句话就够了</h2>
+  <p>这五个场景看着多，其实套路就一个：<strong>说清「我是谁、要干什么、给谁看、想要什么样的结果」</strong>。把这四点交代给 AI，剩下的它帮你扛。</p>
+  <div class="note">不满意？永远可以接着说「太长了 / 太正式了 / 换个角度再来一遍」。AI 不会嫌烦，多聊几轮才是正常用法。下一课我们升级玩法，让 AI 直接帮你<b>动手干活</b>（操作电脑、写代码、跑命令）。</div>
+
+  <div class="pager">
+    <a class="prev" href="m03-prompts.html"><span class="plabel">上一课</span>提示词技巧</a>
+    <a class="next" href="m05-claude-code.html"><span class="plabel">下一课</span>工具实战 · Claude Code</a>
+  </div>
+</article>
+<footer class="foot">U-King 学院 · 配套 <a href="../../index.html">U-King AI 管家</a></footer>
+</body>
+</html>

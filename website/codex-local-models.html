@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Codex 高级配置 · 本地模型 & 自定义云驱动</title>
+<style>
+  :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width:780px; margin:0 auto; padding:40px 22px 80px; }
+  header { text-align:center; padding:30px 0 24px; border-bottom:1px solid var(--line); margin-bottom:32px; }
+  .logo { font-size:40px; }
+  h1 { font-size:26px; margin:12px 0 6px; }
+  .sub { color:var(--ink3); font-size:14px; }
+  h2 { font-size:19px; margin:38px 0 14px; display:flex; align-items:center; gap:10px; }
+  .num { display:inline-flex; width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex:0 0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:14px 0; }
+  .card p { margin:8px 0; color:var(--ink2); }
+  b { color:var(--ink); }
+  .gold { color:var(--gold); }
+  .accent { color:#8b93e8; }
+  .ok { color:var(--ok); }
+  .tip { border-left:3px solid var(--gold); background:rgba(212,166,74,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; color:var(--ink2); font-size:14px; }
+  .warn { border-left:3px solid #e5544b; background:rgba(229,84,75,.08); padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; color:var(--ink2); font-size:14px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; text-decoration:none; padding:11px 20px; border-radius:10px; font-weight:600; font-size:15px; margin:6px 8px 6px 0; }
+  .btn.alt { background:transparent; border:1px solid var(--line); color:var(--ink2); }
+  .btn:hover { filter:brightness(1.1); }
+  kbd { background:#222; border:1px solid var(--line); border-radius:5px; padding:1px 7px; font-size:13px; }
+  pre { background:#0a0a0c; border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow-x:auto; margin:12px 0; position:relative; }
+  pre code { color:#e7e9ee; font:13px/1.6 "Cascadia Code","Consolas",monospace; white-space:pre; }
+  .cmt { color:var(--ink3); }
+  .copy { position:absolute; top:8px; right:8px; background:#222; border:1px solid var(--line); color:var(--ink2); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+  .copy:hover { background:#2c2c33; }
+  ol,ul { color:var(--ink2); padding-left:22px; }
+  ol li, ul li { margin:7px 0; }
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:14px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); color:var(--ink2); }
+  th { color:var(--ink); font-weight:600; }
+  code.inl { background:#222; border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:13px; color:#e7e9ee; }
+  .faq { margin:10px 0; }
+  .faq summary { cursor:pointer; font-weight:600; padding:12px 16px; background:var(--card); border:1px solid var(--line); border-radius:10px; list-style:none; }
+  .faq summary::-webkit-details-marker { display:none; }
+  .faq summary::before { content:"＋ "; color:var(--accent); }
+  .faq[open] summary::before { content:"－ "; }
+  .faq .a { padding:10px 16px 4px; color:var(--ink3); font-size:14px; }
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink3); font-size:13px; text-align:center; }
+  a { color:#8b93e8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🧩</div>
+    <h1>Codex 高级配置</h1>
+    <div class="sub">本地模型（离线白嫖）· 自定义云驱动（接任意 OpenAI 兼容接口）</div>
+  </header>
+
+  <div class="card">
+    <p>U-King 默认已经帮你把 Codex 接好了<b class="ok">国内可用的虾盘云驱动</b>，开箱即用、不用配。这页是给想<b>自己折腾</b>的进阶用户：</p>
+    <ul>
+      <li><b class="gold">方案 A · 本地模型</b>：用自己电脑的显卡跑开源大模型，<b>完全离线、不花一分钱、数据不出本机</b>。需要还不错的显卡/内存。</li>
+      <li><b class="accent">方案 B · 自定义云驱动</b>：把 Codex 接到<b>任意 OpenAI 兼容</b>的接口（你自己的代理、公司内网、别家 API），灵活但要懂一点配置。</li>
+    </ul>
+    <p class="cmt">本页基于 OpenAI 官方文档 <a href="https://developers.openai.com/codex/config-advanced#oss-mode-local-providers" target="_blank" rel="noopener">Codex Config · OSS mode & local providers</a> 整理，并结合 U-King 的国内环境。</p>
+  </div>
+
+  <div class="tip">📌 <b>不知道选哪个？</b> 想省事直接用 U-King 默认的虾盘云就好（这页可以不看）。想<b>离线/省钱/隐私</b>→看方案 A；想接<b>自己的 API</b>→看方案 B。</div>
+
+  <!-- ============ 方案 A：本地模型 ============ -->
+  <h2 id="local"><span class="num">A</span>方案 A：本地模型（codex --oss，离线白嫖）</h2>
+  <div class="card">
+    <p>Codex 自带 <code class="inl">--oss</code> 开关，能直接连本机跑的开源模型（通过 <b>Ollama</b> 或 <b>LM Studio</b>），全程不联网、不用 API Key。</p>
+    <div class="warn">⚠️ <b>对电脑有要求</b>：本地跑大模型吃显卡显存 / 内存。7B 小模型至少 8GB 内存能跑（慢），想流畅建议 16GB+ 内存或 8GB+ 显存的独显。配置一般的电脑会很慢甚至跑不动 —— 这种情况还是用 U-King 默认的虾盘云云端模型更实在。</div>
+
+    <p style="margin-top:16px"><b>第 1 步 · 装 Ollama（本地模型运行器）：</b></p>
+    <p>
+      <a class="btn" href="https://ollama.com/download/windows" target="_blank" rel="noopener">⬇ Ollama 官网下载（Windows）</a>
+    </p>
+    <p>下载双击安装。装完它会在后台常驻（任务栏有个羊驼图标）。</p>
+
+    <p style="margin-top:16px"><b>第 2 步 · 拉一个开源模型：</b>打开 U-King 内置终端（或 CMD），拉个模型。推荐国产 <b>Qwen（通义千问）</b>，中文好、对代码友好：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code><span class="cmt"># 拉 Qwen 2.5 的 7B 代码版（约 4.7GB，按你电脑配置选大小）</span>
+ollama pull qwen2.5-coder:7b
+
+<span class="cmt"># 配置低？拉更小的 3b（约 2GB）：ollama pull qwen2.5-coder:3b</span>
+<span class="cmt"># 配置高？拉 14b/32b 效果更好但更吃显存</span></code></pre>
+
+    <p style="margin-top:16px"><b>第 3 步 · 在 U-King 终端里用 Codex 连本地模型：</b></p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code><span class="cmt"># --oss 走本地 Ollama，-m 指定刚拉的模型</span>
+codex --oss -m qwen2.5-coder:7b</code></pre>
+    <p>就这样，Codex 现在跑在你自己电脑上了，<b class="ok">完全离线</b>。</p>
+
+    <p style="margin-top:16px"><b>（可选）写进配置，下次免敲参数：</b>编辑 <code class="inl">%USERPROFILE%\.codex\config.toml</code>，加上：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code>oss_provider = "ollama"        <span class="cmt"># 默认本地运行器；用 LM Studio 就写 "lmstudio"</span>
+model = "qwen2.5-coder:7b"     <span class="cmt"># 默认模型</span></code></pre>
+    <p>以后直接 <code class="inl">codex --oss</code> 即可。</p>
+    <div class="tip">💡 想换 LM Studio（带图形界面、更易上手）也行：装 <a href="https://lmstudio.ai/" target="_blank" rel="noopener">LM Studio</a> → 在里面下载模型 → 开它的「本地服务器」→ 上面配置里 <code>oss_provider</code> 改成 <code>"lmstudio"</code>。</div>
+  </div>
+
+  <!-- ============ 方案 B：自定义云驱动 ============ -->
+  <h2 id="custom"><span class="num">B</span>方案 B：自定义云驱动（接任意 OpenAI 兼容接口）</h2>
+  <div class="card">
+    <p>想让 Codex 走<b>你自己的</b> API（自建代理、公司内网、别家兼容 OpenAI 的服务），用 Codex 的 <code class="inl">model_providers</code> 机制。U-King 配虾盘云用的就是这一套 —— 你照葫芦画瓢改成自己的即可。</p>
+
+    <p style="margin-top:14px"><b>编辑配置文件：</b><code class="inl">%USERPROFILE%\.codex\config.toml</code>（不存在就新建）。写法：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code><span class="cmt"># 用哪个 provider + 哪个模型</span>
+model = "你的模型名"
+model_provider = "myapi"
+
+<span class="cmt"># 定义这个 provider 的连接信息</span>
+[model_providers.myapi]
+name = "我的自定义 API"
+base_url = "https://你的接口地址/v1"
+env_key = "MY_API_KEY"          <span class="cmt"># API Key 从这个环境变量读（见下）</span>
+wire_api = "responses"          <span class="cmt"># ★新版 Codex 多只认 "responses"；普通 chat/completions 服务用 "chat"</span></code></pre>
+
+    <p style="margin-top:14px"><b>再设置 API Key 环境变量</b>（上面 <code class="inl">env_key</code> 指向的那个）。在 U-King 终端 / PowerShell：</p>
+    <pre><button class="copy" onclick="cp(this)">复制</button><code><span class="cmt"># 永久写入用户环境变量（重开终端生效）</span>
+setx MY_API_KEY "sk-你的密钥"</code></pre>
+    <p>重开终端后敲 <code class="inl">codex</code> 就走你自己的 API 了。</p>
+
+    <h3 style="font-size:15px;margin:20px 0 8px;color:var(--ink)">字段速查</h3>
+    <table>
+      <tr><th>字段</th><th>作用</th></tr>
+      <tr><td><code class="inl">model</code></td><td>用哪个模型（名字由你的 API 决定）</td></tr>
+      <tr><td><code class="inl">model_provider</code></td><td>用上面定义的哪个 provider（不能叫保留名 <code class="inl">openai</code>）</td></tr>
+      <tr><td><code class="inl">base_url</code></td><td>接口地址，一般以 <code class="inl">/v1</code> 结尾</td></tr>
+      <tr><td><code class="inl">env_key</code></td><td>从哪个环境变量读 API Key</td></tr>
+      <tr><td><code class="inl">wire_api</code></td><td>协议：<code class="inl">responses</code>（新版 Codex CLI/桌面版多只认这个）或 <code class="inl">chat</code>（普通 OpenAI chat/completions 服务）。连不上就两个都试试</td></tr>
+    </table>
+    <div class="tip">💡 U-King 默认的虾盘云就是这么配的（base_url 指向 <code class="inl">api.u-claw.org/v1</code>）。你在「AI 设置」里也能<b>不碰配置文件</b>直接加自定义 provider —— 那个图形界面比手改 toml 省事。</div>
+    <div class="warn">⚠️ 改了 <code class="inl">config.toml</code> 后，U-King 的「一键配好全部 / 切驱动」可能会<b>覆盖你的手改</b>（它整文件接管 Codex 配置）。想长期用自定义 API，建议在 U-King「AI 设置」里加 provider，而不是手改文件。</div>
+  </div>
+
+  <!-- ============ FAQ ============ -->
+  <h2 style="margin-top:42px">❓ 常见问题</h2>
+
+  <details class="faq"><summary>本地模型和虾盘云云端模型，差别大吗？</summary>
+    <div class="a">差别明显。云端（虾盘云默认的 deepseek-v4-pro 等）是几百 B 的大模型，又快又聪明，但要联网、按量计费。本地开源模型（7B/14B）能离线白嫖、隐私好，但<b>能力弱一截、速度看你显卡</b>。日常重活建议云端，离线/保密场景用本地。</div></details>
+
+  <details class="faq"><summary><code>codex --oss</code> 报连不上 / 超时？</summary>
+    <div class="a">确认 Ollama 在后台运行（任务栏羊驼图标），且模型已经 <code>ollama pull</code> 下来了。可先单独测：终端敲 <code>ollama run qwen2.5-coder:7b</code> 能对话，说明 Ollama 正常，再回头用 codex --oss。</div></details>
+
+  <details class="faq"><summary>电脑配置一般，能跑本地模型吗？</summary>
+    <div class="a">8GB 内存能跑 3B 小模型但慢；16GB 内存 / 8GB 显存独显跑 7B 比较舒服。配置不够别硬上 —— 直接用 U-King 默认的虾盘云云端模型，体验好得多。</div></details>
+
+  <details class="faq"><summary>自定义 provider 配好了，codex 却还连虾盘云？</summary>
+    <div class="a">多半是 U-King 的「切驱动 / 一键配好全部」又把 config.toml 覆盖回去了（它整文件接管 Codex 配置）。正解：在 U-King「AI 设置」里用图形界面<b>添加自定义 provider 并切到它</b>，别手改文件，这样不会被覆盖。</div></details>
+
+  <details class="faq"><summary>config.toml 在哪？怎么编辑？</summary>
+    <div class="a">在 <code>%USERPROFILE%\.codex\config.toml</code>（用户目录下隐藏的 .codex 文件夹）。文件资源管理器地址栏粘 <code>%USERPROFILE%\.codex</code> 回车进去，用记事本打开 config.toml 即可；没有就新建一个。</div></details>
+
+  <footer>
+    U-King 个人 AI 操作系统 · 官网 <a href="https://www.u-king.org">u-king.org</a><br>
+    配置语法来自 OpenAI 官方 Codex 文档 · U-King 默认已帮你接好国内可用的虾盘云驱动，本页为进阶选配
+  </footer>
+</div>
+<script>
+  function cp(btn){
+    var code = btn.parentNode.querySelector('code');
+    var text = code.innerText.split('\n').filter(function(l){return l.trim() && l.trim().indexOf('#')!==0;}).join('\n');
+    navigator.clipboard.writeText(text).then(function(){
+      var old = btn.textContent; btn.textContent = '已复制 ✓';
+      setTimeout(function(){ btn.textContent = old; }, 1500);
+    }).catch(function(){ btn.textContent = '手动选中复制'; });
+  }
+</script>
+</body>
+</html>

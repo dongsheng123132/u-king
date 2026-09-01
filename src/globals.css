@@ -1,0 +1,290 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --color-bg-0: 245 247 251;
+    --color-bg-1: 255 255 255;
+    --color-bg-2: 255 255 255;
+    --color-bg-3: 241 245 249;
+    --color-bg-4: 226 232 240;
+    --color-ink-0: 15 23 42;
+    --color-ink-1: 30 41 59;
+    --color-ink-2: 71 85 105;
+    --color-ink-3: 100 116 139;
+    --color-ink-4: 148 163 184;
+    --color-ink-5: 203 213 225;
+    --color-ink-6: 226 232 240;
+    --color-accent: 79 90 192;
+    --color-accent-400: 94 106 210;
+    --color-accent-600: 67 78 168;
+    --color-accent-700: 54 63 142;
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.08), 0 8px 24px rgba(15, 23, 42, 0.04);
+    --shadow-pop: 0 20px 48px -18px rgba(15, 23, 42, 0.22);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-bg-0: 13 13 15;
+    --color-bg-1: 17 17 20;
+    --color-bg-2: 21 21 24;
+    --color-bg-3: 27 27 31;
+    --color-bg-4: 34 34 39;
+    --color-ink-0: 247 248 248;
+    --color-ink-1: 227 228 230;
+    --color-ink-2: 161 161 170;
+    --color-ink-3: 138 143 152;
+    --color-ink-4: 107 114 128;
+    --color-ink-5: 74 77 85;
+    --color-ink-6: 44 46 51;
+    --color-accent: 94 106 210;
+    --color-accent-400: 122 133 224;
+    --color-accent-600: 79 90 192;
+    --color-accent-700: 67 78 168;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-pop: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: rgb(var(--color-bg-0));
+    color: rgb(var(--color-ink-1));
+    font-family: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"] {
+    user-select: text;
+  }
+
+  /* U-Workspace 对话内容可框选复制：强制子树覆盖全局 user-select:none（WebView2 需显式带 -webkit） */
+  .select-text,
+  .select-text * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* PDF 文字层 —— pdf.js 官方 textLayer 样式的最小子集（不引 pdf_viewer.css 那 40KB）。
+     canvas 上的字是像素，选不中；这一层把每个字用透明 span 按原位铺上去，鼠标框选到的是它。
+     `--total-scale-factor` 由 PdfViewer 按渲染倍率写进 style，两边必须一致否则字会错位。 */
+  .textLayer {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    opacity: 1;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    z-index: 1;
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .textLayer :is(span, br) {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+  .textLayer > :not(.markedContent),
+  .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    --scale-x: 1;
+    --rotate: 0deg;
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+  .textLayer .markedContent {
+    display: contents;
+  }
+  .textLayer span[role="img"] {
+    user-select: none;
+    cursor: default;
+  }
+  /* 选中要看得见 —— 字本身是透明的，只有选区高亮能告诉用户「选上了」 */
+  .textLayer ::selection {
+    background: rgba(94, 106, 210, 0.35);
+  }
+
+  /* 下拉框选项显式配色 —— WebView2 里原生 <option> 默认白底，深色模式下用浅色文字 = 白底白字
+     看不见（客户反馈「选对话大脑白底白字」的根因）。给全站 option 统一跟随主题底色/文字色。 */
+  select option {
+    background: rgb(var(--color-bg-1));
+    color: rgb(var(--color-ink-1));
+  }
+
+  /* 滚动条中性化 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.32);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.46);
+  }
+}
+
+@layer utilities {
+  :root:not(.dark) [class*="border-white/"] {
+    border-color: rgb(15 23 42 / 0.08);
+  }
+
+  :root:not(.dark) [class*="divide-white/"] > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgb(15 23 42 / 0.07);
+  }
+
+  :root:not(.dark) [class*="ring-white/"] {
+    --tw-ring-color: rgb(15 23 42 / 0.09);
+  }
+
+  /* 🔴 白底白字兜底。旁边三条把 border/divide/ring 的 white 都翻译成了浅色墨值，
+     唯独漏了 text —— 于是「空文件夹要不要布置成工作台」那个弹窗在**默认的浅色主题**下，
+     路径、简介、「会建这些目录」、「它没有什么」、连整个次按钮的文字全成了白底白字，
+     客户截图里那是一个空白框（v0.9.99 实况）。
+     正解是组件里用 text-ink-*（全仓 1600+ 处都这么写），构建期由
+     scripts/check-theme-tokens.mjs 拦；这条只是兜底，保证就算有人写漏了也读得见。
+     按档位映射：越淡的白 → 越淡的墨，但下限压在 ink-3，
+     因为再淡就低于 3:1，兜底兜出个「看得见但读不清」没有意义。
+
+     ⚠️ `[data-on-dark]` 子树里不翻译。白字**压在自己那块硬深色底上**（accent 气泡、
+     bg-black/60 工具条、bg-neutral-900 批注浮层）是正当写法，跟主题无关；
+     把它也翻成深墨，就是把「白字压深底」换成「深字压深底」—— 兜底兜出第二个 bug。
+     所以那些地方的容器要显式挂 data-on-dark，等于把「我这块底是写死的深色」写进代码里。 */
+  :root:not(.dark) .text-white\/30:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/35:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/40:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/45:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/50:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/55:not([data-on-dark] *):not([data-on-dark]) {
+    color: rgb(var(--color-ink-3));
+  }
+
+  :root:not(.dark) .text-white\/60:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/65:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/70:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/75:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/80:not([data-on-dark] *):not([data-on-dark]) {
+    color: rgb(var(--color-ink-2));
+  }
+
+  :root:not(.dark) .text-white\/85:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/90:not([data-on-dark] *):not([data-on-dark]),
+  :root:not(.dark) .text-white\/95:not([data-on-dark] *):not([data-on-dark]) {
+    color: rgb(var(--color-ink-1));
+  }
+
+  :root:not(.dark) .bg-white\/\[0\.015\],
+  :root:not(.dark) .bg-white\/\[0\.02\],
+  :root:not(.dark) .bg-white\/\[0\.025\],
+  :root:not(.dark) .bg-white\/\[0\.03\],
+  :root:not(.dark) .bg-white\/\[0\.035\],
+  :root:not(.dark) .bg-white\/\[0\.04\] {
+    background-color: rgb(15 23 42 / 0.025);
+  }
+
+  :root:not(.dark) .bg-white\/\[0\.05\],
+  :root:not(.dark) .bg-white\/\[0\.055\],
+  :root:not(.dark) .bg-white\/\[0\.06\],
+  :root:not(.dark) .bg-white\/\[0\.07\],
+  :root:not(.dark) .bg-white\/\[0\.08\],
+  :root:not(.dark) .bg-white\/\[0\.10\],
+  :root:not(.dark) .bg-white\/\[0\.12\] {
+    background-color: rgb(15 23 42 / 0.055);
+  }
+
+  :root:not(.dark) .hover\:bg-white\/\[0\.03\]:hover,
+  :root:not(.dark) .hover\:bg-white\/\[0\.035\]:hover,
+  :root:not(.dark) .hover\:bg-white\/\[0\.04\]:hover,
+  :root:not(.dark) .hover\:bg-white\/\[0\.05\]:hover,
+  :root:not(.dark) .hover\:bg-white\/\[0\.055\]:hover,
+  :root:not(.dark) .hover\:bg-white\/\[0\.06\]:hover,
+  :root:not(.dark) .hover\:bg-white\/\[0\.08\]:hover {
+    background-color: rgb(15 23 42 / 0.065);
+  }
+
+  .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+  }
+  .dot-on {
+    background: #27a644;
+  }
+  .dot-off {
+    background: #6b7280;
+  }
+  .dot-warn {
+    background: #d6a200;
+  }
+  /* Standby：聊过、当前空闲 —— 黄灯，和「全新会话」的灰灯明确分开（测试报告 #008）。
+     带一圈同色柔光，让它在灰灯旁边一眼能认出来，而不是「稍微浅一点的灰」。 */
+  .dot-standby {
+    background: #d6a200;
+    box-shadow: 0 0 0 2px rgb(214 162 0 / 0.22);
+  }
+  /* 出错本来就该是红的（老代码注释写着「error 红」，实际复用了 dot-warn 的黄，
+     跟 Standby 撞色会让「出错」和「待命」看起来一样）。 */
+  .dot-error {
+    background: #dc2626;
+  }
+  /* 「AI 这一轮正在干活」—— 会呼吸的绿点（一圈往外扩散的环）。
+     6px 的静态色块在余光里读不出来：客户扫一眼左栏，「在跑」和「聊过」只差一个色相，
+     等于没有提示。**动是唯一能被余光捕捉到的差别**，所以这一档给动效而不是再换个颜色。
+
+     🔴 为什么不直接给 `.dot-on` 加动画：dot-on 还被终端标签页、浏览器面板、运行面板、
+     看板列头图例复用着，那些地方的绿点意思是「进程活着 / 这一列叫进行中」，不是
+     「有人正在里面干活」。一起呼吸就是满屏噪声，反而把真正在跑的那个淹掉。 */
+  .dot-live {
+    position: relative;
+    background: #27a644;
+  }
+  .dot-live::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    border: 1px solid rgb(39 166 68 / 0.75);
+    animation: uk-pulse 1.6s ease-out infinite;
+  }
+  @keyframes uk-pulse {
+    0% {
+      transform: scale(0.55);
+      opacity: 0.85;
+    }
+    100% {
+      transform: scale(1.9);
+      opacity: 0;
+    }
+  }
+  /* 系统里关了动效的（晕动症 / 远程桌面 / 低配机）不闪，但仍要看得出这一档跟静态绿点不同 ——
+     退化成一圈常亮的光环，别退化成「跟 dot-on 一模一样」。 */
+  @media (prefers-reduced-motion: reduce) {
+    .dot-live::after {
+      animation: none;
+      transform: scale(1);
+      opacity: 0.5;
+    }
+  }
+}

@@ -1,0 +1,29 @@
+U-King
+Copyright 2026 火火的(深圳)科技有限公司. All rights reserved.
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+## Trademark notice
+
+The Apache-2.0 license grants rights to the source code only. It does not
+grant any right to use the "U-King" name, the U-King logo, the
+"虾盘云" (Xiapanyun) name or logo, or the u-king.org / u-claw.org domains
+and any confusingly similar marks. These remain the property of their
+respective owners and may not be used to endorse or promote derivative
+works without prior written permission.
+
+## Third-party components
+
+This product includes software developed by third parties, including but
+not limited to:
+
+- Tauri (https://tauri.app) — MIT / Apache-2.0
+- React (https://react.dev) — MIT
+- Rust standard library and crates used in `src-tauri/Cargo.toml` — see
+  individual crate licenses (predominantly MIT / Apache-2.0)
+
+Refer to each dependency's own license file for full terms. This NOTICE
+file does not modify the terms of any third-party license.

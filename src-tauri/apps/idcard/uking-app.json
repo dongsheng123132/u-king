@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dongsheng123132/uking-miniapp/v0.1.0/schema/uking-app.schema.json",
+  "profile": "action-parity/miniapp@0.1",
+  "app": {
+    "id": "org.uking.app.idcard",
+    "slug": "idcard",
+    "name": "抠正",
+    "version": "0.1.1",
+    "summary": "照片里的证件、卡片、牌子，抠出来摆正",
+    "description": "拖四个角把证件圈住，一键抠出来摆正。纯本地几何变换，不联网、不花额度。支持身份证/银行卡标准比例。",
+    "author": "U-King",
+    "license": "Apache-2.0",
+    "locales": [
+      "zh-CN"
+    ],
+    "min_host_version": "0.9.70"
+  },
+  "action_parity": "./action-parity.json",
+  "package": {
+    "kind": "web",
+    "web": {
+      "root": "web",
+      "entry": "index.html",
+      "actions": "actions.mjs"
+    }
+  },
+  "ui": {
+    "icon": "lucide:scan-line",
+    "accent": "#f59e0b",
+    "container": "embed",
+    "home_dock": true,
+    "quick_actions": [
+      {
+        "action": "app.idcard.card.extract",
+        "label": "抠正",
+        "icon": "lucide:scan-line"
+      }
+    ],
+    "annotation": {
+      "kind": "quad",
+      "target_field": "corners",
+      "action": "app.idcard.card.extract",
+      "prompt": "点四个角把证件圈住",
+      "image_field": "image"
+    }
+  },
+  "permissions": {
+    "fs": {
+      "app_data": true,
+      "save_dialog": true,
+      "open_dialog": true
+    }
+  },
+  "market": {
+    "category": "image",
+    "tags": [
+      "证件",
+      "抠图",
+      "摆正"
+    ],
+    "price": "free"
+  }
+}

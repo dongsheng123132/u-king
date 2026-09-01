@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>免费算力路线 · U-King</title>
+<link rel="stylesheet" href="legal.css" />
+<style>
+body{max-width:820px;margin:0 auto;padding:42px 20px;font:16px/1.65 system-ui;color:#1f2937;background:#fafafa}h1{margin-bottom:6px}.notice{padding:14px 16px;border-left:4px solid #b45309;background:#fffbeb}.card{margin:14px 0;padding:18px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}.meta{font-size:13px;color:#6b7280}.tag{display:inline-block;margin-right:6px;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px}a{color:#2563eb}
+</style>
+<body>
+  <h1>免费算力路线</h1>
+  <p class="meta" id="checked">正在读取人工核验清单…</p>
+  <p class="notice">U-King 不收集 API Key，也不提供、代管或承诺任何长期免费额度。请在供应商官网自行了解免费类型、绑卡和自动扣费规则；重要任务请使用你认可的稳定付费来源。</p>
+  <main id="list"></main>
+  <div class="card" id="fr-fallback" style="display:none">
+    <h2>Free Router（本地免费路由网关）· 手动安装指南</h2>
+    <p>U-King 界面里的一键安装如果失效（上游仓库变动、下载被拦等），用下面的手动步骤，效果完全一样：</p>
+    <ol style="line-height:1.9">
+      <li>装 <a rel="noopener" target="_blank" href="https://nodejs.org/">Node.js 20 或更高版本</a>（官网下载，一路下一步）</li>
+      <li>领取 OpenRouter Key：<a rel="noopener" target="_blank" href="https://openrouter.ai/keys">openrouter.ai/keys</a>（注册即送免费档）</li>
+      <li>下载项目：<code>git clone https://github.com/www222fff/free-router.git</code>（或到仓库页面点 Code → Download ZIP 解压）</li>
+      <li>进目录，复制 <code>.env.example</code> 为 <code>.env</code>，把 <code>OPENROUTER_API_KEY=</code> 后面填上你的 Key</li>
+      <li>启动：<code>node server.mjs</code>（保持窗口开着；关掉窗口网关就停了）</li>
+      <li>在 U-King「供应商库」添加自定义供应商：地址 <code>http://127.0.0.1:8787/v1</code>，模型名 <code>free-best</code>，Key 随便填 <code>local</code></li>
+    </ol>
+    <p class="meta">第三方开源项目，U-King 未做安全审计；免费模型多数需要代理环境。本指南更新日期见上方「人工核验」。</p>
+  </div>
+  <script>
+    // 兜底页显隐：registry 里带 free-router 条目时不必重复展示；拉不到清单时反而要展示
+    fetch('./free-registry.json',{cache:'no-store'}).then(r=>r.json()).then(d=>{
+      if(!d.entries||!d.entries.some(e=>e.id==='free-router')) document.getElementById('fr-fallback').style.display='block';
+    }).catch(()=>{ document.getElementById('fr-fallback').style.display='block'; });
+    fetch('./free-registry.json',{cache:'no-store'}).then(r=>r.json()).then(data=>{
+      document.querySelector('#checked').textContent=`人工核验：${data.checked} · 版本 ${data.version}`;
+      document.querySelector('#list').innerHTML=data.entries.map(e=>`<article class="card"><h2>${e.name}</h2><p>${e.summary}</p><p class="meta"><span class="tag">${e.region||'第三方'}</span>${(e.targets||[]).join(' / ')}</p><p>${e.note||''}</p><p><a rel="noopener" target="_blank" href="${e.key_url}">去官方领取 Key →</a></p></article>`).join('');
+    }).catch(()=>{document.querySelector('#checked').textContent='清单暂不可达；请稍后再试。';});
+  </script>
+</body>
+</html>

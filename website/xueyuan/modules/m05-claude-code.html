@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>工具实战 · Claude Code · U-King 学院</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/academy.css">
+<script>try{var t=localStorage.getItem("xy-theme");if(t?t==="light":matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.classList.add("light")}catch(e){}</script>
+<script defer src="../assets/toc.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">U-King <b>学院</b></span>
+  <span class="links">
+    <a href="../index.html">← 学院首页</a>
+    <a href="m03-prompts.html">提示词大全</a>
+    <a href="faq.html">常见问题</a>
+  </span>
+</nav>
+<article class="page">
+  <h1>工具实战 · Claude Code</h1>
+
+  <p>这一课我们认识 AI 编程界的「扛把子」——<b>Claude Code</b>。名字里有个 Code（代码），听起来像程序员专属，但其实它是个能帮你<b>读懂一整个项目、自己动手改文件、自己跑命令</b>的 AI 助手。哪怕你一行代码都不会，看完这一课也能让它帮你干活。</p>
+
+  <div class="note">一句话先记住：Claude Code 是一个住在「终端」里的 AI。你用大白话跟它说要干嘛，它就自己去看文件、写文件、改 bug，干完还告诉你它做了啥。</div>
+
+  <h2>一、它是什么？适合谁？</h2>
+
+  <p>你之前用的网页版 AI（比如聊天框）有个毛病：它<b>看不到你电脑里的文件</b>，你得手动把代码复制进去、再把它的回复复制出来，来回搬运累死人。</p>
+
+  <p>Claude Code 不一样。它直接「住」在你电脑里，能：</p>
+  <ul>
+    <li><b>看</b>——自己翻你整个项目文件夹，搞清楚来龙去脉；</li>
+    <li><b>写</b>——直接帮你新建、修改文件，不用你复制粘贴；</li>
+    <li><b>跑</b>——自己执行命令（比如安装依赖、运行程序、查报错）；</li>
+    <li><b>改 bug</b>——你说「程序报错了」，它能自己去找原因、改好、再验证一遍。</li>
+  </ul>
+
+  <p>谁适合用它？</p>
+  <ul>
+    <li>想学编程但卡在「环境装不上」「报错看不懂」的新手；</li>
+    <li>有个小项目（网站、脚本、小工具）想让 AI 帮忙搭起来或改一改；</li>
+    <li>程序员想提速，把脏活累活丢给 AI。</li>
+  </ul>
+
+  <div class="ok">要点：Claude Code 最大的价值不是「写出几行代码」，而是它能<b>把整件事从头到尾包圆</b>——你提需求，它读、写、跑、验证一条龙，你只负责点头或纠正。</div>
+
+  <h2>二、用 U-King 一键装好它</h2>
+
+  <p>正常情况下，装 Claude Code 要先装 Node.js（一个运行环境）、再敲一长串安装命令、还要配网络代理——光这一步就能劝退一半新手。<b>U-King 把这些全包了。</b></p>
+
+  <p>打开 U-King AI 管家，在工具列表里找到 <b>Claude Code</b> 这张卡片，点「一键安装」。U-King 会自动帮你：</p>
+  <ul>
+    <li>装好自带的 Node.js 环境（不污染你系统）；</li>
+    <li>下载并安装 Claude Code 本体；</li>
+    <li>配好「虾盘云」中转通道——这点最关键，下面细说。</li>
+  </ul>
+
+  <div class="warn">国内最大的坑：Claude Code 默认要连国外服务器，裸网根本连不上（一直转圈或报错）。U-King 默认帮你接到<b>虾盘云国内中转</b>，国内直连、不用梯子、充值即用、¥10 起步。装完就能用，这是 U-King 帮你省掉的最大麻烦。</div>
+
+  <h3>关键一步：用工具卡「打开终端」</h3>
+
+  <p>Claude Code 是在「终端」（一个黑底白字、专门敲命令的窗口）里运行的。很多新手卡在这一步：自己打开的终端往往「找不到命令」，敲 <code>claude</code> 提示「不是内部或外部命令」。</p>
+
+  <p><b>千万别自己去开终端。</b>在 U-King 的 Claude Code 卡片上，点「<b>打开终端</b>」按钮。U-King 弹出的这个终端已经把路径、环境变量全配好了，里面直接就能用 <code>claude</code>，不会找不到命令。记住这个习惯，能少踩 80% 的坑。</p>
+
+  <div class="tip">好习惯：以后每次想用 Claude Code，就从 U-King 工具卡点「打开终端」。别图省事用系统自带的命令行，那个没配好环境，容易报「命令不存在」。</div>
+
+  <h2>三、你的第一个任务：让它读项目 + 改个 bug</h2>
+
+  <p>从 U-King 点「打开终端」后，先用 <code>cd</code> 命令进到你的项目文件夹。比如你的项目在桌面的 <code>myapp</code> 文件夹：</p>
+
+  <pre><code>cd Desktop/myapp</code></pre>
+
+  <p>然后启动 Claude Code，直接敲：</p>
+
+  <pre><code>claude</code></pre>
+
+  <p>它会进入对话模式（下面会出现一个让你打字的输入框）。现在你就能用<b>大白话</b>给它派活了。第一个任务，建议先让它「看一眼」你的项目：</p>
+
+  <pre><code>这是个什么项目？帮我用一句话讲清楚它是干嘛的，
+还有主要文件都放在哪。</code></pre>
+
+  <p>它会自己去翻文件夹，几秒后给你一份「人话版」的项目说明。这一步很重要——它读懂了，后面才改得对。</p>
+
+  <p>接着让它改 bug。假设你跑程序时报了个错，把<b>报错信息原封不动复制给它</b>：</p>
+
+  <pre><code>我运行的时候报这个错（把报错粘进来），
+帮我找原因、改好，然后再跑一遍确认没问题。</code></pre>
+
+  <p>Claude Code 会：① 看相关文件 → ② 判断哪里错了 → ③ 改掉 → ④ 自己跑一遍验证。每改一处文件，它都会问你「能改吗」，你看一眼觉得 OK 就回 <b>yes</b>（或回车同意）。</p>
+
+  <div class="ok">要点：不会写代码完全没关系。你只要会两件事——把<b>报错原文</b>给它、对它的修改说<b>同意还是不同意</b>。剩下的它全包。</div>
+
+  <h2>四、常用操作（记这几个就够）</h2>
+
+  <ul>
+    <li><b>派活</b>：直接打字说你想干嘛，越具体越好。例：「把首页标题改成『欢迎光临』，字大一点」。</li>
+    <li><b>同意修改</b>：它问你要不要改文件时，回 <code>yes</code> 或回车。</li>
+    <li><b>拒绝/纠正</b>：觉得不对就直接说「不对，我是想要……」，它会重来。</li>
+    <li><b>退出</b>：敲 <code>/exit</code>，或按两下 <kbd>Ctrl + C</kbd>。</li>
+    <li><b>清空重来</b>：聊跑偏了，敲 <code>/clear</code> 开个干净的话题。</li>
+    <li><b>看它能干啥</b>：敲 <code>/help</code> 列出所有命令。</li>
+  </ul>
+
+  <div class="tip">说人话技巧：把它当一个<b>很聪明但刚来的新同事</b>。交代任务时说清「要什么结果、在哪个文件、有什么限制」，比甩一句「优化一下」管用十倍。</div>
+
+  <h2>五、进阶入门：记忆 与 技能</h2>
+
+  <h3>记忆（Memory）——让它记住你的偏好</h3>
+
+  <p>你不想每次都重复交代「这个项目用中文注释」「别动 config 文件」之类的规矩。Claude Code 支持在项目里放一个叫 <code>CLAUDE.md</code> 的文件，把这些「项目须知」写进去，它每次都会自动读。</p>
+
+  <p>最省事的办法：在对话里敲 <code>/init</code>，它会自己逛一圈项目、生成一份 <code>CLAUDE.md</code> 草稿。你也可以直接对它说：</p>
+
+  <pre><code>把"所有回复用中文、代码注释也用中文"
+记到项目的 CLAUDE.md 里。</code></pre>
+
+  <p>以后无论谁来用这个项目，Claude Code 都会按这份「家规」办事。</p>
+
+  <h3>技能（Skills）——给它装「专项本领」</h3>
+
+  <p>技能就像给 AI 装的一个个「外挂小本领」：比如「做 PPT」「处理 Excel」「按公司模板写文档」。装上对应技能后，你说一句「帮我把这份数据做成表格」，它就知道该怎么专业地干，而不是瞎猜。</p>
+
+  <p>新手现在不用急着自己做技能。先知道有这么个东西、它能让 AI 变更专业就行。等你用熟了，再去研究怎么加自己的技能。</p>
+
+  <div class="note">记忆 vs 技能：记忆是「这个项目的规矩」（每次自动读）；技能是「一项可复用的本领」（需要时调用）。新手先用好记忆（CLAUDE.md），技能慢慢来。</div>
+
+  <h2>六、中国用户的真实坑 & 解法</h2>
+
+  <p>这些是国内用户最常踩的，挨个对照解决：</p>
+
+  <h3>坑 1：连不上 / 一直转圈 / 报网络错</h3>
+  <p>原因：默认连的是国外服务器，被墙了。<br>
+  <b>解法</b>：用 U-King 一键安装，它默认接虾盘云国内中转，直连可用。别自己瞎配国外地址。</p>
+
+  <h3>坑 2：提示「余额不足」「Token 用完了」</h3>
+  <p>原因：AI 按用量计费，你的虾盘云账户没钱了。<br>
+  <b>解法</b>：去充值（¥10 起，扫码即到账），用量大就多充点。日常聊聊改改，¥10 能用挺久。</p>
+
+  <h3>坑 3：敲 claude 提示「不是内部或外部命令」</h3>
+  <p>原因：你用的是没配好环境的终端，找不到 Claude Code。<br>
+  <b>解法</b>：永远从 U-King 工具卡点「<b>打开终端</b>」，别用系统自带命令行。这是本课反复强调的重点。</p>
+
+  <h3>坑 4：Node 环境冲突 / 版本不对</h3>
+  <p>原因：你电脑里可能装过别的 Node，版本太老或打架。<br>
+  <b>解法</b>：U-King 自带独立 Node，不跟你系统的混用。只要从 U-King 的终端启动，就用的是它配好的那一套，不会冲突。</p>
+
+  <h3>坑 5：中文路径 / 带空格的文件夹出错</h3>
+  <p>原因：项目放在像「我的 文档/新建 文件夹」这种带中文、带空格的路径下，有些命令会犯迷糊。<br>
+  <b>解法</b>：把项目放在<b>纯英文、没空格</b>的路径，比如 <code>D:\code\myapp</code>。这是个一劳永逸的好习惯。</p>
+
+  <div class="warn">别把项目放在 C 盘的「桌面」深处或一堆中文文件夹里。新建一个 <code>D:\code\</code>，所有项目都丢这儿，少很多莫名其妙的报错。</div>
+
+  <h2>七、给新手的三条总结</h2>
+  <ol>
+    <li>用 <b>U-King 一键装</b>，国内直连免梯子，充值 ¥10 起就能用；</li>
+    <li>永远从工具卡点「<b>打开终端</b>」，避免「命令找不到」；</li>
+    <li>把它当聪明新同事：交代清楚「结果 + 文件 + 限制」，它帮你读、写、跑、改 bug 一条龙。</li>
+  </ol>
+
+  <p>下一课我们继续认识 U-King 工具箱里的另外几位高手——Codex、龙虾（ClawX）和 Hermes，看看它们各有什么拿手好戏。</p>
+
+  <div class="pager">
+    <a class="prev" href="m04-scenarios.html"><span class="plabel">上一课</span>用 AI 做日常事</a>
+    <a class="next" href="m06-codex-clawx.html"><span class="plabel">下一课</span>工具实战 · Codex / 龙虾 / Hermes</a>
+  </div>
+</article>
+<footer class="foot">U-King 学院 · 配套 <a href="../../index.html">U-King AI 管家</a></footer>
+</body>
+</html>

@@ -1,0 +1,89 @@
+{
+  "_comment": "U-King「AI 学院」清单 —— app 内原生列表(Feed.tsx)读这份 JSON 渲染卡片。改内容不必发版,经发布流程同步到官网服务器。每条: title(必) summary tag date slug(同源 .html,走 open_online_page) 或 url(完整外链)。",
+  "items": [
+    {
+      "title": "🎨 AI 作图 保姆级教程（蓝皮书+红皮书）",
+      "summary": "U-King 内置 AI 作图，用 OpenAI 的 gpt-image-2，国内直连、不用 OpenAI 账号，文生图/改图/电商图都行。蓝皮书讲安装配置、红皮书讲进阶实战与变现，照着做就能上手。",
+      "tag": "手册",
+      "date": "2026-07-04",
+      "url": "https://u-claw.org.cn/uking/xueyuan/ai-image-blue.html"
+    },
+    {
+      "title": "🤖 Claude Code 保姆级教程（蓝皮书+红皮书）",
+      "summary": "Anthropic 官方命令行 AI 编程工具，最强项目级编程，国内可用、不用登录。蓝皮书讲安装配置、红皮书讲进阶实战与变现，照着做就能上手。",
+      "tag": "手册",
+      "date": "2026-07-04",
+      "url": "https://u-claw.org.cn/uking/xueyuan/claude-code-blue.html"
+    },
+    {
+      "title": "🦞 ClawX 保姆级教程（蓝皮书+红皮书）",
+      "summary": "图形版全能 AI 助手，像微信一样点点就能用，作图写作多模态都行。蓝皮书讲安装配置、红皮书讲进阶实战与变现，照着做就能上手。",
+      "tag": "手册",
+      "date": "2026-07-04",
+      "url": "https://u-claw.org.cn/uking/xueyuan/clawx-blue.html"
+    },
+    {
+      "title": "⌨️ Codex CLI 保姆级教程（蓝皮书+红皮书）",
+      "summary": "OpenAI 官方命令行 AI 编程工具，国内可用、不用登录 OpenAI。蓝皮书讲安装配置、红皮书讲进阶实战与变现，照着做就能上手。",
+      "tag": "手册",
+      "date": "2026-07-04",
+      "url": "https://u-claw.org.cn/uking/xueyuan/codex-blue.html"
+    },
+    {
+      "title": "🪽 Hermes 保姆级教程（蓝皮书+红皮书）",
+      "summary": "Nous Research 开源 AI agent，做自动化与获客系统，自带网页控制台。蓝皮书讲安装配置、红皮书讲进阶实战与变现，照着做就能上手。",
+      "tag": "手册",
+      "date": "2026-07-04",
+      "url": "https://u-claw.org.cn/uking/xueyuan/hermes-blue.html"
+    },
+    {
+      "title": "🧠 Obsidian + AI 保姆级教程（蓝皮书+红皮书）",
+      "summary": "把 AI 接进 Obsidian 笔记库，打造会自动整理、写作、检索的第二大脑。蓝皮书讲安装配置、红皮书讲进阶实战与变现，照着做就能上手。",
+      "tag": "手册",
+      "date": "2026-07-04",
+      "url": "https://u-claw.org.cn/uking/xueyuan/obsidian-blue.html"
+    },
+    {
+      "title": "★ 用 ClawX 做事:找技能 → 配模型 → 开干",
+      "summary": "新手第一课。去 skillhub.cn 找技能(视频/作图/小说/漫画/编程)→ 复制粘进 ClawX → 申请一个大模型 Key 粘进去 → 说一句话它就照着做。一篇看懂整条流程。",
+      "tag": "必看",
+      "date": "2026-06-20",
+      "slug": "clawx-skill-workflow.html"
+    },
+    {
+      "title": "如何获取各家 AI 的 API Key",
+      "summary": "火山引擎(豆包·作图视频强) + 虾盘云(内置免配) + DeepSeek / 智谱 GLM / Kimi,注册→实名认证→申请 Key→粘进去,一页讲清。",
+      "tag": "入门",
+      "date": "2026-06-18",
+      "slug": "apikey-guide.html"
+    },
+    {
+      "title": "ClawX(图形版 AI 助手)上手",
+      "summary": "新手首选。像微信一样点点就能用。本课讲下载安装、首次打开放行网络、换模型。",
+      "tag": "入门",
+      "date": "2026-06-17",
+      "slug": "openclaw-install.html"
+    },
+    {
+      "title": "Claude Code 命令行版安装与配置",
+      "summary": "程序员主力工具。npm 安装、放开 PowerShell 脚本策略、切换驱动,含装不上的兜底命令。",
+      "tag": "进阶",
+      "date": "2026-06-16",
+      "slug": "claude-code-install.html"
+    },
+    {
+      "title": "Codex 高级配置：本地模型 + 自定义云驱动",
+      "summary": "用 --oss / Ollama 跑本地模型,或在 model_providers 里接自定义云端点。进阶选配。",
+      "tag": "进阶",
+      "date": "2026-06-15",
+      "slug": "codex-local-models.html"
+    },
+    {
+      "title": "Hermes Agent 安装(pip)",
+      "summary": "Python 系自动化 Agent。pip 安装、配置 .env 凭据与模型端点。",
+      "tag": "进阶",
+      "date": "2026-06-14",
+      "slug": "hermes-install.html"
+    }
+  ]
+}

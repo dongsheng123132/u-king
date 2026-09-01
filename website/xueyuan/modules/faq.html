@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>常见问题 FAQ · U-King 学院</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/academy.css">
+<script>try{var t=localStorage.getItem("xy-theme");if(t?t==="light":matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.classList.add("light")}catch(e){}</script>
+<script defer src="../assets/toc.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">U-King <b>学院</b></span>
+  <span class="links">
+    <a href="../index.html">← 学院首页</a>
+    <a href="m03-prompts.html">提示词大全</a>
+    <a href="faq.html">常见问题</a>
+  </span>
+</nav>
+<article class="page">
+  <h1>常见问题 FAQ</h1>
+
+  <p>这一页把大家问得最多的问题集中放一起，每条都是「问题 + 一句话原因 + 照着做就行的解决步骤」。遇到卡壳别慌，先在这里用 <b>Ctrl+F</b>（按住 Ctrl 再按 F，浏览器里搜关键字）找一找，多半都能自己搞定。</p>
+
+  <div class="note">小提示：本页大部分内容和 U 盘里「08-常见故障排查」那份文档是对应的。手边有 U 盘的话，两边可以对照着看。</div>
+
+  <h2>一、钱和余额相关</h2>
+
+  <h3>怎么充值？</h3>
+  <p>U-King 底层接的是「虾盘云」中转，<b>充值即用，最低 ¥10 起</b>。步骤：</p>
+  <ol>
+    <li>打开 U-King 主界面，找到你的 <b>key</b>（一长串以 <code>sk-</code> 开头的字符，类似 <code>sk-44fe...</code>），点旁边的「充值」按钮。</li>
+    <li>跳转到充值页后，扫码付款（微信/支付宝），选 ¥10、¥50 都行，新手建议先充 ¥10 试水。</li>
+    <li>付完钱<b>几秒内</b>就到账，不用重启软件，直接回去聊天就能用。</li>
+  </ol>
+  <div class="tip">¥1 大约能换 50 万 token（一个 token 约等于半个汉字）。日常聊天、写文案，¥10 能用很久，不用一次充太多。</div>
+
+  <h3>怎么看余额？</h3>
+  <p>在 U-King 主界面通常顶部或设置页就直接显示「剩余额度」。如果只看到一个 key、看不到数字，把 key 复制下来，打开充值页 / 余额查询页粘进去就能看到。</p>
+  <div class="warn">如果余额明明有、却提示「余额不足」或「Invalid token（无效令牌）」：99% 是这个 key <b>从没充过值</b>。规则是——一个 key 必须先充一次值，账号才真正建立、才能用。先充 ¥10 试试，基本就好了。</div>
+
+  <h2>二、连不上 / 用不了</h2>
+
+  <h3>配好了，一聊天就连不上、转圈圈怎么办？</h3>
+  <p>国内裸网（不开代理）有个老大难：默认那个海外地址会被墙掉。U-King 已经默认走「国内镜像」，正常不会遇到。万一你是手动改过配置的，照下面三步自查：</p>
+  <ol>
+    <li><b>先确认网络</b>：能正常打开网页就说明网通着。</li>
+    <li><b>看接口地址</b>：配置里的接口地址应该是国内能直连的那个 <code>...org.cn</code> 结尾的镜像，而不是结尾没有 <code>.cn</code> 的海外地址。海外地址在国内会被重置连接。</li>
+    <li><b>看 key 充没充值</b>：连得上但报错，多半还是上一节那个「没充值」的坑。</li>
+  </ol>
+  <div class="ok">一句话排查口诀：网通不通 → 地址对不对（要 .cn 镜像）→ key 充没充值。三步走完八成解决。</div>
+
+  <h2>三、换模型 / 模型相关</h2>
+
+  <h3>怎么换一个更聪明（或更便宜）的模型？</h3>
+  <p>在聊天界面或设置里通常有个「模型」下拉框，点开选别的就行，选完立即生效，不用重启。日常省钱用国产模型（比如 DeepSeek 系），需要更强能力再临时切到旗舰模型。</p>
+
+  <h3>Codex 为什么换成国产模型就跑不通？</h3>
+  <p>这是<b>正常现象，不是 bug</b>。Codex（一个专门写代码的命令行工具）在设计上<b>只认 GPT 系列模型</b>，它的接口格式和国产模型对不上，硬切国产模型就会报错或没反应。</p>
+  <div class="warn">记住：Codex 专区请保持用 GPT 系模型。想用国产模型写代码，改用 Claude Code 或 ClawX（龙虾）这两个工具，它们对国产模型支持得很好。别在 Codex 里折腾国产模型，浪费时间。</div>
+
+  <h2>四、好几台电脑能不能共用一个 key？</h2>
+  <p><b>能！而且额度是共享的。</b>同一个 <code>sk-</code> 开头的 key，复制到家里电脑、公司电脑、笔记本上都能用，花的是<b>同一份余额</b>。</p>
+  <ul>
+    <li>好处：充一次钱，多台机器一起用，不用每台单独充。</li>
+    <li>注意：因为是同一个余额池，A 电脑用得多，B 电脑剩的就少，是正常的，不是被盗刷。</li>
+  </ul>
+  <div class="tip">想分开记账（比如给家人各一份额度），那就申请多个 key、各自充值，互不影响。</div>
+
+  <h2>五、装工具时卡住 / 系统拦截</h2>
+
+  <h3>U-King 帮装 Claude Code / Codex / 龙虾 时一直卡着不动？</h3>
+  <p>装这些工具要从网上下东西，卡住通常是<b>网络慢或断了</b>。这样做：</p>
+  <ol>
+    <li>耐心等 1~2 分钟，进度条有时只是没刷新，其实在下载。</li>
+    <li>真的几分钟纹丝不动，关掉 U-King 重新打开，重新点「安装」。它会接着没装完的继续，不会从头来。</li>
+    <li>反复失败，换个网络（比如关掉/打开手机热点）再试。</li>
+  </ol>
+
+  <h3>弹窗提示「未知发布者 / Windows 已保护你的电脑」怎么办？</h3>
+  <p>这是 Windows 看到没花钱买数字签名的软件给的<b>例行提醒，不是病毒</b>。U-King 是绿色便携软件，没买那个签名很正常。处理：</p>
+  <ul>
+    <li>蓝色弹窗：点左边小字「<b>更多信息</b>」，再点下面出现的「<b>仍要运行</b>」即可。</li>
+    <li>「未知发布者」对话框：直接点「<b>运行 / 是</b>」。</li>
+  </ul>
+  <div class="note">实在不放心，可以把文件传到杀毒网站扫一下再运行。便携工具被误报「未知发布者」是行业普遍现象。</div>
+
+  <h2>六、关了窗口，AI 还在自己跑 / 停不下来</h2>
+  <p>有时你把聊天窗口关了，发现它好像还在后台输出、或者再打开发现还在「思考中」。原因：AI 回答是后台一个进程在干活，关窗口只是<b>把界面藏起来了，没真正喊停</b>。</p>
+  <p>想彻底停下来：</p>
+  <ol>
+    <li>回到聊天界面，点「<b>停止 / Stop</b>」按钮（如果有），让它立刻收手。</li>
+    <li>没有停止按钮，就<b>完全退出 U-King</b>（右下角托盘图标右键 → 退出），而不只是点窗口右上角的叉。</li>
+    <li>还停不下来，打开任务管理器（<b>Ctrl+Shift+Esc</b>），找到相关进程结束掉，是安全的。</li>
+  </ol>
+  <div class="ok">小白记一条就够：点窗口右上角的「叉」只是收起来；真要停，托盘图标右键选「退出」。</div>
+
+  <div class="warn">以上都试过还搞不定？把<b>具体报错文字</b>截图保留，对照 U 盘里「08-常见故障排查」找对应条目，或联系售后并把报错原文发过去——有原文比一句「用不了」好排查一百倍。</div>
+
+</article>
+<footer class="foot">U-King 学院 · 配套 <a href="../../index.html">U-King AI 管家</a></footer>
+</body>
+</html>

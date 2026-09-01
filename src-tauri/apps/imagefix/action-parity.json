@@ -1,0 +1,414 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dongsheng123132/action-parity/v0.5.0/schema/action-parity.schema.json",
+  "spec_version": "0.5.0",
+  "application": {
+    "id": "org.uking.app.imagefix",
+    "name": "图片修补",
+    "version": "0.1.2",
+    "description": "Region-scoped image repair: watermark removal and text replacement. Every pixel outside the selected region's feathered ring is byte-identical to the source, and the source resolution is preserved.",
+    "homepage": "https://www.u-king.org/apps/imagefix"
+  },
+  "conformance_targets": [
+    "AP-1"
+  ],
+  "surfaces": [
+    {
+      "id": "miniapp",
+      "kind": "gui",
+      "required_for_parity": true,
+      "test_driver": "uking-miniapp-webview",
+      "description": "U-King MiniApp WebView shell. The user drags a box over the region; the box is reported in source-image natural pixels.",
+      "reachability": "in-process"
+    },
+    {
+      "id": "cli",
+      "kind": "cli",
+      "required_for_parity": true,
+      "description": "U-King.exe action run app.imagefix.* --json --no-input --input-file <f>. --input-file is required rather than --input because a data URL exceeds the Windows 32KB command-line limit.",
+      "reachability": "external"
+    },
+    {
+      "id": "mcp",
+      "kind": "mcp",
+      "required_for_parity": true,
+      "description": "Exposed through `U-King.exe mcp serve --allow-write` as app_imagefix_*. Verified: both actions appear in tools/list and are callable.",
+      "reachability": "local-ipc"
+    }
+  ],
+  "actions": [
+    {
+      "id": "app.imagefix.watermark.remove",
+      "title": "Remove a watermark inside a region",
+      "description": "Erase the watermark, logo or stamp inside the given pixel rectangle and reconstruct the underlying texture. Implemented as crop-with-context-ring -> AI edit -> feathered composite back at the original resolution, because the upstream image-edit endpoint accepts no inpainting mask. Consequently every pixel outside the context box is left byte-identical and the output keeps the source's full resolution. The result is delivered to the host artifact inbox and returned as a reference — never as an inline data URL, because the same action is called from terminal agents that can only consume text.",
+      "tags": [
+        "image",
+        "edit",
+        "region",
+        "watermark"
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "region"
+        ],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "data: URL, or an absolute path to a local image file."
+          },
+          "region": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0
+              },
+              "w": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "description": "Rectangle in SOURCE-IMAGE NATURAL PIXELS, top-left origin. Not preview or CSS pixels."
+          },
+          "hint": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Optional description of what is being removed, e.g. 右下角半透明台标. Improves reconstruction."
+          },
+          "model": {
+            "type": "string",
+            "description": "Override the image model. Defaults to the host's configured editing model."
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "engine_used",
+          "artifact",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "engine_used": {
+            "enum": [
+              "ai"
+            ]
+          },
+          "context_box": {
+            "type": "object",
+            "description": "The square actually sent to the model, in source pixels. Useful for auditing what could possibly have changed."
+          },
+          "ring_delta": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Per-channel mean difference measured on the context ring. Values above 40 mean the model repainted the whole frame and the result should be rejected."
+          },
+          "notes": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "path"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "image"
+              },
+              "w": {
+                "type": "integer"
+              },
+              "h": {
+                "type": "integer"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string",
+                "description": "Absolute path in the host artifact inbox. Text-only clients can read this; a GUI uses uking://localhost/artifact/<id>."
+              }
+            }
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "One human-readable line for terminal clients, e.g. 已去除水印 · 2000×1500."
+          }
+        }
+      },
+      "effects": {
+        "class": "external",
+        "risk": "low",
+        "reversible": true,
+        "confirmation": "never",
+        "audit_required": false,
+        "notes": "Calls a paid image model and consumes credits. Never mutates the source file; always returns a new image."
+      },
+      "execution": {
+        "headless": true,
+        "idempotent": false,
+        "cancellable": true,
+        "timeout_ms": 600000,
+        "progress_events": true,
+        "headless_evidence": "U-King.exe action run app.imagefix.text.replace --json --no-input --input-file <f>"
+      },
+      "bindings": [
+        {
+          "surface": "miniapp",
+          "target": "uking-rpc:action/app.imagefix.watermark.remove"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run app.imagefix.watermark.remove --json --no-input --input-file <f>"
+        },
+        {
+          "surface": "mcp",
+          "target": "mcp:tool/app_imagefix_watermark_remove"
+        }
+      ]
+    },
+    {
+      "id": "app.imagefix.text.replace",
+      "title": "Replace the text inside a region",
+      "description": "Replace the text inside the given pixel rectangle with new text. Defaults to a local pixel-exact redraw (sample the background median, erase, re-typeset with a system font) because diffusion models corrupt Chinese glyphs; escalates to the AI path only when the measured background is too textured for a flat fill. The chosen path and its evidence are reported in the output. Like the watermark action, the result is returned as an artifact reference rather than inline pixels.",
+      "tags": [
+        "image",
+        "edit",
+        "region",
+        "text"
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "region",
+          "new_text"
+        ],
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "region": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0
+              },
+              "w": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "new_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "engine": {
+            "enum": [
+              "auto",
+              "ai",
+              "local"
+            ],
+            "default": "auto",
+            "description": "auto picks local for flat backgrounds and ai for textured ones, using the measured background standard deviation."
+          },
+          "style": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "font_family": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$",
+                "description": "Defaults to the measured colour of the original glyphs."
+              },
+              "align": {
+                "enum": [
+                  "left",
+                  "center",
+                  "right"
+                ],
+                "default": "center"
+              },
+              "bold": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "engine_used",
+          "artifact",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "engine_used": {
+            "enum": [
+              "ai",
+              "local"
+            ]
+          },
+          "measured": {
+            "type": "object",
+            "description": "bg_median RGB, bg_stddev, detected text colour and glyph bounding box — the evidence behind the automatic engine choice.",
+            "properties": {
+              "bg_median": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "bg_stddev": {
+                "type": "number"
+              },
+              "text_color": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "glyph_box": {
+                "type": "object"
+              }
+            }
+          },
+          "notes": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "path"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "image"
+              },
+              "w": {
+                "type": "integer"
+              },
+              "h": {
+                "type": "integer"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string",
+                "description": "Absolute path in the host artifact inbox. Text-only clients can read this; a GUI uses uking://localhost/artifact/<id>."
+              }
+            }
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "One human-readable line for terminal clients, e.g. 已去除水印 · 2000×1500."
+          }
+        }
+      },
+      "effects": {
+        "class": "external",
+        "risk": "low",
+        "reversible": true,
+        "confirmation": "never",
+        "audit_required": false,
+        "notes": "engine_used=local consumes no credits and performs no network I/O; only the ai path is external."
+      },
+      "execution": {
+        "headless": true,
+        "idempotent": false,
+        "cancellable": true,
+        "timeout_ms": 600000,
+        "progress_events": true,
+        "headless_evidence": "U-King.exe action run app.imagefix.text.replace --json --no-input --input-file <f>"
+      },
+      "bindings": [
+        {
+          "surface": "miniapp",
+          "target": "uking-rpc:action/app.imagefix.text.replace"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run app.imagefix.text.replace --json --no-input --input-file <f>"
+        },
+        {
+          "surface": "mcp",
+          "target": "mcp:tool/app_imagefix_text_replace"
+        }
+      ]
+    }
+  ],
+  "state": {
+    "queries": [],
+    "events": [
+      "app.imagefix.progress"
+    ]
+  }
+}

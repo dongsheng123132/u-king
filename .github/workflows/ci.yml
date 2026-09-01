@@ -1,0 +1,84 @@
+# CI —— 每次 push/PR 自动跑的最便宜的网（静态检查 + 编译，不构建不联网）。
+# 设计依据：测试金字塔最底层最便宜。CI runner 无沙箱 exe/无内网/无代理，
+# 所以这里只跑"不依赖产物和外网"的部分（版本同步、源码防回退、cargo check、clippy）。
+# 完整的沙箱配置/余额实测/真装 Hermes 回归留给本地 `bash scripts/regression.sh`。
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 0. 泄漏闸门（P0：敏感信息不进公开仓）──
+      - name: 泄漏闸门
+        run: node scripts/check-leak.mjs .
+
+      # ── 1. 版本号四处同步 ──
+      - name: 版本号四处一致
+        run: |
+          v_ts=$(grep -oE 'APP_VERSION = "[^"]+"' src/version.ts | grep -oE '[0-9.]+')
+          v_pkg=$(node -p "require('./package.json').version")
+          v_tauri=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          v_cargo=$(grep -oE '^version = "[^"]+"' src-tauri/Cargo.toml | grep -oE '[0-9.]+')
+          echo "version.ts=$v_ts package.json=$v_pkg tauri.conf=$v_tauri Cargo.toml=$v_cargo"
+          if [ "$v_ts" = "$v_pkg" ] && [ "$v_pkg" = "$v_tauri" ] && [ "$v_tauri" = "$v_cargo" ]; then
+            echo "✓ 四处一致 ($v_ts)"
+          else
+            echo "✗ 版本号不一致 — 发版前四处必须同步"; exit 1
+          fi
+
+      # ── 2. 已修 bug 防回退（源码断言）──
+      - name: 关键修复未回退
+        run: |
+          set -e
+          grep -q 'hard \* 500_000' src-tauri/src/providers.rs \
+            || { echo "✗ 双重扣减修复被回退(providers.rs)"; exit 1; }
+          echo "✓ 双重扣减修复在"
+          grep -q 'persist_python_scripts_path' src-tauri/src/installer.rs \
+            || { echo "✗ Hermes PATH 持久化修复丢失(installer.rs)"; exit 1; }
+          echo "✓ Hermes PATH 修复在"
+          grep -q 'u-claw.org.cn/uking/version.json' src-tauri/src/installer.rs \
+            || { echo "✗ version 首选源不是 cn 镜像"; exit 1; }
+          echo "✓ version 首选源是 cn 镜像"
+          # providers.rs 不能有裸 api.u-claw.org（注释/说明行除外）
+          if grep -nE 'https://api\.u-claw\.org/' src-tauri/src/providers.rs \
+             | grep -v '\.org\.cn' | grep -vE '^[[:space:]]*//|⚠️|裸|GFW|实测'; then
+            echo "✗ providers.rs 仍有裸 api.u-claw.org(国内被墙)"; exit 1
+          fi
+          echo "✓ providers.rs 全 cn 镜像"
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Tauri 在 Linux 需要的系统依赖
+      - name: 装 Tauri 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: 影核生成文件没有漂移
+        run: |
+          npm install --global pnpm@9
+          pnpm install --frozen-lockfile
+          pnpm run action-parity:check
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check
+      - name: clippy（只报错误，不卡 warning）
+        working-directory: src-tauri
+        run: cargo clippy -- -D warnings || cargo clippy

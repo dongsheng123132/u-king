@@ -1,0 +1,820 @@
+{
+  "skill": "uking-install-windows",
+  "version": 52,
+  "updated": "2026-08-29",
+  "notes": "v52: 上架 Cline CLI（cline@npm，Apache-2.0）。四门槛 2026-08-29 本机沙箱实测全过：npm 328 包/17s、auth 非交互接虾盘云（openai-compatible 槽位）、headless 真调 6.6s、工具调用真改文件。安装 min_free_mb=600 + with_optional=true（Windows 平台二进制 @cline/cli-windows-x64 约 150MB 是 optionalDependency，npmmirror 滞后会静默跳过 → 装上了但 --version 崩，同 codex 的坑）；repair 四步与 pi 逐字节同款。\\nv51: CLI 转发 shim 改为仅指向 U-King 便携 Node 的 ASCII %USERPROFILE% 路径，并补 Pi；杜绝中文用户名在 cmd.exe 下重造启动失败。\nv50: 免费额度教程加入 OpenCode Go；「去领 Key」直接走带推荐码的官方注册链接，朋友完成 Go 订阅后双方各得 $5。\nv49: harness-doctor 改从 npm 正式包安装（0.3.2，latest）。此前写的是 git 规格（github:用户/仓库#v0.3.1），冒号不在 npm 包名白名单字符里，被客户端安全闸拦截，主装与 repair 全部报「非法 npm 包名」（reports #44/#47/#51/#52/#53 五连）。npm 上已有同名正式包且 latest=0.3.2，白名单原样放行，无需改 exe。\nv47: 「添加供应商」画廊模板挪进本清单（provider_templates 字段），加新厂商不用发版；老客户端会忽略这个新字段 —— 已拿 website/download 里真的 1.0.2 发布版 exe 实测（劫持它的系统 curl 喂含该字段的清单，selfcheck 回 source=server、10 个工具一个不少），不是靠新代码自己跑测试自证。前端仍以内嵌的 src/lib/providerTemplates.ts 为兜底。🔴 这份原本编号 v45，但 45/46 已被 pnpm 修复和 Harness Doctor 两条线用掉，照 45 发会把线上回退掉 harness-doctor —— 版本号是发布事实不是待办，改号前先看线上 install-windows.json 是几。\nv46: 合入 Harness Doctor 体检工具（原在 codex/harness-doctor-integration 分支上，基线停在 v43、不含 v45 的 pnpm 与 codeload 修复）。合并时以 v45 为底、只取它的 harness-doctor 条目，**没有回退 v44/v45 的任何东西**。\nv45: DSH 的 plugin 子命令会直接调用外部 pnpm；U-King 过去只保证 Node/npm，导致 Windows 干净机稳定报 pnpm 不存在。现在两轮插件安装前固定安装 pnpm 10.33.0，并把 git-hosted 规格改成钉 SHA 的 HTTPS tarball，干净机无需另装 Git。\nv43: DeepSeek Harness 增加 Web / 持续对话终端双模式，并安装两个固定 commit 的 MIT 开源 bundle：dsh-cache-stabilizer 把默认 persona 的 cwd 后移到运行时上下文、固定 schema 键序并提供 /cache 实测；dsh-terminal 复用同一个真实 Agent/Session 连续对话。GitHub 依赖钉死 SHA，避免 main 漂移。\nv42: 上架 DeepSeek 官方 DeepSeek Harness（dsh）Developer Preview。锁定实测接口版本 0.1.0-rc.6，要求 Node 22.19+；安装量较大，预留 800MB，并沿用 npm 主源失败切官方源与通用 repair。主入口是 Web 工作台，headless 只做一次性任务。\nv41: 给 crush / qwen-code / opencode / pi 补上 repair 步骤 —— 这四个后加的 npm 工具一直没有修复步骤，装不上就直接报「安装未通过验证，且无修复步骤」然后停住（issue #336）。它们的安装形状（ensure_node + npm_install）跟 claude-code / openclaw 完全一样，老工具那套 repair 本来就适用；前三步命令在这两个老工具间逐字节相同，说明是工具无关的通用步骤，此处原样取用、只另写文案。\nv37: 补上 OpenCode(opencode-ai)。它是社区最大的开源 coding agent，交互式 TUI 成熟，但**非交互 opencode run 在 Windows 上实测恒定挂死零输出**（1.4.3/1.18.11、沙箱/真实 HOME、带不带 --format 四种组合全挂），所以只按 TUI 上架、不进竞技场。v36: 上架 Qwen Code 与 Crush，并复活 Codex CLI / OpenClaw CLI 入口（主线改为「CLI 干活 + U-Workspace 当壳」）。 | v39: Windows 专属步骤打上 os=windows —— Mac 和 Windows 读同一份清单，那些 powershell.exe 步骤在 macOS 上被 sh 执行会报 `sh: line 0: fg: no job control`，把整条安装判失败并拖进修复循环（issue #340）。",
+  "mirror_fallback": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/runtimes",
+  "python": {
+    "url": "https://registry.npmmirror.com/-/binary/python-build-standalone/20241016/cpython-3.12.7+20241016-x86_64-pc-windows-msvc-install_only.tar.gz",
+    "url_mac_arm64": "https://registry.npmmirror.com/-/binary/python-build-standalone/20241016/cpython-3.12.7+20241016-aarch64-apple-darwin-install_only.tar.gz",
+    "url_mac_x64": "https://registry.npmmirror.com/-/binary/python-build-standalone/20241016/cpython-3.12.7+20241016-x86_64-apple-darwin-install_only.tar.gz",
+    "sha256": "f05531bff16fa77b53be0776587b97b466070e768e6d5920894de988bdcd547a",
+    "sha256_mac_arm64": "4c18852bf9c1a11b56f21bcf0df1946f7e98ee43e9e4c0c5374b2b3765cf9508",
+    "sha256_mac_x64": "60c5271e7edc3c2ab47440b7abf4ed50fbc693880b474f74f05768f5b657045a"
+  },
+  "pip_index": "https://mirrors.aliyun.com/pypi/simple/",
+  "free_guide": {
+    "version": 2,
+    "checked": "2026-08-26",
+    "entries": [
+      {
+        "name": "OpenRouter",
+        "template": "OpenRouter",
+        "summary": "聚合网关，模型列表里长期有一批 :free 免费路由。",
+        "key_url": "https://openrouter.ai/keys",
+        "note": "免费模型会更换、限流或下线；在模型框重新拉取可用列表，不要把某个预览模型当长期承诺。"
+      },
+      {
+        "name": "OpenCode Zen",
+        "template": "OpenCode Zen",
+        "summary": "OpenCode 官方模型网关，模型列表里有一批 id 带 -free 后缀的免费档。",
+        "key_url": "https://opencode.ai/auth",
+        "note": "登录 opencode.ai 后在 Zen 页面复制 Key；免费模型与接口支持会变动。"
+      },
+      {
+        "name": "OpenCode Go",
+        "summary": "低价编程套餐；通过推荐链接订阅后，邀请人和新订阅者各得 $5 Go 使用额度。",
+        "key_url": "https://opencode.ai/go?ref=103VWZVZTF",
+        "note": "这是订阅返额活动，不是无条件免费 Key；是否发放以 OpenCode 结算页当时显示的活动规则为准。"
+      },
+      {
+        "name": "Google Gemini",
+        "template": "Google Gemini",
+        "summary": "AI Studio 直接发 Key，有免费额度档。",
+        "key_url": "https://aistudio.google.com/apikey",
+        "note": "免信用卡；只有 OpenAI 兼容层，没有原生 Anthropic 端点。"
+      },
+      {
+        "name": "Groq",
+        "template": "Groq",
+        "summary": "LPU 硬件，主打快，有免费额度。",
+        "key_url": "https://console.groq.com/keys",
+        "note": "免信用卡，Key 是 gsk_ 开头；没有原生 Anthropic 端点。"
+      },
+      {
+        "name": "Mistral",
+        "template": "Mistral",
+        "summary": "La Plateforme 控制台自助发 Key，有限量免费额度。",
+        "key_url": "https://console.mistral.ai",
+        "note": "额度有限，跑长任务会很快用完。"
+      }
+    ]
+  },
+  "node": {
+    "version": "v22.20.0",
+    "url": "https://registry.npmmirror.com/-/binary/node/v22.20.0/node-v22.20.0-win-x64.zip",
+    "dir_name": "node-v22.20.0-win-x64",
+    "url_mac_arm64": "https://registry.npmmirror.com/-/binary/node/v22.20.0/node-v22.20.0-darwin-arm64.tar.gz",
+    "dir_name_mac_arm64": "node-v22.20.0-darwin-arm64",
+    "url_mac_x64": "https://registry.npmmirror.com/-/binary/node/v22.20.0/node-v22.20.0-darwin-x64.tar.gz",
+    "dir_name_mac_x64": "node-v22.20.0-darwin-x64",
+    "sha256": "bb819d6eb8f5bfda294bbc83a7e4ec6539da67c4233d54b0d655b9248b15e29d",
+    "sha256_mac_arm64": "cc04a76a09f79290194c0646f48fec40354d88969bec467789a5d55dd097f949",
+    "sha256_mac_x64": "00df9c5df3e4ec6848c26b70fb47bf96492f342f4bed6b17f12d99b3a45eeecc"
+  },
+  "npm_registry": "https://registry.npmmirror.com",
+  "tools": {
+    "claude-code": {
+      "name": "Claude Code CLI",
+      "bin": "claude",
+      "verify_cmd": "claude --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Claude Code（npmmirror 国内加速）",
+          "package": "@anthropic-ai/claude-code"
+        },
+        {
+          "type": "run",
+          "label": "覆盖上去：给已装的 AI 命令建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $src=@((Join-Path $env:USERPROFILE '.uking\\runtime\\node')); foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','cline')){ $real=$null; foreach($d in $src){ foreach($e in @('.cmd','.exe')){ $p=Join-Path $d ($t+$e); if(Test-Path $p){ $real=$p; break } }; if($real){break} }; if($real){ Set-Content -LiteralPath (Join-Path $shims ($t+'.cmd')) -Value ('@echo off'+[Environment]::NewLine+'call '+$q+'%USERPROFILE%\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+[char]37+'*') -Encoding Ascii } }; $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path $py){ Set-Content -LiteralPath (Join-Path $shims 'python3.cmd') -Value ('@echo off'+[Environment]::NewLine+$q+'%USERPROFILE%\\.uking\\runtime\\python\\python.exe'+$q+' '+[char]37+'*') -Encoding Ascii }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "os": "windows"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修 @anthropic-ai 目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 Claude Code",
+          "package": "@anthropic-ai/claude-code",
+          "force": true
+        }
+      ],
+      "min_free_mb": 400
+    },
+    "codex": {
+      "name": "Codex CLI",
+      "bin": "codex",
+      "verify_cmd": "codex --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Codex CLI 最新版（npmmirror 国内加速；0.141+ 二进制已打包进主包，--include=optional 兜旧版平台子包）",
+          "package": "@openai/codex",
+          "with_optional": true
+        },
+        {
+          "type": "run",
+          "label": "覆盖上去：给已装的 AI 命令建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $src=@((Join-Path $env:USERPROFILE '.uking\\runtime\\node')); foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','cline')){ $real=$null; foreach($d in $src){ foreach($e in @('.cmd','.exe')){ $p=Join-Path $d ($t+$e); if(Test-Path $p){ $real=$p; break } }; if($real){break} }; if($real){ Set-Content -LiteralPath (Join-Path $shims ($t+'.cmd')) -Value ('@echo off'+[Environment]::NewLine+'call '+$q+'%USERPROFILE%\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+[char]37+'*') -Encoding Ascii } }; $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path $py){ Set-Content -LiteralPath (Join-Path $shims 'python3.cmd') -Value ('@echo off'+[Environment]::NewLine+$q+'%USERPROFILE%\\.uking\\runtime\\python\\python.exe'+$q+' '+[char]37+'*') -Encoding Ascii }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "os": "windows"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 OpenClaw/npm 全局目录的旧进程（修 EBUSY rename）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "放开 npm 拉取可选依赖（平台二进制是 optionalDependency，被关掉就装不上 codex 内核）",
+          "cmd": "npm config delete optional --location=global & npm config set optional true & exit 0"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 Codex CLI（含平台二进制）",
+          "package": "@openai/codex",
+          "with_optional": true,
+          "force": true
+        },
+        {
+          "type": "run",
+          "label": "兜底：下 OpenAI 官方 Codex 单文件二进制（npm 全失败时的最后防线；阿里云深圳 OSS 国内镜像主源→GitHub 兜底，断点续传）",
+          "cmd": "%SystemRoot%\\System32\\curl.exe -fL -sS -C - --retry 3 --retry-delay 3 -m 1800 --proxy \"\" -o \"%TEMP%\\codex-cli.zip\" https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/runtimes/codex-win-x64.zip || %SystemRoot%\\System32\\curl.exe -fL -sS -C - --retry 3 --retry-delay 3 -m 1800 --proxy \"\" -o \"%TEMP%\\codex-cli.zip\" https://github.com/openai/codex/releases/download/rust-v0.143.0/codex-x86_64-pc-windows-msvc.exe.zip",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "解压装到 %USERPROFILE%\\bin\\codex.exe + 清掉半装坏掉的 codex 启动器（否则它在 PATH 里挡住好二进制，verify 永远失败）+ 把 ~/bin 加进用户 PATH",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$d=$env:USERPROFILE+'\\bin'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $tmp=($env:TEMP+'\\codex-cli'); Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $tmp | Out-Null; & ($env:SystemRoot+'\\System32\\tar.exe') -xf ($env:TEMP+'\\codex-cli.zip') -C $tmp; Copy-Item -Force ($tmp+'\\codex-x86_64-pc-windows-msvc.exe') ($d+'\\codex.exe'); foreach($dir in @((Join-Path $env:USERPROFILE '.uking\\runtime\\node'),(Join-Path $env:APPDATA 'npm'))){ foreach($n in @('codex','codex.cmd','codex.ps1')){ $p=Join-Path $dir $n; if(Test-Path $p){ Remove-Item -Force $p -ErrorAction SilentlyContinue } } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if(($u -split ';') -notcontains $d){ [Environment]::SetEnvironmentVariable('Path',($u.TrimEnd(';')+';'+$d),'User') }; if (Test-Path ($d+'\\codex.exe')) { exit 0 } else { exit 1 }\"",
+          "os": "windows"
+        }
+      ],
+      "min_free_mb": 400
+    },
+    "codex-app": {
+      "name": "Codex 桌面版",
+      "bin": "codex-app",
+      "verify_cmd": "powershell -NoProfile -NonInteractive -Command \"if (Get-AppxPackage -Name OpenAI.Codex) { (Get-AppxPackage -Name OpenAI.Codex).Version } else { exit 1 }\"",
+      "steps": [
+        {
+          "type": "run",
+          "label": "通过微软商店安装 Codex 桌面版（已装则跳过；商店安装较慢，请耐心等待）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$b=0; try { $b=[int][Environment]::OSVersion.Version.Build } catch {}; if ($b -gt 0 -and $b -lt 19041) { [Console]::Error.WriteLine('Codex desktop app requires Windows 10 build 19041 or newer; this PC is build ' + $b + '. It cannot be installed on this system - please use Codex CLI instead (same features, no OS version limit).'); exit 1 }; if (Get-AppxPackage -Name OpenAI.Codex) { Write-Host 'Codex 桌面版已安装，跳过'; exit 0 }; if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host 'winget 不可用，转兜底 MSIX'; exit 1 }; $wa=@('install','--id','9PLM9XGG6VKS','--source','msstore','--accept-package-agreements','--accept-source-agreements'); try { $wv=[version](((winget --version) -join '') -replace '[^0-9.]','' -replace '^\\.+','' -replace '\\.+$',''); if ($wv -ge [version]'1.4') { $wa += '--disable-interactivity' } } catch {}; winget @wa; for ($i=0; $i -lt 12; $i++) { if (Get-AppxPackage -Name OpenAI.Codex) { Write-Host 'Codex 桌面版安装成功'; exit 0 }; Start-Sleep -Seconds 5 }; exit 1\"",
+          "os": "windows"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "下载官方 MSIX 安装包（约 650MB，慢网请耐心等待；镜像主域→镜像 R2 直链 两路兜底）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$b=0; try { $b=[int][Environment]::OSVersion.Version.Build } catch {}; if ($b -gt 0 -and $b -lt 19041) { [Console]::Error.WriteLine('Codex desktop app requires Windows 10 build 19041 or newer; this PC is build ' + $b + '. It cannot be installed on this system - please use Codex CLI instead (same features, no OS version limit).'); exit 1 }; $ErrorActionPreference='Stop'; $p=Join-Path $env:TEMP 'codex-app.msix'; Remove-Item $p -Force -ErrorAction SilentlyContinue; $urls=@('https://codexapp.agentsmirror.com/latest/win','https://codexapp-r2.agentsmirror.com/latest/win'); $ok=$false; foreach($u in $urls){ Write-Host ('下载 '+$u); & ($env:SystemRoot+'\\System32\\curl.exe') -fL -sS -m 2400 -o $p $u; if($LASTEXITCODE -eq 0 -and (Test-Path $p) -and (Get-Item $p).Length -gt 100MB){ $ok=$true; break } }; if(-not $ok){ throw 'Codex MSIX 下载失败或文件不完整，请点手动教程下载' }; Write-Host ('MSIX 已下载 '+[Math]::Round((Get-Item $p).Length/1MB)+' MB')\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "安装 MSIX（免管理员，按用户安装）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$p=Join-Path $env:TEMP 'codex-app.msix'; if(-not (Test-Path $p)){ throw '找不到 codex-app.msix，请重新下载安装包' }; Add-AppxPackage -Path $p -ErrorAction Stop; for($i=0; $i -lt 12; $i++){ if(Get-AppxPackage -Name OpenAI.Codex){ Write-Host 'Codex 桌面版安装成功'; exit 0 }; Start-Sleep -Seconds 5 }; throw 'MSIX 安装后未检测到 OpenAI.Codex，请重启 U-King 或按手动教程确认安装状态'\"",
+          "os": "windows"
+        }
+      ],
+      "min_free_mb": 1500,
+      "min_windows_build": 19041
+    },
+    "openclaw": {
+      "name": "OpenClaw 龙虾",
+      "bin": "openclaw",
+      "verify_cmd": "openclaw --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（OpenClaw 需 Node 22.19+）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 OpenClaw（npm 国内源，绕开官方 git 安装）",
+          "package": "openclaw"
+        },
+        {
+          "type": "run",
+          "label": "覆盖上去：给已装的 AI 命令建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $src=@((Join-Path $env:USERPROFILE '.uking\\runtime\\node')); foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','cline')){ $real=$null; foreach($d in $src){ foreach($e in @('.cmd','.exe')){ $p=Join-Path $d ($t+$e); if(Test-Path $p){ $real=$p; break } }; if($real){break} }; if($real){ Set-Content -LiteralPath (Join-Path $shims ($t+'.cmd')) -Value ('@echo off'+[Environment]::NewLine+'call '+$q+'%USERPROFILE%\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+[char]37+'*') -Encoding Ascii } }; $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path $py){ Set-Content -LiteralPath (Join-Path $shims 'python3.cmd') -Value ('@echo off'+[Environment]::NewLine+$q+'%USERPROFILE%\\.uking\\runtime\\python\\python.exe'+$q+' '+[char]37+'*') -Encoding Ascii }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "os": "windows"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 OpenClaw/npm 全局目录的旧进程（修 EBUSY rename）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 OpenClaw",
+          "package": "openclaw",
+          "force": true
+        }
+      ],
+      "min_free_mb": 500
+    },
+    "hermes": {
+      "name": "Hermes Agent",
+      "bin": "hermes",
+      "verify_cmd": "hermes --version",
+      "steps": [
+        {
+          "type": "ensure_python",
+          "label": "检查 Python 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "pip_install",
+          "label": "安装 Hermes（pip 阿里源，绕开官方 git 安装）",
+          "package": "hermes-agent[web]"
+        },
+        {
+          "type": "run",
+          "label": "清掉挡住 hermes 自带 utils.py 的旧版 utils/ shim 包（修 fast_safe_load ImportError；PowerShell 版，exit 0 永不误判失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$base=Join-Path $env:USERPROFILE '.uking\\runtime\\python'; if(Test-Path $base){ Get-ChildItem -LiteralPath $base -Filter site-packages -Recurse -Directory -ErrorAction SilentlyContinue | ForEach-Object { $sp=$_.FullName; if((Test-Path (Join-Path $sp 'utils\\__init__.py')) -and (Test-Path (Join-Path $sp 'utils.py'))){ Remove-Item -LiteralPath (Join-Path $sp 'utils') -Recurse -Force -ErrorAction SilentlyContinue } } }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "覆盖上去：给已装的 AI 命令建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $src=@((Join-Path $env:USERPROFILE '.uking\\runtime\\node')); foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','cline')){ $real=$null; foreach($d in $src){ foreach($e in @('.cmd','.exe')){ $p=Join-Path $d ($t+$e); if(Test-Path $p){ $real=$p; break } }; if($real){break} }; if($real){ Set-Content -LiteralPath (Join-Path $shims ($t+'.cmd')) -Value ('@echo off'+[Environment]::NewLine+'call '+$q+'%USERPROFILE%\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+[char]37+'*') -Encoding Ascii } }; $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path $py){ Set-Content -LiteralPath (Join-Path $shims 'python3.cmd') -Value ('@echo off'+[Environment]::NewLine+$q+'%USERPROFILE%\\.uking\\runtime\\python\\python.exe'+$q+' '+[char]37+'*') -Encoding Ascii }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "os": "windows"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "清理损坏的便携 Python 目录（修解压中断 / Truncated tar archive；带重试防杀软瞬时锁住刚落盘文件）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$p=Join-Path $env:USERPROFILE '.uking\\runtime\\python'; Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue; if (Test-Path $p) { Start-Sleep -Seconds 2; Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }; if (Test-Path $p) { Start-Sleep -Seconds 3; Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "ensure_python",
+          "label": "重新下载并解压便携 Python"
+        },
+        {
+          "type": "run",
+          "label": "清理 pip 缓存（避免坏 wheel / 半包复用）",
+          "cmd": "python -m pip cache purge || exit /b 0",
+          "os": "windows"
+        },
+        {
+          "type": "pip_install",
+          "label": "强制重装 Hermes",
+          "package": "hermes-agent[web]",
+          "force": true
+        },
+        {
+          "type": "run",
+          "label": "清掉挡住 hermes 自带 utils.py 的旧版 utils/ shim 包（修 fast_safe_load ImportError；PowerShell 版，exit 0 永不误判失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$base=Join-Path $env:USERPROFILE '.uking\\runtime\\python'; if(Test-Path $base){ Get-ChildItem -LiteralPath $base -Filter site-packages -Recurse -Directory -ErrorAction SilentlyContinue | ForEach-Object { $sp=$_.FullName; if((Test-Path (Join-Path $sp 'utils\\__init__.py')) -and (Test-Path (Join-Path $sp 'utils.py'))){ Remove-Item -LiteralPath (Join-Path $sp 'utils') -Recurse -Force -ErrorAction SilentlyContinue } } }; exit 0\"",
+          "os": "windows"
+        }
+      ],
+      "min_free_mb": 700
+    },
+    "qwen-code": {
+      "name": "Qwen Code",
+      "bin": "qwen",
+      "verify_cmd": "qwen --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Qwen Code（阿里通义开源终端 agent，npmmirror 国内加速）",
+          "package": "@qwen-code/qwen-code"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 Qwen Code",
+          "package": "@qwen-code/qwen-code",
+          "force": true
+        }
+      ]
+    },
+    "crush": {
+      "name": "Crush",
+      "bin": "crush",
+      "verify_cmd": "crush --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Crush（Charm 出品，npm 包内含 Go 单二进制）",
+          "package": "@charmland/crush"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 Crush",
+          "package": "@charmland/crush",
+          "force": true
+        }
+      ]
+    },
+    "opencode": {
+      "name": "OpenCode",
+      "bin": "opencode",
+      "verify_cmd": "opencode --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 OpenCode（社区最大的开源终端编程 agent，npmmirror 国内加速）",
+          "package": "opencode-ai"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 OpenCode",
+          "package": "opencode-ai",
+          "force": true
+        }
+      ]
+    },
+    "dsh": {
+      "name": "DeepSeek Harness",
+      "bin": "dsh",
+      "verify_cmd": "dsh --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（DeepSeek Harness 要 22.19+，不够就用便携版）",
+          "min": "22.19.0"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 DeepSeek Harness 0.1.0-rc.7（官方预览版，锁定已验证版本）",
+          "package": "@deepseek-ai/dsh@0.1.0-rc.7"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 DSH 插件管理器依赖 pnpm 10.33.0",
+          "package": "pnpm@10.33.0"
+        },
+        {
+          "type": "run",
+          "label": "给 DSH Web 工作台安装缓存前缀稳定插件（固定开源版本）",
+          "cmd": "dsh plugin --profile web add https://codeload.github.com/dongsheng123132/dsh-cache-stabilizer/tar.gz/7d7394a1421289a8e891e994d779843d93ff7893"
+        },
+        {
+          "type": "run",
+          "label": "安装 DSH 持续对话终端模式与缓存统计（固定开源版本）",
+          "cmd": "dsh plugin --profile terminal add https://codeload.github.com/dongsheng123132/dsh-terminal/tar.gz/251e63689d34082bea15831b44c746e0cc50a5f5 https://codeload.github.com/dongsheng123132/dsh-cache-stabilizer/tar.gz/7d7394a1421289a8e891e994d779843d93ff7893"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 DeepSeek Harness 0.1.0-rc.7",
+          "package": "@deepseek-ai/dsh@0.1.0-rc.7",
+          "force": true
+        },
+        {
+          "type": "npm_install",
+          "label": "修复 DSH 插件管理器依赖 pnpm 10.33.0",
+          "package": "pnpm@10.33.0",
+          "force": true
+        },
+        {
+          "type": "run",
+          "label": "修复 DSH Web 缓存前缀稳定插件",
+          "cmd": "dsh plugin --profile web add https://codeload.github.com/dongsheng123132/dsh-cache-stabilizer/tar.gz/7d7394a1421289a8e891e994d779843d93ff7893"
+        },
+        {
+          "type": "run",
+          "label": "修复 DSH 持续对话终端模式与缓存统计",
+          "cmd": "dsh plugin --profile terminal add https://codeload.github.com/dongsheng123132/dsh-terminal/tar.gz/251e63689d34082bea15831b44c746e0cc50a5f5 https://codeload.github.com/dongsheng123132/dsh-cache-stabilizer/tar.gz/7d7394a1421289a8e891e994d779843d93ff7893"
+        }
+      ],
+      "min_free_mb": 850
+    },
+    "pi": {
+      "name": "pi",
+      "bin": "pi",
+      "verify_cmd": "pi --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（pi 要 22.19+，不够就用便携版）",
+          "min": "22.19.0"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 pi（Mario Zechner 的开源终端 agent，npmmirror 国内加速）",
+          "package": "@earendil-works/pi-coding-agent"
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 pi",
+          "package": "@earendil-works/pi-coding-agent",
+          "force": true
+        }
+      ]
+    },
+    "harness-doctor": {
+      "name": "Harness Doctor",
+      "bin": "harness-doctor",
+      "verify_cmd": "harness-doctor --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（Harness Doctor 要 20+）",
+          "min": "20.0.0"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Harness Doctor 0.3.1（锁定 GitHub 发布版本）",
+          "package": "harness-doctor@0.3.2"
+        }
+      ],
+      "repair": [
+        {
+          "type": "npm_install",
+          "label": "强制重装 Harness Doctor 0.3.1",
+          "package": "harness-doctor@0.3.2",
+          "force": true
+        }
+      ],
+      "min_free_mb": 20
+    },
+    "cline": {
+      "name": "Cline CLI",
+      "bin": "cline",
+      "verify_cmd": "cline --version",
+      "min_free_mb": 600,
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Cline（开源 AI 编程 agent，约 330MB 含平台二进制，npmmirror 国内加速）",
+          "package": "cline",
+          "with_optional": true
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "停止占用 npm 全局目录的旧进程（修目录被占用导致 cleanup/rename 失败）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$nodeRoot=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($nodeRoot,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清除 npm 全局代理配置（客户机代理常把 npm 拦死）",
+          "cmd": "call npm config delete proxy --location=global & call npm config delete https-proxy --location=global & call npm config delete proxy & call npm config delete https-proxy & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "清理 npm 缓存",
+          "cmd": "call npm cache clean --force & (exit /b 0)",
+          "os": "windows"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 Cline",
+          "package": "cline",
+          "force": true
+        }
+      ]
+    }
+  },
+  "provider_templates": [
+    {
+      "name": "OpenAI 官方",
+      "openai_base": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini",
+      "key_url": "https://platform.openai.com/api-keys",
+      "key_hint": "sk- 开头",
+      "website": "https://platform.openai.com"
+    },
+    {
+      "name": "DeepSeek 官方",
+      "openai_base": "https://api.deepseek.com/v1",
+      "anthropic_base": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-flash",
+      "small_model": "deepseek-v4-flash",
+      "key_url": "https://platform.deepseek.com/api_keys",
+      "key_hint": "sk- 开头",
+      "website": "https://platform.deepseek.com"
+    },
+    {
+      "name": "智谱 GLM",
+      "openai_base": "https://open.bigmodel.cn/api/paas/v4",
+      "anthropic_base": "https://open.bigmodel.cn/api/anthropic",
+      "model": "glm-5",
+      "small_model": "glm-5-flash",
+      "key_url": "https://www.bigmodel.cn/usercenter/apikeys",
+      "key_hint": "在「API 密钥」页创建",
+      "website": "https://open.bigmodel.cn"
+    },
+    {
+      "name": "Kimi（月之暗面）",
+      "openai_base": "https://api.moonshot.cn/v1",
+      "anthropic_base": "https://api.moonshot.cn/anthropic",
+      "model": "kimi-k2.6",
+      "key_url": "https://platform.moonshot.cn/console/api-keys",
+      "key_hint": "sk- 开头",
+      "website": "https://platform.moonshot.cn"
+    },
+    {
+      "name": "小米 MiMo",
+      "openai_base": "https://token-plan-cn.xiaomimimo.com/v1",
+      "anthropic_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+      "model": "mimo-v2.5",
+      "key_url": "https://mimo.mi.com",
+      "key_hint": "Token Plan 套餐 tp- 开头；按量付费 sk- 开头需把地址换成 api.xiaomimimo.com/v1",
+      "website": "https://mimo.mi.com"
+    },
+    {
+      "name": "阿里百炼（通义）",
+      "openai_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "anthropic_base": "https://dashscope.aliyuncs.com/apps/anthropic",
+      "model": "qwen-plus",
+      "key_url": "https://bailian.console.aliyun.com/#/api-key",
+      "key_hint": "按量付费 API Key；Token/Coding Plan 套餐 Key 只能配其专用地址，混用会 401/403",
+      "website": "https://bailian.console.aliyun.com"
+    },
+    {
+      "name": "火山方舟（豆包）",
+      "openai_base": "https://ark.cn-beijing.volces.com/api/v3",
+      "model": "doubao-seed-1-6-250615",
+      "key_url": "https://console.volcengine.com/ark",
+      "key_hint": "在火山方舟控制台创建",
+      "website": "https://console.volcengine.com/ark"
+    },
+    {
+      "name": "SiliconFlow（硅基流动）",
+      "openai_base": "https://api.siliconflow.cn/v1",
+      "model": "deepseek-ai/DeepSeek-V3",
+      "key_url": "https://cloud.siliconflow.cn/account/ak",
+      "key_hint": "sk- 开头",
+      "website": "https://siliconflow.cn"
+    },
+    {
+      "name": "OpenRouter",
+      "openai_base": "https://openrouter.ai/api/v1",
+      "anthropic_base": "https://openrouter.ai/api",
+      "model": "openai/gpt-5.4-mini",
+      "key_url": "https://openrouter.ai/keys",
+      "key_hint": "sk-or- 开头",
+      "website": "https://openrouter.ai"
+    },
+    {
+      "name": "OpenCode Zen",
+      "openai_base": "https://opencode.ai/zen/v1",
+      "model": "x-preview-f-free",
+      "key_url": "https://opencode.ai/auth",
+      "key_hint": "登录 opencode.ai 后在 Zen 页面复制",
+      "website": "https://opencode.ai/docs/zen/"
+    },
+    {
+      "name": "腾讯混元",
+      "openai_base": "https://tokenhub.tencentmaas.com/v1",
+      "anthropic_base": "https://tokenhub.tencentmaas.com/v1",
+      "model": "hy3",
+      "key_url": "https://tokenhub.tencentmaas.com",
+      "key_hint": "TokenHub 国内站 Key；国际站请改为 tokenhub-intl.tencentmaas.com/v1，二者 Key 不互通",
+      "website": "https://tokenhub.tencentmaas.com"
+    },
+    {
+      "name": "智谱 GLM 海外（z.ai）",
+      "openai_base": "https://api.z.ai/api/paas/v4",
+      "anthropic_base": "https://api.z.ai/api/anthropic",
+      "model": "glm-4.6",
+      "key_url": "https://z.ai/manage-apikey/apikey-list",
+      "key_hint": "在 z.ai 创建 API Key",
+      "website": "https://z.ai"
+    },
+    {
+      "name": "MiniMax（国内站）",
+      "openai_base": "https://api.minimaxi.com/v1",
+      "model": "MiniMax-M2.7",
+      "key_url": "https://platform.minimaxi.com",
+      "key_hint": "「接口密钥」页创建；国内站按量付费 Key，跟 Token Plan 订阅 Key 不通用",
+      "website": "https://platform.minimaxi.com"
+    },
+    {
+      "name": "百度千帆 ERNIE",
+      "openai_base": "https://qianfan.baidubce.com/v2",
+      "anthropic_base": "https://qianfan.baidubce.com/anthropic",
+      "model": "ernie-4.5-turbo-128k",
+      "key_url": "https://console.bce.baidu.com/qianfan/overview",
+      "key_hint": "bce-v3/ALTAK- 开头，控制台直接创建（V2 版，永久有效）",
+      "website": "https://qianfan.baidubce.com"
+    },
+    {
+      "name": "阶跃星辰 Stepfun",
+      "openai_base": "https://api.stepfun.com/v1",
+      "model": "step-3.5-flash",
+      "key_url": "https://platform.stepfun.com/interface-key",
+      "key_hint": "国内站需 +86 手机号验证",
+      "website": "https://platform.stepfun.com"
+    },
+    {
+      "name": "美团 LongCat",
+      "openai_base": "https://api.longcat.chat/openai",
+      "anthropic_base": "https://api.longcat.chat/anthropic",
+      "model": "LongCat-2.0",
+      "key_url": "https://longcat.chat/platform/",
+      "key_hint": "注册后自动生成一把 default Key，同一把 Key 两种协议都能用",
+      "website": "https://longcat.chat/platform/"
+    },
+    {
+      "name": "Google Gemini",
+      "openai_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "model": "gemini-3.5-flash",
+      "key_url": "https://aistudio.google.com/apikey",
+      "key_hint": "AI Studio 创建，免信用卡",
+      "website": "https://ai.google.dev/gemini-api/docs/openai"
+    },
+    {
+      "name": "xAI Grok",
+      "openai_base": "https://api.x.ai/v1",
+      "model": "grok-4.6",
+      "key_url": "https://console.x.ai",
+      "key_hint": "console.x.ai 创建（别跟 grok.com 聊天页搞混）",
+      "website": "https://x.ai/api"
+    },
+    {
+      "name": "Mistral",
+      "openai_base": "https://api.mistral.ai/v1",
+      "model": "mistral-large-latest",
+      "key_url": "https://console.mistral.ai",
+      "key_hint": "La Plateforme 控制台创建，有限量免费额度",
+      "website": "https://docs.mistral.ai"
+    },
+    {
+      "name": "Groq",
+      "openai_base": "https://api.groq.com/openai/v1",
+      "model": "openai/gpt-oss-120b",
+      "key_url": "https://console.groq.com/keys",
+      "key_hint": "gsk_ 开头，免信用卡有免费额度",
+      "website": "https://console.groq.com"
+    }
+  ]
+}
