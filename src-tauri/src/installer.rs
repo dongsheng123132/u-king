@@ -486,6 +486,8 @@ pub struct UpdateInfo {
     pub current: String,
     pub latest: String,
     pub has_update: bool,
+    /// 至少有一个版本源返回了可解析的 JSON。false 代表「暂时查不到」，不是「已是最新版」。
+    pub checked_ok: bool,
     pub notes: String,
     pub download_url: String,
     /// 历史版本更新日志（服务器 version.json 的 `history`，新→旧）。
@@ -615,13 +617,12 @@ fn update_failures_in(dir: &Path, target: &str) -> (u32, String) {
     )
 }
 
-/// 检查是否有新版（拉服务器 version.json 与内置版本比对）。
-pub fn check_update() -> UpdateInfo {
-    let current = env!("CARGO_PKG_VERSION").to_string();
-    let mut info = UpdateInfo {
-        current: current.clone(),
-        latest: current.clone(),
+fn empty_update_info(current: &str) -> UpdateInfo {
+    UpdateInfo {
+        current: current.to_string(),
+        latest: current.to_string(),
         has_update: false,
+        checked_ok: false,
         notes: String::new(),
         download_url: if cfg!(target_os = "macos") {
             "https://u-claw.org.cn/uking/".into()
@@ -636,38 +637,75 @@ pub fn check_update() -> UpdateInfo {
         } else {
             "https://u-claw.org.cn/download/U-King-Setup.exe".into()
         },
-    };
+    }
+}
+
+/// 从已经取得的版本响应中选出最高版本；网络与本地失败账本都留在外层，保证此处可回归测试。
+/// 同版本按 VERSION_URLS 的声明顺序取胜，避免镜像短暂不同步时字段跨源混搭。
+pub(crate) fn pick_update_from_responses(current: &str, responses: &[(String, String)]) -> UpdateInfo {
+    let mut winner: Option<(usize, UpdateInfo)> = None;
+
+    for (response_index, (url, out)) in responses.iter().enumerate() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(out) else { continue };
+        let mut candidate = empty_update_info(current);
+        candidate.checked_ok = true;
+        candidate.latest = v.get("version").and_then(|x| x.as_str()).unwrap_or(current).to_string();
+        candidate.notes = v.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        if let Some(download_url) = v.get("download_url").and_then(|x| x.as_str()) {
+            candidate.download_url = download_url.to_string();
+        }
+        candidate.history = v
+            .get("history")
+            .and_then(|h| h.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .map(|e| VersionNote {
+                        version: e.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                        date: e.get("date").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                        notes: e.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    })
+                    .filter(|n| !n.version.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let source_rank = VERSION_URLS
+            .iter()
+            .position(|known_url| *known_url == url)
+            .unwrap_or(VERSION_URLS.len() + response_index);
+        let should_replace = match &winner {
+            None => true,
+            Some((winner_rank, info)) => {
+                semver_gt(&candidate.latest, &info.latest)
+                    || (!semver_gt(&info.latest, &candidate.latest) && source_rank < *winner_rank)
+            }
+        };
+        if should_replace {
+            winner = Some((source_rank, candidate));
+        }
+    }
+
+    let mut info = winner.map(|(_, info)| info).unwrap_or_else(|| empty_update_info(current));
+    info.has_update = info.checked_ok && semver_gt(&info.latest, current);
+    info
+}
+
+/// 检查是否有新版（拉服务器 version.json 与内置版本比对）。
+pub fn check_update() -> UpdateInfo {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let mut responses = Vec::new();
 
     for url in VERSION_URLS {
         if let Ok(out) = curl(&["-sL", "-m", "6", url]) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&out) {
-                let latest = v.get("version").and_then(|x| x.as_str()).unwrap_or(&info.current).to_string();
-                info.notes = v.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                if let Some(dl) = v.get("download_url").and_then(|x| x.as_str()) {
-                    info.download_url = dl.to_string();
-                }
-                info.history = v
-                    .get("history")
-                    .and_then(|h| h.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .map(|e| VersionNote {
-                                version: e.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                                date: e.get("date").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                                notes: e.get("notes").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                            })
-                            .filter(|n| !n.version.is_empty())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                info.has_update = semver_gt(&latest, &info.current);
-                info.latest = latest;
-                let (n, why) = update_failures_for(&info.latest);
-                info.failed_attempts = n;
-                info.fail_reason = why;
-                return info;
-            }
+            responses.push(((*url).to_string(), out));
         }
+    }
+
+    let mut info = pick_update_from_responses(&current, &responses);
+    if info.checked_ok {
+        let (n, why) = update_failures_for(&info.latest);
+        info.failed_attempts = n;
+        info.fail_reason = why;
     }
     info
 }
@@ -6031,6 +6069,55 @@ mod sysproxy_tests {
 
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_picker_uses_highest_version_from_out_of_order_responses() {
+        let responses = vec![
+            (VERSION_URLS[2].to_string(), r#"{"version":"1.1.0"}"#.to_string()),
+            (VERSION_URLS[1].to_string(), r#"{"version":"1.3.0"}"#.to_string()),
+            (VERSION_URLS[0].to_string(), r#"{"version":"1.2.0"}"#.to_string()),
+        ];
+
+        let info = pick_update_from_responses("1.0.0", &responses);
+        assert!(info.checked_ok);
+        assert_eq!(info.latest, "1.3.0");
+        assert!(info.has_update);
+    }
+
+    #[test]
+    fn update_picker_keeps_winning_source_fields_together() {
+        let responses = vec![
+            (VERSION_URLS[0].to_string(), r#"{"version":"1.1.0","notes":"旧日志","download_url":"https://example.com/old.exe","history":[{"version":"1.1.0","notes":"旧历史"}]}"#.to_string()),
+            (VERSION_URLS[1].to_string(), r#"{"version":"1.2.0","notes":"新日志","download_url":"https://example.com/new.exe","history":[{"version":"1.2.0","notes":"新历史"}]}"#.to_string()),
+        ];
+
+        let info = pick_update_from_responses("1.0.0", &responses);
+        assert_eq!(info.latest, "1.2.0");
+        assert_eq!(info.notes, "新日志");
+        assert_eq!(info.download_url, "https://example.com/new.exe");
+        assert_eq!(info.history.first().map(|n| n.notes.as_str()), Some("新历史"));
+    }
+
+    #[test]
+    fn update_picker_marks_empty_responses_as_unchecked() {
+        let responses = vec![(VERSION_URLS[0].to_string(), String::new())];
+
+        let info = pick_update_from_responses("1.0.0", &responses);
+        assert!(!info.checked_ok);
+        assert_eq!(info.latest, "1.0.0");
+        assert!(!info.has_update);
+    }
+
+    #[test]
+    fn update_picker_breaks_version_ties_by_declared_source_order() {
+        let responses = vec![
+            (VERSION_URLS[2].to_string(), r#"{"version":"1.2.0","notes":"第三源"}"#.to_string()),
+            (VERSION_URLS[0].to_string(), r#"{"version":"1.2.0","notes":"第一源"}"#.to_string()),
+        ];
+
+        let info = pick_update_from_responses("1.0.0", &responses);
+        assert_eq!(info.notes, "第一源");
+    }
 
     /// P3b 上线前的兼容性判据（Fable 5 标为最高风险项）：给一份**老客户端从没见过**
     /// 的 skill 清单（多一个顶层字段 `provider_templates` + 里面还塞了老结构完全没有的

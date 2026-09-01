@@ -6,7 +6,7 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, Sparkles, Sun, Wallet, Wand2, Wrench } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { SidebarMiniApps } from "./SidebarMiniApps";
@@ -253,9 +253,12 @@ export function Sidebar({
   theme = "light",
   onToggleTheme,
   hasUpdate,
+  checkedOk,
   latestVersion,
   onUpdate,
   updating,
+  checking,
+  onRecheck,
   // updatePct 曾给「升级中 {pct}%」横幅用；2026-09-01 升级入口弱化成迷你图标后
   // 进度数字没有落脚点，保留 prop 但显式弃用（App.tsx 仍传，别删签名——下次做悬浮进度还能用）。
   /* updatePct, */
@@ -279,9 +282,14 @@ export function Sidebar({
    *  用户长期待在 U-Workspace / 终端 / TUI 页时永远看不到升级（客户实锤）。侧栏在所有页
    *  都在，把升级入口放这里保证「随时点得到」。 */
   hasUpdate?: boolean;
+  /** false 是三源都没有可解析响应；undefined 是首轮检查尚未返回。 */
+  checkedOk?: boolean;
   latestVersion?: string;
   onUpdate?: () => void;
   updating?: boolean;
+  checking?: boolean;
+  /** 手动重新检查版本源。 */
+  onRecheck?: () => void;
   updatePct?: number | null;
   /** 这台机器自动升级到这一版**失败过几次**（后端本地账本）。≥1 就换条路走：
    *  不再劝「再点一次一键升级」（同一条路上的失败源基本都不是暂时性的），
@@ -425,27 +433,42 @@ export function Sidebar({
           </button>
         </nav>
         <div className="pb-3 flex flex-col items-center gap-1 w-full">
-          {hasUpdate && (
+          {(hasUpdate || checkedOk === false) && (
             <button
-              onClick={updateFailed > 0 ? onReinstall : onUpdate}
-              disabled={updating}
+              onClick={hasUpdate ? (updateFailed > 0 ? onReinstall : onUpdate) : onRecheck}
+              disabled={hasUpdate ? updating : checking}
               title={
-                updating
-                  ? t("正在升级…")
-                  : updateFailed > 0
-                    ? t("自动升级失败过 {n} 次 —— 点此下载官网安装包覆盖安装", { n: updateFailed })
-                    : t("有新版 v{ver}，点此升级", { ver: latestVersion ?? "" })
+                hasUpdate
+                  ? updating
+                    ? t("正在升级…")
+                    : updateFailed > 0
+                      ? t("自动升级失败过 {n} 次 —— 点此下载官网安装包覆盖安装", { n: updateFailed })
+                      : t("有新版 v{ver}，点此升级", { ver: latestVersion ?? "" })
+                  : checking
+                    ? t("检查中…")
+                    : t("暂时检查不到更新，点此重试")
               }
               className={cn(
-                "w-10 h-10 grid place-items-center rounded-card transition-colors disabled:opacity-60",
-                updateFailed > 0
-                  ? "text-amber-500 hover:bg-amber-500/[0.12]"
-                  : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]",
+                "relative w-10 h-10 grid place-items-center rounded-card transition-colors disabled:opacity-60",
+                hasUpdate
+                  ? updateFailed > 0
+                    ? "text-amber-500 hover:bg-amber-500/[0.12]"
+                    : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]"
+                  : "text-ink-5 hover:text-ink-3 hover:bg-white/[0.04]",
               )}
             >
-              <ArrowUpCircle size={18} className={updating ? "animate-pulse" : ""} />
+              <ArrowUpCircle size={18} className={hasUpdate && updating ? "animate-pulse" : ""} />
+              {hasUpdate && <span className={cn("absolute right-1 top-1 w-1.5 h-1.5 rounded-full", updateFailed > 0 ? "bg-amber-500" : "bg-accent")} />}
             </button>
           )}
+          <button
+            onClick={onRecheck}
+            disabled={checking}
+            title={checking ? t("检查中…") : t("检查更新")}
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={checking ? "animate-spin" : ""} />
+          </button>
           <button
             onClick={() => onSelect("feedback")}
             title={t("技术支持 · 报告问题 · 加微信找我们")}
@@ -656,32 +679,39 @@ export function Sidebar({
       {/* 有新版：常驻升级入口（2026-09-01 弱化：改成页脚版本号旁的迷你图标，
           不再占一整块横幅 —— 用户拍板「升级太强势了，放小小的隐藏」。
           入口仍在所有页可达（悬停有完整说明），但视觉权重降到与主题/语言同档。 */}
-      {hasUpdate && (
+      {(hasUpdate || checkedOk === false) && (
         <div className="px-2.5 pb-1 flex items-center justify-center">
           {/* ★ 自动升级失败过就换条路：主按钮改成「下载安装包重装」。
               别再劝「再试一次」—— 自动替换失败的原因（杀软锁 exe、目录不可写、路径含中文、
               替换脚本被拦）几乎都不是暂时性的，同一条路重试只是重复同一次失败，
               而客户的体感就是「老是有新版本，就是升不上去」。 */}
           <button
-            onClick={updateFailed > 0 ? onReinstall : onUpdate}
-            disabled={updating}
+            onClick={hasUpdate ? (updateFailed > 0 ? onReinstall : onUpdate) : onRecheck}
+            disabled={hasUpdate ? updating : checking}
             title={
-              updating
-                ? t("正在升级…")
-                : updateFailed > 0
-                  ? t("自动升级失败过 {n} 次，改用官网安装包覆盖安装（配置不会丢）", { n: updateFailed })
-                  : t("升级到 v{ver}", { ver: latestVersion ?? "" })
+              hasUpdate
+                ? updating
+                  ? t("正在升级…")
+                  : updateFailed > 0
+                    ? t("自动升级失败过 {n} 次，改用官网安装包覆盖安装（配置不会丢）", { n: updateFailed })
+                    : t("升级到 v{ver}", { ver: latestVersion ?? "" })
+                : checking
+                  ? t("检查中…")
+                  : t("暂时检查不到更新，点此重试")
             }
             className={cn(
-              "w-9 h-9 grid place-items-center rounded-card transition-colors disabled:opacity-60 shrink-0",
-              updateFailed > 0
-                ? "text-amber-500 hover:bg-amber-500/[0.12]"
-                : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]",
+              "relative w-9 h-9 grid place-items-center rounded-card transition-colors disabled:opacity-60 shrink-0",
+              hasUpdate
+                ? updateFailed > 0
+                  ? "text-amber-500 hover:bg-amber-500/[0.12]"
+                  : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]"
+                : "text-ink-5 hover:text-ink-3 hover:bg-white/[0.04]",
             )}
           >
-            <ArrowUpCircle size={15} className={cn("shrink-0", updating && "animate-pulse")} />
+            <ArrowUpCircle size={15} className={cn("shrink-0", hasUpdate && updating && "animate-pulse")} />
+            {hasUpdate && <span className={cn("absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full", updateFailed > 0 ? "bg-amber-500" : "bg-accent")} />}
           </button>
-          {updateFailed > 0 && !updating && (
+          {hasUpdate && updateFailed > 0 && !updating && (
             <button
               onClick={onReinstall}
               disabled={updating}
@@ -750,6 +780,14 @@ export function Sidebar({
             <Sun size={15} className="text-ink-4" />
           )}
           <span className="text-[11px] font-medium">{theme === "dark" ? t("夜间开") : t("白天")}</span>
+        </button>
+        <button
+          onClick={onRecheck}
+          disabled={checking}
+          title={checking ? t("检查中…") : t("检查更新")}
+          className="flex items-center shrink-0 px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors disabled:opacity-60"
+        >
+          <RefreshCw size={15} className={checking ? "animate-spin" : ""} />
         </button>
         {/* 矮屏才有：自定义标题栏被撤，这是「缩到托盘」唯一的界面入口（见 onHideToTray 注释）。
             只放图标不放字 —— 这一行已经有语言和主题，再挤一个带标签的按钮会把它们压换行，

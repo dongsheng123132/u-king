@@ -214,6 +214,7 @@ export function App() {
     current: string;
     latest: string;
     has_update: boolean;
+    checked_ok: boolean;
     notes: string;
     download_url: string;
     history?: { version: string; date?: string; notes?: string }[];
@@ -229,6 +230,7 @@ export function App() {
   const [aigcDismissed, setAigcDismissed] = useState(() => localStorage.getItem("uking.aigcNudgeDone") === "1");
   const [updating, setUpdating] = useState(false);
   const [updatePct, setUpdatePct] = useState<number | null>(null);
+  const [checking, setChecking] = useState(false);
   // provider 增删改弹层：null=关；{}=新建；{editId}=编辑该项
   const [providerMgr, setProviderMgr] = useState<{ editId?: string } | null>(null);
   // 半成品状态引导（装了工具没配驱动 / 配了没充值 等）
@@ -246,19 +248,37 @@ export function App() {
     localStorage.setItem("uking.theme", theme);
   }, [theme]);
 
+  const flash = useCallback((msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 3200);
+  }, []);
+
+  const recheck = useCallback(async (manual = false) => {
+    setChecking(true);
+    try {
+      const info = await invoke<typeof update>("check_update");
+      setUpdate(info);
+      if (manual) {
+        if (!info?.checked_ok) flash(tr("暂时检查不到更新（网络？稍后再试）"));
+        else if (info.has_update) flash(tr("发现新版本 v{ver}", { ver: info.latest }));
+        else flash(tr("已是最新版"));
+      }
+      return info;
+    } catch {
+      if (manual) flash(tr("暂时检查不到更新（网络？稍后再试）"));
+      return null;
+    } finally {
+      setChecking(false);
+    }
+  }, [flash, tr]);
+
   useEffect(() => {
-    const run = () =>
-      invoke<typeof update>("check_update")
-        .then((u) => {
-          setUpdate(u);
-        })
-        .catch(() => {});
-    run();
+    void recheck();
     // 定时复查：check_update 原来只在挂载查一次，长期不关 App 的用户在发版后永远收不到新版提示
     //（客户实锤「没有自动升级提示」）。每 2 小时复查一次，让老会话也能自动发现新版。
-    const timer = setInterval(run, 2 * 60 * 60 * 1000);
+    const timer = setInterval(() => void recheck(), 2 * 60 * 60 * 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [recheck]);
 
   // 自升级替换后首次启动：后端会留一个「已升级」标记，弹条确认让用户确信升成功、无需重装。
   // 但一句「升级成功 ✓」只回答了**成没成**，没回答**升了什么** —— 后者才是客户真正想知道的
@@ -446,11 +466,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const flash = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 3200);
-  };
-
   // 「正在刷新」的转圈现在归 WalletCard 自己管（它 await 这个 Promise）——
   // App 这里不再另存一份 refreshing 状态：两处各存一份，迟早有一处忘了清。
   const refreshDeviceKey = useCallback(async (silent = false) => {
@@ -564,7 +579,7 @@ export function App() {
       // ★ 失败后**重新拉一次 check_update**：后端刚把这次失败记进本地账本，重拉才能让
       // 侧栏那个按钮当场从「一键升级」改口成「下载安装包重装」。不重拉的话，界面会继续
       // 劝用户走同一条已经走不通的路 —— 这正是「老是有新版本、就是升不上去」的循环。
-      invoke<typeof update>("check_update").then(setUpdate).catch(() => {});
+      void recheck();
       // 依旧【不】自动打开下载页/自动下安装包：重装是用户的决定，我们只把路指出来。
       flash(tr("自动升级未成功：") + String(e) + tr(" —— 左下角按钮已切换成「下载安装包重装」，点它即可（配置和对话不会丢）。"));
     }
@@ -1041,10 +1056,13 @@ export function App() {
           // 看不到升级（客户实锤）。侧栏在所有页都在，保证随时点得到。不受 updateDismissed 影响
           //（那只收起大横幅；这个小入口有新版就一直在）。
           hasUpdate={!!update?.has_update}
+          checkedOk={update?.checked_ok}
           latestVersion={update?.latest}
           onUpdate={doSelfUpdate}
           updating={updating}
           updatePct={updatePct}
+          checking={checking}
+          onRecheck={() => void recheck(true)}
           // 自动升级在这台机器上失败过 → 侧栏按钮改推「下载安装包重装」（见 Sidebar 注释）
           updateFailed={update?.failed_attempts ?? 0}
           updateFailReason={update?.fail_reason}

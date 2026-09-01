@@ -77,6 +77,9 @@ export const sidebar: Record<string, string> = {
   "教程 · 玩法 · 进阶课": "Tutorials · Tips · Advanced courses",
 
   // 升级入口
+  "检查更新": "Check for updates",
+  "检查中…": "Checking…",
+  "暂时检查不到更新，点此重试": "Updates unavailable right now — click to retry",
   "正在升级…": "Upgrading…",
   "有新版 v{ver}，点此升级": "New version v{ver} available — click to upgrade",
   "升级到 v{ver}": "Upgrade to v{ver}",

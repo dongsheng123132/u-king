@@ -451,6 +451,7 @@ export const settings: Record<string, string> = {
   "有新版 v{ver}": "New version v{ver}",
   "去升级": "Update now",
   "已是最新版": "Up to date",
+  "检查不到更新（网络？）": "Unable to check for updates (network?)",
   // 「待充值」113 行已有（Top up needed），不重复 —— 同一中文映射同一英文
   "余额偏低": "Balance is low",
   "去充值": "Top up",

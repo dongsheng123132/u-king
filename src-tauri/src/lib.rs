@@ -6260,6 +6260,8 @@ async fn check_update() -> installer::UpdateInfo {
             current: current.clone(),
             latest: current,
             has_update: false,
+            // U 盘护符版本有意不走网络检查，不能把这个产品选择误报成网络故障。
+            checked_ok: true,
             notes: String::new(),
             download_url: "https://u-claw.org.cn/uking/".into(),
             history: Vec::new(),

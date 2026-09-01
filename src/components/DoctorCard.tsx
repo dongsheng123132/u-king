@@ -39,7 +39,7 @@ type AiCheckupItem = {
 type CmdProbe = { found: boolean; version: string | null };
 
 type DoctorReport = {
-  update: { current: string; latest: string; has_update: boolean; fail_reason?: string; failed_attempts?: number };
+  update: { current: string; latest: string; has_update: boolean; checked_ok: boolean; fail_reason?: string; failed_attempts?: number };
   wallet: {
     charged: boolean;
     low_balance: boolean;
@@ -82,7 +82,7 @@ function loadDoctorReport(force = false) {
 function isAllGreen(report: DoctorReport) {
   const toolsReady = report.tools.length > 0 && report.tools.every((item) => item.installed && (item.state === "ready" || item.state === "self-managed"));
   const stackReady = report.stack.node.found && report.stack.npm.found && report.stack.git.found;
-  return !report.update.has_update && !!report.wallet?.charged && !report.wallet.low_balance && stackReady && toolsReady;
+  return report.update.checked_ok && !report.update.has_update && !!report.wallet?.charged && !report.wallet.low_balance && stackReady && toolsReady;
 }
 
 function checkedTime(timestamp: number) {
@@ -341,6 +341,8 @@ export function DoctorCard({
                   </button>
                 )}
               </span>
+            ) : report.update.checked_ok === false ? (
+              <span className="text-ink-4 text-[11px]">{t("检查不到更新（网络？）")}</span>
             ) : (
               <span className="inline-flex items-center gap-1 text-success-400 text-[11px]">
                 <CheckCircle2 size={12} />

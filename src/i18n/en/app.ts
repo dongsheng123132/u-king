@@ -1,5 +1,7 @@
 /** 英文覆盖字典 · App 壳（App.tsx）。key = 中文原文，value = English。 */
 export const app: Record<string, string> = {
+  "发现新版本 v{ver}": "New version v{ver} found",
+  "暂时检查不到更新（网络？稍后再试）": "Unable to check for updates right now (network?) — please try again later",
   // ---- App: toasts / flashes ----
   "已升级到最新版 v{v} ✓": "Upgraded to the latest v{v} ✓",
   "U-King · AI 管家 · v{v}": "U-King · AI Butler · v{v}",
