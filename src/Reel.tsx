@@ -21,7 +21,7 @@ type ReelPreset = { schema_version: number; id: string; title: string; descripti
 type MediaTask = { id: number; prompt: string; status?: string; ts: number; error?: string | null; have_video?: boolean; src?: string | null };
 
 const reelState = {
-  busy: false, currentId: null as number | null, prompt: "", narration: "", bgm: false, bgmPrompt: "", resolution: "720p", presetId: null as string | null, progress: "",
+  busy: false, currentId: null as number | null, prompt: "", shotsText: "", narration: "", bgm: false, bgmPrompt: "", resolution: "720p", presetId: null as string | null, progress: "",
 };
 const subscribers = new Set<() => void>();
 const notify = () => subscribers.forEach((fn) => fn());
@@ -62,13 +62,14 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
     if (reelState.busy) return;
     const prompt = reelState.prompt.trim();
     if (!prompt) return onToast(t("请先描述想做成片的内容"));
+    const shots = reelState.shotsText.split("\n").map((shot) => shot.trim()).filter(Boolean);
     reelState.busy = true; reelState.progress = t("正在提交一键成片任务…"); notify();
     try {
       const id = await invoke<number>("submit_reel", { params: {
-        prompt, shots: [], narration: reelState.narration.trim() || null, voice: "Cherry",
+        prompt, shots, narration: reelState.narration.trim() || null, voice: "Cherry",
         bgm_prompt: reelState.bgm ? reelState.bgmPrompt.trim() || prompt : null, resolution: reelState.resolution, preset_id: reelState.presetId,
       }});
-      reelState.currentId = id; reelState.prompt = ""; reelState.narration = ""; onToast(t("一键成片完成"));
+      reelState.currentId = id; reelState.prompt = ""; reelState.shotsText = ""; reelState.narration = ""; onToast(t("一键成片完成"));
       await reload(); await play(id);
     } catch (e) { onToast(t("一键成片失败：") + String(e)); await reload(); }
     finally { reelState.busy = false; reelState.currentId = null; reelState.progress = ""; notify(); }
@@ -90,7 +91,7 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
 
   return <div className="flex h-full min-h-0 flex-col gap-3">
     <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-card border border-ink-6 bg-bg-1 px-4 py-3 shadow-card">
-      <div className="flex items-center gap-2"><Clapperboard size={19} className="text-accent" /><div><h1 className="font-semibold text-ink-0">{t("一键成片")}</h1><p className="text-xs text-ink-3">{t("分镜 · 视频 · 旁白 · BGM，一次完成")}</p></div></div>
+      <div className="flex items-center gap-2"><Clapperboard size={19} className="text-accent" /><div><h1 className="font-semibold text-ink-0">{t("完整短片")}</h1><p className="text-xs text-ink-3">{t("多镜头编排 · 视频片段 · 旁白 · BGM · 拼接")}</p></div></div>
       <div className="flex items-center gap-2 text-sm"><Wallet size={15} className="text-ink-3" /><span>{t("余额")} {balance == null ? "—" : `¥${balance}`}</span><button onClick={onRecharge} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white">{t("充值")}</button></div>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto space-y-3 pr-1">
@@ -101,7 +102,9 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
         <div className="mt-3 flex flex-wrap gap-2"><button disabled={!item.have_video} onClick={() => void play(item.id)} className="inline-flex items-center gap-1 rounded border border-ink-5 px-2.5 py-1.5 text-xs text-ink-2 disabled:opacity-40"><Play size={13}/>{t("播放")}</button>{(item.status === "failed" || item.status === "running") && <button onClick={() => void regenerate(item.id)} className="inline-flex items-center gap-1 rounded border border-warning-500/30 px-2.5 py-1.5 text-xs text-warning-700"><RotateCcw size={13}/>{t("重新生成")}</button>}<button onClick={() => void remove(item.id)} className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs text-ink-4 hover:text-danger-500"><Trash2 size={13}/>{t("删除")}</button></div>
       </article>)}</div>}</section>
     </div>
-    <section className="shrink-0 rounded-card border border-ink-6 bg-bg-1 p-3 shadow-card space-y-2"><textarea value={reelState.prompt} onChange={(e) => { reelState.prompt = e.target.value; notify(); }} placeholder={t("例如：赛博朋克城市夜景，霓虹灯牌，镜头缓慢推进")} rows={2} className="w-full resize-none rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-sm text-ink-1 outline-none focus:border-accent/50"/>
+    <section className="shrink-0 rounded-card border border-ink-6 bg-bg-1 p-3 shadow-card space-y-2"><textarea value={reelState.prompt} onChange={(e) => { reelState.prompt = e.target.value; notify(); }} placeholder={t("短片主题，例如：赛博朋克城市夜景") } rows={2} className="w-full resize-none rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-sm text-ink-1 outline-none focus:border-accent/50"/>
+      <textarea value={reelState.shotsText} onChange={(e) => { reelState.shotsText = e.target.value; notify(); }} placeholder={t("可选分镜：每行一镜，例如：霓虹街道全景::镜头缓慢推进\n橘猫宇航员特写::抬头望向星空")} rows={3} className="w-full resize-y rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-xs text-ink-1 outline-none focus:border-accent/50"/>
+      <p className="text-[11px] leading-4 text-ink-4">{t("留空时只生成一个视频片段；填写多行分镜才会编排为完整短片。每行可用“画面::镜头运动”。")}</p>
       {presets.length > 0 && <div><p className="mb-1.5 text-xs font-medium text-ink-3">创作预设 <span className="font-normal text-ink-4">（可选；只定义视觉风格，BGM 仍须手动开启）</span></p><div className="grid gap-2 sm:grid-cols-3">{presets.map((preset) => <button key={preset.id} type="button" aria-pressed={reelState.presetId === preset.id} onClick={() => { reelState.presetId = reelState.presetId === preset.id ? null : preset.id; notify(); }} className={`rounded-lg border p-2 text-left transition-colors ${reelState.presetId === preset.id ? "border-accent/50 bg-accent/[0.08]" : "border-ink-6 bg-bg-0 hover:border-ink-5"}`}><span className="block text-xs font-medium text-ink-1">{preset.title}</span><span className="mt-0.5 block text-[11px] leading-4 text-ink-4">{preset.description}</span></button>)}</div></div>}
       <div className="grid gap-2 sm:grid-cols-3"><input value={reelState.narration} onChange={(e) => { reelState.narration = e.target.value; notify(); }} placeholder={t("可选旁白")} className="rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-xs text-ink-1 outline-none"/><select value={reelState.resolution} onChange={(e) => { reelState.resolution = e.target.value; notify(); }} className="rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-xs text-ink-1"><option value="480p">480p</option><option value="720p">720p</option></select><label className="flex items-center gap-2 rounded-lg border border-ink-6 bg-bg-0 px-3 text-xs text-ink-2"><input type="checkbox" checked={reelState.bgm} onChange={(e) => { reelState.bgm = e.target.checked; notify(); }}/>{t("添加 BGM")}</label></div>{reelState.bgm && <input value={reelState.bgmPrompt} onChange={(e) => { reelState.bgmPrompt = e.target.value; notify(); }} placeholder={t("BGM 描述，例如轻快电子乐")} className="w-full rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-xs text-ink-1 outline-none"/>}<div className="flex items-center justify-between gap-3"><span className="text-xs text-ink-4">{t("预估费用以服务端实际计费为准")} · {balance == null ? t("请先查询余额") : `¥${balance}`}</span><button onClick={() => void submit()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? <Loader2 size={15} className="animate-spin"/> : <Clapperboard size={15}/>} {busy ? t("成片中") : t("一键成片")}</button></div></section>
   </div>;

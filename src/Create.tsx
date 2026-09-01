@@ -25,8 +25,9 @@ type SubTab = "draw" | "video" | "reel" | "qrmerge" | "tasks";
 
 const SUBS: { id: SubTab; label: string; icon: typeof ImageIcon }[] = [
   { id: "draw", label: "AI 作图", icon: ImageIcon },
-  { id: "video", label: "AI 视频", icon: Clapperboard },
-  { id: "reel", label: "一键成片", icon: Clapperboard },
+  // 两层能力不能同名并列：视频是可被成片复用的原子片段；成片才是多镜头编排。
+  { id: "video", label: "视频片段", icon: Clapperboard },
+  { id: "reel", label: "完整短片", icon: Clapperboard },
   { id: "tasks", label: "任务中心", icon: History },
   { id: "qrmerge", label: "AI 海报二维码", icon: QrCode },
 ];

@@ -320,7 +320,9 @@ async function main() {
     // ── Stage 2：出视频 ──
     // 主档失败自动换模型再试。**兜底链必须跨厂商**：以前是 fast→mini，两个都是字节 Seedance
     // 走同一条火山 Ark 渠道 —— 那条渠道整体挂了时两个一起死，兜底等于没有。
-    const DEFAULT_VIDEO_FALLBACKS = ["doubao-seedance-2-0-mini-260615", "wan3.0-video"];
+    // 这里只能列出 `gen-video.mjs` 当前真实支持的统一异步协议模型。
+    // Wan 需要 DashScope 专用 adapter；在 adapter 落地前把它伪装成 fallback 只会无谓重试。
+    const DEFAULT_VIDEO_FALLBACKS = ["doubao-seedance-2-0-mini-260615"];
     const vfbRaw = (typeof args["video-fallback"] === "string" && args["video-fallback"]) || cfg.video_fallback || "";
     const vfbList = vfbRaw ? String(vfbRaw).split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_VIDEO_FALLBACKS;
     const videoModels = [videoModel];

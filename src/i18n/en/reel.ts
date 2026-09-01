@@ -1,5 +1,7 @@
 /** 英文覆盖 · 客户端一键成片与最小任务中心。 */
 export const reel: Record<string, string> = {
+  "完整短片": "Complete Short",
+  "多镜头编排 · 视频片段 · 旁白 · BGM · 拼接": "Multi-shot planning · video clips · narration · BGM · stitch",
   "一键成片": "One-Click Reel",
   "分镜 · 视频 · 旁白 · BGM，一次完成": "Storyboard · video · narration · BGM, all in one",
   "余额": "Balance",
@@ -29,6 +31,9 @@ export const reel: Record<string, string> = {
   "删除": "Delete",
   "分镜成片": "Storyboard reel",
   "例如：赛博朋克城市夜景，霓虹灯牌，镜头缓慢推进": "e.g. a cyberpunk city at night, neon signs, camera slowly pushing in",
+  "短片主题，例如：赛博朋克城市夜景": "Short theme, e.g. a cyberpunk city at night",
+  "可选分镜：每行一镜，例如：霓虹街道全景::镜头缓慢推进\n橘猫宇航员特写::抬头望向星空": "Optional storyboard: one shot per line, e.g. neon street wide shot::camera slowly pushes in\norange-cat astronaut close-up::looks up at the stars",
+  "留空时只生成一个视频片段；填写多行分镜才会编排为完整短片。每行可用“画面::镜头运动”。": "Leaving this blank generates one video clip. Add multiple storyboard lines to compose a complete short. Use scene::camera motion for each line.",
   "可选旁白": "Optional narration",
   "添加 BGM": "Add BGM",
   "BGM 描述，例如轻快电子乐": "BGM prompt, e.g. upbeat electronic music",

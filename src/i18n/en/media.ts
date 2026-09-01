@@ -162,6 +162,7 @@ export const media: Record<string, string> = {
 
   // ---- AI 视频（Video.tsx）----
   "AI 视频": "AI Video",
+  "视频片段": "Video Clip",
   "文字生成视频 · 拖入首帧图可图生视频 · 异步出片约 1～3 分钟":
     "Text to video · drag in a first frame for image-to-video · async rendering, about 1–3 min",
   "松手设为首帧图（图生视频）": "Release to set as the first frame (image-to-video)",
