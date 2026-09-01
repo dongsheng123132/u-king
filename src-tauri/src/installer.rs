@@ -6357,12 +6357,12 @@ mod tests {
     /// 期间被自愈反复删 Python 重下几十 MB）。
     #[test]
     fn pip_config_body_is_always_ascii() {
-        // 中文用户名（就是 pc-*** 那台）：cache-dir 必须被整行丢掉，其余配置照常保留。
+        // 非 ASCII 的占位用户名：cache-dir 必须被整行丢掉，其余配置照常保留。
         let (body, dropped) = pip_config_body(
             "https://mirrors.aliyun.com/pypi/simple/",
             "https://pypi.tuna.tsinghua.edu.cn/simple/",
             "mirrors.aliyun.com pypi.tuna.tsinghua.edu.cn",
-            r"C:\Users\user2\.uking\cache\pip",
+            r"C:\Users\张三\.uking\cache\pip",
         );
         assert!(body.is_ascii(), "pip.ini 正文混进了非 ASCII：{body:?}");
         assert_eq!(dropped, 0, "cache-dir 应在拼装阶段就被略过，而不是靠闸门兜");
