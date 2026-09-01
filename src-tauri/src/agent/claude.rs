@@ -336,6 +336,16 @@ fn run_turn(
 
     let mut tlog = TurnLog::start("chat", "claude", &task_id, model.as_deref(), resume.is_some());
 
+    // 并发闸：同一任务已有一轮在跑时，这条消息响亮地失败（根因与取舍见 mod.rs::TurnSlot）。
+    // 放在 TurnLog 之后（账本先记下「来过一轮」，再拦），拦的是真正的进程竞态，不是日志。
+    let _slot = match super::try_begin_turn(AGENT, &task_id) {
+        Ok(s) => s,
+        Err(_) => {
+            tlog.finish("busy", None);
+            return Err("这个任务的上一轮还在跑 —— 等它说完（或点「停止」）再发下一条。".to_string());
+        }
+    };
+
     let l = launcher::resolve("claude");
     let mut c = base_command(&l);
     // 注入虾盘云端点 + 设备 Key：让 Claude Code 大脑**免客户单独配置**直接用同一套计费
@@ -739,5 +749,82 @@ mod resume_guard_tests {
         for (k, v) in &saved {
             std::env::set_var(k, v);
         }
+    }
+
+    #[test]
+    fn build_args_keeps_resume_in_each_surface_and_omits_blank_model() {
+        let (args, teach, _) = build_args("the prompt", Some("model-a"), None, Some("sid-123"));
+        let resume = args.iter().position(|a| a == "--resume").expect("argv 缺 --resume");
+        let prompt = args.iter().position(|a| a == "-p").expect("argv 缺 -p");
+        assert_eq!(args.get(resume + 1).map(String::as_str), Some("sid-123"));
+        assert!(resume < prompt, "--resume 必须在 -p 之前: {args:?}");
+        let taught_resume = teach.iter().position(|a| a == "--resume").expect("teach 缺 --resume");
+        let taught_prompt = teach.iter().position(|a| a == "the prompt").expect("teach 缺提示词");
+        assert_eq!(teach.get(taught_resume + 1).map(String::as_str), Some("sid-123"));
+        assert!(taught_resume < taught_prompt, "teach 的 --resume 必须在提示词之前: {teach:?}");
+
+        let (args, teach, _) = build_args("prompt", None, None, None);
+        assert!(!args.iter().any(|a| a == "--resume"));
+        assert!(!teach.iter().any(|a| a == "--resume"));
+        let (args, teach, _) = build_args("prompt", Some("   "), None, None);
+        assert!(!args.iter().any(|a| a == "--model"));
+        assert!(!teach.iter().any(|a| a == "--model"));
+        // sol 建议：非空 model 也要被观察到——上面只钉了空白省略，没钉传入生效
+        let (args, teach, _) = build_args("prompt", Some("model-a"), None, None);
+        assert_eq!(args.iter().position(|a| a == "--model").map(|i| args.get(i + 1).map(String::as_str)), Some(Some("model-a")));
+        assert!(teach.iter().any(|a| a == "model-a"), "teach 也要带非空 model: {teach:?}");
+    }
+}
+
+#[cfg(test)]
+mod protocol_tests {
+    use super::super::protocol::ProtocolState;
+
+    #[test]
+    fn result_error_captures_both_error_shapes_and_still_emits_usage() {
+        for (result, expected) in [
+            (serde_json::json!({"type":"result","is_error":true,"result":"403 token quota is not enough"}), Some("403 token quota is not enough")),
+            (serde_json::json!({"type":"result","subtype":"error_during_execution","result":"boom"}), Some("boom")),
+            (serde_json::json!({"type":"result","subtype":"success","result":"ignored"}), None),
+            (serde_json::json!({"type":"result","is_error":true,"result":"   "}), None),
+        ] {
+            let mut state = ProtocolState::new(false);
+            let evs = state.map_event(&result);
+            assert_eq!(evs.len(), 1);
+            assert_eq!(evs[0]["kind"], "usage");
+            assert_eq!(state.result_error(), expected);
+        }
+    }
+
+    #[test]
+    fn first_init_is_fresh_only_for_a_new_non_resume_turn() {
+        let init = serde_json::json!({"type":"system","subtype":"init","session_id":"s"});
+        let mut resumed = ProtocolState::new(true);
+        assert_eq!(resumed.map_event(&init)[0]["fresh"], false);
+
+        let mut new_turn = ProtocolState::new(false);
+        assert_eq!(new_turn.map_event(&init)[0]["fresh"], true);
+        assert_eq!(new_turn.map_event(&init)[0]["fresh"], false);
+    }
+
+    #[test]
+    fn tool_result_handles_text_forms_and_unknown_tool_ids() {
+        let mut state = ProtocolState::new(false);
+        state.map_event(&serde_json::json!({"type":"content_block_start","content_block":{"type":"tool_use","id":"known","name":"Bash"}}));
+        let multi = state.map_event(&serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"known","content":[{"text":"one"},{"image":"ignored"},{"text":"two"}]}]}}));
+        assert_eq!(multi[0]["name"], "Bash");
+        assert_eq!(multi[0]["output"], "one\ntwo");
+
+        let string = state.map_event(&serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"known","content":"raw"}]}}));
+        assert_eq!(string[0]["output"], "raw");
+        for content in [serde_json::json!({"not":"text"}), serde_json::Value::Null] {
+            let evs = state.map_event(&serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"known","content":content}]}}));
+            assert_eq!(evs.len(), 1);
+            assert_eq!(evs[0]["output"], "");
+        }
+        let unknown = state.map_event(&serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"never-seen","content":"still render"}]}}));
+        assert_eq!(unknown.len(), 1);
+        assert_eq!(unknown[0]["kind"], "tool_end");
+        assert_eq!(unknown[0]["name"], "");
     }
 }

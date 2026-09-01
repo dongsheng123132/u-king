@@ -2,8 +2,9 @@
 //!
 //! 终端面板（term.rs）渲染裸 TUI；这里走结构化事件流，给 claude/codex 加卡片面板。
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::ulog;
@@ -41,6 +42,49 @@ pub(crate) const GUARD_PROMPT: &str = "\
 /// 正常静默不会超过三分多；流式又开着 partial 事件，模型在想的时候也一直有动静。
 /// 留 5 分钟余量既够宽容，又不至于让人干等。
 pub(crate) const STALL_SECS: u64 = 300;
+
+// ---------------------------------------------------------------------------
+// TurnSlot —— 同一任务并发轮次防护（2026-08-31，学自 OpenAgents base.js:650
+// 的 per-channel 串行队列；根治方案选「拒并发 + 报忙」，不选排队）。
+//
+// 治什么病：同一个 task_id 连点两次「发送」（或双击、或前端竞态），会同时起两个
+// claude/codex 进程跑同一个任务 —— 两个进程的 `thread.started` 都往 threads.json
+// 的同一个 key 写，**后完成的把先完成的 resume id 覆盖掉**；更糟的是两轮输出混在
+// 同一个对话框里，客户看到的是「AI 在自言自语」。
+//
+// 为什么不排队：无头面板排队 = 客户看着第二条消息干等几分钟毫无反馈，比报「忙」
+// 更像坏了。前端已有发送中的禁用态，正常操作到不了这里 —— 这道闸只拦竞态窗口，
+// 拦到了就该响亮地失败。
+// ---------------------------------------------------------------------------
+
+fn turn_slots() -> &'static Mutex<HashSet<String>> {
+    static SLOTS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    SLOTS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// 占住一个任务的轮次槽。`Ok(guard)` = 拿到了，这一轮归你；`Err(())` = 同任务
+/// 已有一轮在跑。guard 掉落（无论正常/panic/早退）自动释放，无锁泄漏面。
+pub(crate) struct TurnSlotGuard {
+    key: String,
+}
+
+impl Drop for TurnSlotGuard {
+    fn drop(&mut self) {
+        if let Ok(mut s) = turn_slots().lock() {
+            s.remove(&self.key);
+        }
+    }
+}
+
+pub(crate) fn try_begin_turn(agent: &str, task_id: &str) -> Result<TurnSlotGuard, ()> {
+    let key = format!("{agent}:{task_id}");
+    let mut slots = turn_slots().lock().map_err(|_| ())?;
+    if slots.contains(&key) {
+        return Err(());
+    }
+    slots.insert(key.clone());
+    Ok(TurnSlotGuard { key })
+}
 
 /// 静默看门狗 —— 「多久没动静就把整棵进程树收掉」。
 ///

@@ -73,6 +73,43 @@ fn inject_path(c: &mut std::process::Command, delegated: bool) {
     }
 }
 
+/// Codex 的会话记录根目录：`~/.codex/sessions/年/月/日/rollout-…-<thread_id>.jsonl`。
+/// 与 `claude_projects_root()`（claude.rs）同级的「盘上真相」入口。
+fn codex_sessions_root() -> std::path::PathBuf {
+    crate::installer::user_home_dir().join(".codex").join("sessions")
+}
+
+/// 这个 thread id 在盘上还有没有记录？**扫文件名，不递归、不解析内容**。
+///
+/// 🔴 **按文件名后缀找，不按目录转义算**（负例教训见 `claude.rs::claude_session_dir_of`
+/// 头上那段）：rollout 文件名形如 `rollout-<时间戳>-<tid>.jsonl`（本机实测），tid 在
+/// **末尾**、前面带时间戳前缀 —— 所以判「在不在」用「文件名以 `<tid>.jsonl` 结尾」。
+/// tid 是定长 UUID（36 字符），后缀匹配不会误配到别的 thread；判错方向也保守
+/// （误判「没有」= 丢一轮上下文，误判「有」= 拿坏 tid 去撞墙）。
+/// 目录只有三层固定结构，walk 代价可忽略。
+fn codex_thread_on_disk(tid: &str) -> bool {
+    let want = format!("{tid}.jsonl");
+    let root = codex_sessions_root();
+    let Ok(years) = std::fs::read_dir(&root) else {
+        return false;
+    };
+    for y in years.flatten() {
+        let Ok(months) = std::fs::read_dir(y.path()) else { continue };
+        for m in months.flatten() {
+            let Ok(days) = std::fs::read_dir(m.path()) else { continue };
+            for d in days.flatten() {
+                let Ok(files) = std::fs::read_dir(d.path()) else { continue };
+                for f in files.flatten() {
+                    if f.file_name().to_string_lossy().ends_with(&want) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 /// 把一行 codex JSONL 事件映射成 ChatPanel 认的统一事件（与 protocol.rs 同形）。
 fn map_codex_event(v: &Value, threads_key: &str) -> Vec<Value> {
     let ty = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -187,7 +224,40 @@ pub async fn codex_send(
 }
 
 fn run_turn(task_id: String, prompt: String, cwd: Option<String>, model: Option<String>, system: Option<String>, on_event: Channel<Value>) -> Result<(), String> {
+    // 并发闸：同一任务已有一轮在跑时，这条消息响亮地失败（根因与取舍见 mod.rs::TurnSlot）。
+    let _slot = match super::try_begin_turn(AGENT, &task_id) {
+        Ok(s) => s,
+        Err(_) => {
+            return Err("这个任务的上一轮还在跑 —— 等它说完（或点「停止」）再发下一条。".to_string());
+        }
+    };
+    // 取上一轮 thread_id（有则 resume 续接）。**从盘上取** —— 关掉 U-King 再打开、
+    // 甚至重启电脑，这个会话依旧接着上文说。以前记在进程内存里，界面上会话和聊天记录
+    // 都还在、只有模型不知道「刚才」是什么，看起来像 AI 变笨了。见 `threads.rs`。
     let resume = super::threads::recall(AGENT, &task_id);
+
+    // 🔴 **续接前先看盘上还有没有这份记录**（补齐到 claude 侧同等待遇；2026-08-18 那次
+    // 治的是 claude，codex 同病：thread 记录被清理 / 换机器恢复了 threads.json 后，
+    // `exec resume <tid>` 回 `no rollout found`（实测），每一轮都炸在同一条客户看不懂的
+    // 英文报错上。事前判一下，最差也只是「这一轮不接上文」—— 而且**会明说**，不闷着。
+    // 注：codex 的 resume 不像 claude 那样按目录隔离（本机实测：A 目录建的 thread 换到
+    // B 目录照常续上），所以这里只判「在不在」，不判「在哪个目录」。
+    // sessions 根目录整个读不了（新机器/权限异常）就别猜，保持原行为 —— 同 claude 的保守分支。
+    let (resume, thread_note) = match resume {
+        Some(tid) if codex_sessions_root().is_dir() && !codex_thread_on_disk(&tid) => {
+            // 记录已不在盘上 = 这个 tid 永远续不回来了，忘掉它（claude 侧不 forget，
+            // 因为那边的 sid「换回原目录还能接上」；这边不 forget 的话每一轮都重复报）。
+            super::threads::forget(AGENT, &task_id);
+            (
+                None,
+                Some("上一轮的会话记录找不到了（多半是清理过 Codex 的历史）—— 这一轮从头开始。".to_string()),
+            )
+        }
+        other => (other, None),
+    };
+    if let Some(n) = &thread_note {
+        let _ = on_event.send(serde_json::json!({ "kind": "text", "text": n }));
+    }
     // 静默账本 —— 和 claude 那条路共用一份实现（理由见 `agent/mod.rs::TurnLog`）。
     let mut tlog = TurnLog::start("chat", "codex", &task_id, model.as_deref(), resume.is_some());
     // 用户原话 —— teach（教人在终端敲的那条）只该带这一句。下面 `prompt` 会被前置一大段
@@ -347,4 +417,177 @@ pub fn codex_interrupt(task_id: String) -> Result<(), String> {
 pub fn codex_reset(task_id: String) -> Result<(), String> {
     super::threads::forget(AGENT, &task_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod resume_guard_tests {
+    use super::super::try_begin_turn;
+    use super::*;
+    use std::fs;
+
+    /// 合成一份「某天某目录下有这个 thread 的 rollout」的沙箱，
+    /// 断言能被 [`codex_thread_on_disk`] 找到 —— 这条一旦漂了，
+    /// 「记录还在却误判成丢了」会造成每一轮都放弃续接。
+    /// 沙箱锁/还原/清理走全进程唯一入口（见 lib.rs::testsandbox）。
+    #[test]
+    fn finds_rollout_by_filename_in_sandbox() {
+        crate::testsandbox::with_sandbox("codex-resume-hit", &[], |root| {
+            let tid = "019d380c-b51f-7570-9251-9ae779bd9ab3";
+            let day = root.join(".codex/sessions/2026/03/29");
+            fs::create_dir_all(&day).unwrap();
+            fs::write(day.join(format!("rollout-2026-03-29T13-24-10-{tid}.jsonl")), "{}\n").unwrap();
+            assert!(codex_thread_on_disk(tid));
+            // 没有的 id 不能撞上有的：文件名必须**整段**对上，不是子串包含
+            assert!(!codex_thread_on_disk("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+        });
+    }
+
+    /// 空机器（没有 ~/.codex/sessions）：判「不在盘上」，不崩、不猜。
+    #[test]
+    fn missing_sessions_root_reports_absent() {
+        crate::testsandbox::with_sandbox("codex-resume-miss", &[], |_root| {
+            assert!(!codex_thread_on_disk("0199d674-3f13-73b2-8819-e7a0ae623aa0"));
+        });
+    }
+
+    /// TurnSlot 语义：同任务第二个进入者被拒；持有人掉落后槽位释放（可再进）；
+    /// 不同 agent 同 task_id 互不干扰。**并发闸是进程级真值** —— 锁泄漏 = 任务永久发不出消息，
+    /// 所以释放路径必须有测试盯着。
+    #[test]
+    fn turn_slot_blocks_then_releases() {
+        let g1 = try_begin_turn("codex", "slot-task-a").expect("首轮应拿到槽位");
+        assert!(
+            try_begin_turn("codex", "slot-task-a").is_err(),
+            "同任务第二重入必须被拒"
+        );
+        // 另一个大脑、另一个任务：不受牵连
+        assert!(try_begin_turn("claude", "slot-task-a").is_ok());
+        assert!(try_begin_turn("codex", "slot-task-b").is_ok());
+        drop(g1);
+        assert!(
+            try_begin_turn("codex", "slot-task-a").is_ok(),
+            "持有人掉落后必须释放"
+        );
+    }
+
+    #[test]
+    fn event_mapping_matrix_covers_text_tools_usage_and_safe_ignores() {
+        let cases = [
+            (serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":"done"}}), "text_done", Some("done")),
+            (serde_json::json!({"type":"item.updated","item":{"type":"agent_message","text":"part"}}), "text", Some("part")),
+            (serde_json::json!({"type":"item.started","item":{"type":"file_change","id":"edit-1"}}), "tool_start", None),
+            (serde_json::json!({"type":"item.completed","item":{"type":"file_change","id":"edit-1","path":"src/main.rs"}}), "tool_end", Some("src/main.rs")),
+        ];
+        for (input, kind, payload) in cases {
+            let evs = map_codex_event(&input, "t");
+            assert_eq!(evs.len(), 1, "{input}");
+            assert_eq!(evs[0]["kind"], kind, "{input}");
+            // sol 建议：不只守事件分类，载荷字段也钉住（text 原文 / Edit 的 output=path）
+            if let Some(p) = payload {
+                assert_eq!(evs[0][if kind == "text_done" || kind == "text" { "text" } else { "output" }], p, "{input}");
+            }
+            if kind == "tool_start" || kind == "tool_end" {
+                assert_eq!(evs[0]["name"], "Edit", "{input}");
+            }
+        }
+        assert_eq!(map_codex_event(&serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":""}}), "t").len(), 0);
+        for input in [
+            serde_json::json!({"type":"unknown"}),
+            serde_json::json!({"type":"item.completed","item":null}),
+            serde_json::json!({"type":"item.completed","item":{"type":"reasoning"}}),
+            serde_json::json!({"type":"item.completed","item":{"type":"todo_list"}}),
+        ] {
+            assert!(map_codex_event(&input, "t").is_empty(), "{input}");
+        }
+
+        let started = serde_json::json!({"type":"item.started","item":{"type":"command_execution","id":"cmd-1","command":"git status --short"}});
+        let evs = map_codex_event(&started, "t");
+        assert_eq!(evs.len(), 2);
+        assert_eq!(evs[0]["kind"], "tool_start");
+        assert_eq!(evs[1]["kind"], "tool_input");
+        assert_eq!(evs[1]["input"]["command"], "git status --short");
+
+        for (input, output, is_error) in [
+            (serde_json::json!({"type":"item.completed","item":{"type":"command_execution","id":"cmd-2","output":"fallback","aggregated_output":"preferred","exit_code":1}}), "preferred", true),
+            (serde_json::json!({"type":"item.completed","item":{"type":"command_execution","id":"cmd-3","output":"ok","exit_code":0}}), "ok", false),
+            (serde_json::json!({"type":"item.completed","item":{"type":"command_execution","id":"cmd-4"}}), "", false),
+        ] {
+            let evs = map_codex_event(&input, "t");
+            assert_eq!(evs.len(), 1);
+            assert_eq!(evs[0]["output"], output);
+            assert_eq!(evs[0]["is_error"].as_bool(), Some(is_error));
+        }
+
+        let usage = map_codex_event(&serde_json::json!({"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":7,"cached_input_tokens":5}}), "t");
+        assert_eq!(usage[0]["input_tokens"], 11);
+        assert_eq!(usage[0]["output_tokens"], 7);
+        assert_eq!(usage[0]["cache_read_tokens"], 5);
+        let absent_usage = map_codex_event(&serde_json::json!({"type":"turn.completed"}), "t");
+        assert_eq!(absent_usage[0], serde_json::json!({"kind":"usage","input_tokens":0,"output_tokens":0,"cache_read_tokens":0}));
+
+        let failed = map_codex_event(&serde_json::json!({"type":"turn.failed","error":{"message":"no quota"}}), "t");
+        assert_eq!(failed[0]["status"], "error");
+        assert_eq!(failed[0]["message"], "no quota");
+        let failed_fallback = map_codex_event(&serde_json::json!({"type":"turn.failed"}), "t");
+        assert_eq!(failed_fallback[0]["message"], "Codex 回合失败");
+    }
+
+    #[test]
+    fn reconnect_error_is_a_notice_not_a_silent_or_fatal_event() {
+        let reconnect = map_codex_event(&serde_json::json!({"type":"error","message":"Reconnecting... 2/5"}), "t");
+        assert_eq!(reconnect.len(), 1);
+        assert_eq!(reconnect[0]["kind"], "notice");
+        for message in ["401 unauthorized", "Connection reset"] {
+            let evs = map_codex_event(&serde_json::json!({"type":"error","message":message}), "t");
+            assert_eq!(evs.len(), 1);
+            assert_eq!(evs[0]["kind"], "done");
+            assert_eq!(evs[0]["status"], "error");
+            // sol 建议：普通错误原文透传（类别对但文案丢了，客户看到的报错就空了）
+            assert_eq!(evs[0]["message"], message);
+        }
+    }
+
+    #[test]
+    fn thread_started_emits_session_and_persists_thread_id() {
+        struct ResetReadonly;
+        impl Drop for ResetReadonly {
+            fn drop(&mut self) {
+                super::super::threads::set_readonly(false);
+            }
+        }
+
+        let sb = crate::testsandbox::enter_raw("codex-thread-start-persist");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::set_var("HOME", sb.root());
+        let _reset = ResetReadonly;
+        super::super::threads::set_readonly(false);
+        let tid = "019d380c-t5-thread-start";
+        let task = "test-codex-thread-start-t5";
+        let evs = map_codex_event(&serde_json::json!({"type":"thread.started","thread_id":tid}), task);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0]["kind"], "session");
+        assert_eq!(evs[0]["session_id"], tid);
+        assert_eq!(super::super::threads::recall("codex", task).as_deref(), Some(tid));
+        let disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(sb.root().join(".uking/agent-threads.json")).unwrap()).unwrap();
+        assert_eq!(disk.pointer("/agents/codex/test-codex-thread-start-t5/id").and_then(|v| v.as_str()), Some(tid));
+
+        assert!(map_codex_event(&serde_json::json!({"type":"thread.started"}), "test-codex-thread-start-missing").is_empty());
+        assert_eq!(super::super::threads::recall("codex", "test-codex-thread-start-missing"), None);
+    }
+
+    #[test]
+    fn codex_thread_on_disk_rejects_near_misses_and_shallow_layouts() {
+        crate::testsandbox::with_sandbox("codex-resume-near-miss", &[], |root| {
+            let tid = "019d380c-negative-thread";
+            let day = root.join(".codex/sessions/2026/03/29");
+            fs::create_dir_all(&day).unwrap();
+            for name in [format!("{tid}.json"), format!("{tid}.jsonl.bak"), format!("{tid}x.jsonl")] {
+                fs::write(day.join(name), "{}\n").unwrap();
+            }
+            let shallow = root.join(".codex/sessions/2027/04");
+            fs::create_dir_all(&shallow).unwrap();
+            fs::write(shallow.join(format!("{tid}.jsonl")), "{}\n").unwrap();
+            assert!(!codex_thread_on_disk(tid));
+        });
+    }
 }

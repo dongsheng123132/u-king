@@ -301,4 +301,86 @@ mod tests {
         assert_eq!(back.agents["codex"]["same-task"].id, "codex-tid");
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
+
+    #[test]
+    fn readonly_keeps_memory_but_defers_disk_until_writable() {
+        struct ResetReadonly;
+        impl Drop for ResetReadonly {
+            fn drop(&mut self) {
+                set_readonly(false);
+            }
+        }
+
+        let sb = crate::testsandbox::enter_raw("threads-readonly-observable");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::set_var("HOME", sb.root());
+        let _reset = ResetReadonly;
+        let p = sb.root().join(".uking/agent-threads.json");
+        let _ = std::fs::remove_file(&p);
+
+        set_readonly(true);
+        remember("test-ro-agent", "test-ro-task", "sid-memory-only");
+        assert_eq!(recall("test-ro-agent", "test-ro-task").as_deref(), Some("sid-memory-only"));
+        assert!(!p.exists(), "只读轮不许写出 agent-threads.json");
+
+        set_readonly(false);
+        remember("test-ro-agent", "test-ro-task", "sid-persisted");
+        let disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(disk.pointer("/agents/test-ro-agent/test-ro-task/id").and_then(|v| v.as_str()), Some("sid-persisted"));
+    }
+
+    #[test]
+    fn remember_debounces_and_forget_updates_disk() {
+        struct ResetReadonly;
+        impl Drop for ResetReadonly {
+            fn drop(&mut self) {
+                set_readonly(false);
+            }
+        }
+
+        let sb = crate::testsandbox::enter_raw("threads-debounce-forget");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::set_var("HOME", sb.root());
+        let _reset = ResetReadonly;
+        set_readonly(false);
+        let p = sb.root().join(".uking/agent-threads.json");
+        let _ = std::fs::remove_file(&p);
+
+        remember("test-debounce-agent", "test-debounce-task", "sid-first");
+        assert!(p.exists(), "首次 remember 必须落盘");
+        std::fs::remove_file(&p).unwrap();
+        remember("test-debounce-agent", "test-debounce-task", "sid-first");
+        assert!(!p.exists(), "相同 id 的去抖 remember 不许重建文件");
+
+        remember("test-debounce-agent", "test-debounce-task", "sid-second");
+        let disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(disk.pointer("/agents/test-debounce-agent/test-debounce-task/id").and_then(|v| v.as_str()), Some("sid-second"));
+
+        forget("test-debounce-agent", "test-debounce-task");
+        assert_eq!(recall("test-debounce-agent", "test-debounce-task"), None);
+        let disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert!(disk.pointer("/agents/test-debounce-agent/test-debounce-task").is_none());
+
+        std::fs::remove_file(&p).unwrap();
+        forget("test-debounce-agent", "test-debounce-absent");
+        assert!(!p.exists(), "forget 不存在的 key 不许无故写盘");
+    }
+
+    #[test]
+    fn load_keeps_entries_just_inside_retention_and_drops_old_ones() {
+        let p = tmp_path("retention-boundary");
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+        let now = now_ms();
+        let mut f = File::default();
+        let m = f.agents.entry("test-retention-agent".into()).or_default();
+        m.insert("inside".into(), Thread { id: "sid-inside".into(), at: now - KEEP_DAYS * DAY_MS + 5_000 });
+        m.insert("outside".into(), Thread { id: "sid-outside".into(), at: now - KEEP_DAYS * DAY_MS - 5_000 });
+        flush_to(&p, &f);
+
+        let back = load_from(&p);
+        let m = &back.agents["test-retention-agent"];
+        assert_eq!(m.get("inside").map(|t| t.id.as_str()), Some("sid-inside"));
+        assert!(!m.contains_key("outside"));
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
 }
