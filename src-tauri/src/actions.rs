@@ -324,6 +324,9 @@ pub const LOCALLLM_INSPECT: &str = "runtime.localllm.inspect";
 pub const LOCALLLM_CATALOG: &str = "runtime.localllm.catalog";
 /// 一键成片可选的受控风格目录。只读；提交时后端仍会白名单校验 id，目录不是授权依据。
 pub const CREATOR_REEL_PRESETS_INSPECT: &str = "runtime.creator.reel_presets.inspect";
+/// 单段视频生成的唯一提交入口。`request_id` 是按次收费请求的幂等键；GUI、CLI、MCP
+/// 重放同一个输入必须取回原任务，不能再建一条。
+pub const CREATOR_VIDEO_SUBMIT: &str = "runtime.creator.video.submit";
 
 /// `manifest().state.queries` 用：全部只读查询动作。加动作时别忘了这里 ——
 /// 影核清单里少一个，远端影子就看不见它。
