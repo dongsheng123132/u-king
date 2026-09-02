@@ -1732,6 +1732,33 @@ pub fn tool_installed(cmd: &str) -> bool {
     found
 }
 
+/// 浏览器能力共用的 Chrome 探测真相源。Chrome 作为 GUI 应用通常不在 PATH，
+/// 因而不能只复用 `tool_installed("chrome")`；浏览器面板和厨具工具箱都应问这里，
+/// 避免各自维护 Program Files / macOS app bundle 的路径表。
+pub(crate) fn chrome_installed() -> bool {
+    #[cfg(windows)]
+    {
+        ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"]
+            .into_iter()
+            .filter_map(|var| std::env::var(var).ok())
+            .map(|base| std::path::PathBuf::from(base).join("Google/Chrome/Application/chrome.exe"))
+            .any(|path| path.is_file())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        [
+            std::path::PathBuf::from("/Applications/Google Chrome.app"),
+            user_home_dir().join("Applications/Google Chrome.app"),
+        ]
+        .into_iter()
+        .any(|path| path.is_dir())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        tool_installed("chrome")
+    }
+}
+
 /// 让其它模块按**安装器同一套 PATH 解析规则**运行一个只读 CLI，并拿到合并输出。
 ///
 /// 不能在调用方裸 `Command::new`：双击启动 U-King 时，进程 PATH 经常没有 npm 全局目录，

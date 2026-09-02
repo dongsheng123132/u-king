@@ -1,7 +1,7 @@
 {
   "name": "u-king-mini",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "U-King — AI 装机管家 + 多 AI 工作台。让不会配环境的用户 10 分钟用上 Codex CLI / OpenClaw 等主流 AI 工具。",
   "type": "module",
   "pnpm": {

@@ -230,9 +230,9 @@ fn ensure_stream() -> Result<u64, String> {
 }
 
 /// 运行时已经存在时，stream 启动失败不能再被前端误判为「重装 runtime 就好」。
-/// Chrome 的探测统一复用工具箱目录，避免第二份 Program Files/macOS 路径表漂移。
+/// Chrome 的探测统一复用安装器公共判据，避免第二份 Program Files/macOS 路径表漂移。
 fn classify_chrome_start_failure(detail: &str) -> String {
-    classify_chrome_start_failure_with(crate::toolbox::tool_installed_by_id("chrome"), detail)
+    classify_chrome_start_failure_with(crate::installer::chrome_installed(), detail)
 }
 
 fn classify_chrome_start_failure_with(chrome_installed: bool, detail: &str) -> String {

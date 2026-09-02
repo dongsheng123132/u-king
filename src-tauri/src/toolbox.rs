@@ -281,6 +281,11 @@ fn probe_dirs() -> Vec<PathBuf> {
 /// 于是 Mac 上 Chrome / LibreOffice 这类 GUI 应用一律探不到 —— 它们既不往 PATH 放同名命令，
 /// `.app` 也不在任何 PATH 目录下，两条判据双双落空，结果报「没装」。
 fn is_installed(def: &ToolDef) -> bool {
+    // Chrome 的绝对路径由 installer 统一维护：浏览器面板也必须用同一判据，
+    // 否则「工具箱说装了、浏览器说没装」会让客户无从判断该信谁。
+    if def.id == "chrome" {
+        return crate::installer::chrome_installed();
+    }
     let exe_suffix = if cfg!(windows) { ".exe" } else { "" };
     let dirs = probe_dirs();
     for cmd in def.probe_cmds {
