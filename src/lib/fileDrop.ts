@@ -51,6 +51,9 @@ function clearOver(except?: Zone) {
 /** 全局只装一次（App 启动时调）。监听 Tauri 拖放：over 更新悬停高亮，drop 派发真实路径。 */
 export function startFileDrop() {
   if (started) return;
+  // Vite 审阅页跑在普通浏览器，那里没有 Tauri webview metadata；直接调用会让整个
+  // React 树落进 ErrorBoundary。桌面版仍由原生事件提供真实路径，浏览器只是不启用该增强。
+  if (!("__TAURI_INTERNALS__" in window)) return;
   started = true;
   void getCurrentWebview().onDragDropEvent((event) => {
     const pl = event.payload as { type: string; paths?: string[]; position?: { x: number; y: number } };
