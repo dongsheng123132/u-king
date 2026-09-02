@@ -59,14 +59,24 @@ pub const BROWSER_TABS: &str = "browser.tabs";
 /// 浏览器会话直播流信息（ws:// 地址）—— 面板连这个看实时画面。只读，无副作用。
 pub const BROWSER_STREAM: &str = "browser.stream";
 
+/// 与安装清单中 `agent-browser@0.27.0` 保持一致；不接受漂移的 CLI 协议。
+const AGENT_BROWSER_VERSION: &str = "0.27.0";
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// 定位 agent-browser 可执行文件。
-/// Windows：npm 全局装在 `%APPDATA%\npm\node_modules\agent-browser\bin\agent-browser-win32-x64.exe`。
+/// Windows：优先 U-King 便携 Node 的全局目录；其次才是用户手工的 npm 目录。
 /// macOS：brew 装在 PATH（`agent-browser`）。
 fn ab_exe() -> Option<std::path::PathBuf> {
     #[cfg(windows)]
     {
+        // `installer::install_tool` 的 npm 步骤会明确 `--prefix` 到这里。先认它，
+        // 才不会在用户另一个旧版全局 agent-browser 存在时「装好了却仍跑旧版」。
+        let managed = crate::installer::uking_home()
+            .join("runtime/node/node_modules/agent-browser/bin/agent-browser-win32-x64.exe");
+        if managed.exists() {
+            return Some(managed);
+        }
         if let Ok(appdata) = std::env::var("APPDATA") {
             let p = std::path::Path::new(&appdata)
                 .join("npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe");
@@ -82,7 +92,15 @@ fn ab_exe() -> Option<std::path::PathBuf> {
             }
         }
     }
-    // 兜底：PATH 里找（macOS / 手动安装）
+    // Finder 启动时 PATH 往往没有 ~/.local/bin。复用 installer 的已知目录，
+    // 使 macOS `npm --prefix ~/.local` 安装后的运行时也能被面板定位。
+    for dir in crate::installer::search_paths(crate::installer::portable_node_dir().as_deref()) {
+        let cand = dir.join(if cfg!(windows) { "agent-browser.exe" } else { "agent-browser" });
+        if cand.exists() {
+            return Some(cand);
+        }
+    }
+    // 最后才兜底进程 PATH（手动安装）。
     if let Ok(path) = std::env::var("PATH") {
         for dir in std::env::split_paths(&path) {
             let cand = dir.join("agent-browser");
@@ -98,8 +116,8 @@ fn ab_exe() -> Option<std::path::PathBuf> {
 ///
 /// **只留真正必需的那半条命令。** 提示语属于对外契约的一部分：写多一步，
 /// 客户就会照着跑多一步，而那一步恰好是会失败的那步。
-const NOT_INSTALLED_HINT: &str = "not_installed: 没找到 agent-browser。装它：`npm install -g agent-browser`。\
-它会直接用这台机器上已装的 Chrome，**不用再跑 `agent-browser install`** —— 那一步是从 Google 下载 \
+const NOT_INSTALLED_HINT: &str = "not_installed: 没找到浏览器运行时。请在 U-King 浏览器面板点「安装浏览器运行时并验证」。\
+它会安装固定版 agent-browser 0.27.0，并直接用这台机器上已装的 Chrome，**不用再跑 `agent-browser install`** —— 那一步是从 Google 下载 \
 Chrome for Testing（约 340MB），国内裸网常被重置，而装了 Chrome 的机器压根不需要它。\
 没有 Chrome 就先装 Chrome（`runtime.toolbox.inspect` 里有这件厨具）。";
 
@@ -174,12 +192,23 @@ fn first_line(s: &str) -> String {
 /// daemon，而 daemon 默认总是开着流（"Streaming is always enabled"），所以先读 `stream status`
 /// 就行；读不到才 `stream enable`。刻意不用 `open` 当 kicker —— 那会把 AI 正在看的页面导航走。
 fn ensure_stream() -> Result<u64, String> {
+    let version = run_ab(&["--version"], 5_000)?;
+    let expected = format!("agent-browser {AGENT_BROWSER_VERSION}");
+    if !version.lines().any(|line| line.trim() == expected) {
+        return Err(format!(
+            "version_mismatch: 需要 agent-browser {AGENT_BROWSER_VERSION}，当前为 {}",
+            first_line(&version)
+        ));
+    }
     // ① 读当前状态（daemon 没起时这条会失败，走 ② 拉起）
     if let Ok(status) = run_ab(&["stream", "status", "--json"], 15_000) {
         if let Ok(v) = serde_json::from_str::<Value>(&status) {
             if v["success"].as_bool().unwrap_or(false) {
                 let port = v["data"]["port"].as_u64().unwrap_or(0);
-                if port > 0 {
+                // port 存在不代表 Chrome 真起来了。只有 daemon 已接到浏览器，面板才把它
+                // 当可连接的直播流；否则给出可见失败，而不是连一个注定空白的 WebSocket。
+                let connected = v["data"]["connected"].as_bool().unwrap_or(false);
+                if port > 0 && connected {
                     return Ok(port);
                 }
             }
@@ -190,7 +219,8 @@ fn ensure_stream() -> Result<u64, String> {
     let v: Value = serde_json::from_str(&out)
         .map_err(|_| "browser.stream: 解析 stream enable 结果失败".to_string())?;
     let port = v["data"]["port"].as_u64().unwrap_or(0);
-    if port == 0 {
+    let connected = v["data"]["connected"].as_bool().unwrap_or(false);
+    if port == 0 || !connected {
         return Err("browser.stream: 浏览器会话未就绪".into());
     }
     Ok(port)

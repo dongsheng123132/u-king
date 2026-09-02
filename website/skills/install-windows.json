@@ -1,7 +1,7 @@
 {
   "skill": "uking-install-windows",
-  "version": 52,
-  "updated": "2026-08-29",
+  "version": 53,
+  "updated": "2026-09-02",
   "notes": "v52: 上架 Cline CLI（cline@npm，Apache-2.0）。四门槛 2026-08-29 本机沙箱实测全过：npm 328 包/17s、auth 非交互接虾盘云（openai-compatible 槽位）、headless 真调 6.6s、工具调用真改文件。安装 min_free_mb=600 + with_optional=true（Windows 平台二进制 @cline/cli-windows-x64 约 150MB 是 optionalDependency，npmmirror 滞后会静默跳过 → 装上了但 --version 崩，同 codex 的坑）；repair 四步与 pi 逐字节同款。\\nv51: CLI 转发 shim 改为仅指向 U-King 便携 Node 的 ASCII %USERPROFILE% 路径，并补 Pi；杜绝中文用户名在 cmd.exe 下重造启动失败。\nv50: 免费额度教程加入 OpenCode Go；「去领 Key」直接走带推荐码的官方注册链接，朋友完成 Go 订阅后双方各得 $5。\nv49: harness-doctor 改从 npm 正式包安装（0.3.2，latest）。此前写的是 git 规格（github:用户/仓库#v0.3.1），冒号不在 npm 包名白名单字符里，被客户端安全闸拦截，主装与 repair 全部报「非法 npm 包名」（reports #44/#47/#51/#52/#53 五连）。npm 上已有同名正式包且 latest=0.3.2，白名单原样放行，无需改 exe。\nv47: 「添加供应商」画廊模板挪进本清单（provider_templates 字段），加新厂商不用发版；老客户端会忽略这个新字段 —— 已拿 website/download 里真的 1.0.2 发布版 exe 实测（劫持它的系统 curl 喂含该字段的清单，selfcheck 回 source=server、10 个工具一个不少），不是靠新代码自己跑测试自证。前端仍以内嵌的 src/lib/providerTemplates.ts 为兜底。🔴 这份原本编号 v45，但 45/46 已被 pnpm 修复和 Harness Doctor 两条线用掉，照 45 发会把线上回退掉 harness-doctor —— 版本号是发布事实不是待办，改号前先看线上 install-windows.json 是几。\nv46: 合入 Harness Doctor 体检工具（原在 codex/harness-doctor-integration 分支上，基线停在 v43、不含 v45 的 pnpm 与 codeload 修复）。合并时以 v45 为底、只取它的 harness-doctor 条目，**没有回退 v44/v45 的任何东西**。\nv45: DSH 的 plugin 子命令会直接调用外部 pnpm；U-King 过去只保证 Node/npm，导致 Windows 干净机稳定报 pnpm 不存在。现在两轮插件安装前固定安装 pnpm 10.33.0，并把 git-hosted 规格改成钉 SHA 的 HTTPS tarball，干净机无需另装 Git。\nv43: DeepSeek Harness 增加 Web / 持续对话终端双模式，并安装两个固定 commit 的 MIT 开源 bundle：dsh-cache-stabilizer 把默认 persona 的 cwd 后移到运行时上下文、固定 schema 键序并提供 /cache 实测；dsh-terminal 复用同一个真实 Agent/Session 连续对话。GitHub 依赖钉死 SHA，避免 main 漂移。\nv42: 上架 DeepSeek 官方 DeepSeek Harness（dsh）Developer Preview。锁定实测接口版本 0.1.0-rc.6，要求 Node 22.19+；安装量较大，预留 800MB，并沿用 npm 主源失败切官方源与通用 repair。主入口是 Web 工作台，headless 只做一次性任务。\nv41: 给 crush / qwen-code / opencode / pi 补上 repair 步骤 —— 这四个后加的 npm 工具一直没有修复步骤，装不上就直接报「安装未通过验证，且无修复步骤」然后停住（issue #336）。它们的安装形状（ensure_node + npm_install）跟 claude-code / openclaw 完全一样，老工具那套 repair 本来就适用；前三步命令在这两个老工具间逐字节相同，说明是工具无关的通用步骤，此处原样取用、只另写文案。\nv37: 补上 OpenCode(opencode-ai)。它是社区最大的开源 coding agent，交互式 TUI 成熟，但**非交互 opencode run 在 Windows 上实测恒定挂死零输出**（1.4.3/1.18.11、沙箱/真实 HOME、带不带 --format 四种组合全挂），所以只按 TUI 上架、不进竞技场。v36: 上架 Qwen Code 与 Crush，并复活 Codex CLI / OpenClaw CLI 入口（主线改为「CLI 干活 + U-Workspace 当壳」）。 | v39: Windows 专属步骤打上 os=windows —— Mac 和 Windows 读同一份清单，那些 powershell.exe 步骤在 macOS 上被 sh 执行会报 `sh: line 0: fg: no job control`，把整条安装判失败并拖进修复循环（issue #340）。",
   "mirror_fallback": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/runtimes",
   "python": {
@@ -641,6 +641,35 @@
           "force": true
         }
       ]
+    },
+    "agent-browser": {
+      "name": "U-King 浏览器运行时",
+      "bin": "agent-browser",
+      "verify_cmd": "agent-browser --version",
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时（缺失则自动装便携版）"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 agent-browser 0.27.0（固定已验证版本；复用本机 Chrome，不下载浏览器内核）",
+          "package": "agent-browser@0.27.0"
+        }
+      ],
+      "repair": [
+        {
+          "type": "ensure_node",
+          "label": "重新检查 Node.js 运行时（上次下载中断时先自愈）"
+        },
+        {
+          "type": "npm_install",
+          "label": "强制重装 agent-browser 0.27.0",
+          "package": "agent-browser@0.27.0",
+          "force": true
+        }
+      ],
+      "min_free_mb": 80
     }
   },
   "provider_templates": [

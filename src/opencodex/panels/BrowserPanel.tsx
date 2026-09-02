@@ -122,6 +122,8 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
   const [url, setUrl] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [installingRuntime, setInstallingRuntime] = useState(false);
+  const [runtimeInstallNeeded, setRuntimeInstallNeeded] = useState(false);
   const [hist, setHist] = useState<string[]>(loadHist);
   const [ports, setPorts] = useState<Record<number, boolean>>({});
 
@@ -167,6 +169,7 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
       const wsUrl = r.ws_url as string;
       if (!wsUrl) throw new Error("browser.stream 没返回 ws 地址");
       setWsFailed(false);
+      setRuntimeInstallNeeded(false);
       // 同一代也只允许一条流；快速切换不会留下旧连接。
       if (wsRef.current) wsRef.current.close();
       const ws = new WebSocket(wsUrl);
@@ -225,6 +228,9 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
     } catch (e) {
       if (!mountedRef.current || !activeRef.current || epoch !== streamEpochRef.current) return;
       setWsFailed(true);
+      setRuntimeInstallNeeded(
+        e instanceof ActionFailed && (e.code === "not_installed" || e.message.includes("version_mismatch")),
+      );
       setErr(String(e));
     }
   }, [t]);
@@ -462,6 +468,27 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
     void connectStream(epoch);
   };
 
+  /** 复用装机向导的受控安装流；完成后立刻用同一条 browser.* 动作验证 Chrome/直播。 */
+  const installRuntime = async () => {
+    if (installingRuntime) return;
+    setInstallingRuntime(true);
+    setErr(null);
+    try {
+      const result = await invoke<{ ok: boolean; error?: string }>("install_tool", { toolId: "agent-browser" });
+      if (!result?.ok) throw new Error(result?.error || t("浏览器运行时安装没有完成"));
+
+      // 不把 npm 成功当作可用：真实拉起 daemon 并抓一次快照，Chrome 未装/不能启动会在此显性失败。
+      await runAction("browser.stream", {}, false);
+      await refreshTree();
+      retryAfterInstall();
+    } catch (e) {
+      setWsFailed(true);
+      setErr(String(e));
+    } finally {
+      setInstallingRuntime(false);
+    }
+  };
+
   const NavBtn = ({
     icon: Icon,
     onClick,
@@ -543,7 +570,19 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
             ) : (
               <Loader2 size={16} className="animate-spin" />
             )}
-            {wsFailed ? t("浏览器会话没起来 —— 看下方错误信息，或装好 agent-browser 后刷新") : t("连接浏览器…")}
+            {wsFailed ? (
+              <>
+                <span>{runtimeInstallNeeded ? t("浏览器会话没起来 —— 可一键安装并验证运行时") : t("浏览器会话暂时断开，可重新连接")}</span>
+                <button
+                  onClick={() => void (runtimeInstallNeeded ? installRuntime() : retryAfterInstall())}
+                  disabled={installingRuntime}
+                  className="h-7 px-2.5 rounded-md bg-accent hover:bg-accent-600 disabled:opacity-60 text-white text-[11px]"
+                >
+                  {installingRuntime ? t("正在安装…") : runtimeInstallNeeded ? t("安装浏览器运行时并验证") : t("重新连接")}
+                </button>
+                {runtimeInstallNeeded && <span className="text-[10.5px] text-ink-5">{t("固定版 agent-browser，复用本机 Chrome；不会下载浏览器内核")}</span>}
+              </>
+            ) : t("连接浏览器…")}
           </div>
         )}
         {busy && (
@@ -573,10 +612,11 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
               <div className="text-warning-700 dark:text-warning-400">{treeStopped.message}</div>
               {treeStopped.hint && <div className="text-ink-3 mt-1">{treeStopped.hint}</div>}
               <button
-                onClick={retryAfterInstall}
+                onClick={() => void (runtimeInstallNeeded ? installRuntime() : retryAfterInstall())}
+                disabled={installingRuntime}
                 className="mt-2 h-6 px-2 rounded-md bg-white/[0.05] border border-white/[0.08] text-[11px] text-ink-2 hover:text-ink-0"
               >
-                {t("装好了，再试一次")}
+                {installingRuntime ? t("正在安装…") : runtimeInstallNeeded ? t("安装浏览器运行时并验证") : t("重新连接")}
               </button>
             </div>
           ) : tree.length === 0 ? (
