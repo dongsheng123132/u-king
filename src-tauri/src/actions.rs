@@ -489,6 +489,8 @@ pub const AITOOL_UNINSTALL: &str = "runtime.aitool.uninstall";
 /// 幂等由 `installer::ensure_*` 自己兑现（已装就探到并秒回，不重下）。
 /// 跟 `OPTIMIZER_APPLY` 分工：那条改这台机器的**设置**，这条补这台机器**缺的东西**。
 pub const ENV_INSTALL_TOOLS: &str = "runtime.env.install_tools";
+/// 安装并验收内置浏览器面板依赖。必须走 ActionParity 确认门，不能由 GUI 直调旧安装命令绕过。
+pub const BROWSER_RUNTIME_INSTALL: &str = "runtime.browser.install";
 
 /// 标记这个动作会边跑边报进度。清单里如实声明，调用方才知道要不要挂监听 ——
 /// 一个会跑几分钟却声明「无进度」的动作，等于让 UI 只能干等着转圈。

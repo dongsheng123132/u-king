@@ -2661,6 +2661,51 @@
       "bindings": [
         {
           "surface": "cli",
+          "target": "cli:action run runtime.browser.install --json --no-input"
+        }
+      ],
+      "description": "Install U-King's pinned agent-browser runtime, then start its stream and capture an accessibility snapshot. Requires confirmation because it downloads and writes local runtime files. Idempotent when the pinned runtime already verifies.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 900000
+      },
+      "id": "runtime.browser.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "version",
+          "stream",
+          "snapshot"
+        ],
+        "type": "object"
+      },
+      "title": "Install and verify the managed browser runtime"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
           "target": "cli:action run runtime.identity.inspect --json --no-input"
         }
       ],

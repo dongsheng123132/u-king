@@ -226,6 +226,19 @@ fn ensure_stream() -> Result<u64, String> {
     Ok(port)
 }
 
+/// 安装动作和面板共用的真实就绪判据：固定版本、可连 Chrome 的直播流、可抓快照。
+/// 成功即说明不需要再联网 npm 安装；失败原因原样上交，由调用方只在缺包/错版时修复。
+pub fn runtime_preflight(progress: &(dyn Fn(&str) + Send + Sync)) -> Result<Value, String> {
+    progress("验证 agent-browser 固定版本与 Chrome 会话…");
+    let stream = run(BROWSER_STREAM, json!({}), progress)?;
+    let snapshot = run(BROWSER_SNAPSHOT, json!({}), progress)?;
+    Ok(json!({
+        "version": AGENT_BROWSER_VERSION,
+        "stream": stream,
+        "snapshot": snapshot,
+    }))
+}
+
 /// 影核 `browser.*` 动作统一分发（lib.rs 的 handler 全部指到这里）。
 pub fn run(id: &str, input: Value, _p: &(dyn Fn(&str) + Send + Sync)) -> Result<Value, String> {
     let s = |k: &str| input.get(k).and_then(|v| v.as_str()).unwrap_or("").trim().to_string();

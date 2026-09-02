@@ -1119,6 +1119,20 @@ fn action_json<T: serde::Serialize>(v: T) -> Result<serde_json::Value, String> {
     serde_json::to_value(v).map_err(|e| format!("serialize_action_result: {e}"))
 }
 
+/// 只有缺包/错版能触发 npm；已就绪直接回 `changed:false`，Chrome 会话自身失败则原样报错。
+fn browser_runtime_install_decision(preflight: Result<serde_json::Value, String>) -> Result<Option<serde_json::Value>, String> {
+    match preflight {
+        Ok(ready) => Ok(Some(serde_json::json!({
+            "changed": false,
+            "version": ready["version"],
+            "stream": ready["stream"],
+            "snapshot": ready["snapshot"],
+        }))),
+        Err(e) if e.starts_with("not_installed:") || e.starts_with("version_mismatch:") => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 /// 「当前各工具在用哪个驱动」这份状态的版本号。
 ///
 /// 直接对 `driver_status()` 的序列化结果取版本 —— 这样版本变不变**完全等于用户看到的
@@ -2759,6 +2773,45 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             |_, _, progress| action_json(installer::install_env_tools(progress)),
             None,
         )),
+        // 浏览器面板的运行时安装：同一条有确认门的动作供 GUI / CLI / MCP 调用。
+        // npm 安装成功不等于可用；最后必须用 browser.stream + snapshot 真验 Chrome 与 daemon。
+        actions::with_progress(actions::write(
+            actions::BROWSER_RUNTIME_INSTALL,
+            "Install and verify the managed browser runtime",
+            "Install U-King's pinned agent-browser runtime, then start its stream and capture an accessibility snapshot. Requires confirmation because it downloads and writes local runtime files. Idempotent when the pinned runtime already verifies.",
+            900_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["changed", "version", "stream", "snapshot"],
+            |_, _, progress| {
+                // 已是精确版本且 Chrome/stream/snapshot 均真验通过：不触网、不重装。
+                // Chrome 自身不可用时也不假装「修复」而重下 npm；只有缺包/错版才进入安装流。
+                match browser_runtime_install_decision(browser::runtime_preflight(progress))? {
+                    Some(ready) => return Ok(ready),
+                    None => {
+                        progress("浏览器运行时缺失或版本不匹配，开始安装固定版本…");
+                    }
+                }
+                let skill = installer::load_skill();
+                let installed = installer::install_tool(&skill, "agent-browser", &|phase, line| {
+                    progress(&format!("{phase}: {line}"));
+                });
+                if !installed.ok {
+                    return Err(installed.error.unwrap_or_else(|| "browser runtime install failed".into()));
+                }
+                let verified = browser::runtime_preflight(progress)?;
+                Ok(serde_json::json!({
+                    "changed": true,
+                    // 两条路径都以同一份 preflight 的规范版本字段返回，避免
+                    // `0.27.0` 和 `agent-browser 0.27.0` 让调用方误判成版本变化。
+                    "version": verified["version"],
+                    "stream": verified["stream"],
+                    "snapshot": verified["snapshot"],
+                }))
+            },
+            None,
+        )),
         // —— 身份与「给 AI 的说明书」——
         //
         // **这四个动作的意义**：U-King 的能力早就全是机器可读的（就是这张表），
@@ -4328,6 +4381,44 @@ mod action_parity_adapter_tests {
             denied.is_err(),
             "缺 confirm 必须被核心挡下 —— 它一跑就是几十上百 MB 下载 + 改 PATH"
         );
+    }
+
+    /// 浏览器运行时同样是写动作：没有确认时必须在进入 npm 前被 ActionParity 核心挡住。
+    #[test]
+    fn browser_runtime_install_refuses_to_run_without_confirmation() {
+        let table = action_table();
+        let spec = table
+            .iter()
+            .map(|a| &a.spec)
+            .find(|s| s.id == actions::BROWSER_RUNTIME_INSTALL)
+            .expect("组合根里应当登记 browser runtime install");
+        assert_eq!(spec.effect, "write");
+        assert_eq!(spec.confirmation, "required");
+        assert!(spec.progress_events);
+        assert!(spec.idempotent);
+        assert_eq!(
+            spec.output_schema.as_ref().and_then(|schema| schema["required"].as_array()).map(|items| items.iter().any(|v| v == "changed")),
+            Some(true),
+            "调用方必须能区分已就绪的零下载路径"
+        );
+        let denied = actions::run(actions::BROWSER_RUNTIME_INSTALL, serde_json::json!({}));
+        assert!(denied.is_err(), "缺 confirm 不得启动 npm 安装");
+    }
+
+    #[test]
+    fn browser_runtime_ready_preflight_skips_npm_install() {
+        let ready = browser_runtime_install_decision(Ok(serde_json::json!({
+            "version": "0.27.0",
+            "stream": { "ws_url": "ws://127.0.0.1:53535" },
+            "snapshot": { "snapshot": "- document" },
+        })))
+        .expect("已就绪预检不应报错")
+        .expect("已就绪必须选择零下载路径");
+        assert_eq!(ready["changed"], false);
+        assert_eq!(ready["version"], "0.27.0");
+        assert!(browser_runtime_install_decision(Err("not_installed: demo".into())).unwrap().is_none());
+        assert!(browser_runtime_install_decision(Err("version_mismatch: demo".into())).unwrap().is_none());
+        assert!(browser_runtime_install_decision(Err("browser.stream: Chrome 未就绪".into())).is_err());
     }
 
     #[test]

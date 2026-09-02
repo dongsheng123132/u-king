@@ -474,12 +474,9 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
     setInstallingRuntime(true);
     setErr(null);
     try {
-      const result = await invoke<{ ok: boolean; error?: string }>("install_tool", { toolId: "agent-browser" });
-      if (!result?.ok) throw new Error(result?.error || t("浏览器运行时安装没有完成"));
-
-      // 不把 npm 成功当作可用：真实拉起 daemon 并抓一次快照，Chrome 未装/不能启动会在此显性失败。
-      await runAction("browser.stream", {}, false);
-      await refreshTree();
+      // 只走带 confirmation=required 的 ActionParity 写动作；GUI 的明确按钮点击
+      // 由 confirmed=true 传递，CLI / MCP 没确认则会被核心拒绝。
+      await runAction("runtime.browser.install", {}, true);
       retryAfterInstall();
     } catch (e) {
       setWsFailed(true);
