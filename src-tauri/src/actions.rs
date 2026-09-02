@@ -103,6 +103,11 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     // `code=unknown` + `blame=bug`，还附赠一句写给我们自己看的「该往 ERR_RULES 补一条」。
     // 这就是那句 hint 点名要补的那一条。
     ("not_installed:", "not_installed", Blame::User, false),
+    // 浏览器面板的可处置环境分流：缺 Chrome 是客户可自行补件；Chrome 已有却起不来
+    // 才需要保留原始启动失败信息，不能诱导客户反复重装 agent-browser。
+    ("chrome_missing:", "chrome_missing", Blame::User, false),
+    ("browser_start_failed:", "browser_start_failed", Blame::User, false),
+    ("version_mismatch:", "version_mismatch", Blame::User, false),
     // 读文档链（read-doc.py）两个转换器（markitdown / pandoc）全不在时的原话。
     // 🔴 这是**缺可选依赖**不是程序坏了：归 `bug` 会让 CLI / MCP / 远端影子去上报，
     // 而正确处置是引导客户装转换器。pc-*** 实测：CSV 一读，落到 unknown+bug 还带乱码。
@@ -257,6 +262,9 @@ fn hint_for(code: &str) -> &'static str {
         "unauthorized" => "Key 无效或没配 —— 去「AI 设置」重新应用一次驱动",
         "model_not_allowed" => "这个 token 没开这个模型的白名单，服务端加一下",
         "not_installed" => "先装上对应工具再调这个动作",
+        "chrome_missing" => "到「厨具工具箱」安装 Google Chrome 后再试",
+        "browser_start_failed" => "Chrome 已安装但没能启动；重试启动，仍失败再查看错误详情或联系技术支持",
+        "version_mismatch" => "浏览器运行时版本不匹配；在浏览器面板安装固定版本后再试",
         "refused" => "核心按规矩挡下了，不是故障 —— 换个做法，重试没用",
         "network" | "timeout" => "本机到网络这一段的问题，换网络或稍后重试",
         "upstream_transient" | "rate_limited" => "上游抖动，重试多半就好",
@@ -1989,6 +1997,19 @@ mod tests {
             ActionError::classify("token has no access to model").blame,
             Blame::User
         );
+
+        for (raw, code) in [
+            ("chrome_missing: demo", "chrome_missing"),
+            ("browser_start_failed: demo", "browser_start_failed"),
+            ("version_mismatch: demo", "version_mismatch"),
+        ] {
+            let e = ActionError::classify(raw);
+            assert_eq!(e.code, code);
+            assert_eq!(e.blame, Blame::User);
+            assert!(!e.retriable);
+            assert!(!e.worth_reporting());
+            assert!(!e.hint.is_empty());
+        }
 
         // 核心按规矩挡下的操作：**不是 bug**。归不上类的话会落成 blame=bug + code=unknown，
         // CLI / MCP / 远端影子看到会以为程序坏了去上报 —— 而它正是核心在正常工作。

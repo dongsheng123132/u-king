@@ -215,15 +215,43 @@ fn ensure_stream() -> Result<u64, String> {
         }
     }
     // ② 拉起并显式开流
-    let out = run_ab(&["stream", "enable", "--json"], 15_000)?;
+    let out = match run_ab(&["stream", "enable", "--json"], 15_000) {
+        Ok(out) => out,
+        Err(e) => return Err(classify_chrome_start_failure(&e)),
+    };
     let v: Value = serde_json::from_str(&out)
-        .map_err(|_| "browser.stream: 解析 stream enable 结果失败".to_string())?;
+        .map_err(|_| classify_chrome_start_failure("stream enable 未返回合法 JSON"))?;
     let port = v["data"]["port"].as_u64().unwrap_or(0);
     let connected = v["data"]["connected"].as_bool().unwrap_or(false);
     if port == 0 || !connected {
-        return Err("browser.stream: 浏览器会话未就绪".into());
+        return Err(classify_chrome_start_failure("agent-browser 未报告可连接的 Chrome 会话"));
     }
     Ok(port)
+}
+
+/// 运行时已经存在时，stream 启动失败不能再被前端误判为「重装 runtime 就好」。
+/// Chrome 的探测统一复用工具箱目录，避免第二份 Program Files/macOS 路径表漂移。
+fn classify_chrome_start_failure(detail: &str) -> String {
+    classify_chrome_start_failure_with(crate::toolbox::tool_installed_by_id("chrome"), detail)
+}
+
+fn classify_chrome_start_failure_with(chrome_installed: bool, detail: &str) -> String {
+    if !chrome_installed {
+        "chrome_missing: 未检测到 Google Chrome。请到「厨具工具箱」安装 Chrome 后再试。".into()
+    } else {
+        format!("browser_start_failed: 已检测到 Google Chrome，但浏览器会话没能启动：{detail}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_chrome_start_failure_with;
+
+    #[test]
+    fn stream_start_failures_are_actionable() {
+        assert!(classify_chrome_start_failure_with(false, "x").starts_with("chrome_missing:"));
+        assert!(classify_chrome_start_failure_with(true, "x").starts_with("browser_start_failed:"));
+    }
 }
 
 /// 安装动作和面板共用的真实就绪判据：固定版本、可连 Chrome 的直播流、可抓快照。

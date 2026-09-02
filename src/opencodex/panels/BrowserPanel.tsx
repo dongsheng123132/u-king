@@ -124,6 +124,8 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
   const [busy, setBusy] = useState(false);
   const [installingRuntime, setInstallingRuntime] = useState(false);
   const [runtimeInstallNeeded, setRuntimeInstallNeeded] = useState(false);
+  const [chromeInstallNeeded, setChromeInstallNeeded] = useState(false);
+  const [browserStartFailed, setBrowserStartFailed] = useState(false);
   const [hist, setHist] = useState<string[]>(loadHist);
   const [ports, setPorts] = useState<Record<number, boolean>>({});
 
@@ -170,6 +172,8 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
       if (!wsUrl) throw new Error("browser.stream 没返回 ws 地址");
       setWsFailed(false);
       setRuntimeInstallNeeded(false);
+      setChromeInstallNeeded(false);
+      setBrowserStartFailed(false);
       // 同一代也只允许一条流；快速切换不会留下旧连接。
       if (wsRef.current) wsRef.current.close();
       const ws = new WebSocket(wsUrl);
@@ -229,8 +233,10 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
       if (!mountedRef.current || !activeRef.current || epoch !== streamEpochRef.current) return;
       setWsFailed(true);
       setRuntimeInstallNeeded(
-        e instanceof ActionFailed && (e.code === "not_installed" || e.message.includes("version_mismatch")),
+        e instanceof ActionFailed && (e.code === "not_installed" || e.code === "version_mismatch"),
       );
+      setChromeInstallNeeded(e instanceof ActionFailed && e.code === "chrome_missing");
+      setBrowserStartFailed(e instanceof ActionFailed && e.code === "browser_start_failed");
       setErr(String(e));
     }
   }, [t]);
@@ -569,13 +575,13 @@ export function BrowserPanel({ taskId, openUrl, active = true }: {
             )}
             {wsFailed ? (
               <>
-                <span>{runtimeInstallNeeded ? t("浏览器会话没起来 —— 可一键安装并验证运行时") : t("浏览器会话暂时断开，可重新连接")}</span>
+                <span>{chromeInstallNeeded ? t("未检测到 Chrome，请到厨具工具箱安装后再试") : browserStartFailed ? t("已检测到 Chrome，但浏览器会话启动失败") : runtimeInstallNeeded ? t("浏览器会话没起来 —— 可一键安装并验证运行时") : t("浏览器会话暂时断开，可重新连接")}</span>
                 <button
                   onClick={() => void (runtimeInstallNeeded ? installRuntime() : retryAfterInstall())}
                   disabled={installingRuntime}
                   className="h-7 px-2.5 rounded-md bg-accent hover:bg-accent-600 disabled:opacity-60 text-white text-[11px]"
                 >
-                  {installingRuntime ? t("正在安装…") : runtimeInstallNeeded ? t("安装浏览器运行时并验证") : t("重新连接")}
+                  {installingRuntime ? t("正在安装…") : runtimeInstallNeeded ? t("安装浏览器运行时并验证") : browserStartFailed ? t("重试启动") : chromeInstallNeeded ? t("装好 Chrome 后重新连接") : t("重新连接")}
                 </button>
                 {runtimeInstallNeeded && <span className="text-[10.5px] text-ink-5">{t("固定版 agent-browser，复用本机 Chrome；不会下载浏览器内核")}</span>}
               </>
