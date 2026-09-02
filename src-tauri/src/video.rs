@@ -165,6 +165,12 @@ fn set_record_state(id: i64, status: &str, file: Option<String>, error: Option<S
 }
 
 pub fn stage_submit(prompt: &str, model: &str, image: Option<&str>) -> Result<PendingSubmit, String> {
+    stage_submit_with_id(prompt, model, image, None)
+}
+
+/// 同一 `request_id` 的重放必须回到同一上游任务，不能再次扣费。GUI/CLI/MCP 的
+/// ActionParity execution id 会通过这里落成视频提交幂等键；旧调用不传时仍生成本地键。
+pub fn stage_submit_with_id(prompt: &str, model: &str, image: Option<&str>, request_id: Option<&str>) -> Result<PendingSubmit, String> {
     if let Some(old) = pending_submit() {
         if old.prompt == prompt && old.model == model && old.image.as_deref() == image {
             return Ok(old);
@@ -172,7 +178,11 @@ pub fn stage_submit(prompt: &str, model: &str, image: Option<&str>) -> Result<Pe
         return Err("上一条视频的提交结果尚未确认，U-King 正在恢复原任务；为防重复扣费，暂不提交新视频".into());
     }
     let seed = format!("{}|{}|{}|{}", now_ms(), std::process::id(), model, prompt);
-    let request_id = format!("ukv1-{}", &blake3::hash(seed.as_bytes()).to_hex()[..32]);
+    let request_id = request_id.filter(|id| !id.trim().is_empty()).map(str::to_string)
+        .unwrap_or_else(|| format!("ukv1-{}", &blake3::hash(seed.as_bytes()).to_hex()[..32]));
+    if request_id.len() > 160 || !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+        return Err("invalid_input: request_id 只能包含 ASCII 字母、数字、-、_、.".into());
+    }
     let pending = PendingSubmit {
         request_id,
         prompt: prompt.to_string(),
@@ -733,6 +743,31 @@ mod tests {
         let replay = create_record("镜头二", "model-fast", "task-same").expect("idempotent replay");
         assert_eq!(first, replay, "same server task must not create duplicate local history");
         clear_pending_submit(&pending.request_id);
+        assert!(pending_submit().is_none());
+    }
+
+    #[test]
+    fn action_execution_id_becomes_the_paid_request_id() {
+        let _sb = crate::testsandbox::enter("video-action-execution-id", &[".uking"]);
+        let pending = stage_submit_with_id(
+            "镜头三",
+            "model-fast",
+            None,
+            Some("uking-18f2-a-7"),
+        )
+        .expect("stage action request");
+
+        assert_eq!(pending.request_id, "uking-18f2-a-7");
+        assert_eq!(pending_submit().as_ref().map(|p| p.request_id.as_str()), Some("uking-18f2-a-7"));
+    }
+
+    #[test]
+    fn unsafe_execution_id_is_rejected_before_a_paid_request_is_staged() {
+        let _sb = crate::testsandbox::enter("video-invalid-execution-id", &[".uking"]);
+        let error = stage_submit_with_id("镜头四", "model-fast", None, Some("bad key with space"))
+            .expect_err("unsafe id must not reach a provider");
+
+        assert!(error.starts_with("invalid_input:"));
         assert!(pending_submit().is_none());
     }
 }
