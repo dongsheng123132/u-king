@@ -558,6 +558,7 @@ export function Video({
             </span>
           )}
           <button
+            data-action-id="runtime.creator.video.submit"
             onClick={onSubmit}
             disabled={busy}
             className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 disabled:opacity-50 shrink-0"

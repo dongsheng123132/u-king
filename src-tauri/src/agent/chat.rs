@@ -820,48 +820,14 @@ fn exec_tool(name: &str, args_json: &str, task_id: &str, workspace: Option<&str>
             let prompt = args.get("prompt").and_then(|p| p.as_str()).unwrap_or("").trim().to_string();
             if prompt.is_empty() { return "做视频失败：没有拿到画面描述".into(); }
             let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "start", "prompt": prompt }));
-            let key = match crate::device::device_key_offline() {
-                Ok(k) => k,
-                Err(e) => { let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "error", "message": e })); return format!("做视频失败：{e}"); }
-            };
             // 文生视频默认 Seedance Fast（画质/成本平衡，直连火山、中文好）——治「视频很丑」。
-            // 复用 video.rs 真实出片管线（submit→落 running 记录→轮询下载），跟「AI 视频」页同一套，
-            // 成果同样进视频历史。异步阻塞本次工具调用，进度每 5s 流给前端（phase:"output"）。
+            // 统一走 lib.rs 的动作核心（提交→落 running 记录→轮询下载），跟「AI 视频」页与
+            // ActionParity 的 CLI/MCP 入口完全同源；进度每 5s 流给前端（phase:"output"）。
             const VIDEO_MODEL: &str = "doubao-seedance-2-0-fast-260128";
-            // 先在本地落 request_id，再提交到按次扣费接口。即使进程死在
-            // “服务端已扣费，task_id 还没回到本机”的窗口，重启恢复也只会取回原任务。
-            let staged = match crate::video::stage_submit(&prompt, VIDEO_MODEL, None) {
-                Ok(p) => p,
-                Err(e) => {
-                    let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "error", "message": e }));
-                    return format!("做视频失败：{e}");
-                }
-            };
-            let started = match crate::video::submit(&key, VIDEO_MODEL, &prompt, None, Some(&staged.request_id)) {
-                Ok(tid) => match crate::video::create_record(&prompt, VIDEO_MODEL, &tid) {
-                    Ok(id) => {
-                        crate::video::clear_pending_submit(&staged.request_id);
-                        Ok((id, tid))
-                    }
-                    Err(e) => Err(e),
-                },
-                Err(e) => {
-                    // 4xx/余额不足等明确拒绝没有任务可恢复；超时/断网则保留日志，下次重放。
-                    if crate::video::submit_error_is_definitive(&e) {
-                        crate::video::clear_pending_submit(&staged.request_id);
-                    }
-                    Err(e)
-                }
-            };
-            let (id, task_id) = match started {
-                Ok(x) => x,
-                Err(e) => { let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "error", "message": e })); return format!("做视频失败：{e}"); }
-            };
-            let on_prog = |_phase: &str, progress: &str| {
+            match crate::run_video_generation(&prompt, Some(VIDEO_MODEL), None, None, &|_id, _phase, progress| {
                 let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "output", "chunk": progress }));
-            };
-            match crate::video::run(&key, id, &task_id, &on_prog) {
-                Ok(_) => {
+            }) {
+                Ok(id) => {
                     let path = crate::video::video_file_path(id).map(|p| p.display().to_string()).unwrap_or_default();
                     let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "result", "path": path, "id": id }));
                     "已生成视频并展示在右侧预览。".into()

@@ -10,6 +10,37 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 
+// `execution_id` 属于 ActionParity 的请求信封，不能伪装成业务 input（所有动作的
+// `additionalProperties:false` 都会正确拒绝它）。但按次收费动作需要把它带到核心，作为
+// 上游幂等键。线程局部只覆盖一次同步动作调用的生命周期；不会落盘、更不会泄漏给无关动作。
+thread_local! {
+    static EXECUTION_ID: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// 当前 ActionParity 调用的稳定执行标识。普通 GUI/CLI 旧入口没有信封时返回 `None`，
+/// 由业务核心生成自己的幂等键。
+pub fn current_execution_id() -> Option<String> {
+    EXECUTION_ID.with(|id| id.borrow().clone())
+}
+
+struct ExecutionIdScope(Option<String>);
+
+impl ExecutionIdScope {
+    fn enter(execution_id: Option<&str>) -> Self {
+        let next = execution_id.filter(|id| !id.trim().is_empty()).map(str::to_owned);
+        let previous = EXECUTION_ID.with(|id| id.replace(next));
+        Self(previous)
+    }
+}
+
+impl Drop for ExecutionIdScope {
+    fn drop(&mut self) {
+        EXECUTION_ID.with(|id| {
+            id.replace(self.0.take());
+        });
+    }
+}
+
 // ─────────────────────── 错误契约（谁的错 / 该不该重试） ───────────────────────
 
 /// 这个错该赖谁。**远程维护/AI 自动处置的分流器** —— 决定「重试」「让客户充值」还是「开 bug」。
@@ -324,8 +355,8 @@ pub const LOCALLLM_INSPECT: &str = "runtime.localllm.inspect";
 pub const LOCALLLM_CATALOG: &str = "runtime.localllm.catalog";
 /// 一键成片可选的受控风格目录。只读；提交时后端仍会白名单校验 id，目录不是授权依据。
 pub const CREATOR_REEL_PRESETS_INSPECT: &str = "runtime.creator.reel_presets.inspect";
-/// 单段视频生成的唯一提交入口。`request_id` 是按次收费请求的幂等键；GUI、CLI、MCP
-/// 重放同一个输入必须取回原任务，不能再建一条。
+/// 单段视频生成的唯一提交入口。ActionParity execution id 会落为上游扣费幂等键；
+/// GUI、CLI、MCP 与 AI 工具重放同一请求时必须取回原任务，而不是再次收费。
 pub const CREATOR_VIDEO_SUBMIT: &str = "runtime.creator.video.submit";
 
 /// `manifest().state.queries` 用：全部只读查询动作。加动作时别忘了这里 ——
@@ -1071,6 +1102,20 @@ pub fn run_with_progress(id: &str, input: Value, progress: &ProgressSink) -> Res
         }
     }
     out
+}
+
+/// ActionParity 信封适配器：业务 input 保持干净，执行标识仅在本次同步调用里可见。
+///
+/// 这不是通用「给动作塞隐藏参数」的后门；只解决标准信封已经定义、且付费幂等必须消费的
+/// `execution_id`。新业务字段仍必须显式写进 input schema，照常经过 `validate_input`。
+pub fn run_with_execution_id(
+    id: &str,
+    input: Value,
+    execution_id: Option<&str>,
+    progress: &ProgressSink,
+) -> Result<Value, String> {
+    let _scope = ExecutionIdScope::enter(execution_id);
+    run_with_progress(id, input, progress)
 }
 
 fn run_inner(id: &str, input: Value, progress: &ProgressSink) -> Result<Value, String> {
@@ -2303,6 +2348,16 @@ mod tests {
 
         assert!(found.contains_key(NETWORK_INSPECT));
         assert!(stale.is_empty());
+    }
+
+    #[test]
+    fn execution_id_is_scoped_to_one_action_call() {
+        assert_eq!(current_execution_id(), None);
+        {
+            let _scope = ExecutionIdScope::enter(Some("action-replay-42"));
+            assert_eq!(current_execution_id().as_deref(), Some("action-replay-42"));
+        }
+        assert_eq!(current_execution_id(), None, "next action must not inherit a paid request key");
     }
 
     /// 按声明造一个占位值，给全表扫描用。

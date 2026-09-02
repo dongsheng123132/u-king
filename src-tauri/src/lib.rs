@@ -1817,6 +1817,37 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 Ok(serde_json::json!({ "schema_version": 1, "count": presets.len(), "presets": action_json(presets)? }))
             },
         ),
+        // 按次收费的出片只有这一条提交入口。`action_parity_call` 会把其 execution_id
+        // 送进 run_video_generation，落为服务端 idempotency_key；重试不会重复扣费。
+        actions::with_progress(actions::write(
+            actions::CREATOR_VIDEO_SUBMIT,
+            "Generate a video clip",
+            "Submit a text-to-video or image-to-video job, poll the original task until it finishes, and download its MP4 into U-King history. The ActionParity execution_id is used as the upstream idempotency key, so retrying the same request never creates a second paid task.",
+            1_250_000,
+            "required",
+            serde_json::json!({
+                "prompt": { "type": "string", "description": "Describe the desired video. Required even for image-to-video." },
+                "model": { "type": "string", "description": "Optional video model id; defaults to the current Seedance Mini offering." },
+                "image": { "type": "string", "description": "Optional first-frame image as a data URL, HTTPS URL, or base64." }
+            }),
+            &["prompt"],
+            &["id", "task_id", "status", "have_video"],
+            |_, input, progress| {
+                let prompt = input.get("prompt").and_then(|v| v.as_str()).unwrap_or_default();
+                let model = input.get("model").and_then(|v| v.as_str());
+                let image = input.get("image").and_then(|v| v.as_str());
+                let execution_id = actions::current_execution_id();
+                let id = run_video_generation(prompt, model, image, execution_id.as_deref(), &|id, phase, detail| {
+                    progress(&format!("id={id} {phase} {detail}"));
+                })?;
+                let item = video::list_history()
+                    .into_iter()
+                    .find(|item| item.id == id)
+                    .ok_or_else(|| "video task completed without a history record".to_string())?;
+                action_json(item)
+            },
+            None,
+        )),
         actions::readonly(
             actions::RTK_INSPECT,
             "Inspect the token squeezer (RTK)",
@@ -3940,7 +3971,9 @@ fn action_parity_call_inner(
             object.remove("confirm");
         }
     }
-    match actions::run(&action_id, input) {
+    // `execution_id` 是 ActionParity 信封的一部分，不混进业务 input；付费动作从
+    // actions::current_execution_id() 取它作为上游幂等键，普通动作完全不受影响。
+    match actions::run_with_execution_id(&action_id, input, Some(&execution_id), &|_| {}) {
         Ok(result) => serde_json::json!({
             "ok": true,
             "version": 1,
@@ -5672,8 +5705,50 @@ async fn install_skill_pack() -> Result<serde_json::Value, String> {
     run_write_action(actions::SKILLPACK_INSTALL, serde_json::json!({})).await
 }
 
-/// AI 视频：提交虾盘云视频任务 → 轮询到出片 → 下载落盘。进度走事件 `uking:video_progress`
-/// （payload: {id, phase, progress}）。整条在 spawn_blocking 跑，await 返回最终记录 id。
+/// 视频唯一执行核心：提交（带写前日志）→ 轮询 → 下载。GUI、CLI、MCP 和 AI 工具都应转调它，
+/// 不能各自拼一套 POST/恢复/落盘流程。`execution_id` 来自 ActionParity 信封时即为上游扣费幂等键。
+pub(crate) fn run_video_generation(
+    prompt: &str,
+    model: Option<&str>,
+    image: Option<&str>,
+    execution_id: Option<&str>,
+    on_progress: &dyn Fn(i64, &str, &str),
+) -> Result<i64, String> {
+    let key = device::device_key_offline()?;
+    let model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or("doubao-seedance-2-0-mini-260615");
+    // 写前日志必须早于 POST：进程若死在服务端已扣费、task_id 响应未落本机的缝里，
+    // 重启会拿同一幂等键+同一请求体重放，服务端只返回原任务，不再扣一次。
+    let pending = video::stage_submit_with_id(prompt, model, image, execution_id)?;
+    let task_id = match video::submit(&key, model, prompt, image, Some(&pending.request_id)) {
+        Ok(id) => id,
+        Err(e) => {
+            // 余额/参数/审核是服务端明确拒绝，肯定没有任务；网络/超时则可能已经收单，
+            // 必须留下事务让下次同幂等键恢复，不能当失败清掉后再建一条。
+            if video::submit_error_is_definitive(&e) {
+                video::clear_pending_submit(&pending.request_id);
+            }
+            return Err(e);
+        }
+    };
+    let id = video::create_record(prompt, model, &task_id)?;
+    video::clear_pending_submit(&pending.request_id);
+    // 同一 execution_id 的成功重放直接回原产物；不能再下载、更不能重建收费任务。
+    if video::video_file_path(id).is_some() {
+        return Ok(id);
+    }
+    if !video::try_begin_run(id) {
+        // 另一条相同任务已在本地轮询；返回同一记录给调用方即可。
+        return Ok(id);
+    }
+    on_progress(id, "running", "0%");
+    let r = video::run(&key, id, &task_id, &|phase, progress| on_progress(id, phase, progress));
+    video::end_run(id);
+    r.map(|_| id)
+}
+
+/// GUI 薄壳：事件名和返回形状保留，业务只走 `run_video_generation`。
 #[tauri::command]
 async fn generate_video(
     app: AppHandle,
@@ -5683,42 +5758,9 @@ async fn generate_video(
 ) -> Result<i64, String> {
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let key = device::device_key_offline()?;
-        let has_image = image.as_deref().map(str::trim).is_some_and(|s| !s.is_empty());
-        let model = model
-            .filter(|m| !m.trim().is_empty())
-            .unwrap_or_else(|| if has_image { "dreamina-seedance-2-0" } else { "wanx2.1-t2v-turbo" }.into());
-        // 写前日志必须早于 POST：进程若死在服务端已扣费、task_id 响应未落本机的缝里，
-        // 重启会拿同一幂等键+同一请求体重放，服务端只返回原任务，不再扣一次。
-        let pending = video::stage_submit(&prompt, &model, image.as_deref())?;
-        let task_id = match video::submit(
-            &key,
-            &model,
-            &prompt,
-            image.as_deref(),
-            Some(&pending.request_id),
-        ) {
-            Ok(id) => id,
-            Err(e) => {
-                // 余额/参数/审核是服务端明确拒绝，肯定没有任务；网络/超时则可能已经收单，
-                // 必须留下事务让下次同幂等键恢复，不能当失败清掉后再建一条。
-                if video::submit_error_is_definitive(&e) {
-                    video::clear_pending_submit(&pending.request_id);
-                }
-                return Err(e);
-            }
-        };
-        let id = video::create_record(&prompt, &model, &task_id)?;
-        video::clear_pending_submit(&pending.request_id);
-        if !video::try_begin_run(id) {
-            return Err("该视频任务已在恢复中".to_string());
-        }
-        let _ = app2.emit("uking:video_progress", serde_json::json!({"id": id, "phase": "running", "progress": "0%"}));
-        let r = video::run(&key, id, &task_id, &|phase, progress| {
+        run_video_generation(&prompt, model.as_deref(), image.as_deref(), None, &|id, phase, progress| {
             let _ = app2.emit("uking:video_progress", serde_json::json!({"id": id, "phase": phase, "progress": progress}));
-        });
-        video::end_run(id);
-        r.map(|_| id)
+        })
     })
     .await
     .map_err(|e| format!("视频任务异常: {e}"))?
