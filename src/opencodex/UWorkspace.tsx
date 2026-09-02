@@ -183,6 +183,7 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
                   （轻助手那侧只弹一条会自己消失的 toast，Claude 那侧只在它自己的对话里贴一句）。 */}
               {/* 🔴 不再往 Chat 传 onGoCreate：常驻挂载的会话不该有导航权（见 summon 注释）。 */}
               <Chat sessionId={t.id} initialWorkspace={t.dir} onToast={onToast} expert={findExpert(t.expert)} onInstallClaude={onInstallClaude} taskName={t.name} onFindExpert={() => setView("experts")} onSummonExpert={summon}
+                active={view === "chat" && t.id === state.activeId}
                 onStatus={(s) => setTaskStatus(t.id, s)}
                 /* 自动命名接线（2026-08-25）：Chat 首条消息会调 onTitle 当会话标题，
                    此前一直没人传这个 prop → 满屏「新对话」（fable5 架构评审揪出的死代码）。

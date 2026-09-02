@@ -100,11 +100,11 @@ const MODES = [
 ];
 // 按钮上写人话（客户认「终端」不认「U-CLI」），tooltip 里带代号 —— 代号是给报 bug /
 // 看文档时**指认是哪一块**用的，不是拿来教育客户的。命名约定见 Sidebar.tsx 的 CORE 注释。
-const RIGHT_META: { kind: RightKind; label: string; title: string; icon: typeof Terminal; needsWs: boolean }[] = [
+const RIGHT_META: { kind: RightKind; label: string; title: string; icon: typeof Terminal; needsWs: boolean; lab?: boolean }[] = [
   { kind: "preview", label: "预览", title: "预览（图 / 网页 / 文档）", icon: Eye, needsWs: false },
   { kind: "terminal", label: "终端", title: "终端（U-CLI）", icon: Terminal, needsWs: true },
   { kind: "files", label: "文件", title: "文件树", icon: FolderTree, needsWs: true },
-  { kind: "browser", label: "浏览器", title: "内置浏览器", icon: Globe, needsWs: false },
+  { kind: "browser", label: "浏览器", title: "内置浏览器", icon: Globe, needsWs: false, lab: true },
   // 「创作」面板 2026-08-23 撤掉 —— **能力一点没动**，`Create.tsx` 回到侧栏「AI 创作」独立页。
   //
   // 它 08-21 从侧栏搬进这里，理由是「和 U-Chat 是同一件事的两个入口」。撤回的理由是用户反馈
@@ -202,10 +202,11 @@ function saveChatItems(sessionId: string, items: Item[]) {
   void invoke("chat_archive_replace", { sessionId, items: trimmed }).catch(() => {});
 }
 
-export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
+export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert, active = true }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
   /** 点一位专家 → 带着他开一个会话（宿主负责建会话，本组件不自己造）。 */ onSummonExpert?: (e: Expert) => void;
   /** 这一轮跑起来了 / 跑完了 / 跑挂了 —— 宿主拿去染左侧列表那个小圆点。不传也照常能用。 */
-  onStatus?: (s: "running" | "idle" | "error") => void }) {
+  onStatus?: (s: "running" | "idle" | "error") => void;
+  /** 会话常驻时由宿主传入；隐藏会话不能继续占用浏览器直播。 */ active?: boolean }) {
   const { t } = useI18n();
   // 矮屏（见 lib/useViewport.ts）：顶栏和「按发送前该知道的两件事」那条在
   // 1366×768 上各自都还占着宽松间距，而对话正文只剩三四行。
@@ -1046,11 +1047,12 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                   🔴 终端态下**连「文件」也不显示**：那时面板头那颗「文件」已经是文件入口（在终端旁开一栏），
                   两颗同名按钮挨在一起、点了行为还不一样（一个开旁栏、一个把整个面板切走），
                   比没有更糟。同一时刻只该有一个「文件」。 */}
-              {RIGHT_META.filter((m) => m.kind !== "terminal" && !(cliMode && m.kind === "files")).map(({ kind, label, title, icon: Icon }) => (
-                <button key={kind} onClick={() => togglePanel(kind)} title={t(title)}
+              {RIGHT_META.filter((m) => m.kind !== "terminal" && !(cliMode && m.kind === "files")).map(({ kind, label, title, icon: Icon, lab }) => (
+                <button key={kind} onClick={() => togglePanel(kind)} title={lab ? t("{label}（测试中：依赖 agent-browser，国内网络下常起不来）", { label: t(title) }) : t(title)}
                   className={cn("inline-flex items-center gap-1 h-7 px-2 rounded-lg border text-[11px]",
                     rightOpen && rightKind === kind ? "bg-accent/15 border-accent/40 text-ink-0" : "bg-bg-1 border-white/[0.08] text-ink-2 hover:border-accent/30")}>
                   <Icon size={12} /><span className="hidden sm:inline">{t(label)}</span>
+                  {lab && <span className="hidden lg:inline text-[9px] leading-none px-1 py-0.5 rounded bg-amber-400/15 text-amber-400/90">{t("测试中")}</span>}
                 </button>
               ))}
               {/* 模型选择器也已挪进输入框卡片的底部工具条（对齐 Codex / WorkBuddy） */}
@@ -1525,7 +1527,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                     <MessageSquare size={13} /> {t("返回对话")}
                   </button>
                 )}
-                <BrowserPanel taskId="native-chat" openUrl={browserUrl} />
+                <BrowserPanel taskId={sessionId} openUrl={browserUrl} active={active && rightOpen && rightKind === "browser"} />
               </div>
             )}
             {opened.has("preview") && (
@@ -1574,8 +1576,8 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                   <>
                     <div className="flex items-center gap-1.5 h-9 px-2 border-b border-white/[0.06] shrink-0">
                       <Globe size={13} className="text-ink-4" /><span className="text-[12px] text-ink-3 truncate flex-1">{preview.caption || t("网页预览")}</span>
-                      {/* 「用浏览器打开」：iframe 里的页面点链接不跳、登录态没有、有些脚本被 sandbox 拦；
-                          内置浏览器是**真 Chrome**（CDP 驱动），这三件事它都行。只对有真实路径的网页给 ——
+                      {/* 「用浏览器打开」：iframe 里的页面点链接不跳、有些脚本被 sandbox 拦；
+                          内置浏览器是独立 Chrome 会话，不继承系统浏览器登录态。只对有真实路径的网页给 ——
                           整段源码塞进来的那种（read_text_file 那条）没有文件可开。 */}
                       {preview.path && (
                         <button
@@ -1585,7 +1587,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                             setOpened((s) => (s.has("browser") ? s : new Set(s).add("browser")));
                             setRightKind("browser");
                           }}
-                          title={t("在内置浏览器里打开（能点链接、跑脚本、带登录态）")}
+                          title={t("在内置浏览器里打开（能点链接、跑脚本；登录网站请用系统浏览器）")}
                           className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-white/[0.10] text-[11px] text-ink-3 hover:text-ink-0 hover:border-accent/40"
                         >
                           <Globe size={11} /> {t("用浏览器打开")}

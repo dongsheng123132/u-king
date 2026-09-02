@@ -111,10 +111,12 @@ const loadHist = (): string[] => {
   }
 };
 
-export function BrowserPanel({ taskId, openUrl }: {
+export function BrowserPanel({ taskId, openUrl, active = true }: {
   taskId: string;
   /** 宿主要它打开的地址（换一个值就导航一次）。用于「预览里点『用浏览器打开』」这条路。 */
   openUrl?: string;
+  /** 只有当前可见的浏览器面板才占用 agent-browser 流和快照轮询。 */
+  active?: boolean;
 }) {
   const { t } = useI18n();
   const [url, setUrl] = useState("");
@@ -130,7 +132,14 @@ export function BrowserPanel({ taskId, openUrl }: {
   const [viewport, setViewport] = useState({ width: 1280, height: 720 });
   const [current, setCurrent] = useState(""); // 当前页 URL（来自流里的 tabs）
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectsRef = useRef(0);
+  // 每次隐藏/重开都是新一代连接。`browser.stream` 是异步 invoke，不能让旧一代
+  // 在面板收起之后才回来偷偷开一个没有 owner 的 WebSocket。
+  const streamEpochRef = useRef(0);
   const mountedRef = useRef(true);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const urlFocusRef = useRef(false);
 
   // ── 交互树（AI 同一份感知）──
@@ -150,16 +159,20 @@ export function BrowserPanel({ taskId, openUrl }: {
   };
 
   /** 连接 agent-browser 直播流。agent-browser 没装时这里会抛 not_installed，显示安装引导。 */
-  const connectStream = useCallback(async () => {
-    if (!mountedRef.current) return;
+  const connectStream = useCallback(async (epoch = streamEpochRef.current) => {
+    if (!mountedRef.current || !activeRef.current) return;
     try {
       const r = await runAction("browser.stream", {}, false);
+      if (!mountedRef.current || !activeRef.current || epoch !== streamEpochRef.current) return;
       const wsUrl = r.ws_url as string;
       if (!wsUrl) throw new Error("browser.stream 没返回 ws 地址");
       setWsFailed(false);
+      // 同一代也只允许一条流；快速切换不会留下旧连接。
+      if (wsRef.current) wsRef.current.close();
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       ws.onmessage = (e) => {
+        if (!activeRef.current) return;
         try {
           const m = JSON.parse(e.data as string);
           if (m.type === "status") {
@@ -178,19 +191,39 @@ export function BrowserPanel({ taskId, openUrl }: {
             setFrame("data:image/jpeg;base64," + m.data);
             setWsReady(true);
           }
+          // 收到协议消息说明本轮流已恢复；之后再断线仍可获得三次受控重连机会。
+          reconnectsRef.current = 0;
         } catch {
           /* 非 JSON 帧忽略 */
         }
       };
       ws.onclose = () => {
-        if (wsRef.current === ws) wsRef.current = null;
-        // 掉线自动重连（daemon 可能被关/重启了），组件卸载后不重连
-        if (mountedRef.current) {
-          setTimeout(() => void connectStream(), 3000);
+        // 断线后旧帧不能继续冒充「直播中」。最多重连三次，避免环境缺失时永久刷后台。
+        if (wsRef.current !== ws || epoch !== streamEpochRef.current) return;
+        wsRef.current = null;
+        setWsReady(false);
+        setFrame(null);
+        if (!mountedRef.current || !activeRef.current) return;
+        if (reconnectsRef.current >= 3) {
+          setWsFailed(true);
+          setErr(t("直播流已断开，请检查浏览器运行时后再试一次"));
+          return;
         }
+        reconnectsRef.current += 1;
+        setWsFailed(true);
+        setErr(t("直播流已断开，正在重连…"));
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
+          void connectStream(epoch);
+        }, reconnectsRef.current * 1_000);
       };
-      ws.onerror = () => setErr(t("直播流连接失败 —— 浏览器会话可能被关掉了，正在重连"));
+      ws.onerror = () => {
+        if (wsRef.current !== ws) return;
+        setErr(t("直播流连接失败，正在重连…"));
+        ws.close(); // onclose 统一清状态和决定是否重连
+      };
     } catch (e) {
+      if (!mountedRef.current || !activeRef.current || epoch !== streamEpochRef.current) return;
       setWsFailed(true);
       setErr(String(e));
     }
@@ -203,26 +236,33 @@ export function BrowserPanel({ taskId, openUrl }: {
   // 12 秒还没收到任何一条消息（status/tabs/frame 都算）就如实认输，让下面的
   // wsFailed 分支把原因和安装引导摆出来。daemon 冷启动实测 2~4 秒，12 秒足够宽。
   useEffect(() => {
-    if (wsReady || wsFailed) return;
+    if (!active || wsReady || wsFailed) return;
     const id = setTimeout(() => {
       if (!mountedRef.current || wsReady) return;
       setWsFailed(true);
       setErr((prev) => prev ?? t("12 秒内没收到任何画面 —— agent-browser 多半没起来（国内网络下装内核常被重置）"));
     }, 12_000);
     return () => clearTimeout(id);
-  }, [wsReady, wsFailed, t]);
+  }, [active, wsReady, wsFailed, t]);
 
   useEffect(() => {
     mountedRef.current = true;
-    void connectStream();
+    const epoch = ++streamEpochRef.current;
+    if (active) void connectStream(epoch);
     return () => {
       mountedRef.current = false;
+      streamEpochRef.current += 1;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      reconnectsRef.current = 0;
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
+      setWsReady(false);
+      setFrame(null);
     };
-  }, [connectStream]);
+  }, [active, connectStream]);
 
   // ── 交互树轮询：打开时每 3s 刷一次（AI 在别处操作也能跟上），用户动作后手动刷 ──
   // 用 ref 防重入（state 当 guard 会拖进 effect 依赖、让 interval 反复重建）
@@ -230,11 +270,12 @@ export function BrowserPanel({ taskId, openUrl }: {
   /** 不可重试的错（如内核没装）—— 停掉轮询，并把后端给的 hint 摆出来。 */
   const [treeStopped, setTreeStopped] = useState<{ message: string; hint: string } | null>(null);
   const refreshTree = useCallback(async () => {
-    if (treeBusyRef.current) return;
+    if (!activeRef.current || treeBusyRef.current) return;
     treeBusyRef.current = true;
     setTreeBusy(true);
     try {
       const r = await runAction("browser.snapshot", {}, false);
+      if (!activeRef.current) return;
       setTree(parseSnapshot((r.snapshot as string) || ""));
       setTreeStopped(null);
     } catch (e) {
@@ -253,11 +294,11 @@ export function BrowserPanel({ taskId, openUrl }: {
 
   useEffect(() => {
     // 已经判定「不用再试了」就不再起定时器 —— 重试的前提是「可能会成功」。
-    if (treeStopped) return;
+    if (!active || treeStopped) return;
     void refreshTree();
     const id = setInterval(() => void refreshTree(), 3000);
     return () => clearInterval(id);
-  }, [refreshTree, treeStopped]);
+  }, [active, refreshTree, treeStopped]);
 
   // ── 本机端口探测（沿用旧面板的真探逻辑）──
   const probePorts = useCallback(() => {
@@ -268,10 +309,11 @@ export function BrowserPanel({ taskId, openUrl }: {
     });
   }, []);
   useEffect(() => {
+    if (!active) return;
     probePorts();
     const id = setInterval(probePorts, 4000);
     return () => clearInterval(id);
-  }, [probePorts]);
+  }, [active, probePorts]);
 
   /** 导航到新地址（地址栏 / 端口 / 历史）。 */
   const open = async (target: string) => {
@@ -302,9 +344,9 @@ export function BrowserPanel({ taskId, openUrl }: {
   const openRef = useRef(open);
   openRef.current = open;
   useEffect(() => {
-    if (openUrl) void openRef.current(openUrl);
+    if (active && openUrl) void openRef.current(openUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openUrl]);
+  }, [active, openUrl]);
 
   const nav = async (action: "back" | "forward" | "reload") => {
     setErr(null);
@@ -324,7 +366,8 @@ export function BrowserPanel({ taskId, openUrl }: {
     setErr(null);
     setBusy(true);
     try {
-      await runAction("browser.click", { ref: rf });
+      // agent-browser 的快照引用必须是 @e1；裸 e1 会被当成 CSS selector。
+      await runAction("browser.click", { ref: rf.startsWith("@") ? rf : `@${rf}` });
       await refreshTree();
     } catch (e) {
       setErr(String(e));
@@ -404,6 +447,21 @@ export function BrowserPanel({ taskId, openUrl }: {
     );
   };
 
+  const retryAfterInstall = () => {
+    setErr(null);
+    setTreeStopped(null);
+    reconnectsRef.current = 0;
+    const epoch = ++streamEpochRef.current;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+    if (wsRef.current) wsRef.current.close();
+    wsRef.current = null;
+    setWsReady(false);
+    setWsFailed(false);
+    setFrame(null);
+    void connectStream(epoch);
+  };
+
   const NavBtn = ({
     icon: Icon,
     onClick,
@@ -464,7 +522,7 @@ export function BrowserPanel({ taskId, openUrl }: {
         <NavBtn icon={MousePointer2} onClick={() => scroll("down")} title="向下滚动" disabled={busy} />
         <div className="flex-1" />
         <span className={cn("text-[11px] shrink-0", wsReady ? "text-accent" : "text-ink-5")}>
-          {wsReady ? t("直播中 · AI 和你在同一浏览器") : t("连接中…")}
+          {wsReady ? t("直播中 · AI 和你在同一浏览器") : wsFailed ? t("连接失败") : t("连接中…")}
         </span>
       </div>
 
@@ -515,7 +573,7 @@ export function BrowserPanel({ taskId, openUrl }: {
               <div className="text-warning-700 dark:text-warning-400">{treeStopped.message}</div>
               {treeStopped.hint && <div className="text-ink-3 mt-1">{treeStopped.hint}</div>}
               <button
-                onClick={() => { setTreeStopped(null); }}
+                onClick={retryAfterInstall}
                 className="mt-2 h-6 px-2 rounded-md bg-white/[0.05] border border-white/[0.08] text-[11px] text-ink-2 hover:text-ink-0"
               >
                 {t("装好了，再试一次")}

@@ -9080,7 +9080,9 @@ pub fn run() {
             .and_then(|s| s.split(|c: char| !c.is_ascii_alphanumeric()).next())
             .map(|s| s.to_string());
         if let Some(rf) = link_ref {
-            step("browser.click(link)", browser::BROWSER_CLICK, serde_json::json!({ "ref": rf }));
+            // agent-browser 的 accessibility ref 是 `@eN`；不能在自检里剥掉
+            // `@` 后再传裸值，否则会被上游当 CSS selector 拒绝。
+            step("browser.click(link)", browser::BROWSER_CLICK, serde_json::json!({ "ref": format!("@{}", rf) }));
             let after = step("browser.back", browser::BROWSER_BACK, serde_json::json!({}));
             let _ = after;
         } else {

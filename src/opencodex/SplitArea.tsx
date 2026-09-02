@@ -258,7 +258,7 @@ function SidePanel({
         </div>
         <div className="absolute inset-0" style={{ display: kind === "browser" ? "block" : "none" }}>
           <PanelBoundary name="browser">
-            {kind === "browser" && <BrowserPanel taskId={task.id} />}
+            {kind === "browser" && <BrowserPanel taskId={task.id} active={active && kind === "browser"} />}
           </PanelBoundary>
         </div>
       </div>
