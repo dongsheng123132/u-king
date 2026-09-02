@@ -43,6 +43,8 @@ export const ACTION = {
   RUNTIME_CRASH_INSPECT: "runtime.crash.inspect",
   /** List the built-in schema-v1 visual-style presets for one-click reels. Reads only; selecting a preset never enables BGM or changes a user's supplied audio settings. */
   RUNTIME_CREATOR_REEL_PRESETS_INSPECT: "runtime.creator.reel_presets.inspect",
+  /** Submit a text-to-video or image-to-video job, poll the original task until it finishes, and download its MP4 into U-King history. The ActionParity execution_id is used as the upstream idempotency key, so retrying the same request never creates a second paid task. */
+  RUNTIME_CREATOR_VIDEO_SUBMIT: "runtime.creator.video.submit",
   /** Create a desktop shortcut pointing at the currently running executable. */
   RUNTIME_DESKTOP_PIN: "runtime.desktop.pin",
   /** Save an access key you already have (from another computer, another copy, or generated on the website) as this machine's key. The key is verified against the server before anything is written — a typo never gets saved. */
@@ -203,6 +205,7 @@ export type ActionInputMap = {
   "runtime.context_menu.set": { enabled: boolean; expected_state_version?: string; };
   "runtime.crash.inspect": Record<string, never>;
   "runtime.creator.reel_presets.inspect": Record<string, never>;
+  "runtime.creator.video.submit": { expected_state_version?: string; image?: string; model?: string; prompt: string; };
   "runtime.desktop.pin": { expected_state_version?: string; };
   "runtime.device.key_adopt": { expected_state_version?: string; key: string; };
   "runtime.device.key_rotate": { expected_state_version?: string; };
@@ -293,6 +296,7 @@ export type ActionOutputMap = {
   "runtime.context_menu.set": Record<string, unknown>;
   "runtime.crash.inspect": Record<string, unknown>;
   "runtime.creator.reel_presets.inspect": Record<string, unknown>;
+  "runtime.creator.video.submit": Record<string, unknown>;
   "runtime.desktop.pin": Record<string, unknown>;
   "runtime.device.key_adopt": Record<string, unknown>;
   "runtime.device.key_rotate": Record<string, unknown>;

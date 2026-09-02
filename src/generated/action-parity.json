@@ -517,6 +517,69 @@
     {
       "bindings": [
         {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.video.submit --json --no-input"
+        }
+      ],
+      "description": "Submit a text-to-video or image-to-video job, poll the original task until it finishes, and download its MP4 into U-King history. The ActionParity execution_id is used as the upstream idempotency key, so retrying the same request never creates a second paid task.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 1250000
+      },
+      "id": "runtime.creator.video.submit",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "image": {
+            "description": "Optional first-frame image as a data URL, HTTPS URL, or base64.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Optional video model id; defaults to the current Seedance Mini offering.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "Describe the desired video. Required even for image-to-video.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "task_id",
+          "status",
+          "have_video"
+        ],
+        "type": "object"
+      },
+      "title": "Generate a video clip"
+    },
+    {
+      "bindings": [
+        {
           "surface": "cli",
           "target": "cli:action run runtime.rtk.inspect --json --no-input"
         }
