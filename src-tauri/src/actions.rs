@@ -296,6 +296,11 @@ pub const RTK_INSPECT: &str = "runtime.rtk.inspect";
 pub const RTK_DEMO: &str = "runtime.rtk.demo";
 pub const HERMES_BROWSER_INSPECT: &str = "runtime.hermes_browser.inspect";
 pub const CLAWX_INSPECT: &str = "runtime.clawx.inspect";
+pub const OPENCLAW2_INSPECT: &str = "runtime.openclaw2.inspect";
+pub const OPENCLAW2_INSTALL: &str = "runtime.openclaw2.install";
+pub const OPENCLAW2_PREPARE: &str = "runtime.openclaw2.prepare";
+pub const OPENCLAW2_PREFLIGHT: &str = "runtime.openclaw2.preflight";
+pub const OPENCLAW2_LAUNCH: &str = "runtime.openclaw2.launch";
 pub const GEO_INSPECT: &str = "runtime.geo.inspect";
 pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
 pub const PODAPP_INSPECT: &str = "runtime.podapp.inspect";
@@ -373,7 +378,7 @@ pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
     HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
-    CLAWX_INSPECT, GEO_INSPECT, UU_REMOTE_INSPECT, PODAPP_INSPECT, AUTOMATION_INSPECT,
+    CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, GEO_INSPECT, UU_REMOTE_INSPECT, PODAPP_INSPECT, AUTOMATION_INSPECT,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,

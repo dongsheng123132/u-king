@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "openclaw_version": "2026.8.1",
+  "node": {
+    "version": "24.15.0",
+    "windows_x64_url": "https://nodejs.org/dist/v24.15.0/node-v24.15.0-win-x64.zip",
+    "windows_x64_sha256": "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62"
+  },
+  "openclaw": {
+    "tarball_url": "https://registry.npmjs.org/openclaw/-/openclaw-2026.8.1.tgz",
+    "integrity": "sha512-bSaFeaDFnQH/bU1vgKMac6eHkHHPHG0C/uwduXGI3eIS3lyiYSwmDU5ehhBUUhlPeV85tL5/KVwmoH48nX1tWw=="
+  }
+}

@@ -15,6 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
+/// 安装路径使用的公共 SHA-256 入口。适配器经此复用零依赖摘要算法，避免
+/// 直接依赖设备钱包模块；算法本身仍仅在 `device` 模块维护一份。
+pub(crate) fn sha256_hex_bytes(data: &[u8]) -> String {
+    crate::device::sha256_hex_bytes(data)
+}
+
 /// 内嵌的兜底 skill 清单。
 const EMBEDDED_SKILL: &str = include_str!("../skills/install-windows.json");
 /// 服务器下发地址（依次尝试，第一个拉到合法 JSON 的生效）。
@@ -6765,6 +6771,14 @@ mod tests {
         assert!(verify_download(&f, "", 999).is_err());
 
         let _ = std::fs::remove_file(&f);
+    }
+
+    #[test]
+    fn public_sha256_helper_keeps_the_download_integrity_vector() {
+        assert_eq!(
+            sha256_hex_bytes(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     /// 「校验通过后包被动过」的判据得站得住 —— 它现在是我们给客户的**结论性**指路：

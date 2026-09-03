@@ -729,6 +729,241 @@
     {
       "bindings": [
         {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.inspect --json --no-input"
+        }
+      ],
+      "description": "Read only U-King's private OpenClaw 2 runtime and state. It never probes ClawX or legacy OpenClaw paths.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.openclaw2.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "schema_version",
+          "ready",
+          "blockers",
+          "installed",
+          "prepared",
+          "running",
+          "state_version",
+          "profile",
+          "paths",
+          "runtime",
+          "gateway"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the isolated OpenClaw 2 runtime"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.preflight --json --no-input"
+        }
+      ],
+      "description": "Run only the private OpenClaw 2 doctor's lint JSON check, plus private gateway RPC status when it is running. It never repairs or migrates anything.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.openclaw2.preflight",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "ready",
+          "blockers",
+          "warnings",
+          "runtime",
+          "config",
+          "doctor",
+          "gateway"
+        ],
+        "type": "object"
+      },
+      "title": "Preflight the isolated OpenClaw 2 runtime"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.install --json --no-input"
+        }
+      ],
+      "description": "Download and verify U-King's pinned private Node and OpenClaw 2 runtime. It never changes PATH, global npm, shims, ClawX, or legacy OpenClaw.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 900000
+      },
+      "id": "runtime.openclaw2.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "installed",
+          "node_version",
+          "openclaw_version",
+          "integrity_ok",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Install the isolated OpenClaw 2 runtime"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.prepare --json --no-input"
+        }
+      ],
+      "description": "Atomically create U-King's private OpenClaw 2 profile, state, workspace, and token. Existing incompatible configuration is refused rather than overwritten.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.openclaw2.prepare",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "port": {
+            "description": "Optional private gateway port. Omit to choose a stable free default.",
+            "maximum": 65535,
+            "minimum": 1024,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "prepared",
+          "profile",
+          "port",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Prepare the isolated OpenClaw 2 profile"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.launch --json --no-input"
+        }
+      ],
+      "description": "Launch only U-King's private OpenClaw 2 profile under external supervision. It refuses an externally owned port and never exposes the gateway token.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.openclaw2.launch",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "running",
+          "ready",
+          "pid",
+          "port",
+          "dashboard_url",
+          "health",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Launch the isolated OpenClaw 2 gateway"
+    },
+    {
+      "bindings": [
+        {
           "surface": "desktop",
           "target": "tauri:command/action_run"
         },
@@ -4348,6 +4583,8 @@
       "runtime.rtk.demo",
       "runtime.hermes_browser.inspect",
       "runtime.clawx.inspect",
+      "runtime.openclaw2.inspect",
+      "runtime.openclaw2.preflight",
       "runtime.geo.inspect",
       "runtime.uu_remote.inspect",
       "runtime.podapp.inspect",
