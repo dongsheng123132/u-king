@@ -38,3 +38,14 @@
 - 覆盖中文/空格路径、非管理员、空间不足、写保护、提交中拔盘、运行中更新、换盘符。
 - 退出后检查运行时的 config/workspace/session/log/tmp 都在所选盘，宿主敏感目录无新增。
 - 绿色包、日志、临时文件和仓库完成泄漏扫描；通过 ActionParity、构建和完整 Rust 回归后才允许发布。
+
+## 跨 Windows / Mac 的 exFAT 边界
+
+- exFAT 是**资料盘**的共同文件系统：workspace、会话、日志和受管 runtime 文件可被两端看见；
+  它不是可执行文件跨平台的承诺。
+- 当前 PicoClaw 适配器只含 `windows-x64` runtime 与 `.cmd` 启动器。因此 Windows 制作的工具盘
+  插到 macOS 上只能作为资料盘，绝不能显示“打开 AI 精灵”或声称 Mac 已支持。
+- macOS 支持必须新增独立的 `macos-arm64`（必要时 universal）固定清单、SHA-256、可执行权限、
+  `.command`/App 启动器与 macOS Action adapter；不得让 Mac 调用 Windows Action 的盘符枚举或启动逻辑。
+- Mac 真机验收至少覆盖：识别一块真实 external physical exFAT 盘、首次制作、拔插后重发现、
+  从 U-King Mac 端和根启动器各启动一次，并证明资料仍在同一盘且宿主 `$TMPDIR` 无 PicoClaw 状态泄漏。
