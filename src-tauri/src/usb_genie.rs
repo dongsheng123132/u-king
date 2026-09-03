@@ -116,9 +116,6 @@ fn current_json(root: &Path) -> PathBuf {
 fn install_json(root: &Path) -> PathBuf {
     genie(root).join("install.json")
 }
-fn running_json(root: &Path) -> PathBuf {
-    genie(root).join("running.json")
-}
 fn launcher(root: &Path) -> PathBuf {
     root.join("启动 AI 精灵.cmd")
 }
@@ -339,27 +336,49 @@ fn artifacts_match(root: &Path, expected: &Value) -> bool {
     artifact_hashes(root).ok().as_ref() == Some(expected)
 }
 
-fn recorded_running_pid(root: &Path) -> Option<u32> {
-    fs::read(running_json(root)).ok()
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .and_then(|value| value["pid"].as_u64())
-        .and_then(|pid| u32::try_from(pid).ok())
-}
-
+/// P1 duplicate-launch guard: the target is "busy" iff a running picoclaw.exe
+/// was actually started from THIS target's runtime directory.  The first cut
+/// recorded the intermediate cmd.exe PID in running.json and trusted it — but
+/// that cmd exits as soon as the agent detaches, so dedup never fired and
+/// repeated launches stacked extra agents (found on real disk 2026-09-04).
+/// Discovery by image name alone is forbidden by house rules; we pair every
+/// PID with its own executable path and match the path against this target
+/// only.  Known P1 residual ambiguity: two USB disks that swapped drive
+/// letters between sessions look identical until re-plugged in order.
 #[cfg(windows)]
-fn process_is_running(pid: u32) -> bool {
-    // Query exactly the PID that this target recorded; never discover or kill
-    // processes globally by image name. tasklist is available on supported
-    // Windows editions and avoids a new unsafe Win32 handle wrapper here.
-    Command::new("tasklist.exe")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+fn picoclaw_agent_busy(root: &Path) -> Option<u32> {
+    use std::os::windows::process::CommandExt;
+    let needle = current(root).join("picoclaw.exe").to_string_lossy().to_lowercase();
+    let listing = Command::new("tasklist.exe")
+        .args(["/FI", "IMAGENAME eq picoclaw.exe", "/NH", "/FO", "CSV"])
+        .creation_flags(0x0800_0000)
         .output()
-        .ok()
-        .map(|output| String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\"")))
-        .unwrap_or(false)
+        .ok()?;
+    let rows = String::from_utf8_lossy(&listing.stdout)
+        .lines()
+        .filter_map(|line| line.split("\",\"").nth(1)?.trim_matches('"').parse::<u32>().ok().map(|_| ()))
+        .count();
+    if rows == 0 {
+        return None; // fast path: no picoclaw anywhere, no path query needed
+    }
+    let probe = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "Get-Process -Name picoclaw -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}' -f $_.Id, $_.Path }"])
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&probe.stdout);
+    for line in text.lines() {
+        let (pid, path) = line.trim().split_once('|')?;
+        if path.to_lowercase().ends_with(&needle) {
+            if let Ok(pid) = pid.parse::<u32>() {
+                return Some(pid);
+            }
+        }
+    }
+    None
 }
 #[cfg(not(windows))]
-fn process_is_running(_: u32) -> bool { false }
+fn picoclaw_agent_busy(_: &Path) -> Option<u32> { None }
 
 fn runtime_files_are_valid(dir: &Path) -> Result<(), String> {
     for name in ["picoclaw.exe", "LICENSE", "README.md"] {
@@ -447,21 +466,31 @@ fn extract_runtime(_: &Path, _: &Path) -> Result<(), String> {
 fn write_security(root: &Path, key: &str) -> Result<(), String> {
     // Keep the key in the shortest possible scope. It is never put in a command,
     // progress message, error, or result object.
-    let mut models = serde_yaml::Mapping::new();
-    let mut entry = serde_yaml::Mapping::new();
-    entry.insert(
-        serde_yaml::Value::String("api_keys".into()),
-        serde_yaml::Value::Sequence(vec![serde_yaml::Value::String(key.into())]),
-    );
-    models.insert(
-        serde_yaml::Value::String("usb-genie:0".into()),
-        serde_yaml::Value::Mapping(entry),
-    );
+    //
+    // Shape contract: PicoClaw only reads api_keys from the per-model entry
+    // under `model_list:` — byte-for-byte the shape `picoclaw model add`
+    // writes (verified 2026-09-04 on a real tool disk: a top-level
+    // `usb-genie:0:` mapping is silently ignored and every gateway call then
+    // fails with 401 "Invalid token").  The document is therefore written as
+    // the literal native template (key is a hex token, no injection surface),
+    // not round-tripped through serde_yaml — serde_yaml prints empty maps
+    // inline (`dingtalk: {}`) where picoclaw writes nested
+    // (`dingtalk:\n  settings: {}`), and we refuse "close enough" on the
+    // credential file.
+    let mut doc = String::from("channel_list:\n");
+    for channel in ["dingtalk", "discord", "feishu", "irc", "line", "maixcam", "matrix", "onebot", "pico", "qq", "slack", "telegram", "wecom", "weixin", "whatsapp"] {
+        doc.push_str(&format!("  {channel}:\n    settings: {{}}\n"));
+    }
+    doc.push_str("model_list:\n  usb-genie:0:\n    api_keys:\n      - ");
+    doc.push_str(key);
+    doc.push_str("\nweb:\n");
+    for engine in ["brave", "tavily", "kagi", "gemini", "perplexity", "glm_search", "baidu_search"] {
+        doc.push_str(&format!("  {engine}: {{}}\n"));
+    }
+    doc.push_str("skills:\n  registries: {}\n");
     atomic_write(
         &data(root).join(".security.yml"),
-        serde_yaml::to_string(&models)
-            .map_err(|e| e.to_string())?
-            .as_bytes(),
+        doc.as_bytes(),
     )
 }
 
@@ -473,6 +502,20 @@ fn credential_plan(root: &Path, credential_ref: &str, official_device_key: Optio
         "none" => Ok((None, if data(root).join(".security.yml").is_file() { "preserved_existing" } else { "none" })),
         "official_device" => Ok((Some(official_device_key.ok_or("credential_unavailable: 当前设备钱包不可用")?), "official_device")),
         _ => Err("invalid_input: credential_ref 目前只能是 none 或 official_device".into()),
+    }
+}
+
+/// Space preflight for deploy (gates:21).  64 MiB ≈ 3x the pinned runtime
+/// archive; only refuses targets that cannot possibly hold the result.
+const MIN_DEPLOY_FREE_BYTES: u64 = 64 * 1024 * 1024;
+fn ensure_space(free_bytes: u64) -> Result<(), String> {
+    if free_bytes < MIN_DEPLOY_FREE_BYTES {
+        Err(format!(
+            "insufficient_space: 目标盘剩余 {:.0} MB，制作 AI 精灵至少需要 64 MB（runtime 约 22 MB + 工作区余量），未写入任何文件",
+            free_bytes as f64 / (1024.0 * 1024.0)
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -784,6 +827,12 @@ pub fn action_deploy_with_device_key(
     if !filesystem_supported(&target.filesystem) {
         return Err("unsupported_filesystem: FAT32 未通过便携 AI 的原子提交验收；请使用 NTFS 或 exFAT U 盘，未写入任何文件".into());
     }
+    // Space preflight (gates:21 "首次写入前完成输入、身份、空间、文件系统…全部检查"):
+    // the payload is the runtime extract plus launcher and config; 64 MiB is a
+    // generous constant — 3x the ~22 MB pinned archive — and only refuses
+    // targets that cannot possibly hold the result.  No bytes are written by
+    // the checks above, so rejection here is still "未写入任何文件".
+    ensure_space(target.free_bytes)?;
     let credential = input
         .get("credential_ref")
         .and_then(Value::as_str)
@@ -819,26 +868,33 @@ pub fn action_launch(
     if !verification["ok"].as_bool().unwrap_or(false) {
         return Err("not_ready: AI Genie 验证未通过，请先检查或修复此 U 盘".into());
     }
-    if let Some(pid) = recorded_running_pid(&root) {
-        if process_is_running(pid) {
-            return Ok(attach_inventory_state(json!({"changed":false,"launched":false,"already_running":true,"pid":pid,"target_state_version":state_version(&root)})));
-        }
+    if let Some(pid) = picoclaw_agent_busy(&root) {
+        return Ok(attach_inventory_state(json!({"changed":false,"launched":false,"already_running":true,"pid":pid,"target_state_version":state_version(&root)})));
     }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let child = Command::new("cmd.exe")
-            .args(["/d", "/c"])
-            .arg(&cmd)
-            .creation_flags(0x0000_0010)
+        // `cmd /c start` allocates a REAL console for the interactive agent.
+        // Spawning the launcher directly inherited this CLI's piped stdio, so
+        // picoclaw saw EOF and exited instantly ("Goodbye" within 2s, zero log
+        // lines — reproduced 2026-09-04).  With a fresh console the same
+        // launcher stays interactive.  The started cmd is transient: P1 does
+        // not track its PID (dedup above keys on the picoclaw process itself).
+        //
+        // stdio must be fully detached: a child that inherits the caller's
+        // stdout pipe keeps the pipe open for its whole lifetime, and a CLI
+        // `action run` caller then blocks on EOF forever (observed 2026-09-04:
+        // the action had already succeeded while the shell hung on `tail`).
+        use std::process::{Command as StdCommand, Stdio};
+        StdCommand::new("cmd.exe")
+            .args(["/d", "/c", "start", "U-King USB AI Genie", "/D", &root.to_string_lossy(), "/MIN", &cmd.to_string_lossy()])
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW for the tiny dispatcher
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("启动 AI Genie 失败: {e}"))?;
-        let pid = child.id();
-        atomic_write(
-            &running_json(&root),
-            &serde_json::to_vec_pretty(&json!({"schema_version":1,"pid":pid,"launcher":cmd,"started_at_unix_ms":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()})).map_err(|error| error.to_string())?,
-        )?;
-        return Ok(attach_inventory_state(json!({"changed":true,"launched":true,"already_running":false,"pid":pid,"target_state_version":state_version(&root)})));
+        return Ok(attach_inventory_state(json!({"changed":true,"launched":true,"already_running":false,"target_state_version":state_version(&root)})));
     }
     #[cfg(not(windows))]
     {
@@ -1028,12 +1084,19 @@ mod tests {
         let _ = fs::remove_dir_all(p);
     }
     #[test]
-    fn running_pid_is_scoped_to_its_target_record() {
+    fn picoclaw_agent_busy_is_none_without_running_agent() {
+        // 判活契约：只有「从本目标 runtime 目录启动的 picoclaw 进程」才算 busy。
+        // 测试环境没有 picoclaw.exe 进程（宿主机进程表按名字过滤即空），
+        // 任何临时目录都应返回 None —— 不会误报、不会全局按镜像名命中。
         let p = root();
-        fs::create_dir_all(genie(&p)).unwrap();
-        atomic_write(&running_json(&p), br#"{"schema_version":1,"pid":4242}"#).unwrap();
-        assert_eq!(recorded_running_pid(&p), Some(4242));
-        assert_eq!(recorded_running_pid(&root()), None);
-        let _ = fs::remove_dir_all(p);
+        assert_eq!(picoclaw_agent_busy(&p), None);
+    }
+    #[test]
+    fn deploy_preflights_space_before_touching_disk() {
+        assert!(ensure_space(MIN_DEPLOY_FREE_BYTES).is_ok());
+        assert!(ensure_space(MIN_DEPLOY_FREE_BYTES + 1).is_ok());
+        let error = ensure_space(MIN_DEPLOY_FREE_BYTES - 1).unwrap_err();
+        assert!(error.contains("insufficient_space"), "{error}");
+        assert!(error.contains("未写入任何文件"), "{error}");
     }
 }
