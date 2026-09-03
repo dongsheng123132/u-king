@@ -1715,6 +1715,35 @@ console.log(JSON.stringify(args.includes('infer') ? {reply:'openclaw2-probe-ok'}
     }
     #[cfg(windows)]
     #[test]
+    fn configure_model_does_not_touch_legacy_or_clawx_sentinels() {
+        let sb = crate::testsandbox::enter_raw("openclaw2-model-legacy-sentinels");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::remove_var("HOME");
+        let sentinels = [
+            sb.root().join(".openclaw/old-config.json"),
+            crate::installer::uking_home().join("openclaw/old-config.json"),
+            sb.root().join("AppData/Roaming/ClawX/old-config.json"),
+        ];
+        for path in &sentinels {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, b"legacy-openclaw-sentinel").unwrap();
+        }
+        let before = sentinels.iter().map(|path| snapshot_file(path)).collect::<Vec<_>>();
+        let p = paths_from_root(sb.root().join("openclaw2-adapter"));
+        create_layout(&p).unwrap();
+        private_node_for_gateway_test(&p).expect("测试机需要 Node");
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::write(cli_file(&p), r#"const args = process.argv.slice(2); console.log(JSON.stringify(args.includes('infer') ? {reply:'openclaw2-probe-ok'} : {ok:true}));"#).unwrap();
+        fs::write(config_file(&p), b"{\"gateway\":{\"auth\":{\"token\":\"private-only\"}}}").unwrap();
+        let route = ModelRoute { source_id:"demo".into(), source_name:"Demo".into(), base:"https://example.com/v1".into(), model:"demo-chat".into(), key:"never-in-sentinel".into(), key_source:"explicit".into() };
+        configure_model_at(&p, route, false).unwrap();
+        for (path, snapshot) in sentinels.iter().zip(before) {
+            assert_eq!(snapshot_file(path).bytes, snapshot.bytes, "legacy sentinel bytes changed: {path:?}");
+            assert_eq!(snapshot_file(path).modified, snapshot.modified, "legacy sentinel mtime changed: {path:?}");
+        }
+    }
+    #[cfg(windows)]
+    #[test]
     fn private_gateway_starts_after_port_reservations_are_released() {
         let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-real-gateway-{}-{}", std::process::id(), now_nanos())));
         create_layout(&p).unwrap();
