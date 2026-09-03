@@ -20,6 +20,11 @@ const CONFIG_NAME: &str = "openclaw.json";
 const PROFILE_NAME: &str = "profile.json";
 const SUPERVISOR_NAME: &str = "supervisor.json";
 const INSTALL_NAME: &str = "installed.json";
+/// OpenClaw reserves the Gateway itself, browser-control (`base + 2`), then
+/// the managed Chromium CDP family (`base + 11` through `base + 110`). Keep
+/// a whole family exclusive: choosing only a free gateway port is insufficient.
+const CDP_PORT_START_OFFSET: u16 = 11;
+const CDP_PORT_END_OFFSET: u16 = 110;
 
 #[derive(Debug, Deserialize)]
 struct RuntimeManifest {
@@ -116,6 +121,12 @@ fn supervisor_file(p: &Paths) -> PathBuf {
 }
 fn install_file(p: &Paths) -> PathBuf {
     p.runtime.join(INSTALL_NAME)
+}
+fn node_archive_file(p: &Paths, m: &RuntimeManifest) -> PathBuf {
+    p.runtime.join(format!("node-v{}-win-x64.zip", m.node.version))
+}
+fn openclaw_archive_file(p: &Paths, m: &RuntimeManifest) -> PathBuf {
+    p.runtime.join(format!("openclaw-{}.tgz", m.openclaw_version))
 }
 
 fn ensure_private_path(path: &Path, p: &Paths) -> Result<(), String> {
@@ -238,8 +249,8 @@ fn read_node_version(p: &Paths) -> Option<String> {
     }
     run_capture(&exe, &["--version"], &[], &p.root, Duration::from_secs(5))
         .ok()
-        .filter(|x| x.0 == Some(0))
-        .map(|x| x.1.trim().to_string())
+        .filter(|x| x.status == Some(0))
+        .map(|x| x.stdout.trim().to_string())
         .filter(|x| !x.is_empty())
 }
 fn read_openclaw_version(p: &Paths) -> Option<String> {
@@ -252,16 +263,91 @@ fn read_openclaw_version(p: &Paths) -> Option<String> {
 }
 
 fn integrity_ok(p: &Paths, m: &RuntimeManifest) -> bool {
-    let Ok(text) = fs::read_to_string(install_file(p)) else {
-        return false;
-    };
-    let Ok(v) = serde_json::from_str::<Value>(&text) else {
-        return false;
-    };
-    v.get("node_sha256").and_then(Value::as_str) == Some(m.node.windows_x64_sha256.as_str())
-        && v.get("openclaw_integrity").and_then(Value::as_str)
-            == Some(m.openclaw.integrity.as_str())
-        && v.get("openclaw_version").and_then(Value::as_str) == Some(m.openclaw_version.as_str())
+    // `installed.json` is diagnostic only. Readiness is based on the actual
+    // pinned archives plus the installed package entry, so a forged marker
+    // cannot make inspect claim a tampered runtime is ready.
+    verify_sha256_file(&node_archive_file(p, m), &m.node.windows_x64_sha256).is_ok()
+        && verify_npm_integrity_file(&openclaw_archive_file(p, m), &m.openclaw.integrity).is_ok()
+        && read_openclaw_version(p).as_deref() == Some(m.openclaw_version.as_str())
+        && cli_file(p).is_file()
+}
+
+fn verify_sha256_file(path: &Path, expected: &str) -> Result<(), String> {
+    let bytes = fs::read(path).map_err(|e| format!("读取 OpenClaw2 校验文件失败: {e}"))?;
+    if crate::installer::sha256_hex_bytes(&bytes).eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err("OpenClaw2 Node SHA-256 不匹配".into())
+    }
+}
+
+fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    fn value(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let compact: Vec<u8> = input.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    if compact.is_empty() || compact.len() % 4 != 0 {
+        return Err("npm integrity Base64 无效".into());
+    }
+    let mut out = Vec::with_capacity(compact.len() / 4 * 3);
+    for chunk in compact.chunks_exact(4) {
+        let a = value(chunk[0]).ok_or("npm integrity Base64 无效")?;
+        let b = value(chunk[1]).ok_or("npm integrity Base64 无效")?;
+        let c = if chunk[2] == b'=' { 0 } else { value(chunk[2]).ok_or("npm integrity Base64 无效")? };
+        let d = if chunk[3] == b'=' { 0 } else { value(chunk[3]).ok_or("npm integrity Base64 无效")? };
+        if chunk[2] == b'=' && chunk[3] != b'=' {
+            return Err("npm integrity Base64 padding 无效".into());
+        }
+        out.push((a << 2) | (b >> 4));
+        if chunk[2] != b'=' { out.push((b << 4) | (c >> 2)); }
+        if chunk[3] != b'=' { out.push((c << 6) | d); }
+    }
+    Ok(out)
+}
+
+#[cfg(windows)]
+fn verify_npm_integrity_file(path: &Path, integrity: &str) -> Result<(), String> {
+    let expected = integrity
+        .strip_prefix("sha512-")
+        .ok_or_else(|| "OpenClaw2 仅接受 sha512 npm integrity".to_string())
+        .and_then(base64_decode)?;
+    if expected.len() != 64 {
+        return Err("OpenClaw2 npm integrity 不是 SHA-512 摘要".into());
+    }
+    let output = run_capture(
+        Path::new("certutil.exe"),
+        &["-hashfile", &path.to_string_lossy(), "SHA512"],
+        &[],
+        &std::env::temp_dir(),
+        Duration::from_secs(15),
+    )?;
+    if output.status != Some(0) {
+        return Err(format!("OpenClaw2 SHA-512 校验失败: {}", redact_tail(&output.stderr)));
+    }
+    let actual = output.stdout.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let hex: String = trimmed.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+        (hex.len() == 128 && trimmed.chars().all(|c| c.is_ascii_hexdigit() || c.is_ascii_whitespace())).then_some(hex)
+    }).ok_or("OpenClaw2 SHA-512 工具没有返回摘要")?;
+    let mut mismatch = 0u8;
+    for (byte, pair) in expected.iter().zip(actual.as_bytes().chunks_exact(2)) {
+        let parsed = u8::from_str_radix(std::str::from_utf8(pair).map_err(|_| "SHA-512 输出无效")?, 16)
+            .map_err(|_| "SHA-512 输出无效")?;
+        mismatch |= byte ^ parsed;
+    }
+    if mismatch == 0 { Ok(()) } else { Err("OpenClaw2 npm tarball SHA-512/integrity 不匹配".into()) }
+}
+
+#[cfg(not(windows))]
+fn verify_npm_integrity_file(_: &Path, _: &str) -> Result<(), String> {
+    Err("OpenClaw2 一期仅提供 Windows x64 私有 runtime".into())
 }
 
 fn parse_profile(p: &Paths) -> Result<Option<u16>, String> {
@@ -305,15 +391,40 @@ fn private_config_ok(p: &Paths) -> Result<bool, String> {
             == Some(p.workspace.to_string_lossy().as_ref()))
 }
 
-fn port_free(port: u16) -> bool {
-    TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok()
+fn port_family(base: u16) -> Result<Vec<u16>, String> {
+    let end = base
+        .checked_add(CDP_PORT_END_OFFSET)
+        .ok_or("OpenClaw2 端口过高，无法保留派生浏览器端口")?;
+    let mut ports = vec![base, base + 2];
+    ports.extend((base + CDP_PORT_START_OFFSET)..=end);
+    Ok(ports)
 }
+
+/// Bind every member at once so one candidate cannot pass merely because its
+/// gateway is free while OpenClaw's derived browser-control/CDP ports collide.
+fn reserve_port_family(base: u16) -> Result<Vec<TcpListener>, String> {
+    let mut held = Vec::new();
+    for port in port_family(base)? {
+        match TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
+            Ok(listener) => held.push(listener),
+            Err(_) => {
+                return Err(format!("OpenClaw2 端口族 {base}（含派生端口 {port}）已被占用"));
+            }
+        }
+    }
+    Ok(held)
+}
+
+fn port_family_free(base: u16) -> bool {
+    reserve_port_family(base).is_ok()
+}
+
 fn choose_port(existing: Option<u16>) -> Result<u16, String> {
     if let Some(port) = existing {
         return Ok(port);
     }
     for port in [19789u16, 20789, 21789] {
-        if port_free(port) {
+        if port_family_free(port) {
             return Ok(port);
         }
     }
@@ -404,13 +515,19 @@ pub fn prepare(port: Option<u16>) -> Result<Value, String> {
         (Some(a), _) => a,
         (None, b) => choose_port(b)?,
     };
-    if !port_free(chosen) {
-        let (_, _, owned) = supervisor_status(&ps)?;
-        if !owned {
-            return Err(format!("OpenClaw2 端口 {chosen} 已被外部程序占用"));
-        }
-    }
     let config_ok = private_config_ok(&ps)?;
+    // A complete private profile is a replay, including while its own gateway
+    // holds the family. Do not turn that benign replay into a destructive port
+    // probe or a config rewrite.
+    if existing.is_some() && config_ok {
+        return Ok(json!({"changed":false,"prepared":true,"profile":PROFILE,"port":chosen,"state_version":state_version()}));
+    }
+    if existing.is_none() && config_file(&ps).exists() {
+        return Err("OpenClaw2 发现没有 profile 的已有私有配置，拒绝覆盖".into());
+    }
+    // Keep every listener reserved through the two atomic writes below. A
+    // gateway-only probe would miss browser-control/CDP collisions.
+    let _ports = reserve_port_family(chosen)?;
     let mut changed = false;
     if !profile_file(&ps).exists() {
         atomic_write(
@@ -464,10 +581,9 @@ pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String>
     }
     #[cfg(windows)]
     {
-        let archive = ps.run.join(format!("node-v{}-win-x64.zip", m.node.version));
+        let archive = node_archive_file(&ps, &m);
         download(&m.node.windows_x64_url, &archive, Duration::from_secs(840))?;
-        let bytes = fs::read(&archive).map_err(|e| format!("读取 Node 下载包失败: {e}"))?;
-        if crate::installer::sha256_hex_bytes(&bytes) != m.node.windows_x64_sha256 {
+        if verify_sha256_file(&archive, &m.node.windows_x64_sha256).is_err() {
             let _ = fs::remove_file(&archive);
             return Err("OpenClaw2 Node SHA-256 不匹配，已拒绝安装".into());
         }
@@ -490,7 +606,6 @@ pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String>
         }
         let _ = fs::remove_dir_all(&ps.node);
         fs::rename(&source, &ps.node).map_err(|e| format!("整理 OpenClaw2 Node 失败: {e}"))?;
-        let _ = fs::remove_file(&archive);
         let _ = fs::remove_dir_all(&extract);
     }
     let version = read_node_version(&ps).ok_or("OpenClaw2 私有 Node 无法启动")?;
@@ -502,8 +617,10 @@ pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String>
     if !npm.is_file() {
         return Err("OpenClaw2 私有 npm 不存在".into());
     }
+    let tarball = openclaw_archive_file(&ps, &m);
+    download(&m.openclaw.tarball_url, &tarball, Duration::from_secs(840))?;
+    verify_npm_integrity_file(&tarball, &m.openclaw.integrity)?;
     let _ = fs::remove_dir_all(ps.app.join("node_modules"));
-    let spec = format!("openclaw@{}", m.openclaw_version);
     let output = run_capture(
         &npm,
         &[
@@ -516,24 +633,22 @@ pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String>
             "--no-audit",
             "--ignore-scripts",
             "--registry=https://registry.npmjs.org",
-            &spec,
+            &tarball.to_string_lossy(),
         ],
         &[],
         &ps.root,
         Duration::from_secs(900),
     )?;
-    if output.0.is_none() {
+    if output.status.is_none() {
         return Err("OpenClaw2 npm 安装超时".into());
     }
-    if output.0 != Some(0) {
+    if output.status != Some(0) {
         return Err(format!(
             "OpenClaw2 npm 安装失败: {}",
-            redact_tail(&output.1)
+            redact_tail(if output.stderr.is_empty() { &output.stdout } else { &output.stderr })
         ));
     }
-    if read_openclaw_version(&ps).as_deref() != Some(m.openclaw_version.as_str())
-        || !cli_file(&ps).is_file()
-    {
+    if !integrity_ok(&ps, &m) {
         return Err("OpenClaw2 私有 package 版本或入口校验失败".into());
     }
     let marker = json!({"schema_version":1,"node_sha256":m.node.windows_x64_sha256,"openclaw_version":m.openclaw_version,"openclaw_integrity":m.openclaw.integrity,"tarball_url":m.openclaw.tarball_url});
@@ -565,7 +680,7 @@ pub fn preflight() -> Result<Value, String> {
             &["doctor", "--lint", "--json"],
             Duration::from_secs(60),
         )?;
-        doctor = parse_doctor(&out.1, out.0);
+        doctor = parse_doctor(&out.stdout, out.status);
         if doctor.get("ok").and_then(Value::as_bool) != Some(true) {
             warnings.push("OpenClaw2 doctor --lint 未通过；未执行 fix".into());
         }
@@ -582,6 +697,31 @@ pub fn preflight() -> Result<Value, String> {
     Ok(
         json!({"ok":ready,"ready":ready,"blockers":blockers,"warnings":warnings,"runtime":report["runtime"],"config":{"private":report["prepared"],"profile":PROFILE},"doctor":doctor,"gateway":report["gateway"]}),
     )
+}
+
+fn managed_env(p: &Paths) -> Vec<(String, String)> {
+    vec![
+        ("OPENCLAW_PROFILE".into(), PROFILE.into()),
+        ("OPENCLAW_CONFIG_PATH".into(), config_file(p).to_string_lossy().to_string()),
+        ("OPENCLAW_STATE_DIR".into(), p.state.to_string_lossy().to_string()),
+        ("OPENCLAW_AGENT_DIR".into(), p.state.join("agents").to_string_lossy().to_string()),
+        ("OPENCLAW_SUPERVISOR_MODE".into(), "external".into()),
+        ("OPENCLAW_SERVICE_REPAIR_POLICY".into(), "external".into()),
+        ("OPENCLAW_DISABLE_BONJOUR".into(), "1".into()),
+        ("NO_COLOR".into(), "1".into()),
+    ]
+}
+
+fn gateway_argv(p: &Paths, port: u16) -> Vec<String> {
+    vec![
+        cli_file(p).to_string_lossy().to_string(),
+        "--profile".into(),
+        PROFILE.into(),
+        "gateway".into(),
+        "run".into(),
+        "--port".into(),
+        port.to_string(),
+    ]
 }
 
 pub fn launch() -> Result<Value, String> {
@@ -604,40 +744,53 @@ pub fn launch() -> Result<Value, String> {
         }
         return Err(format!("OpenClaw2 端口 {port} 被外部进程占用，拒绝接管"));
     }
+    // Hold the complete derived family until the child has been spawned. This
+    // closes the race where `base` is free but browser-control/CDP is not.
+    let ports = reserve_port_family(port)?;
     let node = node_exe(&ps);
-    let cli = cli_file(&ps);
     let mut cmd = Command::new(node);
-    cmd.args([
-        cli.to_string_lossy().as_ref(),
-        "--profile",
-        PROFILE,
-        "gateway",
-        "run",
-        "--port",
-        &port.to_string(),
-    ])
+    let argv = gateway_argv(&ps, port);
+    cmd.args(&argv)
     .current_dir(&ps.workspace)
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null())
-    .env("OPENCLAW_PROFILE", PROFILE)
-    .env("OPENCLAW_CONFIG_PATH", config_file(&ps))
-    .env("OPENCLAW_STATE_DIR", &ps.state)
-    .env("OPENCLAW_AGENT_DIR", ps.state.join("agents"))
-    .env("SUPERVISOR_MODE", "external")
-    .env("SERVICE_REPAIR_POLICY", "external")
-    .env("DISABLE_BONJOUR", "1")
-    .env("NO_COLOR", "1")
     .env_remove("OPENCLAW_HOME");
+    for (key, value) in managed_env(&ps) {
+        cmd.env(key, value);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 OpenClaw2 Gateway 失败: {e}"))?;
-    atomic_write(&supervisor_file(&ps), serde_json::to_string_pretty(&json!({"schema_version":1,"profile":PROFILE,"pid":child.id(),"port":port,"started_at":now_nanos()})).unwrap().as_bytes(), &ps)?;
+    drop(ports);
+    let identity = (0..10)
+        .find_map(|_| {
+            let found = process_identity(child.id());
+            if found.is_none() { std::thread::sleep(Duration::from_millis(100)); }
+            found
+        })
+        .ok_or_else(|| {
+            let _ = child.kill();
+            "无法核对刚启动的 OpenClaw2 Gateway 进程归属，已终止".to_string()
+        })?;
+    let state_dir = ps.state.canonicalize().unwrap_or_else(|_| ps.state.clone());
+    let marker = json!({
+        "schema_version":1,
+        "profile":PROFILE,
+        "pid":child.id(),
+        "port":port,
+        "started_at":now_nanos(),
+        "process_started":identity.started,
+        "image":identity.image,
+        "argv":identity.command_line,
+        "state_dir":state_dir,
+    });
+    write_supervisor_or_kill(&mut child, &ps, &marker)?;
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut health = json!({"ok":false,"degraded":false,"rpcOk":false});
     while Instant::now() < deadline {
@@ -658,6 +811,19 @@ pub fn launch() -> Result<Value, String> {
     )
 }
 
+fn write_supervisor_or_kill(child: &mut std::process::Child, p: &Paths, marker: &Value) -> Result<(), String> {
+    if let Err(e) = atomic_write(
+        &supervisor_file(p),
+        serde_json::to_string_pretty(marker).unwrap().as_bytes(),
+        p,
+    ) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("写入 OpenClaw2 supervisor 状态失败，已终止刚启动进程: {e}"));
+    }
+    Ok(())
+}
+
 fn supervisor_status(p: &Paths) -> Result<(Option<u16>, Option<u32>, bool), String> {
     let text = match fs::read_to_string(supervisor_file(p)) {
         Ok(x) => x,
@@ -672,40 +838,65 @@ fn supervisor_status(p: &Paths) -> Result<(Option<u16>, Option<u32>, bool), Stri
         .get("pid")
         .and_then(Value::as_u64)
         .and_then(|x| u32::try_from(x).ok());
-    Ok((
-        port,
-        pid,
-        v.get("profile").and_then(Value::as_str) == Some(PROFILE)
-            && port == parse_profile(p)?
-            && pid.is_some_and(pid_is_alive),
-    ))
+    let owned = v.get("profile").and_then(Value::as_str) == Some(PROFILE)
+        && port == parse_profile(p)?
+        && pid.is_some_and(|id| supervisor_owns_process(p, id, port.unwrap_or_default(), &v));
+    Ok((port, pid, owned))
+}
+
+fn supervisor_owns_process(p: &Paths, pid: u32, port: u16, marker: &Value) -> bool {
+    let Some(identity) = process_identity(pid) else { return false };
+    identity_matches(p, port, marker, &identity)
+}
+
+fn identity_matches(p: &Paths, port: u16, marker: &Value, identity: &ProcessIdentity) -> bool {
+    let expected_node = node_exe(p).canonicalize().unwrap_or_else(|_| node_exe(p));
+    let expected_cli = cli_file(p).canonicalize().unwrap_or_else(|_| cli_file(p));
+    let expected_state = p.state.canonicalize().unwrap_or_else(|_| p.state.clone());
+    let marker_state = marker.get("state_dir").and_then(Value::as_str);
+    let marker_started = marker.get("process_started").and_then(Value::as_str);
+    let image = PathBuf::from(&identity.image).canonicalize().unwrap_or_else(|_| PathBuf::from(&identity.image));
+    let command = identity.command_line.as_str();
+    image == expected_node
+        && marker_state == Some(expected_state.to_string_lossy().as_ref())
+        && marker_started == Some(identity.started.as_str())
+        && command.contains(expected_cli.to_string_lossy().as_ref())
+        && command.contains("--profile")
+        && command.contains(PROFILE)
+        && command.contains("gateway")
+        && command.contains("run")
+        && command.contains("--port")
+        && command.contains(&port.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct ProcessIdentity {
+    #[serde(rename = "ExecutablePath")]
+    image: String,
+    #[serde(rename = "CommandLine")]
+    command_line: String,
+    #[serde(rename = "CreationDate")]
+    started: String,
 }
 
 #[cfg(windows)]
-fn pid_is_alive(pid: u32) -> bool {
-    const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
-    const SYNCHRONIZE: u32 = 0x0010_0000;
-    const STILL_ACTIVE: u32 = 259;
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn OpenProcess(access: u32, inherit: i32, process_id: u32) -> isize;
-        fn GetExitCodeProcess(process: isize, exit_code: *mut u32) -> i32;
-        fn CloseHandle(handle: isize) -> i32;
-    }
-    let process = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE, 0, pid) };
-    if process == 0 {
-        return false;
-    }
-    let mut code = 0;
-    let alive = unsafe { GetExitCodeProcess(process, &mut code) } != 0 && code == STILL_ACTIVE;
-    unsafe { CloseHandle(process) };
-    alive
+fn process_identity(pid: u32) -> Option<ProcessIdentity> {
+    let script = format!(
+        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if ($null -eq $p) {{ exit 2 }}; $p | Select-Object ExecutablePath,CommandLine,CreationDate | ConvertTo-Json -Compress"
+    );
+    let out = run_capture(
+        Path::new("powershell.exe"),
+        &["-NoProfile", "-NonInteractive", "-Command", &script],
+        &[],
+        &std::env::temp_dir(),
+        Duration::from_secs(5),
+    ).ok()?;
+    (out.status == Some(0)).then(|| serde_json::from_str(&out.stdout).ok()).flatten()
 }
 
 #[cfg(not(windows))]
-fn pid_is_alive(pid: u32) -> bool {
-    Path::new("/proc").join(pid.to_string()).exists()
-}
+fn process_identity(_: u32) -> Option<ProcessIdentity> { None }
+
 fn port_listening(port: u16) -> bool {
     TcpStream::connect_timeout(
         &SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
@@ -713,7 +904,14 @@ fn port_listening(port: u16) -> bool {
     )
     .is_ok()
 }
-fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<(Option<i32>, String), String> {
+#[derive(Debug)]
+struct Capture {
+    status: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<Capture, String> {
     let node = node_exe(p);
     let cli = cli_file(p);
     let mut all = vec![
@@ -723,28 +921,9 @@ fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<(Option<i32>, S
     ];
     all.extend(args.iter().map(|x| (*x).into()));
     let refs: Vec<&str> = all.iter().map(String::as_str).collect();
-    run_capture(
-        &node,
-        &refs,
-        &[
-            ("OPENCLAW_PROFILE", PROFILE),
-            (
-                "OPENCLAW_CONFIG_PATH",
-                config_file(p).to_string_lossy().as_ref(),
-            ),
-            ("OPENCLAW_STATE_DIR", p.state.to_string_lossy().as_ref()),
-            (
-                "OPENCLAW_AGENT_DIR",
-                p.state.join("agents").to_string_lossy().as_ref(),
-            ),
-            ("SUPERVISOR_MODE", "external"),
-            ("SERVICE_REPAIR_POLICY", "external"),
-            ("DISABLE_BONJOUR", "1"),
-            ("NO_COLOR", "1"),
-        ],
-        &p.workspace,
-        timeout,
-    )
+    let owned_env = managed_env(p);
+    let env: Vec<(&str, &str)> = owned_env.iter().map(|(key, value)| (key.as_str(), value.as_str())).collect();
+    run_capture(&node, &refs, &env, &p.workspace, timeout)
 }
 fn gateway_status(p: &Paths, port: u16) -> Result<Value, String> {
     let out = run_oc(
@@ -759,14 +938,14 @@ fn gateway_status(p: &Paths, port: u16) -> Result<Value, String> {
         ],
         Duration::from_secs(10),
     )?;
-    let mut v: Value = serde_json::from_str(&out.1).unwrap_or_else(|_| json!({}));
+    let mut v: Value = serde_json::from_str(&out.stdout).unwrap_or_else(|_| json!({}));
     let rpc = v
         .get("rpcOk")
         .and_then(Value::as_bool)
         .or_else(|| v.pointer("/rpc/ok").and_then(Value::as_bool))
         .unwrap_or(false);
     let degraded = v.get("degraded").and_then(Value::as_bool).unwrap_or(false);
-    let ok = out.0 == Some(0) && rpc && !degraded;
+    let ok = out.status == Some(0) && rpc && !degraded;
     v["rpcOk"] = json!(rpc);
     v["degraded"] = json!(degraded);
     v["ok"] = json!(ok);
@@ -789,7 +968,7 @@ fn run_capture(
     env: &[(&str, &str)],
     cwd: &Path,
     timeout: Duration,
-) -> Result<(Option<i32>, String), String> {
+) -> Result<Capture, String> {
     let mut c = Command::new(exe);
     c.args(args)
         .current_dir(cwd)
@@ -812,14 +991,20 @@ fn run_capture(
     loop {
         if let Some(s) = child.try_wait().map_err(|e| e.to_string())? {
             let out = child.wait_with_output().map_err(|e| e.to_string())?;
-            let mut text = String::from_utf8_lossy(&out.stdout).to_string();
-            text.push_str(&String::from_utf8_lossy(&out.stderr));
-            return Ok((s.code(), text));
+            return Ok(Capture {
+                status: s.code(),
+                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+            });
         }
         if begin.elapsed() >= timeout {
             let _ = child.kill();
             let out = child.wait_with_output().map_err(|e| e.to_string())?;
-            return Ok((None, String::from_utf8_lossy(&out.stdout).to_string()));
+            return Ok(Capture {
+                status: None,
+                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+            });
         }
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -832,10 +1017,10 @@ fn run_status(c: &mut Command, timeout: Duration, what: &str) -> Result<(), Stri
         .collect();
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = run_capture(Path::new(&exe), &refs, &[], &std::env::temp_dir(), timeout)?;
-    if out.0 == Some(0) {
+    if out.status == Some(0) {
         Ok(())
     } else {
-        Err(format!("{what}失败: {}", redact_tail(&out.1)))
+        Err(format!("{what}失败: {}", redact_tail(if out.stderr.is_empty() { &out.stdout } else { &out.stderr })))
     }
 }
 fn download(url: &str, out: &Path, timeout: Duration) -> Result<(), String> {
@@ -993,6 +1178,114 @@ mod tests {
             fs::read_to_string(config_file(&ps)).unwrap(),
             "{ definitely-not-json"
         );
+    }
+    #[test]
+    fn derived_port_family_is_complete_and_rejects_a_control_collision() {
+        let family = port_family(19789).unwrap();
+        assert_eq!(family.len(), 102);
+        assert_eq!(family[0], 19789);
+        assert_eq!(family[1], 19791);
+        assert_eq!(family[2], 19800);
+        assert_eq!(*family.last().unwrap(), 19899);
+        let base = 31_000;
+        let control = TcpListener::bind((Ipv4Addr::LOCALHOST, base + 2)).unwrap();
+        assert!(reserve_port_family(base).unwrap_err().contains("派生端口"));
+        drop(control);
+        assert!(reserve_port_family(base).is_ok());
+    }
+    #[test]
+    fn managed_launch_has_only_the_private_argv_and_exact_openclaw_env() {
+        let p = paths_from_root(std::env::temp_dir().join("uking-openclaw2-launch-plan"));
+        let argv = gateway_argv(&p, 19789);
+        assert_eq!(argv, vec![
+            cli_file(&p).to_string_lossy().to_string(), "--profile".into(), PROFILE.into(),
+            "gateway".into(), "run".into(), "--port".into(), "19789".into(),
+        ]);
+        let env = managed_env(&p).into_iter().collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(env.get("OPENCLAW_SUPERVISOR_MODE").map(String::as_str), Some("external"));
+        assert_eq!(env.get("OPENCLAW_SERVICE_REPAIR_POLICY").map(String::as_str), Some("external"));
+        assert_eq!(env.get("OPENCLAW_DISABLE_BONJOUR").map(String::as_str), Some("1"));
+        assert!(!env.contains_key("OPENCLAW_HOME"));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn npm_integrity_is_checked_against_the_actual_tarball_bytes() {
+        let file = std::env::temp_dir().join(format!("uking-openclaw2-integrity-{}.tgz", std::process::id()));
+        fs::write(&file, b"abc").unwrap();
+        let good = "sha512-3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q86A4qmslPpUyknw==";
+        assert!(verify_npm_integrity_file(&file, good).is_ok());
+        assert!(verify_npm_integrity_file(&file, "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==").is_err());
+        let _ = fs::remove_file(file);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn stdout_json_is_not_contaminated_by_stderr() {
+        let out = run_capture(
+            Path::new("powershell.exe"),
+            &["-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.Write('{\"ok\":true}'); [Console]::Error.Write('diagnostic-secret')"],
+            &[],
+            &std::env::temp_dir(),
+            Duration::from_secs(5),
+        ).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&out.stdout).unwrap()["ok"], true);
+        assert!(out.stderr.contains("diagnostic-secret"));
+        assert!(!out.stdout.contains("diagnostic-secret"));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn supervisor_marker_failure_terminates_the_child() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-marker-{}", std::process::id())));
+        let _ = fs::remove_dir_all(&p.root);
+        create_layout(&p).unwrap();
+        // A directory at the marker path makes the atomic file replacement fail.
+        fs::create_dir_all(supervisor_file(&p)).unwrap();
+        let mut child = Command::new("cmd.exe")
+            .args(["/d", "/c", "ping -n 30 127.0.0.1 > nul"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        assert!(write_supervisor_or_kill(&mut child, &p, &json!({"pid":pid})).is_err());
+        assert!(child.try_wait().unwrap().is_some(), "marker 失败后 child 必须被杀死");
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn pid_reuse_is_rejected_when_creation_identity_changes() {
+        let p = paths_from_root(std::env::temp_dir().join("uking-openclaw2-pid-reuse"));
+        let node = node_exe(&p);
+        let cli = cli_file(&p);
+        let state = p.state.clone();
+        let identity = ProcessIdentity {
+            image: node.to_string_lossy().to_string(),
+            command_line: format!("\"{}\" \"{}\" --profile {PROFILE} gateway run --port 19789", node.display(), cli.display()),
+            started: "first-process".into(),
+        };
+        let marker = json!({"state_dir":state,"process_started":"first-process"});
+        assert!(identity_matches(&p, 19789, &marker, &identity));
+        let reused = ProcessIdentity { started: "reused-pid".into(), ..identity };
+        assert!(!identity_matches(&p, 19789, &marker, &reused));
+    }
+    #[test]
+    fn prepare_does_not_touch_legacy_openclaw_or_clawx_sentinels() {
+        let sb = crate::testsandbox::enter_raw("openclaw2-legacy-sentinels");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::remove_var("HOME");
+        let sentinels = [
+            sb.root().join(".openclaw/old.txt"),
+            crate::installer::uking_home().join("openclaw/old.txt"),
+            sb.root().join("AppData/Roaming/ClawX/old.txt"),
+        ];
+        for file in &sentinels {
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, b"legacy sentinel").unwrap();
+        }
+        let before = sentinels.iter().map(|file| {
+            (crate::installer::sha256_hex_bytes(&fs::read(file).unwrap()), fs::metadata(file).unwrap().modified().unwrap())
+        }).collect::<Vec<_>>();
+        prepare(None).unwrap();
+        for (file, (hash, mtime)) in sentinels.iter().zip(before) {
+            assert_eq!(crate::installer::sha256_hex_bytes(&fs::read(file).unwrap()), hash);
+            assert_eq!(fs::metadata(file).unwrap().modified().unwrap(), mtime);
+        }
     }
     #[test]
     fn action_contract_has_confirmation_unknown_field_and_conflict_guards() {
