@@ -16,7 +16,7 @@ const callAction = createTauriActionClient(async (command, args) => {
 }, { surface: "desktop:usb-tool-disk" });
 
 type Target = { target_id: string; target_root: string; installed: boolean; picoclaw_version?: string | null; target_state_version: string };
-type Inspection = { ready: boolean; blockers: string[]; targets: Target[] };
+type Inspection = { ready: boolean; blockers: string[]; targets: Target[]; launched_from_target_id?: string | null };
 type Verification = { ok: boolean; blockers: string[] };
 
 function text(error: unknown) { return error instanceof Error ? error.message : String(error); }
@@ -36,7 +36,10 @@ export function UsbToolDisk({ onToast }: { onToast?: (message: string) => void }
       if (!envelope.ok) throw new Error(envelope.error?.message ?? "读取 U 盘状态失败");
       const next = envelope.result as unknown as Inspection;
       setInspection(next);
-      setRoot((old) => next.targets.some((item) => item.target_root === old) ? old : (next.targets[0]?.target_root ?? null));
+      setRoot((old) => {
+        if (next.targets.some((item) => item.target_root === old)) return old;
+        return next.targets.find((item) => item.target_id === next.launched_from_target_id)?.target_root ?? next.targets[0]?.target_root ?? null;
+      });
       setVerification(null);
       setError(null);
     } catch (cause) {

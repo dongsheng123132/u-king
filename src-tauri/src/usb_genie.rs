@@ -113,6 +113,19 @@ fn inventory_state_version(targets: &[PortableTarget]) -> String {
     crate::actions::version_of(&snapshot)
 }
 
+/// This answers only whether the *U-King executable itself* was started from a
+/// currently removable target.  It deliberately does not change U-King's own
+/// data root: PicoClaw is the portable runtime, while U-King remains the
+/// manager.  Keeping this as an explicit inspect fact prevents the UI from
+/// guessing based on its installation state or a remembered drive letter.
+fn launched_from_target_id(targets: &[PortableTarget], executable: &Path) -> Option<String> {
+    let executable = executable.to_string_lossy().to_ascii_lowercase();
+    targets.iter().find_map(|target| {
+        let root = target.root.to_string_lossy().to_ascii_lowercase();
+        executable.starts_with(&root).then(|| target.id.clone())
+    })
+}
+
 fn target_from_inventory(input: &Value, targets: &[PortableTarget]) -> Result<PathBuf, String> {
     let text = input
         .get("target_root")
@@ -636,8 +649,11 @@ pub fn inspect() -> Result<Value, String> {
     let targets = target_records.iter().map(PortableTarget::json).collect::<Vec<_>>();
     let ready = !targets.is_empty();
     let inventory = inventory_state_version(&target_records);
+    let launched_from_target_id = std::env::current_exe()
+        .ok()
+        .and_then(|exe| launched_from_target_id(&target_records, &exe));
     Ok(
-        json!({"schema_version":2,"ready":ready,"blockers":if ready {Vec::<String>::new()} else {vec!["未检测到可移动磁盘".to_string()]},"targets":targets,"inventory_state_version":inventory,"state_version":inventory}),
+        json!({"schema_version":2,"ready":ready,"blockers":if ready {Vec::<String>::new()} else {vec!["未检测到可移动磁盘".to_string()]},"targets":targets,"launched_from_target_id":launched_from_target_id,"inventory_state_version":inventory,"state_version":inventory}),
     )
 }
 
@@ -861,6 +877,13 @@ mod tests {
         };
         assert!(target_from_inventory(&json!({"target_id":"windows:volume-a:1234","target_root":"F:\\"}), &[expected.clone()]).is_ok());
         assert!(target_from_inventory(&json!({"target_id":"windows:volume-a:1234","target_root":"G:\\"}), &[expected]).unwrap_err().contains("invalid_target"));
+    }
+    #[test]
+    fn executable_location_selects_its_own_removable_target_not_scan_order() {
+        let f = PortableTarget { id: "windows:f".into(), root: PathBuf::from("F:\\"), label: "FIRST".into(), filesystem: "exFAT".into(), total_bytes: 1, free_bytes: 1, read_only: false };
+        let e = PortableTarget { id: "windows:e".into(), root: PathBuf::from("E:\\"), label: "SELF".into(), filesystem: "NTFS".into(), total_bytes: 1, free_bytes: 1, read_only: false };
+        assert_eq!(launched_from_target_id(&[f, e], Path::new("e:\\U-King.exe")), Some("windows:e".into()));
+        assert_eq!(launched_from_target_id(&[], Path::new("e:\\U-King.exe")), None);
     }
     #[test]
     fn none_credential_plan_preserves_an_existing_credential() {
