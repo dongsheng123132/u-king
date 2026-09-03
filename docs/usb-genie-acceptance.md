@@ -30,6 +30,8 @@ inspect（target_id + target_root）
 - 随后的 FAT32 runtime 目录提交被 Windows 拒绝访问。该证据促使 P1 明确支持范围收敛为
   NTFS/exFAT：现在在**任何写入之前**返回 `unsupported_filesystem`，界面禁用制作并提示换盘。
 - 首次制作失败路径同时改为清理本次新建的受管目录；不会写完成标记，也不会把半成品显示为已安装。
+- 以 E: exFAT 已管理工具盘重放省略 `zip_path` 的同一 Action：复用已校验缓存，制作和随后 `verify`
+  七项检查全部通过。这是 GUI 首次制作与 CLI 使用同一 Action Core 的实机证据。
 
 冒烟脚本：`tools/usb-genie/smoke.ps1`。脚本会通过 inspect 获取 `target_id`，不能只传盘符；并强制 CLI JSON 模式。
 
