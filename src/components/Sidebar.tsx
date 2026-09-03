@@ -49,7 +49,8 @@ export type TabId =
   | "localllm"
   | "rtk"
   | "teamspace"
-  | "runcenter";
+  | "runcenter"
+  | "usbgenie";
 
 type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
 
@@ -108,6 +109,9 @@ const CORE: NavItem[] = [
 /** 「更多」—— 进阶/工具页，默认折叠，不让小白眼花。
  *  排序：使用向（虾盘云/教程/专家/Codex）在前，维护向（优化/备份/进阶）在后。 */
 const MORE: NavItem[] = [
+  // 便携 AI 只有这一处管理入口。PicoClaw 先接入；OpenClaw / ClawX 必须各自通过
+  // 便携落盘与真盘验收，不能因为共用 UI 就提前宣称可用。
+  { id: "usbgenie", label: "U盘工具盘", sub: "随身 AI · 检查 · 启动", icon: HardDrive },
   // 创作内的左侧功能栏已收纳「一键成片/任务中心」：同一能力不再在全局 More 重复入口。
   // 「AI 设置」2026-08-31 升回核心第 4 位（用户拍板）—— 从 MORE 摘除，见 CORE 里那条。
   // 身份 + 给 AI 的说明书（llms.txt）+ 往别家记忆文件插指针的开关。**归「更多」不归「实验室」**：

@@ -4,6 +4,9 @@
 > 2026-09-02 22:45 ~ 09-03 01:25，Windows 11 真机 + SanDisk 3.2Gen1 USB3.x 闪存盘；
 > 报告全文在本地任务档案，不入公开仓）。
 > 本文件是计划，不是已完成事实；每阶段以真实 U 盘可观察跑通为完成条件。
+>
+> 便携 AI 的统一用户体验（也作为后续 OpenClaw、ClawX 接入约束）见
+> [`portable-ai-experience.md`](./portable-ai-experience.md)。
 
 ## 1. 形态决策
 

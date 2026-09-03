@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "version": "0.3.1",
+  "upstream_tag": "0.3.1",
+  "upstream_commit": "2cf030d2",
+  "platform": "windows-x64",
+  "asset_url": "https://github.com/sipeed/picoclaw/releases/download/v0.3.1/picoclaw_Windows_x86_64.zip",
+  "sha256": "c76e4b9f3f95137b8cb58229e756538b12ed0fee0e4301a01b531626bf740af1",
+  "archive_bytes": 22385616,
+  "unpacked_bytes": 62157806,
+  "license": "MIT"
+}

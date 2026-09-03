@@ -1027,6 +1027,289 @@
     {
       "bindings": [
         {
+          "surface": "cli",
+          "target": "cli:action run runtime.usb_genie.inspect --json --no-input"
+        }
+      ],
+      "description": "List removable drives and only stat the U-King/AI-Genie paths; it never recursively scans a drive.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.usb_genie.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "schema_version",
+          "ready",
+          "blockers",
+          "targets",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect removable USB AI Genie targets"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.usb_genie.deploy --json --no-input"
+        }
+      ],
+      "description": "Install U-King's pinned PicoClaw runtime into the selected target. It only writes the U-King/AI-Genie subtree and never formats or scans unrelated files. API keys are referenced, never accepted as input or returned.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 600000
+      },
+      "id": "runtime.usb_genie.deploy",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "credential_ref": {
+            "description": "none creates a credential-free first install and preserves an existing credential during updates; official_device writes the existing U-King device wallet.",
+            "enum": [
+              "none",
+              "official_device"
+            ],
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Stable removable-volume identity returned by inspect; a drive letter alone is not trusted.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "zip_path": {
+            "description": "P1 local PicoClaw archive source, used only by the smoke/build path.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "target_root",
+          "credential_ref",
+          "zip_path"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "target_root",
+          "picoclaw_version",
+          "sha256_ok",
+          "credential_mode",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Build or refresh a USB AI Genie"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.usb_genie.verify --json --no-input"
+        }
+      ],
+      "description": "Verify only the pinned runtime, launcher and generated configuration. No model request is made.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.usb_genie.verify",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "checks",
+          "blockers",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Verify a USB AI Genie target"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.usb_genie.launch --json --no-input"
+        }
+      ],
+      "description": "Open only this target's ASCII launcher in a new interactive console.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.usb_genie.launch",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "launched",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Open USB AI Genie"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.usb_genie.credential_remove --json --no-input"
+        }
+      ],
+      "description": "Remove only this target's PicoClaw credential file. This cannot revoke a copied or lost key; rotate it with the provider.",
+      "effects": {
+        "audit_required": true,
+        "class": "destructive",
+        "confirmation": "always",
+        "reversible": false,
+        "risk": "high"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.usb_genie.credential_remove",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "removed",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Remove USB AI Genie credentials"
+    },
+    {
+      "bindings": [
+        {
           "surface": "desktop",
           "target": "tauri:command/action_run"
         },
@@ -4648,6 +4931,8 @@
       "runtime.clawx.inspect",
       "runtime.openclaw2.inspect",
       "runtime.openclaw2.preflight",
+      "runtime.usb_genie.inspect",
+      "runtime.usb_genie.verify",
       "runtime.geo.inspect",
       "runtime.uu_remote.inspect",
       "runtime.podapp.inspect",

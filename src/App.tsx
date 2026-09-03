@@ -79,6 +79,7 @@ const OpenCodex = lazy(() => import("./opencodex/OpenCodex").then((m) => ({ defa
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
 const TeamSpace = lazy(() => import("./TeamSpace").then((m) => ({ default: m.TeamSpace })));
 const RunCenter = lazy(() => import("./RunCenter").then((m) => ({ default: m.RunCenter })));
+const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
 import { cn } from "./lib/cn";
@@ -1377,6 +1378,8 @@ export function App() {
                   setTermSnapshot(null);
                 }}
               />
+            ) : tab === "usbgenie" ? (
+              <UsbToolDisk onToast={flash} />
             ) : (
               <>
                 <DriverBar driver={driver} deviceKey={deviceKey} onStart={startWizard} onInstallAll={startInstallAll} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />

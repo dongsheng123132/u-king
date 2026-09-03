@@ -19,6 +19,7 @@ mod chatstore;
 mod cleanup;
 mod clawx;
 mod openclaw2;
+mod usb_genie;
 mod claude_proxy;
 mod codex;
 mod codex_proxy;
@@ -1986,6 +1987,73 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 openclaw2::configure_model(route)
             },
             Some(openclaw2::state_version),
+        ),
+        actions::readonly(
+            actions::USB_GENIE_INSPECT,
+            "Inspect removable USB AI Genie targets",
+            "List removable drives and only stat the U-King/AI-Genie paths; it never recursively scans a drive.",
+            5_000,
+            &["schema_version", "ready", "blockers", "targets", "state_version"],
+            usb_genie::action_inspect,
+        ),
+        actions::with_progress(actions::write(
+            actions::USB_GENIE_DEPLOY,
+            "Build or refresh a USB AI Genie",
+            "Install U-King's pinned PicoClaw runtime into the selected target. It only writes the U-King/AI-Genie subtree and never formats or scans unrelated files. API keys are referenced, never accepted as input or returned.",
+            600_000,
+            "required",
+            serde_json::json!({
+                "target_id": { "type": "string", "minLength": 1, "description": "Stable removable-volume identity returned by inspect; a drive letter alone is not trusted." },
+                "target_root": { "type": "string", "minLength": 1 },
+                "credential_ref": { "type": "string", "enum": ["none", "official_device"], "description": "none creates a credential-free first install and preserves an existing credential during updates; official_device writes the existing U-King device wallet." },
+                "zip_path": { "type": "string", "minLength": 1, "description": "P1 local PicoClaw archive source, used only by the smoke/build path." }
+            }),
+            &["target_id", "target_root", "credential_ref", "zip_path"],
+            &["changed", "target_root", "picoclaw_version", "sha256_ok", "credential_mode", "state_version"],
+            |action_id, input, progress| {
+                // Composition root resolves the optional device-wallet reference;
+                // usb_genie itself remains a portable-runtime adapter with no
+                // dependency on the wallet implementation.
+                let key = if input.get("credential_ref").and_then(serde_json::Value::as_str) == Some("official_device") {
+                    Some(device::get_device_key()?.key)
+                } else {
+                    None
+                };
+                usb_genie::action_deploy_with_device_key(action_id, input, progress, key)
+            },
+            Some(usb_genie::action_state_version),
+        )),
+        actions::readonly_req(
+            actions::USB_GENIE_VERIFY,
+            "Verify a USB AI Genie target",
+            "Verify only the pinned runtime, launcher and generated configuration. No model request is made.",
+            30_000,
+            serde_json::json!({ "target_id": { "type": "string", "minLength": 1 }, "target_root": { "type": "string", "minLength": 1 } }),
+            &["target_id", "target_root"],
+            &["ok", "checks", "blockers", "state_version"],
+            usb_genie::action_verify,
+        ),
+        actions::write(
+            actions::USB_GENIE_LAUNCH,
+            "Open USB AI Genie",
+            "Open only this target's ASCII launcher in a new interactive console.",
+            60_000,
+            "required",
+            serde_json::json!({ "target_id": { "type": "string", "minLength": 1 }, "target_root": { "type": "string", "minLength": 1 } }),
+            &["target_id", "target_root"],
+            &["changed", "launched", "state_version"],
+            usb_genie::action_launch,
+            Some(usb_genie::action_state_version),
+        ),
+        actions::destructive(
+            actions::USB_GENIE_CREDENTIAL_REMOVE,
+            "Remove USB AI Genie credentials",
+            "Remove only this target's PicoClaw credential file. This cannot revoke a copied or lost key; rotate it with the provider.",
+            10_000,
+            serde_json::json!({ "target_id": { "type": "string", "minLength": 1 }, "target_root": { "type": "string", "minLength": 1 } }),
+            &["target_id", "target_root"],
+            &["changed", "removed", "state_version"],
+            usb_genie::action_credential_remove,
         ),
         actions::readonly(
             actions::LOCALLLM_INSPECT,
