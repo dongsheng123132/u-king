@@ -21,6 +21,18 @@ pub(crate) fn sha256_hex_bytes(data: &[u8]) -> String {
     crate::device::sha256_hex_bytes(data)
 }
 
+/// Sensitive OpenAI route shared by provider resolution and the isolated
+/// OpenClaw2 writer. Intentionally no Serialize/Debug: an API key must not be
+/// printable by an Action response, progress event, marker, or diagnostic.
+pub(crate) struct OpenClaw2ModelRoute {
+    pub source_id: String,
+    pub source_name: String,
+    pub base: String,
+    pub model: String,
+    pub key: String,
+    pub key_source: String,
+}
+
 /// 内嵌的兜底 skill 清单。
 const EMBEDDED_SKILL: &str = include_str!("../skills/install-windows.json");
 /// 服务器下发地址（依次尝试，第一个拉到合法 JSON 的生效）。

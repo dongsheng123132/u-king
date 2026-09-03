@@ -226,7 +226,7 @@ pub(crate) fn resolve_openai_route_for_openclaw2(
     model_override: Option<&str>,
     explicit_key: Option<&str>,
     device_key: Option<&str>,
-) -> Result<crate::openclaw2::ModelRoute, String> {
+) -> Result<crate::installer::OpenClaw2ModelRoute, String> {
     let provider = all_providers()
         .into_iter()
         .find(|p| p.id == provider_id)
@@ -253,7 +253,7 @@ pub(crate) fn resolve_openai_route_for_openclaw2(
     } else {
         return Err("invalid_input: OpenClaw2 远程 provider 需要显式或已保存 API Key".into());
     };
-    Ok(crate::openclaw2::ModelRoute {
+    Ok(crate::installer::OpenClaw2ModelRoute {
         source_id: provider.id,
         source_name: provider.name,
         base,

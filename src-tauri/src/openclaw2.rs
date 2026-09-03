@@ -60,17 +60,7 @@ struct Paths {
     logs: PathBuf,
 }
 
-/// Sensitive route material resolved by the composition root. It deliberately
-/// has no Serialize/Debug implementation: the API key cannot accidentally
-/// cross an Action response, progress event, marker, or diagnostic.
-pub struct ModelRoute {
-    pub source_id: String,
-    pub source_name: String,
-    pub base: String,
-    pub model: String,
-    pub key: String,
-    pub key_source: String,
-}
+pub(crate) use crate::installer::OpenClaw2ModelRoute as ModelRoute;
 
 fn model_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
