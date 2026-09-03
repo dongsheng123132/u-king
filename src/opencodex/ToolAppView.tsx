@@ -15,6 +15,7 @@ import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
 import { ProviderSwitch } from "../components/ProviderSwitch";
 import { ToolIcon } from "../components/ToolIcon";
 import type { DeviceKey, DriverStatus } from "../lib/types";
+import { useViewport } from "../lib/useViewport";
 import { useI18n } from "../i18n";
 
 /** 这个工具是否已被任何驱动接管（接管了就别自动回灌，尊重用户可能切到的官方直连）。 */
@@ -94,6 +95,7 @@ export function ToolAppView({
   onRefreshDriver: () => void;
 }) {
   const { t } = useI18n();
+  const { narrow } = useViewport();
   const [cfgOpen, setCfgOpen] = useState(true);
   // 是否已启动（点过启动按钮）—— 决定是否还盖着启动遮罩。一旦启动就长驻不再盖。
   const [launched, setLaunched] = useState(false);
@@ -115,6 +117,8 @@ export function ToolAppView({
   const hasProviderConfig = app.configTargets.length > 0;
   // external 应用（如 Hermes）：启动 = 弹独立系统终端窗口，不挤内嵌终端（显示区域太窄，客户反馈）。
   const isExternal = !!app.external;
+  /** 窄窗时 DSH 让 Web 工作台独占内容区；终端仍挂在 DOM 里保活 server，只是不挤占画面。 */
+  const dshFullWidth = isDsh && dshWebVisible && narrow;
 
   // 启动主命令 = prompts 第一个（claude / hermes / codex 直接跑；openclaw 走一键开 WebUI）。
   const startPrompt = app.prompts[0];
@@ -427,7 +431,7 @@ export function ToolAppView({
             </div>
           ) : (
             /* 不传 initialCmd → 空终端；prompts = 顶栏提示词按钮；onReady 透出 runCmd */
-            <div className="flex-1 min-w-0 min-h-0">
+            <div className={dshFullWidth ? "hidden" : "flex-1 min-w-0 min-h-0"}>
               <TermPanel
                 cwd=""
                 active={active}
@@ -523,7 +527,10 @@ export function ToolAppView({
           )}
 
           {isDsh && dshWebVisible && (
-            <section className="w-[58%] min-w-[600px] shrink-0 min-h-0 flex flex-col border-l border-white/[0.06] bg-bg-1">
+            <section className={dshFullWidth
+              ? "flex-1 min-w-0 min-h-0 flex flex-col bg-bg-1"
+              : "w-[58%] min-w-[600px] shrink-0 min-h-0 flex flex-col border-l border-white/[0.06] bg-bg-1"}
+            >
               <header className="flex items-center gap-2 h-9 px-3 shrink-0 border-b border-white/[0.06]">
                 <span className="flex-1 min-w-0 truncate text-[12px] font-semibold text-ink-1">{t("DeepSeek Harness 工作台")}</span>
                 <button
