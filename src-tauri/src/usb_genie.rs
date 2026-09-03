@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const VERSION: &str = "0.3.1";
@@ -17,6 +17,8 @@ struct RuntimeManifest {
     version: String,
     platform: String,
     sha256: String,
+    asset_url: String,
+    archive_bytes: u64,
 }
 
 fn manifest() -> Result<RuntimeManifest, String> {
@@ -27,10 +29,73 @@ fn manifest() -> Result<RuntimeManifest, String> {
         || m.version != VERSION
         || m.platform != "windows-x64"
         || m.sha256.len() != 64
+        || !m.asset_url.starts_with("https://")
+        || m.archive_bytes == 0
     {
         return Err("USB AI Genie runtime 清单不符合固定 Windows x64 版本契约".into());
     }
     Ok(m)
+}
+
+/// The immutable upstream archive is cached on the host only after its pinned
+/// hash is verified.  It is intentionally fetched before we create a single
+/// directory on the selected U disk: a network failure must leave that disk
+/// exactly as it was.  A caller may still pass `zip_path` for offline repair
+/// and manufacturing; normal GUI use has no file-picker prerequisite.
+fn cached_archive(m: &RuntimeManifest, progress: &crate::actions::ProgressSink) -> Result<PathBuf, String> {
+    let cache_dir = std::env::temp_dir().join("u-king-usb-genie").join("runtime-cache");
+    let archive = cache_dir.join(format!("picoclaw-{}-windows-x64.zip", m.version));
+    if archive.is_file()
+        && fs::metadata(&archive).map(|meta| meta.len() == m.archive_bytes).unwrap_or(false)
+        && sha256_file(&archive).ok().as_deref() == Some(m.sha256.as_str())
+    {
+        return Ok(archive);
+    }
+    fs::create_dir_all(&cache_dir).map_err(|error| format!("创建 runtime 下载缓存失败: {error}"))?;
+    let partial = cache_dir.join(format!(".picoclaw-{}-{}.part", std::process::id(), now_nanos()));
+    progress("下载并校验固定 PicoClaw runtime（约 22 MB）…");
+    let mut child = Command::new(crate::installer::system_tool("curl"))
+        .args(["-fL", "--connect-timeout", "20", "--max-time", "600", "--retry", "2", "--retry-delay", "2", "-o"])
+        .arg(&partial)
+        .arg(&m.asset_url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("启动 PicoClaw 下载失败: {error}"))?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(610);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&partial);
+                return Err("下载 PicoClaw runtime 超时，U 盘未被写入".into());
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = fs::remove_file(&partial);
+                return Err(format!("等待 PicoClaw 下载失败: {error}"));
+            }
+        }
+    };
+    if !status.success() {
+        let _ = fs::remove_file(&partial);
+        return Err("下载 PicoClaw runtime 失败；请检查网络后重试，U 盘未被写入".into());
+    }
+    let bytes_ok = fs::metadata(&partial).map(|meta| meta.len() == m.archive_bytes).unwrap_or(false);
+    let hash_ok = sha256_file(&partial).ok().as_deref() == Some(m.sha256.as_str());
+    if !bytes_ok || !hash_ok {
+        let _ = fs::remove_file(&partial);
+        return Err("下载的 PicoClaw runtime 未通过固定大小和 SHA-256 校验，U 盘未被写入".into());
+    }
+    // A concurrent caller may have populated the immutable cache while this
+    // one downloaded.  Replacing it with equally verified bytes is harmless.
+    if archive.exists() { let _ = fs::remove_file(&archive); }
+    fs::rename(&partial, &archive).map_err(|error| format!("提交 PicoClaw 下载缓存失败: {error}"))?;
+    Ok(archive)
 }
 
 fn genie(root: &Path) -> PathBuf {
@@ -470,28 +535,43 @@ fn deploy(
     // must not leave a half-created runtime behind.
     let (credential_to_write, credential_mode) = credential_plan(root, credential_ref, official_device_key)?;
     preflight_ownership(root)?;
-    for dir in [data(root).join("workspace"), data(root).join("logs"), data(root).join("tmp")] {
-        fs::create_dir_all(dir).map_err(|e| format!("创建 AI Genie 目录失败: {e}"))?;
+    let fresh_target = !genie(root).exists() && !launcher(root).exists();
+    let outcome = (|| {
+        // Runtime is committed before any data directory exists.  Thus a
+        // broken archive / extraction can never be mistaken for a half-ready
+        // AI data tree.
+        stage_and_commit_runtime(root, zip, progress)?;
+        for dir in [data(root).join("workspace"), data(root).join("logs"), data(root).join("tmp")] {
+            fs::create_dir_all(dir).map_err(|e| format!("创建 AI Genie 目录失败: {e}"))?;
+        }
+        progress("生成 AI Genie 配置与启动器…");
+        write_config(root)?;
+        if let Some(key) = credential_to_write {
+            write_security(root, &key)?;
+        }
+        atomic_write(
+            &launcher(root),
+            include_bytes!("../resources/usb-genie/launch-agent.cmd"),
+        )?;
+        atomic_write(&current_json(root), serde_json::to_vec_pretty(&json!({"schema_version":1,"version":m.version,"archive_sha256":m.sha256,"runtime_dir":format!("picoclaw-{VERSION}"),"credential_mode":credential_mode,"artifact_hashes":artifact_hashes(root)?})).map_err(|e| e.to_string())?.as_slice())?;
+        write_install_marker(root)?;
+        let verification = verify(root)?;
+        if !verification["ok"].as_bool().unwrap_or(false) {
+            return Err("制作后验证失败".into());
+        }
+        Ok(json!({"changed":true,"target_root":root,"picoclaw_version":VERSION,"sha256_ok":true,"credential_mode":credential_mode,"target_state_version":state_version(root)}))
+    })();
+    if outcome.is_err() && fresh_target {
+        // Preflight proved both paths were absent.  Remove only the subtree we
+        // created, never an existing or unowned target.  A disconnected or
+        // locked drive simply keeps the truthful error; it never gets a false
+        // completed marker.
+        let _ = fs::remove_dir_all(genie(root));
+        if fs::read(launcher(root)).ok().as_deref() == Some(include_bytes!("../resources/usb-genie/launch-agent.cmd")) {
+            let _ = fs::remove_file(launcher(root));
+        }
     }
-    stage_and_commit_runtime(root, zip, progress)?;
-    progress("生成 AI Genie 配置与启动器…");
-    write_config(root)?;
-    if let Some(key) = credential_to_write {
-        write_security(root, &key)?;
-    }
-    atomic_write(
-        &launcher(root),
-        include_bytes!("../resources/usb-genie/launch-agent.cmd"),
-    )?;
-    atomic_write(&current_json(root), serde_json::to_vec_pretty(&json!({"schema_version":1,"version":m.version,"archive_sha256":m.sha256,"runtime_dir":format!("picoclaw-{VERSION}"),"credential_mode":credential_mode,"artifact_hashes":artifact_hashes(root)?})).map_err(|e| e.to_string())?.as_slice())?;
-    write_install_marker(root)?;
-    let verification = verify(root)?;
-    if !verification["ok"].as_bool().unwrap_or(false) {
-        return Err("制作后验证失败".into());
-    }
-    Ok(
-        json!({"changed":true,"target_root":root,"picoclaw_version":VERSION,"sha256_ok":true,"credential_mode":credential_mode,"target_state_version":state_version(root)}),
-    )
+    outcome
 }
 
 fn verify(root: &Path) -> Result<Value, String> {
@@ -661,6 +741,10 @@ fn current_inventory_state() -> String {
     inventory_state_version(&portable_targets())
 }
 
+fn filesystem_supported(filesystem: &str) -> bool {
+    !filesystem.eq_ignore_ascii_case("FAT32")
+}
+
 /// The Action framework currently guards writes with a whole-inventory snapshot,
 /// whereas runtime health is target-local. Keep both names explicit: consumers
 /// must never mistake a target's state for the inventory concurrency token.
@@ -693,17 +777,21 @@ pub fn action_deploy_with_device_key(
     progress: &crate::actions::ProgressSink,
     official_device_key: Option<String>,
 ) -> Result<Value, String> {
-    let root = target(&input)?;
+    let targets = portable_targets();
+    let root = target_from_inventory(&input, &targets)?;
+    let target = targets.iter().find(|candidate| candidate.root == root)
+        .ok_or("invalid_target: 目标盘在制作前已消失")?;
+    if !filesystem_supported(&target.filesystem) {
+        return Err("unsupported_filesystem: FAT32 未通过便携 AI 的原子提交验收；请使用 NTFS 或 exFAT U 盘，未写入任何文件".into());
+    }
     let credential = input
         .get("credential_ref")
         .and_then(Value::as_str)
         .ok_or("invalid_input: credential_ref 必填")?;
-    let zip = PathBuf::from(
-        input
-            .get("zip_path")
-            .and_then(Value::as_str)
-            .ok_or("invalid_input: zip_path 必填")?,
-    );
+    let zip = match input.get("zip_path").and_then(Value::as_str).filter(|path| !path.trim().is_empty()) {
+        Some(path) => PathBuf::from(path),
+        None => cached_archive(&manifest()?, progress)?,
+    };
     Ok(attach_inventory_state(deploy(&root, credential, official_device_key, &zip, progress)?))
 }
 pub fn action_verify(
@@ -791,6 +879,15 @@ mod tests {
         let m = manifest().unwrap();
         assert_eq!(m.version, VERSION);
         assert_eq!(m.sha256.len(), 64);
+        assert!(m.asset_url.starts_with("https://"));
+        assert!(m.archive_bytes > 20_000_000);
+    }
+    #[test]
+    fn fat32_is_refused_before_any_target_write() {
+        assert!(!filesystem_supported("FAT32"));
+        assert!(!filesystem_supported("fat32"));
+        assert!(filesystem_supported("exFAT"));
+        assert!(filesystem_supported("NTFS"));
     }
     #[test]
     fn config_uses_portable_workspace_and_deepseek() {

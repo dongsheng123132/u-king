@@ -2006,9 +2006,9 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "target_id": { "type": "string", "minLength": 1, "description": "Stable removable-volume identity returned by inspect; a drive letter alone is not trusted." },
                 "target_root": { "type": "string", "minLength": 1 },
                 "credential_ref": { "type": "string", "enum": ["none", "official_device"], "description": "none creates a credential-free first install and preserves an existing credential during updates; official_device writes the existing U-King device wallet." },
-                "zip_path": { "type": "string", "minLength": 1, "description": "P1 local PicoClaw archive source, used only by the smoke/build path." }
+                "zip_path": { "type": "string", "minLength": 1, "description": "Optional verified local PicoClaw archive for offline repair or manufacturing. When omitted, U-King downloads the pinned archive into its host cache and verifies its exact SHA-256 before touching the selected U disk." }
             }),
-            &["target_id", "target_root", "credential_ref", "zip_path"],
+            &["target_id", "target_root", "credential_ref"],
             &["changed", "target_root", "picoclaw_version", "sha256_ok", "credential_mode", "state_version"],
             |action_id, input, progress| {
                 // Composition root resolves the optional device-wallet reference;

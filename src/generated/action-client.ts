@@ -298,7 +298,7 @@ export type ActionInputMap = {
   "runtime.usage_local.inspect": { days?: number; };
   "runtime.usage_meter.inspect": { balance_cny?: number; days?: number; detail?: number; };
   "runtime.usb_genie.credential_remove": { expected_state_version?: string; target_id: string; target_root: string; };
-  "runtime.usb_genie.deploy": { credential_ref: "none" | "official_device"; expected_state_version?: string; target_id: string; target_root: string; zip_path: string; };
+  "runtime.usb_genie.deploy": { credential_ref: "none" | "official_device"; expected_state_version?: string; target_id: string; target_root: string; zip_path?: string; };
   "runtime.usb_genie.inspect": Record<string, never>;
   "runtime.usb_genie.launch": { expected_state_version?: string; target_id: string; target_root: string; };
   "runtime.usb_genie.verify": { target_id: string; target_root: string; };

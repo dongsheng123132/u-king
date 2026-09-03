@@ -1066,6 +1066,10 @@
     {
       "bindings": [
         {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
           "surface": "cli",
           "target": "cli:action run runtime.usb_genie.deploy --json --no-input"
         }
@@ -1111,7 +1115,7 @@
             "type": "string"
           },
           "zip_path": {
-            "description": "P1 local PicoClaw archive source, used only by the smoke/build path.",
+            "description": "Optional verified local PicoClaw archive for offline repair or manufacturing. When omitted, U-King downloads the pinned archive into its host cache and verifies its exact SHA-256 before touching the selected U disk.",
             "minLength": 1,
             "type": "string"
           }
@@ -1119,8 +1123,7 @@
         "required": [
           "target_id",
           "target_root",
-          "credential_ref",
-          "zip_path"
+          "credential_ref"
         ],
         "type": "object"
       },

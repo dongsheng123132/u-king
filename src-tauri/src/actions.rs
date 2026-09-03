@@ -85,6 +85,12 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     // 状态被别人改过 —— 重新读一次再来是**对的**处置，所以可重试。
     ("conflict:", "conflict", Blame::Bug, true),
     ("invalid_input:", "invalid_input", Blame::Bug, false),
+    // Portable-runtime preflight rejects an unsuitable target before any write.
+    // These are actionable user/environment states, not product faults.
+    ("unsupported_filesystem:", "unsupported_filesystem", Blame::User, false),
+    ("target_conflict:", "target_conflict", Blame::User, false),
+    ("invalid_target:", "invalid_target", Blame::User, false),
+    ("credential_unavailable:", "credential_unavailable", Blame::User, false),
     // —— 客户侧状态：不是 bug，别上报 ——
     ("余额不足", "insufficient_balance", Blame::User, false),
     ("insufficient", "insufficient_balance", Blame::User, false),
