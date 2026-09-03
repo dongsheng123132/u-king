@@ -748,7 +748,7 @@ export function App() {
       setTab("hermes");
       return;
     }
-    // DeepSeek Harness：进入专属页，由 ToolAppView 启动 dsh web、等端口就绪并自动开浏览器。
+    // DeepSeek Harness：进入专属页，由 ToolAppView 启动 dsh web、等端口就绪后原位嵌进右侧工作区。
     // 不能走通用外部终端，否则客户只看到 server 日志，却不知道工作台在 127.0.0.1:3080。
     if (t.id === "dsh") {
       setTab("dsh");

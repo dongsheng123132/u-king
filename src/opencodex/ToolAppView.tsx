@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { AlertTriangle, CheckCircle2, Loader2, PanelRight, PanelRightClose, Play, RefreshCw, Rocket, SquareTerminal } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, PanelRight, PanelRightClose, Play, RefreshCw, Rocket, SquareTerminal } from "lucide-react";
 import type { TuiApp } from "./apps";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
 import { ProviderSwitch } from "../components/ProviderSwitch";
@@ -103,6 +103,8 @@ export function ToolAppView({
   /** DSH 正在等就绪（不可重入的闸门 + 顶栏那条进度）。 */
   const [dshWaiting, setDshWaiting] = useState(false);
   const [dshPhase, setDshPhase] = useState("");
+  /** DSH Web 是可 iframe 的本机页面；就绪后固定占右侧工作区，不另弹一个主入口窗口。 */
+  const [dshWebVisible, setDshWebVisible] = useState(false);
   /** 卸载标记：等待循环要停得掉，否则组件没了它还在轮询 + setState。 */
   const dshAbort = useRef(false);
   useEffect(() => () => { dshAbort.current = true; }, []);
@@ -322,6 +324,15 @@ export function ToolAppView({
       }
       if (dshAbort.current) return;
     }
+    // DSH 0.1.0-rc.7 实测未设置 X-Frame-Options / frame-ancestors，故原位嵌进工作区。
+    // 同时收起驱动栏，保证 1120px 主窗口也留给 Web UI 足够宽度；用户仍可收起工作台回到配置。
+    setCfgOpen(false);
+    setDshWebVisible(true);
+  };
+
+  // 安全阀，不作为第二个主入口：iframe 在客户机 WebView2 上若有上传、存储等兼容问题，
+  // 可复用既有受白名单保护的独立 Tauri 窗口，而无需重启 dsh server。
+  const popOutDshWebUI = () => {
     invoke("open_browser", { url: DSH_WEB_URL, label: "browser-dsh" }).catch((e) => onToast(String(e)));
   };
 
@@ -391,7 +402,7 @@ export function ToolAppView({
             </button>
           )}
         </div>
-        <div className="flex-1 min-h-0 relative">
+        <div className="flex-1 min-h-0 relative flex">
           {isExternal ? (
             /* external 应用（Hermes）：不嵌终端 —— 显示「运行在独立窗口」说明 + 各命令的再次打开按钮。
                点这些按钮/大按钮都走 term_open_external 弹独立系统终端，显示区域更大。 */
@@ -416,13 +427,15 @@ export function ToolAppView({
             </div>
           ) : (
             /* 不传 initialCmd → 空终端；prompts = 顶栏提示词按钮；onReady 透出 runCmd */
-            <TermPanel
-              cwd=""
-              active={active}
-              tool={app.tool}
-              prompts={app.prompts}
-              onReady={(api) => (termApi.current = api)}
-            />
+            <div className="flex-1 min-w-0 min-h-0">
+              <TermPanel
+                cwd=""
+                active={active}
+                tool={app.tool}
+                prompts={app.prompts}
+                onReady={(api) => (termApi.current = api)}
+              />
+            </div>
           )}
           {/* 启动遮罩：还没点启动时盖住空终端，给小白一个明确的大按钮 + 一句话说明。
               点了就跑启动命令并隐藏。启动后想停就关终端标签，重进会重新盖（launched 重置）。 */}
@@ -508,11 +521,40 @@ export function ToolAppView({
               </div>
             </div>
           )}
+
+          {isDsh && dshWebVisible && (
+            <section className="w-[58%] min-w-[600px] shrink-0 min-h-0 flex flex-col border-l border-white/[0.06] bg-bg-1">
+              <header className="flex items-center gap-2 h-9 px-3 shrink-0 border-b border-white/[0.06]">
+                <span className="flex-1 min-w-0 truncate text-[12px] font-semibold text-ink-1">{t("DeepSeek Harness 工作台")}</span>
+                <button
+                  onClick={popOutDshWebUI}
+                  title={t("工作台无法正常使用时，在独立窗口打开")}
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"
+                >
+                  <ExternalLink size={13} />
+                  {t("弹出")}
+                </button>
+                <button
+                  onClick={() => setDshWebVisible(false)}
+                  title={t("收起工作台")}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded text-ink-4 hover:bg-white/[0.06] hover:text-ink-1"
+                >
+                  <PanelRightClose size={15} />
+                </button>
+              </header>
+              <iframe
+                title={t("DeepSeek Harness 工作台")}
+                src={DSH_WEB_URL}
+                referrerPolicy="no-referrer"
+                className="flex-1 min-h-0 w-full border-0 bg-white"
+              />
+            </section>
+          )}
         </div>
       </div>
 
       {/* 右侧：驱动配置（可收起，只切该工具的驱动） */}
-      {hasProviderConfig && cfgOpen && (
+      {hasProviderConfig && cfgOpen && !(isDsh && dshWebVisible) && (
         <div className="w-[272px] shrink-0 flex flex-col border-l border-white/[0.06] bg-bg-1">
           <div className="flex items-center h-9 px-3 border-b border-white/[0.06] shrink-0">
             <span className="text-[12px] font-semibold text-ink-1 flex-1">{t("驱动配置")}</span>

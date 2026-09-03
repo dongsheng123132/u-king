@@ -133,7 +133,7 @@ export function DshPlugins({ onToast, onGoInstall, onGoDsh, onGoChat }: {
     //      · 没有端口复用闸，再点一次就是 `EADDRINUSE 127.0.0.1:3080` 当场崩一个新黑窗。
     //    App.tsx:693 那行注释早写明「不能走通用外部终端」，这里正是踩了它。
     //
-    // 现在只做导航：等端口、复用已有实例、开浏览器全在 `ToolAppView.launchDshWebUI` 里，
+    // 现在只做导航：等端口、复用已有实例、显示内嵌工作台全在 `ToolAppView.launchDshWebUI` 里，
     // 那是「打开 DSH」的唯一实现（宪法 13）。落地页还让客户在 Web / 终端两种模式里自己选 ——
     // 从这页直接替他挑一种，等于替他做了主。
     onGoDsh();

@@ -128,6 +128,10 @@ export const workbench: Record<string, string> = {
     "— click a prompt above to start; stays running afterward, close the terminal to stop",
   "起 gateway 并自动打开网页控制台": "Start the gateway and open the web console automatically",
   "打开网页版": "Open web version",
+  "DeepSeek Harness 工作台": "DeepSeek Harness workspace",
+  "工作台无法正常使用时，在独立窗口打开": "Open in a separate window if the workspace is not working correctly",
+  "弹出": "Pop out",
+  "收起工作台": "Collapse workspace",
   "展开驱动配置": "Expand driver settings",
   "{name} 运行在独立终端窗口": "{name} runs in a separate terminal window",
   "为了给 {name} 更大的显示区域，它在一个独立的系统终端窗口里运行，不挤在 U-King 界面里。关掉那个终端窗口即停止；下面按钮可再次打开。":
