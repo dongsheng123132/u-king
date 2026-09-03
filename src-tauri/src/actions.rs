@@ -301,6 +301,7 @@ pub const OPENCLAW2_INSTALL: &str = "runtime.openclaw2.install";
 pub const OPENCLAW2_PREPARE: &str = "runtime.openclaw2.prepare";
 pub const OPENCLAW2_PREFLIGHT: &str = "runtime.openclaw2.preflight";
 pub const OPENCLAW2_LAUNCH: &str = "runtime.openclaw2.launch";
+pub const OPENCLAW2_CONFIGURE_MODEL: &str = "runtime.openclaw2.configure_model";
 pub const GEO_INSPECT: &str = "runtime.geo.inspect";
 pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
 pub const PODAPP_INSPECT: &str = "runtime.podapp.inspect";

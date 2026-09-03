@@ -13,6 +13,7 @@ use std::io::Read;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PROFILE: &str = "uking-openclaw2";
@@ -20,6 +21,8 @@ const CONFIG_NAME: &str = "openclaw.json";
 const PROFILE_NAME: &str = "profile.json";
 const SUPERVISOR_NAME: &str = "supervisor.json";
 const INSTALL_NAME: &str = "installed.json";
+const MODEL_MARKER_NAME: &str = "model-config.json";
+const MODEL_SECRET_PROVIDER: &str = "uking-openclaw2-file";
 /// OpenClaw reserves the Gateway itself, browser-control (`base + 2`), then
 /// the managed Chromium CDP family (`base + 11` through `base + 110`). Keep
 /// a whole family exclusive: choosing only a free gateway port is insufficient.
@@ -55,6 +58,23 @@ struct Paths {
     workspace: PathBuf,
     run: PathBuf,
     logs: PathBuf,
+}
+
+/// Sensitive route material resolved by the composition root. It deliberately
+/// has no Serialize/Debug implementation: the API key cannot accidentally
+/// cross an Action response, progress event, marker, or diagnostic.
+pub struct ModelRoute {
+    pub source_id: String,
+    pub source_name: String,
+    pub base: String,
+    pub model: String,
+    pub key: String,
+    pub key_source: String,
+}
+
+fn model_mutex() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn paths() -> Paths {
@@ -122,6 +142,9 @@ fn supervisor_file(p: &Paths) -> PathBuf {
 fn install_file(p: &Paths) -> PathBuf {
     p.runtime.join(INSTALL_NAME)
 }
+fn model_marker_file(p: &Paths) -> PathBuf { p.state.join(MODEL_MARKER_NAME) }
+fn model_secrets_dir(p: &Paths) -> PathBuf { p.state.join("secrets") }
+fn model_txn_root(p: &Paths) -> PathBuf { p.run.join("model-config-txn") }
 fn node_archive_file(p: &Paths, m: &RuntimeManifest) -> PathBuf {
     p.runtime.join(format!("node-v{}-win-x64.zip", m.node.version))
 }
@@ -462,6 +485,7 @@ pub fn state_version() -> String {
     for file in [
         profile_file(&p),
         config_file(&p),
+        model_marker_file(&p),
         supervisor_file(&p),
         install_file(&p),
     ] {
@@ -489,6 +513,11 @@ pub fn inspect() -> Result<Value, String> {
         private_config_ok(&p).unwrap_or(false) && parse_profile(&p).ok().flatten().is_some();
     let (port, pid, owned) = supervisor_status(&p).unwrap_or((None, None, false));
     let running = port.map(port_listening).unwrap_or(false) && owned;
+    let model = fs::read_to_string(model_marker_file(&p))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .map(|marker| json!({"configured":true,"provider_id":marker["source_provider"],"provider_key":marker["provider_key"],"model":marker["model"],"probe":marker["probe"]}))
+        .unwrap_or_else(|| json!({"configured":false}));
     let mut blockers = Vec::<String>::new();
     if !installed {
         blockers.push("OpenClaw2 私有 runtime 未完成安装或版本不匹配".into());
@@ -497,7 +526,7 @@ pub fn inspect() -> Result<Value, String> {
         blockers.push("OpenClaw2 私有 profile 尚未准备好或配置不兼容".into());
     }
     Ok(
-        json!({"schema_version":1,"ready":installed && prepared,"blockers":blockers,"installed":installed,"prepared":prepared,"running":running,"state_version":state_version(),"profile":PROFILE,"paths":{"root":p.root,"runtime":p.runtime,"state":p.state,"workspace":p.workspace,"run":p.run,"logs":p.logs},"runtime":{"node_version":node_version,"node_supported":node_ok,"openclaw_version":openclaw_version,"integrity_ok":integrity_ok(&p,&m)},"gateway":{"port":port,"pid":pid,"owned":owned}}),
+        json!({"schema_version":1,"ready":installed && prepared,"blockers":blockers,"installed":installed,"prepared":prepared,"running":running,"state_version":state_version(),"profile":PROFILE,"paths":{"root":p.root,"runtime":p.runtime,"state":p.state,"workspace":p.workspace,"run":p.run,"logs":p.logs},"runtime":{"node_version":node_version,"node_supported":node_ok,"openclaw_version":openclaw_version,"integrity_ok":integrity_ok(&p,&m)},"gateway":{"port":port,"pid":pid,"owned":owned},"model":model}),
     )
 }
 
@@ -660,6 +689,178 @@ pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String>
     Ok(
         json!({"changed":true,"installed":true,"node_version":version,"openclaw_version":m.openclaw_version,"integrity_ok":true,"state_version":state_version()}),
     )
+}
+
+fn normalized_model_base(base: &str) -> Result<String, String> {
+    let base = base.trim();
+    if base.is_empty() || base.len() > 2048 || base.bytes().any(|b| b <= b' ' || b == 0x7f) {
+        return Err("invalid_input: OpenClaw2 endpoint 无效".into());
+    }
+    let (scheme, rest) = base.split_once("://").ok_or("invalid_input: OpenClaw2 endpoint 必须为绝对 URL")?;
+    if !scheme.eq_ignore_ascii_case("https") && !scheme.eq_ignore_ascii_case("http") {
+        return Err("invalid_input: OpenClaw2 endpoint 仅支持 HTTP(S)".into());
+    }
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') || rest.contains('?') || rest.contains('#') {
+        return Err("invalid_input: OpenClaw2 endpoint 不允许认证、query 或 fragment".into());
+    }
+    if scheme.eq_ignore_ascii_case("http") {
+        let host = authority.split(':').next().unwrap_or(authority).trim_matches(['[', ']']);
+        if !matches!(host.to_ascii_lowercase().as_str(), "localhost" | "127.0.0.1" | "::1") {
+            return Err("invalid_input: OpenClaw2 明文 HTTP 仅允许 loopback".into());
+        }
+    }
+    Ok(base.trim_end_matches('/').to_string())
+}
+
+fn model_provider_key(source_id: &str, base: &str) -> String {
+    let digest = crate::installer::sha256_hex_bytes(format!("{source_id}\n{base}").as_bytes());
+    format!("uking-oc2-{}", &digest[..12])
+}
+
+fn model_ref(provider_key: &str, model: &str) -> String { format!("{provider_key}/{model}") }
+
+fn model_secret_file(p: &Paths, nonce: &str) -> PathBuf {
+    model_secrets_dir(p).join(format!("model-{nonce}.json"))
+}
+
+fn model_marker_matches(p: &Paths, route: &ModelRoute, provider_key: &str) -> Option<Value> {
+    let marker: Value = serde_json::from_str(&fs::read_to_string(model_marker_file(p)).ok()?).ok()?;
+    if marker.get("owner").and_then(Value::as_str) != Some(PROFILE)
+        || marker.get("source_provider").and_then(Value::as_str) != Some(route.source_id.as_str())
+        || marker.get("provider_key").and_then(Value::as_str) != Some(provider_key)
+        || marker.get("model").and_then(Value::as_str) != Some(route.model.as_str()) {
+        return None;
+    }
+    let secret_name = marker.get("secret_basename").and_then(Value::as_str)?;
+    if secret_name.contains(['/', '\\']) || !secret_name.starts_with("model-") { return None; }
+    let secret: Value = serde_json::from_str(&fs::read_to_string(model_secrets_dir(p).join(secret_name)).ok()?).ok()?;
+    (secret.get("api_key").and_then(Value::as_str) == Some(route.key.as_str())).then_some(marker)
+}
+
+fn model_marker_owns_provider(p: &Paths, provider_key: &str) -> bool {
+    fs::read_to_string(model_marker_file(p))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|marker| {
+            marker.get("owner").and_then(Value::as_str) == Some(PROFILE)
+                && marker.get("provider_key").and_then(Value::as_str) == Some(provider_key)
+        })
+}
+
+fn model_candidate_config(p: &Paths, route: &ModelRoute, provider_key: &str, secret_file: &Path) -> Result<Vec<u8>, String> {
+    let mut config: Value = serde_json::from_slice(&fs::read(config_file(p)).map_err(|_| "not_ready: OpenClaw2 私有配置不可读")?)
+        .map_err(|_| "not_ready: OpenClaw2 私有配置已损坏")?;
+    let root = config.as_object_mut().ok_or("not_ready: OpenClaw2 私有配置形状无效")?;
+    let models = root.entry("models").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 models 形状无效")?;
+    if !models.contains_key("mode") { models.insert("mode".into(), json!("merge")); }
+    let providers = models.entry("providers").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 models.providers 形状无效")?;
+    if providers.contains_key(provider_key) && !model_marker_owns_provider(p, provider_key) {
+        return Err("validation_failed: OpenClaw2 同名 model provider 不属于本适配器，拒绝覆盖".into());
+    }
+    providers.insert(provider_key.into(), json!({"baseUrl":route.base,"api":"openai-completions","apiKey":{"source":"file","provider":MODEL_SECRET_PROVIDER,"id":"api_key"},"models":[{"id":route.model,"name":route.model}]}));
+    models.insert("primary".into(), json!(model_ref(provider_key, &route.model)));
+    let agents = root.entry("agents").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents 形状无效")?;
+    let defaults = agents.entry("defaults").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents.defaults 形状无效")?;
+    let default_models = defaults.entry("models").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents.defaults.models 形状无效")?;
+    default_models.insert(model_ref(provider_key, &route.model), json!({}));
+    let secrets = root.entry("secrets").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 secrets 形状无效")?;
+    let secret_providers = secrets.entry("providers").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 secrets.providers 形状无效")?;
+    if secret_providers.contains_key(MODEL_SECRET_PROVIDER) && !model_marker_owns_provider(p, provider_key) {
+        return Err("validation_failed: OpenClaw2 file secret provider 不属于本适配器，拒绝覆盖".into());
+    }
+    secret_providers.insert(MODEL_SECRET_PROVIDER.into(), json!({"source":"file","path":secret_file,"mode":"json"}));
+    serde_json::to_vec_pretty(&config).map_err(|_| "validation_failed: 无法序列化 OpenClaw2 model 配置".into())
+}
+
+fn run_oc_transaction(p: &Paths, candidate: &Path, txn_state: &Path, args: &[&str], timeout: Duration) -> Result<Capture, String> {
+    let node = node_exe(p);
+    let cli = cli_file(p);
+    let mut all = vec![cli.to_string_lossy().to_string(), "--profile".into(), PROFILE.into()];
+    all.extend(args.iter().map(|arg| (*arg).into()));
+    let refs: Vec<&str> = all.iter().map(String::as_str).collect();
+    let mut env = managed_env(p);
+    env.retain(|(key, _)| key != "OPENCLAW_CONFIG_PATH" && key != "OPENCLAW_STATE_DIR" && key != "OPENCLAW_AGENT_DIR");
+    env.push(("OPENCLAW_CONFIG_PATH".into(), candidate.to_string_lossy().to_string()));
+    env.push(("OPENCLAW_STATE_DIR".into(), txn_state.to_string_lossy().to_string()));
+    env.push(("OPENCLAW_AGENT_DIR".into(), txn_state.join("agents").to_string_lossy().to_string()));
+    let refs_env: Vec<(&str, &str)> = env.iter().map(|(key, value)| (key.as_str(), value.as_str())).collect();
+    run_capture(&node, &refs, &refs_env, &p.workspace, timeout)
+}
+
+fn rollback_model_config(p: &Paths, old_config: &[u8], old_marker: Option<&[u8]>, new_secret: &Path, txn: &Path) -> Result<(), String> {
+    atomic_write(&config_file(p), old_config, p)?;
+    match old_marker {
+        Some(bytes) => atomic_write(&model_marker_file(p), bytes, p)?,
+        None if model_marker_file(p).exists() => fs::remove_file(model_marker_file(p)).map_err(|_| "无法移除失败的 model marker")?,
+        None => {}
+    }
+    if new_secret.exists() { fs::remove_file(new_secret).map_err(|_| "无法清理失败的 model secret")?; }
+    if txn.exists() { fs::remove_dir_all(txn).map_err(|_| "无法清理失败的 model transaction")?; }
+    Ok(())
+}
+
+pub fn configure_model(route: ModelRoute) -> Result<Value, String> {
+    let _guard = model_mutex().lock().map_err(|_| "not_ready: OpenClaw2 model 配置锁不可用")?;
+    let p = paths();
+    let report = inspect()?;
+    if report.get("installed").and_then(Value::as_bool) != Some(true)
+        || report.get("runtime").and_then(|x| x.get("integrity_ok")).and_then(Value::as_bool) != Some(true)
+        || report.get("prepared").and_then(Value::as_bool) != Some(true) {
+        return Err("not_ready: OpenClaw2 私有 runtime 尚未安装、校验或准备完成".into());
+    }
+    let base = normalized_model_base(&route.base)?;
+    if route.model.trim().is_empty() || route.model.len() > 256 || route.model.bytes().any(|b| b <= b' ') {
+        return Err("invalid_input: OpenClaw2 model 无效".into());
+    }
+    if route.key.trim().is_empty() { return Err("invalid_input: OpenClaw2 API Key 不可为空".into()); }
+    let route = ModelRoute { base, model: route.model.trim().into(), ..route };
+    let provider_key = model_provider_key(&route.source_id, &route.base);
+    if let Some(marker) = model_marker_matches(&p, &route, &provider_key) {
+        return Ok(json!({"changed":false,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":model_ref(&provider_key,&route.model)},"validation":{"ran":false,"ok":true},"probe":marker.get("probe").cloned().unwrap_or_else(|| json!({"ran":false,"ok":false})),"restart_required":report["running"],"state_version":state_version()}));
+    }
+    let nonce = random_token()?;
+    let txn = model_txn_root(&p).join(&nonce);
+    let candidate = txn.join("openclaw.json");
+    let txn_state = txn.join("state");
+    ensure_private_path(&txn, &p)?;
+    fs::create_dir_all(&txn_state).map_err(|_| "validation_failed: 无法创建 OpenClaw2 model transaction")?;
+    let old_config = fs::read(config_file(&p)).map_err(|_| "not_ready: OpenClaw2 私有配置不可读")?;
+    let old_marker = fs::read(model_marker_file(&p)).ok();
+    let secret = model_secret_file(&p, &nonce);
+    let result = (|| -> Result<Value, String> {
+        atomic_write(&secret, serde_json::to_vec(&json!({"api_key":route.key})).unwrap().as_slice(), &p)?;
+        let candidate_bytes = model_candidate_config(&p, &route, &provider_key, &secret)?;
+        atomic_write(&candidate, &candidate_bytes, &p)?;
+        for args in [["config", "validate", "--json"].as_slice(), ["infer", "model", "run", "--help"].as_slice()] {
+            let out = run_oc_transaction(&p, &candidate, &txn_state, args, Duration::from_secs(20))?;
+            if out.status != Some(0) { return Err("validation_failed: OpenClaw2 缺少受支持的配置校验或模型推理能力".into()); }
+        }
+        let validation = run_oc_transaction(&p, &candidate, &txn_state, &["config", "validate", "--json"], Duration::from_secs(30))?;
+        if validation.status != Some(0) || serde_json::from_str::<Value>(&validation.stdout).is_err() { return Err("validation_failed: OpenClaw2 candidate 配置校验失败".into()); }
+        let began = Instant::now();
+        let reference = model_ref(&provider_key, &route.model);
+        let probe = run_oc_transaction(&p, &candidate, &txn_state, &["infer", "model", "run", "--local", "--model", &reference, "--prompt", "Reply exactly: openclaw2-probe-ok", "--json"], Duration::from_secs(90))?;
+        if probe.status != Some(0) || serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针失败".into()); }
+        atomic_write(&config_file(&p), &candidate_bytes, &p)?;
+        if fs::read(config_file(&p)).map_err(|_| "rollback_failed: OpenClaw2 live 配置回读失败")? != candidate_bytes { return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into()); }
+        let probe_view = json!({"ran":true,"ok":true,"latency_ms":began.elapsed().as_millis() as u64});
+        let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
+        atomic_write(&model_marker_file(&p), serde_json::to_vec_pretty(&marker).unwrap().as_slice(), &p)?;
+        if let Some(old) = old_marker.as_ref().and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok()).and_then(|m| m.get("secret_basename").and_then(Value::as_str).map(str::to_owned)) {
+            let old = model_secrets_dir(&p).join(old);
+            if old != secret && old.file_name().and_then(|x| x.to_str()).is_some_and(|x| x.starts_with("model-")) { let _ = fs::remove_file(old); }
+        }
+        let _ = fs::remove_dir_all(&txn);
+        Ok(json!({"changed":true,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":reference},"validation":{"ran":true,"ok":true},"probe":probe_view,"restart_required":report["running"],"state_version":state_version()}))
+    })();
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => match rollback_model_config(&p, &old_config, old_marker.as_deref(), &secret, &txn) {
+            Ok(()) => Err(error),
+            Err(_) => Err("rollback_failed: OpenClaw2 model 配置失败且回滚未完成".into()),
+        },
+    }
 }
 
 pub fn preflight() -> Result<Value, String> {
@@ -1421,6 +1622,33 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
         }
     }
     #[test]
+    fn model_candidate_preserves_private_unknowns_and_only_uses_file_secret_ref() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-model-candidate-{}", now_nanos())));
+        create_layout(&p).unwrap();
+        fs::write(config_file(&p), serde_json::to_vec(&json!({"gateway":{"auth":{"token":"gateway-private"}},"workspace":{"keep":true},"unknown":{"keep":"yes"},"models":{"providers":{"someone-else":{"keep":true}}}})).unwrap()).unwrap();
+        let route = ModelRoute { source_id:"demo".into(), source_name:"Demo".into(), base:"https://example.com/v1".into(), model:"demo-chat".into(), key:"never-in-config".into(), key_source:"explicit".into() };
+        let key = model_provider_key(&route.source_id, &route.base);
+        let candidate = model_candidate_config(&p, &route, &key, &model_secret_file(&p, "next")).unwrap();
+        let text = String::from_utf8(candidate).unwrap();
+        assert!(!text.contains("never-in-config"));
+        let value: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["gateway"]["auth"]["token"], "gateway-private");
+        assert_eq!(value["workspace"]["keep"], true);
+        assert_eq!(value["unknown"]["keep"], "yes");
+        assert_eq!(value["models"]["mode"], "merge");
+        assert_eq!(value["models"]["providers"]["someone-else"]["keep"], true);
+        assert_eq!(value["models"]["providers"][key.as_str()]["apiKey"]["source"], "file");
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn model_endpoint_rejects_remote_http_and_credential_url() {
+        assert!(normalized_model_base("https://api.example.com/v1").is_ok());
+        assert!(normalized_model_base("http://127.0.0.1:11434/v1").is_ok());
+        for invalid in ["http://example.com/v1", "https://u:p@example.com/v1", "https://example.com/v1?q=x", "https://example.com/v1#x"] {
+            assert!(normalized_model_base(invalid).is_err(), "{invalid}");
+        }
+    }
+    #[test]
     fn action_contract_has_confirmation_unknown_field_and_conflict_guards() {
         let listed = crate::actions::list();
         for id in [
@@ -1429,6 +1657,7 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
             crate::actions::OPENCLAW2_PREPARE,
             crate::actions::OPENCLAW2_PREFLIGHT,
             crate::actions::OPENCLAW2_LAUNCH,
+            crate::actions::OPENCLAW2_CONFIGURE_MODEL,
         ] {
             assert!(listed.iter().any(|a| a.id == id), "{id} 未注册");
         }

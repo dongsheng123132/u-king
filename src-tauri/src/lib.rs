@@ -1954,6 +1954,38 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             openclaw2::action_launch,
             Some(openclaw2::state_version),
         ),
+        actions::write(
+            actions::OPENCLAW2_CONFIGURE_MODEL,
+            "Configure an isolated OpenClaw 2 model",
+            "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned.",
+            180_000,
+            "required",
+            serde_json::json!({
+                "provider_id": { "type": "string", "minLength": 1 },
+                "model": { "type": "string" },
+                "api_key": { "type": "string", "writeOnly": true }
+            }),
+            &["provider_id"],
+            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "state_version"],
+            |_, input, _| {
+                let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
+                    .ok_or("invalid_input: provider_id 必填")?;
+                let api_key = input.get("api_key").and_then(serde_json::Value::as_str);
+                let device_key = if api_key.is_some_and(|key| !key.trim().is_empty()) {
+                    None
+                } else {
+                    device::device_key_offline().ok()
+                };
+                let route = providers::resolve_openai_route_for_openclaw2(
+                    provider_id,
+                    input.get("model").and_then(serde_json::Value::as_str),
+                    api_key,
+                    device_key.as_deref(),
+                )?;
+                openclaw2::configure_model(route)
+            },
+            Some(openclaw2::state_version),
+        ),
         actions::readonly(
             actions::LOCALLLM_INSPECT,
             "Inspect the four local LLM engines",
