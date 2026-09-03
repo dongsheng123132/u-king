@@ -1,0 +1,39 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 19789,
+    "bind": "loopback",
+    "auth": { "mode": "token", "token": "fixture-gateway-token" }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "C:/openclaw2-schema-fixture",
+      "model": { "primary": "uking-oc2-fixture/fixture-model" },
+      "models": { "uking-oc2-fixture/fixture-model": {} }
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "uking-oc2-fixture": {
+        "baseUrl": "https://example.com/v1",
+        "api": "openai-completions",
+        "apiKey": {
+          "source": "file",
+          "provider": "uking-openclaw2-file",
+          "id": "/fixture_token"
+        },
+        "models": [{ "id": "fixture-model", "name": "fixture-model" }]
+      }
+    }
+  },
+  "secrets": {
+    "providers": {
+      "uking-openclaw2-file": {
+        "source": "file",
+        "path": "C:/openclaw2-schema-fixture/model-secret.json",
+        "mode": "json"
+      }
+    }
+  }
+}

@@ -873,7 +873,9 @@ fn model_candidate_config(p: &Paths, route: &ModelRoute, provider_key: &str, sec
     if let Some(old) = old_provider_key.as_deref().filter(|old| *old != provider_key) {
         providers.remove(old);
     }
-    providers.insert(provider_key.into(), json!({"baseUrl":route.base,"api":"openai-completions","apiKey":{"source":"file","provider":MODEL_SECRET_PROVIDER,"id":"api_key"},"models":[{"id":route.model,"name":route.model}]}));
+    // OpenClaw 2026.8.1's `json` file provider addresses values with an
+    // absolute JSON Pointer. A bare key is rejected before inference.
+    providers.insert(provider_key.into(), json!({"baseUrl":route.base,"api":"openai-completions","apiKey":{"source":"file","provider":MODEL_SECRET_PROVIDER,"id":"/api_key"},"models":[{"id":route.model,"name":route.model}]}));
     // `models.primary` was an early adapter mistake.  Remove only the exact
     // value that our own marker proves we wrote; preserve any foreign value.
     if models.get("primary").and_then(Value::as_str) == old_ref.as_deref() {
@@ -909,6 +911,28 @@ fn run_oc_transaction(p: &Paths, candidate: &Path, txn_state: &Path, args: &[&st
     env.push(("OPENCLAW_AGENT_DIR".into(), txn_state.join("agents").to_string_lossy().to_string()));
     let refs_env: Vec<(&str, &str)> = env.iter().map(|(key, value)| (key.as_str(), value.as_str())).collect();
     run_capture(&node, &refs, &refs_env, &p.workspace, timeout)
+}
+
+/// CLI stderr can contain a rendered config value.  Keep only a stable,
+/// non-secret category and exit condition in Action errors; callers can tell
+/// a schema/pointer mistake from a missing command without receiving a key,
+/// URL, candidate path, or upstream response body.
+fn config_diagnostic(phase: &str, out: &Capture) -> String {
+    let text = format!("{}\n{}", out.stdout, out.stderr).to_ascii_lowercase();
+    let category = if out.status.is_none() {
+        "timeout"
+    } else if text.contains("json pointer") || (text.contains("secret") && text.contains("pointer")) {
+        "secret_ref_pointer"
+    } else if text.contains("secret") {
+        "secret_ref"
+    } else if text.contains("schema") || text.contains("invalid config") || text.contains("validation") {
+        "schema"
+    } else if text.contains("unknown command") || text.contains("not found") || text.contains("usage:") {
+        "unsupported_command"
+    } else {
+        "command_failed"
+    };
+    format!("validation_failed: {phase} (exit={}, diagnostic={category})", out.status.map(|code| code.to_string()).unwrap_or_else(|| "timeout".into()))
 }
 
 #[derive(Clone)]
@@ -1006,16 +1030,21 @@ fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool)
         atomic_write(&secret, serde_json::to_vec(&json!({"api_key":route.key})).unwrap().as_slice(), &p)?;
         let candidate_bytes = model_candidate_config(&p, &route, &provider_key, &secret)?;
         atomic_write(&candidate, &candidate_bytes, &p)?;
-        for args in [["config", "validate", "--json"].as_slice(), ["infer", "model", "run", "--help"].as_slice()] {
+        for (args, phase) in [
+            (["config", "validate", "--json"].as_slice(), "private CLI config-validate capability check"),
+            (["infer", "model", "run", "--help"].as_slice(), "private CLI infer capability check"),
+        ] {
             let out = run_oc_transaction(&p, &candidate, &txn_state, args, Duration::from_secs(20))?;
-            if out.status != Some(0) { return Err("validation_failed: OpenClaw2 缺少受支持的配置校验或模型推理能力".into()); }
+            if out.status != Some(0) { return Err(config_diagnostic(phase, &out)); }
         }
         let validation = run_oc_transaction(&p, &candidate, &txn_state, &["config", "validate", "--json"], Duration::from_secs(30))?;
-        if validation.status != Some(0) || serde_json::from_str::<Value>(&validation.stdout).is_err() { return Err("validation_failed: OpenClaw2 candidate 配置校验失败".into()); }
+        if validation.status != Some(0) { return Err(config_diagnostic("candidate config validation", &validation)); }
+        if serde_json::from_str::<Value>(&validation.stdout).is_err() { return Err("validation_failed: candidate config validation returned non-JSON stdout (exit=0, diagnostic=non_json_stdout)".into()); }
         let began = Instant::now();
         let reference = model_ref(&provider_key, &route.model);
         let probe = run_oc_transaction(&p, &candidate, &txn_state, &["infer", "model", "run", "--local", "--model", &reference, "--prompt", "Reply exactly: openclaw2-probe-ok", "--json"], Duration::from_secs(90))?;
-        if probe.status != Some(0) || serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针失败".into()); }
+        if probe.status != Some(0) { return Err(config_diagnostic("model probe command", &probe).replacen("validation_failed:", "probe_failed:", 1)); }
+        if serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针返回无效 JSON 或未确认固定响应".into()); }
         atomic_write(&config_file(&p), &candidate_bytes, &p)?;
         if model_test_fault(&p, "live_commit") { return Err("validation_failed: OpenClaw2 live 配置提交注入失败".into()); }
         if fs::read(config_file(&p)).map_err(|_| "rollback_failed: OpenClaw2 live 配置回读失败")? != candidate_bytes { return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into()); }
@@ -1977,9 +2006,26 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
         assert_eq!(value["models"]["mode"], "merge");
         assert_eq!(value["models"]["providers"]["someone-else"]["keep"], true);
         assert_eq!(value["models"]["providers"][key.as_str()]["apiKey"]["source"], "file");
+        assert_eq!(value["models"]["providers"][key.as_str()]["apiKey"]["id"], "/api_key", "2026.8.1 json SecretRef 必须使用绝对 JSON Pointer");
         assert_eq!(value["agents"]["defaults"]["model"]["primary"], model_ref(&key, "demo-chat"));
         assert!(value["models"].get("primary").is_none(), "根 models.primary 不是权威槽位");
         let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn fixed_2026_8_1_schema_candidate_keeps_file_secret_ref_and_model_slots_calibrated() {
+        let fixture: Value = serde_json::from_str(include_str!("../resources/openclaw2-2026.8.1-schema-candidate.json")).unwrap();
+        assert_eq!(fixture["secrets"]["providers"][MODEL_SECRET_PROVIDER]["source"], "file");
+        assert_eq!(fixture["secrets"]["providers"][MODEL_SECRET_PROVIDER]["mode"], "json");
+        assert_eq!(fixture["models"]["providers"]["uking-oc2-fixture"]["apiKey"]["source"], "file");
+        assert_eq!(fixture["models"]["providers"]["uking-oc2-fixture"]["apiKey"]["id"], "/fixture_token");
+        assert_eq!(fixture["agents"]["defaults"]["model"]["primary"], "uking-oc2-fixture/fixture-model");
+    }
+    #[test]
+    fn validation_diagnostic_is_actionable_without_echoing_candidate_secrets() {
+        let out = Capture { status: Some(1), stdout: String::new(), stderr: "invalid config: File secret reference id must be an absolute JSON pointer; value=model-secret-never-output".into() };
+        let message = config_diagnostic("candidate config validation", &out);
+        assert!(message.contains("diagnostic=secret_ref_pointer"));
+        assert!(!message.contains("model-secret-never-output"));
     }
     #[test]
     fn model_candidate_refuses_unmarked_or_third_party_slots() {
