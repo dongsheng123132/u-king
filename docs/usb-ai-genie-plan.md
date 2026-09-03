@@ -68,7 +68,7 @@ U-King
 | U 盘随机写 | 8.45MB/s |
 | U 盘随机读 | 38.10MB/s |
 | U 盘顺序读 | 106.34MB/s |
-| 已知兼容问题 | `deepseek-v4-flash` thinking 模式多轮 tool-call 触发 `reasoning_content` HTTP 400；v0.3.1 源码显示疑因 provider 字段留空触发主动剥离（非上游缺陷），待 P0 实验定性 |
+| 已知兼容问题 | ~~thinking 400~~ **已定案（2026-09-03 P0 实验）**：`provider: ""` 6 轮 stress 复现 400（2/6），改 `provider: "deepseek"` 0/6 全绿——配置问题，非上游缺陷。产品模板默认 deepseek；§9 缩为回归 fixture |
 | C 盘行为 | 取证主链路中 PicoClaw 归属新增、修改均为 0；源码另有 `%TEMP%` 输入历史及少数可选频道的硬编码路径，产品必须主动约束 |
 
 ---
@@ -412,7 +412,7 @@ data\config.json
 data\.security.yml
 ```
 
-配置效果应与已取证的 PicoClaw `model add` 结果一致：
+配置效果应与已取证的 PicoClaw `model add` 结果一致，且 **`provider` 一律写 `"deepseek"`**（2026-09-03 P0 实测定案：留空会在多轮 tool-call 触发网关 400）：
 
 ```json
 {
@@ -560,6 +560,15 @@ P2 增加定时工作流：
 - thinking 400 按 §8 P0 第 12 步实验定性；若为配置问题则不再以「兼容缺陷」口径出现在任何文案。
 - provider=deepseek 实验结论落盘：400 消失则 §9 缩为回归 fixture。
 - exFAT 真盘最小链路成功（或明确 blocker 登记到 P1）。
+
+### P0 实测结果（2026-09-03，真机 F 盘）
+
+- **cn 网关 + 设备钱包（G1/G7）**：`api.u-claw.org.cn` + U-King 设备钱包 key（`official_device` 路径）真实制作 → 单轮 `cn-gateway-ok` → 工具调用（write_file+exec）→ 12 轮混合 stress，全通。
+- **provider=deepseek 实验（G2）**：如上表，一行配置消灭 400。
+- **启动器（G3）**：纯 ASCII、6 环境变量（HOME/CONFIG/BINARY/BUILTIN_SKILLS/LOG_FILE/TEMP+TMP）、工具盘布局交互 roundtrip 通过；宿主 `%TEMP%` 零 picoclaw 历史，输入历史落盘 `data\tmp\.picoclaw_history`。
+- **现场卫生**：测试余额 ¥2 已还原服务端（双向留痕）；本地凭据文件全清，复扫零残留。
+- **遗留 blocker**：exFAT 真盘待专用空盘（E/F 皆有既有内容，不硬测）。
+- 实测细节与事件链：`usb-genie-taskpack`（本地任务档案，不入公开仓）。
 - 未通过的项目必须保留为 P1 blocker，不能用“基本可用”放行。
 
 ## P1：U-King 一键制作与本地安装
