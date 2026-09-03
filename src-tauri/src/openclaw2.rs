@@ -23,6 +23,9 @@ const SUPERVISOR_NAME: &str = "supervisor.json";
 const INSTALL_NAME: &str = "installed.json";
 const MODEL_MARKER_NAME: &str = "model-config.json";
 const MODEL_SECRET_PROVIDER: &str = "uking-openclaw2-file";
+const NODE_STAGE_NAME: &str = "node-install-staging";
+const NODE_STAGE_MARKER: &str = ".uking-openclaw2-node-stage.json";
+const NODE_RUNTIME_MARKER: &str = ".uking-openclaw2-node-runtime.json";
 /// OpenClaw reserves the Gateway itself, browser-control (`base + 2`), then
 /// the managed Chromium CDP family (`base + 11` through `base + 110`). Keep
 /// a whole family exclusive: choosing only a free gateway port is insufficient.
@@ -155,6 +158,9 @@ fn install_file(p: &Paths) -> PathBuf {
 fn model_marker_file(p: &Paths) -> PathBuf { p.state.join(MODEL_MARKER_NAME) }
 fn model_secrets_dir(p: &Paths) -> PathBuf { p.state.join("secrets") }
 fn model_txn_root(p: &Paths) -> PathBuf { p.run.join("model-config-txn") }
+fn node_stage_dir(p: &Paths) -> PathBuf { p.run.join(NODE_STAGE_NAME) }
+fn node_stage_marker(p: &Paths) -> PathBuf { node_stage_dir(p).join(NODE_STAGE_MARKER) }
+fn node_runtime_marker(p: &Paths) -> PathBuf { p.node.join(NODE_RUNTIME_MARKER) }
 fn node_archive_file(p: &Paths, m: &RuntimeManifest) -> PathBuf {
     p.runtime.join(format!("node-v{}-win-x64.zip", m.node.version))
 }
@@ -303,6 +309,71 @@ fn integrity_ok(p: &Paths, m: &RuntimeManifest) -> bool {
         && verify_npm_integrity_file(&openclaw_archive_file(p, m), &m.openclaw.integrity).is_ok()
         && read_openclaw_version(p).as_deref() == Some(m.openclaw_version.as_str())
         && cli_file(p).is_file()
+}
+
+fn node_version_matches(actual: &str, expected: &str) -> bool {
+    actual.trim().trim_start_matches('v') == expected.trim().trim_start_matches('v')
+}
+
+fn node_install_marker(version: &str, kind: &str) -> Value {
+    json!({"schema_version":1,"owner":PROFILE,"kind":kind,"node_version":version})
+}
+
+fn marker_matches(path: &Path, version: &str, kind: &str) -> bool {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|marker| {
+            marker == node_install_marker(version, kind)
+        })
+}
+
+/// Only this explicitly marked directory is disposable.  A stale archive or
+/// arbitrary folder under the private root is not proof that we created it,
+/// so it remains intact and the retry fails closed with a useful diagnosis.
+fn clear_owned_node_stage(p: &Paths, m: &RuntimeManifest) -> Result<(), String> {
+    let stage = node_stage_dir(p);
+    if !stage.exists() {
+        return Ok(());
+    }
+    ensure_private_path(&stage, p)?;
+    if !stage.is_dir() || !marker_matches(&node_stage_marker(p), &m.node.version, "node-stage") {
+        return Err("OpenClaw2 发现未知或未标记的 Node staging，拒绝自动删除；请保留现场诊断".into());
+    }
+    fs::remove_dir_all(&stage).map_err(|e| format!("清理上次 OpenClaw2 Node staging 失败: {e}"))
+}
+
+enum PrivateNodeState {
+    Missing,
+    Ready,
+    Unknown,
+}
+
+fn private_node_state(p: &Paths, m: &RuntimeManifest) -> PrivateNodeState {
+    if !p.node.exists() {
+        return PrivateNodeState::Missing;
+    }
+    if !p.node.is_dir() || !node_exe(p).is_file() || !npm_exe(p).is_file() {
+        return PrivateNodeState::Unknown;
+    }
+    // A current install carries our runtime marker.  The one narrow legacy
+    // adoption path is backed by the pinned archive hash and the expected
+    // Node layout; it lets the previous adapter's interrupted second pass
+    // resume without ever deleting its non-empty runtime directory.
+    let marked = marker_matches(&node_runtime_marker(p), &m.node.version, "node-runtime");
+    let legacy_archive_proves_origin = verify_sha256_file(&node_archive_file(p, m), &m.node.windows_x64_sha256).is_ok();
+    if !(marked || legacy_archive_proves_origin) {
+        return PrivateNodeState::Unknown;
+    }
+    match read_node_version(p) {
+        Some(version) if node_version_matches(&version, &m.node.version) && node_supported(&version) => PrivateNodeState::Ready,
+        _ => PrivateNodeState::Unknown,
+    }
+}
+
+fn install_replay_ready(p: &Paths, m: &RuntimeManifest, node_version: Option<&str>) -> bool {
+    integrity_ok(p, m)
+        && node_version.is_some_and(|version| node_supported(version) && node_version_matches(version, &m.node.version))
 }
 
 fn verify_sha256_file(path: &Path, expected: &str) -> Result<(), String> {
@@ -617,16 +688,11 @@ pub fn prepare(port: Option<u16>) -> Result<Value, String> {
 pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String> {
     let ps = paths();
     let m = manifest()?;
-    if integrity_ok(&ps, &m)
-        && read_node_version(&ps)
-            .as_deref()
-            .map(node_supported)
-            .unwrap_or(false)
-        && read_openclaw_version(&ps).as_deref() == Some(m.openclaw_version.as_str())
-        && cli_file(&ps).is_file()
-    {
+    let complete_archives = integrity_ok(&ps, &m);
+    let node_version = complete_archives.then(|| read_node_version(&ps)).flatten();
+    if complete_archives && install_replay_ready(&ps, &m, node_version.as_deref()) {
         return Ok(
-            json!({"changed":false,"installed":true,"node_version":read_node_version(&ps),"openclaw_version":m.openclaw_version,"integrity_ok":true,"state_version":state_version()}),
+            json!({"changed":false,"installed":true,"node_version":node_version,"openclaw_version":m.openclaw_version,"integrity_ok":true,"state_version":state_version()}),
         );
     }
     create_layout(&ps)?;
@@ -637,32 +703,41 @@ pub fn install(progress: &crate::actions::ProgressSink) -> Result<Value, String>
     }
     #[cfg(windows)]
     {
-        let archive = node_archive_file(&ps, &m);
-        download(&m.node.windows_x64_url, &archive, Duration::from_secs(840))?;
-        if verify_sha256_file(&archive, &m.node.windows_x64_sha256).is_err() {
-            let _ = fs::remove_file(&archive);
-            return Err("OpenClaw2 Node SHA-256 不匹配，已拒绝安装".into());
+        match private_node_state(&ps, &m) {
+            PrivateNodeState::Ready => progress("复用已校验的 OpenClaw2 私有 Node runtime…"),
+            PrivateNodeState::Unknown => return Err("OpenClaw2 发现非空但未验证的私有 Node runtime，拒绝自动删除；请保留现场诊断".into()),
+            PrivateNodeState::Missing => {
+                clear_owned_node_stage(&ps, &m)?;
+                let archive = node_archive_file(&ps, &m);
+                if verify_sha256_file(&archive, &m.node.windows_x64_sha256).is_err() {
+                    download(&m.node.windows_x64_url, &archive, Duration::from_secs(840))?;
+                }
+                if verify_sha256_file(&archive, &m.node.windows_x64_sha256).is_err() {
+                    let _ = fs::remove_file(&archive);
+                    return Err("OpenClaw2 Node SHA-256 不匹配，已拒绝安装".into());
+                }
+                let stage = node_stage_dir(&ps);
+                fs::create_dir_all(&stage).map_err(|e| format!("创建 OpenClaw2 Node staging 失败: {e}"))?;
+                atomic_write(&node_stage_marker(&ps), serde_json::to_vec_pretty(&node_install_marker(&m.node.version, "node-stage")).unwrap().as_slice(), &ps)?;
+                run_status(
+                    Command::new("tar").args([
+                        "-xf",
+                        &archive.to_string_lossy(),
+                        "-C",
+                        &stage.to_string_lossy(),
+                    ]),
+                    Duration::from_secs(120),
+                    "解压 OpenClaw2 Node",
+                )?;
+                let source = stage.join(format!("node-v{}-win-x64", m.node.version));
+                if !source.join("node.exe").is_file() || !source.join("npm.cmd").is_file() {
+                    return Err("OpenClaw2 Node staging 解压产物不完整；已保留私有诊断现场以便安全重试".into());
+                }
+                atomic_write(&source.join(NODE_RUNTIME_MARKER), serde_json::to_vec_pretty(&node_install_marker(&m.node.version, "node-runtime")).unwrap().as_slice(), &ps)?;
+                fs::rename(&source, &ps.node).map_err(|e| format!("整理 OpenClaw2 Node staging 失败: {e}"))?;
+                clear_owned_node_stage(&ps, &m)?;
+            }
         }
-        let extract = ps.run.join("node-extract");
-        let _ = fs::remove_dir_all(&extract);
-        fs::create_dir_all(&extract).map_err(|e| e.to_string())?;
-        run_status(
-            Command::new("tar").args([
-                "-xf",
-                &archive.to_string_lossy(),
-                "-C",
-                &extract.to_string_lossy(),
-            ]),
-            Duration::from_secs(120),
-            "解压 OpenClaw2 Node",
-        )?;
-        let source = extract.join(format!("node-v{}-win-x64", m.node.version));
-        if !source.join("node.exe").is_file() {
-            return Err("OpenClaw2 Node 解压产物不完整".into());
-        }
-        let _ = fs::remove_dir_all(&ps.node);
-        fs::rename(&source, &ps.node).map_err(|e| format!("整理 OpenClaw2 Node 失败: {e}"))?;
-        let _ = fs::remove_dir_all(&extract);
     }
     let version = read_node_version(&ps).ok_or("OpenClaw2 私有 Node 无法启动")?;
     if !node_supported(&version) {
@@ -1456,6 +1531,21 @@ pub fn action_launch(_: &str, _: Value, _: &crate::actions::ProgressSink) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn test_runtime_manifest() -> RuntimeManifest {
+        RuntimeManifest {
+            schema_version: 1,
+            openclaw_version: "2026.8.1-test".into(),
+            node: RuntimeNode {
+                version: "24.15.0".into(),
+                windows_x64_url: "https://example.invalid/node.zip".into(),
+                windows_x64_sha256: crate::installer::sha256_hex_bytes(b"node-archive"),
+            },
+            openclaw: RuntimeOpenClaw {
+                tarball_url: "https://example.invalid/openclaw.tgz".into(),
+                integrity: "sha512-3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q86A4qmslPpUyknw==".into(),
+            },
+        }
+    }
     #[test]
     fn node_ranges_are_exact() {
         for v in ["v22.22.2", "v23.0.0", "v24.14.9", "v25.8.9"] {
@@ -1593,6 +1683,43 @@ mod tests {
         assert_eq!(serde_json::from_str::<Value>(&out.stdout).unwrap()["ok"], true);
         assert!(out.stderr.contains("diagnostic-secret"));
         assert!(!out.stdout.contains("diagnostic-secret"));
+    }
+    #[test]
+    fn interrupted_owned_node_staging_is_removed_for_a_safe_retry() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-owned-stage-{}", now_nanos())));
+        let m = test_runtime_manifest();
+        create_layout(&p).unwrap();
+        fs::create_dir_all(node_stage_dir(&p)).unwrap();
+        atomic_write(&node_stage_marker(&p), serde_json::to_vec(&node_install_marker(&m.node.version, "node-stage")).unwrap().as_slice(), &p).unwrap();
+        fs::write(node_stage_dir(&p).join("interrupted-partial.bin"), b"partial").unwrap();
+        clear_owned_node_stage(&p, &m).unwrap();
+        assert!(!node_stage_dir(&p).exists(), "只清理带本适配器标记的 staging");
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn unknown_nonempty_node_runtime_is_preserved_and_refused() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-unknown-runtime-{}", now_nanos())));
+        let m = test_runtime_manifest();
+        create_layout(&p).unwrap();
+        let foreign = p.node.join("foreign-sentinel.txt");
+        fs::create_dir_all(&p.node).unwrap();
+        fs::write(&foreign, b"do-not-delete").unwrap();
+        assert!(matches!(private_node_state(&p, &m), PrivateNodeState::Unknown));
+        assert_eq!(fs::read(&foreign).unwrap(), b"do-not-delete");
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn complete_runtime_replay_short_circuits_before_any_download() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-replay-{}", now_nanos())));
+        let m = test_runtime_manifest();
+        create_layout(&p).unwrap();
+        fs::write(node_archive_file(&p, &m), b"node-archive").unwrap();
+        fs::write(openclaw_archive_file(&p, &m), b"abc").unwrap();
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::write(cli_file(&p), b"// pinned entry").unwrap();
+        fs::write(p.app.join("node_modules/openclaw/package.json"), serde_json::to_vec(&json!({"version":m.openclaw_version})).unwrap()).unwrap();
+        assert!(install_replay_ready(&p, &m, Some("v24.15.0")), "完整固定产物必须走幂等分支，不触网");
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[test]
     fn gateway_status_redaction_is_recursive_and_replaces_private_token_values() {
