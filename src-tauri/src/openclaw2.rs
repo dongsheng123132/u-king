@@ -672,9 +672,14 @@ pub fn preflight() -> Result<Value, String> {
         .unwrap_or_default();
     let mut warnings = Vec::<String>::new();
     let mut doctor = json!({"ran":false,"ok":false});
-    if report.get("installed").and_then(Value::as_bool) == Some(true)
-        && report.get("prepared").and_then(Value::as_bool) == Some(true)
-    {
+    let runtime_ready = report.get("installed").and_then(Value::as_bool) == Some(true)
+        && report.get("prepared").and_then(Value::as_bool) == Some(true);
+    let (profile_port, profile_pid, profile_owned) = supervisor_status(&ps)?;
+    // This is deliberately a fresh status snapshot, rather than the inspect
+    // result. A caller can distinguish "not checked because runtime is not
+    // ready" from "checked and gateway is not running".
+    let mut gateway = json!({"checked":false,"running":false,"port":profile_port,"pid":profile_pid,"owned":profile_owned,"status":Value::Null});
+    if runtime_ready {
         let out = run_oc(
             &ps,
             &["doctor", "--lint", "--json"],
@@ -685,17 +690,22 @@ pub fn preflight() -> Result<Value, String> {
             warnings.push("OpenClaw2 doctor --lint 未通过；未执行 fix".into());
         }
         if let Some(port) = parse_profile(&ps)? {
+            gateway["checked"] = json!(true);
+            gateway["port"] = json!(port);
             if port_listening(port) {
-                let g = gateway_status(&ps, port)?;
-                if !g.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+                gateway["running"] = json!(true);
+                let status = gateway_status(&ps, port)
+                    .unwrap_or_else(|_| json!({"ok":false,"rpcOk":false,"degraded":false,"status_error":true}));
+                if !status.get("ok").and_then(Value::as_bool).unwrap_or(false) {
                     blockers.push(Value::String("OpenClaw2 Gateway RPC health 未通过".into()));
                 }
+                gateway["status"] = status;
             }
         }
     }
     let ready = blockers.is_empty() && doctor.get("ok").and_then(Value::as_bool).unwrap_or(false);
     Ok(
-        json!({"ok":ready,"ready":ready,"blockers":blockers,"warnings":warnings,"runtime":report["runtime"],"config":{"private":report["prepared"],"profile":PROFILE},"doctor":doctor,"gateway":report["gateway"]}),
+        json!({"ok":ready,"ready":ready,"blockers":blockers,"warnings":warnings,"runtime":report["runtime"],"config":{"private":report["prepared"],"profile":PROFILE},"doctor":doctor,"gateway":gateway}),
     )
 }
 
@@ -734,29 +744,39 @@ pub fn launch() -> Result<Value, String> {
         return Err("OpenClaw2 尚未准备私有 profile".into());
     }
     let port = parse_profile(&ps)?.ok_or("OpenClaw2 profile 缺少端口")?;
+    launch_private_gateway(&ps, port)
+}
+
+/// Start only the private command line. The public Action performs install
+/// and profile validation first; keeping the spawn/ownership path separate
+/// makes its race-handling testable against a real private child process.
+fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
     if port_listening(port) {
-        let (_, _, owned) = supervisor_status(&ps)?;
+        let (_, _, owned) = supervisor_status(ps)?;
         if owned {
-            let h = gateway_status(&ps, port)?;
+            let h = gateway_status(ps, port)?;
             return Ok(
-                json!({"changed":false,"running":true,"ready":h["ok"],"pid":supervisor_status(&ps)?.1,"port":port,"dashboard_url":format!("http://127.0.0.1:{port}/"),"health":h,"state_version":state_version()}),
+                json!({"changed":false,"running":true,"ready":h["ok"],"pid":supervisor_status(ps)?.1,"port":port,"dashboard_url":format!("http://127.0.0.1:{port}/"),"health":h,"state_version":state_version()}),
             );
         }
         return Err(format!("OpenClaw2 端口 {port} 被外部进程占用，拒绝接管"));
     }
-    // Hold the complete derived family until the child has been spawned. This
-    // closes the race where `base` is free but browser-control/CDP is not.
+    // Verify the complete derived family together, then release it immediately
+    // before spawning. Holding listeners through spawn makes Gateway conflict
+    // with its own base/browser-control/CDP listeners. The unavoidable tiny
+    // TOCTOU window is closed below by health plus strict process ownership.
     let ports = reserve_port_family(port)?;
-    let node = node_exe(&ps);
+    drop(ports);
+    let node = node_exe(ps);
     let mut cmd = Command::new(node);
-    let argv = gateway_argv(&ps, port);
+    let argv = gateway_argv(ps, port);
     cmd.args(&argv)
     .current_dir(&ps.workspace)
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null())
     .env_remove("OPENCLAW_HOME");
-    for (key, value) in managed_env(&ps) {
+    for (key, value) in managed_env(ps) {
         cmd.env(key, value);
     }
     #[cfg(windows)]
@@ -767,7 +787,6 @@ pub fn launch() -> Result<Value, String> {
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 OpenClaw2 Gateway 失败: {e}"))?;
-    drop(ports);
     let identity = (0..10)
         .find_map(|_| {
             let found = process_identity(child.id());
@@ -790,12 +809,12 @@ pub fn launch() -> Result<Value, String> {
         "argv":identity.command_line,
         "state_dir":state_dir,
     });
-    write_supervisor_or_kill(&mut child, &ps, &marker)?;
+    write_supervisor_or_kill(&mut child, ps, &marker)?;
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut health = json!({"ok":false,"degraded":false,"rpcOk":false});
     while Instant::now() < deadline {
         if port_listening(port) {
-            health = gateway_status(&ps, port)
+            health = gateway_status(ps, port)
                 .unwrap_or_else(|_| json!({"ok":false,"degraded":false,"rpcOk":false}));
             if health.get("ok").and_then(Value::as_bool) == Some(true) {
                 break;
@@ -806,6 +825,15 @@ pub fn launch() -> Result<Value, String> {
     let ready = health.get("ok").and_then(Value::as_bool) == Some(true)
         && health.get("degraded").and_then(Value::as_bool) != Some(true)
         && health.get("rpcOk").and_then(Value::as_bool) == Some(true);
+    // The listeners had to be released before spawn, so do not trust that the
+    // opened port still belongs to us. Re-check the exact image/argv/state and
+    // creation identity after the health probe; otherwise fail closed.
+    let (_, observed_pid, owned) = supervisor_status(ps)?;
+    if !owned || observed_pid != Some(child.id()) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("OpenClaw2 Gateway 启动后进程归属核对失败，已终止".into());
+    }
     Ok(
         json!({"changed":true,"running":port_listening(port),"ready":ready,"pid":child.id(),"port":port,"dashboard_url":format!("http://127.0.0.1:{port}/"),"health":health,"state_version":state_version()}),
     )
@@ -856,11 +884,12 @@ fn identity_matches(p: &Paths, port: u16, marker: &Value, identity: &ProcessIden
     let marker_state = marker.get("state_dir").and_then(Value::as_str);
     let marker_started = marker.get("process_started").and_then(Value::as_str);
     let image = PathBuf::from(&identity.image).canonicalize().unwrap_or_else(|_| PathBuf::from(&identity.image));
-    let command = identity.command_line.as_str();
+    let command = identity.command_line.to_ascii_lowercase();
+    let expected_cli_arg = command_path(&expected_cli).to_ascii_lowercase();
     image == expected_node
         && marker_state == Some(expected_state.to_string_lossy().as_ref())
         && marker_started == Some(identity.started.as_str())
-        && command.contains(expected_cli.to_string_lossy().as_ref())
+        && command.contains(&expected_cli_arg)
         && command.contains("--profile")
         && command.contains(PROFILE)
         && command.contains("gateway")
@@ -949,7 +978,43 @@ fn gateway_status(p: &Paths, port: u16) -> Result<Value, String> {
     v["rpcOk"] = json!(rpc);
     v["degraded"] = json!(degraded);
     v["ok"] = json!(ok);
+    redact_gateway_json(&mut v, private_gateway_token(p).as_deref());
     Ok(v)
+}
+
+/// `canonicalize` on Windows uses the extended `\\?\` spelling, while WMI
+/// reports the normal spelling in CommandLine. Compare that argument in its
+/// shell-visible form; image and state still use canonical paths above.
+fn command_path(path: &Path) -> String {
+    let rendered = path.to_string_lossy().replace('/', "\\");
+    rendered
+        .strip_prefix(r"\\?\")
+        .unwrap_or(rendered.as_str())
+        .to_owned()
+}
+fn private_gateway_token(p: &Paths) -> Option<String> {
+    fs::read_to_string(config_file(p))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|config| config.pointer("/gateway/auth/token").and_then(Value::as_str).map(str::to_owned))
+}
+/// Gateway status is Action output, so it must never carry credentials even
+/// when an upstream version puts them into a deeply nested diagnostics object.
+fn redact_gateway_json(value: &mut Value, private_token: Option<&str>) {
+    match value {
+        Value::Object(object) => for (key, nested) in object.iter_mut() {
+            let lower = key.to_ascii_lowercase();
+            if ["token", "secret", "password", "authorization", "cookie", "credential", "api_key", "apikey"]
+                .iter().any(|needle| lower.contains(needle)) {
+                *nested = Value::String("[redacted]".into());
+            } else { redact_gateway_json(nested, private_token); }
+        },
+        Value::Array(items) => for nested in items { redact_gateway_json(nested, private_token); },
+        Value::String(text) => if let Some(token) = private_token.filter(|token| !token.is_empty()) {
+            if text.contains(token) { *text = text.replace(token, "[redacted]"); }
+        },
+        _ => {}
+    }
 }
 fn parse_doctor(text: &str, code: Option<i32>) -> Value {
     let mut v: Value = serde_json::from_str(text).unwrap_or_else(|_| json!({"parse_error":true}));
@@ -1230,6 +1295,74 @@ mod tests {
         assert_eq!(serde_json::from_str::<Value>(&out.stdout).unwrap()["ok"], true);
         assert!(out.stderr.contains("diagnostic-secret"));
         assert!(!out.stdout.contains("diagnostic-secret"));
+    }
+    #[test]
+    fn gateway_status_redaction_is_recursive_and_replaces_private_token_values() {
+        let token = "test-private-gateway-token";
+        let mut status = json!({"token":token,"nested":{"accessToken":token,"url":format!("ws://127.0.0.1/?token={token}"),"items":[{"credentials":{"cookie":token}}]}});
+        redact_gateway_json(&mut status, Some(token));
+        let wire = serde_json::to_string(&status).unwrap();
+        assert!(!wire.contains(token));
+        assert_eq!(status["token"], "[redacted]");
+        assert_eq!(status["nested"]["accessToken"], "[redacted]");
+        assert_eq!(status["nested"]["items"][0]["credentials"], "[redacted]");
+    }
+    #[test]
+    fn preflight_explicitly_reports_unchecked_not_running_without_private_runtime() {
+        let sb = crate::testsandbox::enter_raw("openclaw2-preflight-not-running");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::remove_var("HOME");
+        let result = preflight().unwrap();
+        assert_eq!(result["gateway"]["checked"], false);
+        assert_eq!(result["gateway"]["running"], false);
+        assert!(result["gateway"].get("status").is_some());
+    }
+    #[cfg(windows)]
+    fn private_node_for_gateway_test(p: &Paths) -> Option<PathBuf> {
+        let out = Command::new("where.exe").arg("node.exe").output().ok()?;
+        let source = String::from_utf8_lossy(&out.stdout).lines().next().map(str::trim)
+            .filter(|line| !line.is_empty()).map(PathBuf::from)?;
+        let destination = node_exe(p);
+        fs::create_dir_all(destination.parent()?).ok()?;
+        fs::copy(source, &destination).ok()?;
+        Some(destination)
+    }
+    #[cfg(windows)]
+    fn unused_gateway_port_base() -> u16 {
+        (32_000u16..64_000u16).step_by(131)
+            .find(|base| reserve_port_family(*base).is_ok())
+            .expect("应能找到完整可用的 OpenClaw2 端口族")
+    }
+    #[cfg(windows)]
+    #[test]
+    fn private_gateway_starts_after_port_reservations_are_released() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-real-gateway-{}-{}", std::process::id(), now_nanos())));
+        create_layout(&p).unwrap();
+        let Some(node) = private_node_for_gateway_test(&p) else {
+            let _ = fs::remove_dir_all(&p.root);
+            return;
+        };
+        assert_eq!(node, node_exe(&p));
+        let port = unused_gateway_port_base();
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::write(cli_file(&p), r#"import net from 'node:net';
+const args = process.argv.slice(2);
+if (args.includes('status')) { console.log(JSON.stringify({rpcOk:true,degraded:false,nested:{token:'fake-status-token'}})); process.exit(0); }
+const index = args.indexOf('--port'); const port = Number(args[index + 1]);
+const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval(() => {}, 1000);
+"#).unwrap();
+        fs::write(profile_file(&p), serde_json::to_string(&json!({"schema_version":1,"profile":PROFILE,"port":port})).unwrap()).unwrap();
+        fs::write(config_file(&p), serde_json::to_string(&json!({"gateway":{"auth":{"token":"fake-status-token"}}})).unwrap()).unwrap();
+        let launched = launch_private_gateway(&p, port).unwrap();
+        let pid = launched["pid"].as_u64().unwrap() as u32;
+        assert_eq!(launched["running"], true);
+        assert_eq!(launched["ready"], true);
+        assert_eq!(launched["health"]["nested"]["token"], "[redacted]");
+        assert_eq!(supervisor_status(&p).unwrap(), (Some(port), Some(pid), true));
+        let _ = Command::new("taskkill.exe").args(["/PID", &pid.to_string(), "/F", "/T"]).output();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while process_identity(pid).is_some() && Instant::now() < deadline { std::thread::sleep(Duration::from_millis(50)); }
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[cfg(windows)]
     #[test]
