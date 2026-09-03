@@ -71,23 +71,27 @@ fn model_mutex() -> &'static Mutex<()> {
 }
 
 #[cfg(test)]
-fn model_test_fault_slot() -> &'static Mutex<Option<String>> {
-    static FAULT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+fn model_test_fault_slot() -> &'static Mutex<Option<(PathBuf, String)>> {
+    static FAULT: OnceLock<Mutex<Option<(PathBuf, String)>>> = OnceLock::new();
     FAULT.get_or_init(|| Mutex::new(None))
 }
 
 #[cfg(test)]
-fn model_test_fault(stage: &str) -> bool {
-    model_test_fault_slot().lock().ok().and_then(|value| value.clone()).as_deref() == Some(stage)
+fn model_test_fault(p: &Paths, stage: &str) -> bool {
+    model_test_fault_slot()
+        .lock()
+        .ok()
+        .and_then(|value| value.clone())
+        .is_some_and(|(root, active)| root == p.root && active == stage)
 }
 
 #[cfg(not(test))]
-fn model_test_fault(_: &str) -> bool { false }
+fn model_test_fault(_: &Paths, _: &str) -> bool { false }
 
 #[cfg(test)]
-fn set_model_test_fault(stage: Option<&str>) {
+fn set_model_test_fault(p: &Paths, stage: Option<&str>) {
     let mut fault = model_test_fault_slot().lock().unwrap();
-    *fault = stage.map(str::to_owned);
+    *fault = stage.map(|stage| (p.root.clone(), stage.to_owned()));
 }
 
 fn paths() -> Paths {
@@ -1013,11 +1017,11 @@ fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool)
         let probe = run_oc_transaction(&p, &candidate, &txn_state, &["infer", "model", "run", "--local", "--model", &reference, "--prompt", "Reply exactly: openclaw2-probe-ok", "--json"], Duration::from_secs(90))?;
         if probe.status != Some(0) || serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针失败".into()); }
         atomic_write(&config_file(&p), &candidate_bytes, &p)?;
-        if model_test_fault("live_commit") { return Err("validation_failed: OpenClaw2 live 配置提交注入失败".into()); }
+        if model_test_fault(&p, "live_commit") { return Err("validation_failed: OpenClaw2 live 配置提交注入失败".into()); }
         if fs::read(config_file(&p)).map_err(|_| "rollback_failed: OpenClaw2 live 配置回读失败")? != candidate_bytes { return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into()); }
         let probe_view = json!({"ran":true,"ok":true,"latency_ms":began.elapsed().as_millis() as u64});
         let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
-        if model_test_fault("marker_commit") { return Err("validation_failed: OpenClaw2 model marker 提交注入失败".into()); }
+        if model_test_fault(&p, "marker_commit") { return Err("validation_failed: OpenClaw2 model marker 提交注入失败".into()); }
         atomic_write(&model_marker_file(&p), serde_json::to_vec_pretty(&marker).unwrap().as_slice(), &p)?;
         if let Some(old) = old_marker.bytes.as_ref().and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok()).and_then(|m| m.get("secret_basename").and_then(Value::as_str).map(str::to_owned)) {
             let old = model_secrets_dir(&p).join(old);
@@ -1825,9 +1829,9 @@ console.log(JSON.stringify(args.includes('infer') ? {reply:'openclaw2-probe-ok'}
         for (fault, expected) in [("validate", "validation_failed:"), ("infer", "probe_failed:"), ("live_commit", "validation_failed:"), ("marker_commit", "validation_failed:")] {
             let file_fault = p.workspace.join("model-fault.txt");
             if matches!(fault, "validate" | "infer") { fs::write(&file_fault, fault).unwrap(); } else { let _ = fs::remove_file(&file_fault); }
-            if matches!(fault, "live_commit" | "marker_commit") { set_model_test_fault(Some(fault)); }
+            if matches!(fault, "live_commit" | "marker_commit") { set_model_test_fault(&p, Some(fault)); }
             let error = configure_model_at(&p, b(), false).unwrap_err();
-            set_model_test_fault(None);
+            set_model_test_fault(&p, None);
             let _ = fs::remove_file(&file_fault);
             assert!(error.starts_with(expected), "{fault}: {error}");
             for (path, before) in [(&config_file(&p), &before_config), (&model_marker_file(&p), &before_marker), (&old_secret, &before_secret)] {
