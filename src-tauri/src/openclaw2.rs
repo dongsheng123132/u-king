@@ -1673,5 +1673,15 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
         )
         .unwrap_err();
         assert!(conflict.contains("conflict:"));
+        let confirmation = crate::actions::run(
+            crate::actions::OPENCLAW2_CONFIGURE_MODEL,
+            json!({"provider_id":"xiapan"}),
+        ).unwrap_err();
+        assert!(confirmation.contains("confirmation_required:"));
+        let model_unknown = crate::actions::run(
+            crate::actions::OPENCLAW2_CONFIGURE_MODEL,
+            json!({"confirm":true,"provider_id":"xiapan","unknown":true}),
+        ).unwrap_err();
+        assert!(model_unknown.contains("未知字段"));
     }
 }
