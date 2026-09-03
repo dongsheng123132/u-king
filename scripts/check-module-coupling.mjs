@@ -44,6 +44,7 @@ const BASELINE_FILE = "scripts/module-coupling-baseline.json";
  */
 const COMMON = new Set([
   "installer", // curl / search_paths / system_tool / CREATE_NO_WINDOW，唯一的进程与下载层
+  "model_route", // secret-bearing route DTO shared by resolver and isolated runtime adapters
   "ulog", // 运行日志
   "actions", // 影核协议核心（零业务 import，本身不依赖任何功能模块）
   "fs", // 文件系统小工具

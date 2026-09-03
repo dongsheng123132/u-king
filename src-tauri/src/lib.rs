@@ -33,6 +33,7 @@ mod expert;
 mod hire;
 mod feedback;
 mod metrics;
+mod model_route;
 mod video;
 mod vision;
 mod reel;

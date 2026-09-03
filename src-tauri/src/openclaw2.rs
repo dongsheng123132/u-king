@@ -60,11 +60,31 @@ struct Paths {
     logs: PathBuf,
 }
 
-pub(crate) use crate::installer::OpenClaw2ModelRoute as ModelRoute;
+pub(crate) use crate::model_route::OpenClaw2ModelRoute as ModelRoute;
 
 fn model_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+fn model_test_fault_slot() -> &'static Mutex<Option<String>> {
+    static FAULT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    FAULT.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(test)]
+fn model_test_fault(stage: &str) -> bool {
+    model_test_fault_slot().lock().ok().and_then(|value| value.clone()).as_deref() == Some(stage)
+}
+
+#[cfg(not(test))]
+fn model_test_fault(_: &str) -> bool { false }
+
+#[cfg(test)]
+fn set_model_test_fault(stage: Option<&str>) {
+    let mut fault = model_test_fault_slot().lock().unwrap();
+    *fault = stage.map(str::to_owned);
 }
 
 fn paths() -> Paths {
@@ -470,7 +490,10 @@ fn fill_random(bytes: &mut [u8]) -> Result<(), String> {
 }
 
 pub fn state_version() -> String {
-    let p = paths();
+    state_version_for(&paths())
+}
+
+fn state_version_for(p: &Paths) -> String {
     let mut snapshot = String::new();
     for file in [
         profile_file(&p),
@@ -483,6 +506,20 @@ pub fn state_version() -> String {
         snapshot.push('\n');
         match fs::read(&file) {
             Ok(b) => snapshot.push_str(&crate::installer::sha256_hex_bytes(&b)),
+            Err(_) => snapshot.push('-'),
+        }
+        snapshot.push('\n');
+    }
+    // The marker itself only names a secret. Hash the currently referenced
+    // secret too, so an out-of-band key replacement invalidates optimistic
+    // state rather than letting a stale configure request overwrite it.
+    if let Some(name) = fs::read_to_string(model_marker_file(p)).ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|marker| marker.get("secret_basename").and_then(Value::as_str).map(str::to_owned)) {
+        let secret = model_secrets_dir(p).join(name);
+        snapshot.push_str("current-model-secret\n");
+        match fs::read(secret) {
+            Ok(bytes) => snapshot.push_str(&crate::installer::sha256_hex_bytes(&bytes)),
             Err(_) => snapshot.push('-'),
         }
         snapshot.push('\n');
@@ -728,35 +765,52 @@ fn model_marker_matches(p: &Paths, route: &ModelRoute, provider_key: &str) -> Op
     (secret.get("api_key").and_then(Value::as_str) == Some(route.key.as_str())).then_some(marker)
 }
 
-fn model_marker_owns_provider(p: &Paths, provider_key: &str) -> bool {
+fn model_owned_marker(p: &Paths) -> Option<Value> {
     fs::read_to_string(model_marker_file(p))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .is_some_and(|marker| {
-            marker.get("owner").and_then(Value::as_str) == Some(PROFILE)
-                && marker.get("provider_key").and_then(Value::as_str) == Some(provider_key)
-        })
+        .filter(|marker| marker.get("owner").and_then(Value::as_str) == Some(PROFILE))
 }
 
 fn model_candidate_config(p: &Paths, route: &ModelRoute, provider_key: &str, secret_file: &Path) -> Result<Vec<u8>, String> {
+    // The marker is the capability that lets this adapter replace *its own*
+    // prior generation.  It is intentionally not scoped to the new key: an
+    // endpoint/provider switch derives a different key but must still remove
+    // the old private slot atomically.  No marker means every occupied slot
+    // belongs to somebody else and is therefore untouchable.
+    let owned_marker = model_owned_marker(p);
+    let old_provider_key = owned_marker.as_ref().and_then(|m| m.get("provider_key").and_then(Value::as_str)).map(str::to_owned);
+    let old_model = owned_marker.as_ref().and_then(|m| m.get("model").and_then(Value::as_str)).map(str::to_owned);
+    let old_ref = old_provider_key.as_deref().zip(old_model.as_deref()).map(|(key, model)| model_ref(key, model));
     let mut config: Value = serde_json::from_slice(&fs::read(config_file(p)).map_err(|_| "not_ready: OpenClaw2 私有配置不可读")?)
         .map_err(|_| "not_ready: OpenClaw2 私有配置已损坏")?;
     let root = config.as_object_mut().ok_or("not_ready: OpenClaw2 私有配置形状无效")?;
     let models = root.entry("models").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 models 形状无效")?;
     if !models.contains_key("mode") { models.insert("mode".into(), json!("merge")); }
     let providers = models.entry("providers").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 models.providers 形状无效")?;
-    if providers.contains_key(provider_key) && !model_marker_owns_provider(p, provider_key) {
+    if providers.contains_key(provider_key) && old_provider_key.as_deref() != Some(provider_key) {
         return Err("validation_failed: OpenClaw2 同名 model provider 不属于本适配器，拒绝覆盖".into());
     }
+    if let Some(old) = old_provider_key.as_deref().filter(|old| *old != provider_key) {
+        providers.remove(old);
+    }
     providers.insert(provider_key.into(), json!({"baseUrl":route.base,"api":"openai-completions","apiKey":{"source":"file","provider":MODEL_SECRET_PROVIDER,"id":"api_key"},"models":[{"id":route.model,"name":route.model}]}));
-    models.insert("primary".into(), json!(model_ref(provider_key, &route.model)));
+    // `models.primary` was an early adapter mistake.  Remove only the exact
+    // value that our own marker proves we wrote; preserve any foreign value.
+    if models.get("primary").and_then(Value::as_str) == old_ref.as_deref() {
+        models.remove("primary");
+    }
     let agents = root.entry("agents").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents 形状无效")?;
     let defaults = agents.entry("defaults").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents.defaults 形状无效")?;
     let default_models = defaults.entry("models").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents.defaults.models 形状无效")?;
-    default_models.insert(model_ref(provider_key, &route.model), json!({}));
+    if let Some(old) = old_ref.as_deref() { default_models.remove(old); }
+    let reference = model_ref(provider_key, &route.model);
+    default_models.insert(reference.clone(), json!({}));
+    let default_model = defaults.entry("model").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 agents.defaults.model 形状无效")?;
+    default_model.insert("primary".into(), json!(reference));
     let secrets = root.entry("secrets").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 secrets 形状无效")?;
     let secret_providers = secrets.entry("providers").or_insert_with(|| json!({})).as_object_mut().ok_or("not_ready: OpenClaw2 secrets.providers 形状无效")?;
-    if secret_providers.contains_key(MODEL_SECRET_PROVIDER) && !model_marker_owns_provider(p, provider_key) {
+    if secret_providers.contains_key(MODEL_SECRET_PROVIDER) && owned_marker.is_none() {
         return Err("validation_failed: OpenClaw2 file secret provider 不属于本适配器，拒绝覆盖".into());
     }
     secret_providers.insert(MODEL_SECRET_PROVIDER.into(), json!({"source":"file","path":secret_file,"mode":"json"}));
@@ -778,13 +832,54 @@ fn run_oc_transaction(p: &Paths, candidate: &Path, txn_state: &Path, args: &[&st
     run_capture(&node, &refs, &refs_env, &p.workspace, timeout)
 }
 
-fn rollback_model_config(p: &Paths, old_config: &[u8], old_marker: Option<&[u8]>, new_secret: &Path, txn: &Path) -> Result<(), String> {
-    atomic_write(&config_file(p), old_config, p)?;
-    match old_marker {
-        Some(bytes) => atomic_write(&model_marker_file(p), bytes, p)?,
-        None if model_marker_file(p).exists() => fs::remove_file(model_marker_file(p)).map_err(|_| "无法移除失败的 model marker")?,
+#[derive(Clone)]
+struct FileSnapshot {
+    bytes: Option<Vec<u8>>,
+    modified: Option<SystemTime>,
+}
+
+fn snapshot_file(path: &Path) -> FileSnapshot {
+    FileSnapshot {
+        bytes: fs::read(path).ok(),
+        modified: fs::metadata(path).ok().and_then(|meta| meta.modified().ok()),
+    }
+}
+
+fn restore_file_snapshot(p: &Paths, path: &Path, snapshot: &FileSnapshot) -> Result<(), String> {
+    match &snapshot.bytes {
+        Some(bytes) => {
+            atomic_write(path, bytes, p)?;
+            if let Some(modified) = snapshot.modified { restore_file_mtime(path, modified)?; }
+        }
+        None if path.exists() => fs::remove_file(path).map_err(|_| "无法移除失败的 OpenClaw2 model 文件")?,
         None => {}
     }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn restore_file_mtime(path: &Path, modified: SystemTime) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::os::windows::io::AsRawHandle;
+    #[repr(C)]
+    struct FileTime { low: u32, high: u32 }
+    #[link(name = "kernel32")]
+    unsafe extern "system" { fn SetFileTime(file: isize, creation: *const FileTime, access: *const FileTime, write: *const FileTime) -> i32; }
+    let ticks = modified.duration_since(UNIX_EPOCH).map_err(|_| "无法恢复 OpenClaw2 model 文件时间")?.as_nanos() / 100
+        + 116_444_736_000_000_000u128;
+    let time = FileTime { low: ticks as u32, high: (ticks >> 32) as u32 };
+    let file = OpenOptions::new().write(true).open(path).map_err(|_| "无法恢复 OpenClaw2 model 文件时间")?;
+    if unsafe { SetFileTime(file.as_raw_handle() as isize, std::ptr::null(), std::ptr::null(), &time) } == 0 {
+        Err("无法恢复 OpenClaw2 model 文件时间".into())
+    } else { Ok(()) }
+}
+
+#[cfg(not(windows))]
+fn restore_file_mtime(_: &Path, _: SystemTime) -> Result<(), String> { Ok(()) }
+
+fn rollback_model_config(p: &Paths, old_config: &FileSnapshot, old_marker: &FileSnapshot, new_secret: &Path, txn: &Path) -> Result<(), String> {
+    restore_file_snapshot(p, &config_file(p), old_config)?;
+    restore_file_snapshot(p, &model_marker_file(p), old_marker)?;
     if new_secret.exists() { fs::remove_file(new_secret).map_err(|_| "无法清理失败的 model secret")?; }
     if txn.exists() { fs::remove_dir_all(txn).map_err(|_| "无法清理失败的 model transaction")?; }
     Ok(())
@@ -824,8 +919,9 @@ fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool)
     let txn_state = txn.join("state");
     ensure_private_path(&txn, &p)?;
     fs::create_dir_all(&txn_state).map_err(|_| "validation_failed: 无法创建 OpenClaw2 model transaction")?;
-    let old_config = fs::read(config_file(&p)).map_err(|_| "not_ready: OpenClaw2 私有配置不可读")?;
-    let old_marker = fs::read(model_marker_file(&p)).ok();
+    let old_config = snapshot_file(&config_file(&p));
+    if old_config.bytes.is_none() { return Err("not_ready: OpenClaw2 私有配置不可读".into()); }
+    let old_marker = snapshot_file(&model_marker_file(&p));
     let secret = model_secret_file(&p, &nonce);
     let result = (|| -> Result<Value, String> {
         atomic_write(&secret, serde_json::to_vec(&json!({"api_key":route.key})).unwrap().as_slice(), &p)?;
@@ -842,11 +938,13 @@ fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool)
         let probe = run_oc_transaction(&p, &candidate, &txn_state, &["infer", "model", "run", "--local", "--model", &reference, "--prompt", "Reply exactly: openclaw2-probe-ok", "--json"], Duration::from_secs(90))?;
         if probe.status != Some(0) || serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针失败".into()); }
         atomic_write(&config_file(&p), &candidate_bytes, &p)?;
+        if model_test_fault("live_commit") { return Err("validation_failed: OpenClaw2 live 配置提交注入失败".into()); }
         if fs::read(config_file(&p)).map_err(|_| "rollback_failed: OpenClaw2 live 配置回读失败")? != candidate_bytes { return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into()); }
         let probe_view = json!({"ran":true,"ok":true,"latency_ms":began.elapsed().as_millis() as u64});
         let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
+        if model_test_fault("marker_commit") { return Err("validation_failed: OpenClaw2 model marker 提交注入失败".into()); }
         atomic_write(&model_marker_file(&p), serde_json::to_vec_pretty(&marker).unwrap().as_slice(), &p)?;
-        if let Some(old) = old_marker.as_ref().and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok()).and_then(|m| m.get("secret_basename").and_then(Value::as_str).map(str::to_owned)) {
+        if let Some(old) = old_marker.bytes.as_ref().and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok()).and_then(|m| m.get("secret_basename").and_then(Value::as_str).map(str::to_owned)) {
             let old = model_secrets_dir(&p).join(old);
             if old != secret && old.file_name().and_then(|x| x.to_str()).is_some_and(|x| x.starts_with("model-")) { let _ = fs::remove_file(old); }
         }
@@ -855,7 +953,7 @@ fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool)
     })();
     match result {
         Ok(value) => Ok(value),
-        Err(error) => match rollback_model_config(&p, &old_config, old_marker.as_deref(), &secret, &txn) {
+        Err(error) => match rollback_model_config(&p, &old_config, &old_marker, &secret, &txn) {
             Ok(()) => Err(error),
             Err(_) => Err("rollback_failed: OpenClaw2 model 配置失败且回滚未完成".into()),
         },
@@ -1540,7 +1638,10 @@ mod tests {
         create_layout(&p).unwrap();
         private_node_for_gateway_test(&p).expect("测试机需要 Node");
         fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
-        fs::write(cli_file(&p), r#"const args = process.argv.slice(2);
+        fs::write(cli_file(&p), r#"import fs from 'node:fs';
+const args = process.argv.slice(2); const fault = fs.existsSync('model-fault.txt') ? fs.readFileSync('model-fault.txt', 'utf8').trim() : '';
+if (fault === 'validate' && args.includes('validate')) { console.error('validate failed'); process.exit(1); }
+if (fault === 'infer' && args.includes('infer') && !args.includes('--help')) { console.error('infer failed'); process.exit(1); }
 if (args.includes('validate') || args.includes('--help')) { console.log(JSON.stringify({ok:true})); process.exit(0); }
 if (args.includes('infer')) { console.log(JSON.stringify({reply:'openclaw2-probe-ok'})); process.exit(0); }
 process.exit(2);
@@ -1557,9 +1658,59 @@ process.exit(2);
         assert!(!marker.contains("model-secret-never-output"));
         assert!(!output.contains("model-secret-never-output"));
         let secret_name = serde_json::from_str::<Value>(&marker).unwrap()["secret_basename"].as_str().unwrap().to_string();
-        assert!(model_secrets_dir(&p).join(secret_name).is_file());
+        assert!(model_secrets_dir(&p).join(&secret_name).is_file());
         let second = configure_model_at(&p, route(), false).unwrap();
         assert_eq!(second["changed"], false, "same private route 不许二次 probe/write");
+        let old_key = model_provider_key("demo", "https://example.com/v1");
+        let route_b = ModelRoute { source_id:"demo".into(), source_name:"Demo B".into(), base:"https://other.example/v1".into(), model:"demo-next".into(), key:"other-secret-never-output".into(), key_source:"explicit".into() };
+        let new_key = model_provider_key(&route_b.source_id, &route_b.base);
+        let switched = configure_model_at(&p, route_b, false).unwrap();
+        let switched_config: Value = serde_json::from_slice(&fs::read(config_file(&p)).unwrap()).unwrap();
+        assert_eq!(switched["changed"], true);
+        assert!(switched_config["models"]["providers"].get(&old_key).is_none(), "旧自有 provider 必须随 A→B 清理");
+        assert!(switched_config["agents"]["defaults"]["models"].get(&format!("{old_key}/demo-chat")).is_none());
+        assert_eq!(switched_config["agents"]["defaults"]["model"]["primary"], format!("{new_key}/demo-next"));
+        assert!(model_secrets_dir(&p).join(secret_name).exists() == false, "旧自有 secret 必须在新 marker 提交后清理");
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn configure_model_rolls_back_each_transaction_stage_without_touching_prior_generation() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-model-rollback-{}", now_nanos())));
+        create_layout(&p).unwrap();
+        private_node_for_gateway_test(&p).expect("测试机需要 Node");
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::write(cli_file(&p), r#"import fs from 'node:fs';
+const args = process.argv.slice(2); const fault = fs.existsSync('model-fault.txt') ? fs.readFileSync('model-fault.txt', 'utf8').trim() : '';
+if (fault === 'validate' && args.includes('validate')) process.exit(1);
+if (fault === 'infer' && args.includes('infer') && !args.includes('--help')) process.exit(1);
+console.log(JSON.stringify(args.includes('infer') ? {reply:'openclaw2-probe-ok'} : {ok:true}));
+"#).unwrap();
+        fs::write(config_file(&p), serde_json::to_vec(&json!({"gateway":{"auth":{"token":"legacy-gateway-sentinel"}},"workspace":{"legacy":true}})).unwrap()).unwrap();
+        let a = ModelRoute { source_id:"demo".into(), source_name:"Demo".into(), base:"https://example.com/v1".into(), model:"demo-chat".into(), key:"old-key-not-output".into(), key_source:"explicit".into() };
+        configure_model_at(&p, a, false).unwrap();
+        let marker: Value = serde_json::from_slice(&fs::read(model_marker_file(&p)).unwrap()).unwrap();
+        let old_secret = model_secrets_dir(&p).join(marker["secret_basename"].as_str().unwrap());
+        let before_config = snapshot_file(&config_file(&p));
+        let before_marker = snapshot_file(&model_marker_file(&p));
+        let before_secret = snapshot_file(&old_secret);
+        let b = || ModelRoute { source_id:"demo".into(), source_name:"Demo B".into(), base:"https://other.example/v1".into(), model:"demo-next".into(), key:"new-key-not-output".into(), key_source:"explicit".into() };
+        for (fault, expected) in [("validate", "validation_failed:"), ("infer", "probe_failed:"), ("live_commit", "validation_failed:"), ("marker_commit", "validation_failed:")] {
+            let file_fault = p.workspace.join("model-fault.txt");
+            if matches!(fault, "validate" | "infer") { fs::write(&file_fault, fault).unwrap(); } else { let _ = fs::remove_file(&file_fault); }
+            if matches!(fault, "live_commit" | "marker_commit") { set_model_test_fault(Some(fault)); }
+            let error = configure_model_at(&p, b(), false).unwrap_err();
+            set_model_test_fault(None);
+            let _ = fs::remove_file(&file_fault);
+            assert!(error.starts_with(expected), "{fault}: {error}");
+            for (path, before) in [(&config_file(&p), &before_config), (&model_marker_file(&p), &before_marker), (&old_secret, &before_secret)] {
+                assert_eq!(snapshot_file(path).bytes, before.bytes, "{fault}: {path:?} bytes");
+                assert_eq!(snapshot_file(path).modified, before.modified, "{fault}: {path:?} mtime");
+            }
+        }
+        let version_before = state_version_for(&p);
+        fs::write(&old_secret, b"{\"api_key\":\"external-change\"}").unwrap();
+        assert_ne!(version_before, state_version_for(&p), "secret 内容是 optimistic state 的组成部分");
         let _ = fs::remove_dir_all(&p.root);
     }
     #[cfg(windows)]
@@ -1666,6 +1817,19 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
         assert_eq!(value["models"]["mode"], "merge");
         assert_eq!(value["models"]["providers"]["someone-else"]["keep"], true);
         assert_eq!(value["models"]["providers"][key.as_str()]["apiKey"]["source"], "file");
+        assert_eq!(value["agents"]["defaults"]["model"]["primary"], model_ref(&key, "demo-chat"));
+        assert!(value["models"].get("primary").is_none(), "根 models.primary 不是权威槽位");
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn model_candidate_refuses_unmarked_or_third_party_slots() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-model-collision-{}", now_nanos())));
+        create_layout(&p).unwrap();
+        let route = ModelRoute { source_id:"demo".into(), source_name:"Demo".into(), base:"https://example.com/v1".into(), model:"demo-chat".into(), key:"never-in-config".into(), key_source:"explicit".into() };
+        let key = model_provider_key(&route.source_id, &route.base);
+        fs::write(config_file(&p), serde_json::to_vec(&json!({"models":{"providers":{key.clone():{"third_party":true}}},"secrets":{"providers":{MODEL_SECRET_PROVIDER:{"third_party":true}}}})).unwrap()).unwrap();
+        let error = model_candidate_config(&p, &route, &key, &model_secret_file(&p, "next")).unwrap_err();
+        assert!(error.starts_with("validation_failed:"));
         let _ = fs::remove_dir_all(&p.root);
     }
     #[test]
