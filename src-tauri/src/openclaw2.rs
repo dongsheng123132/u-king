@@ -801,14 +801,23 @@ fn rollback_model_config(p: &Paths, old_config: &[u8], old_marker: Option<&[u8]>
 }
 
 pub fn configure_model(route: ModelRoute) -> Result<Value, String> {
-    let _guard = model_mutex().lock().map_err(|_| "not_ready: OpenClaw2 model 配置锁不可用")?;
     let p = paths();
-    let report = inspect()?;
-    if report.get("installed").and_then(Value::as_bool) != Some(true)
-        || report.get("runtime").and_then(|x| x.get("integrity_ok")).and_then(Value::as_bool) != Some(true)
-        || report.get("prepared").and_then(Value::as_bool) != Some(true) {
-        return Err("not_ready: OpenClaw2 私有 runtime 尚未安装、校验或准备完成".into());
-    }
+    configure_model_at(&p, route, true)
+}
+
+fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool) -> Result<Value, String> {
+    let _guard = model_mutex().lock().map_err(|_| "not_ready: OpenClaw2 model 配置锁不可用")?;
+    let running = if require_runtime_ready {
+        let report = inspect()?;
+        if report.get("installed").and_then(Value::as_bool) != Some(true)
+            || report.get("runtime").and_then(|x| x.get("integrity_ok")).and_then(Value::as_bool) != Some(true)
+            || report.get("prepared").and_then(Value::as_bool) != Some(true) {
+            return Err("not_ready: OpenClaw2 私有 runtime 尚未安装、校验或准备完成".into());
+        }
+        report.get("running").and_then(Value::as_bool).unwrap_or(false)
+    } else {
+        false
+    };
     let base = normalized_model_base(&route.base)?;
     if route.model.trim().is_empty() || route.model.len() > 256 || route.model.bytes().any(|b| b <= b' ') {
         return Err("invalid_input: OpenClaw2 model 无效".into());
@@ -817,7 +826,7 @@ pub fn configure_model(route: ModelRoute) -> Result<Value, String> {
     let route = ModelRoute { base, model: route.model.trim().into(), ..route };
     let provider_key = model_provider_key(&route.source_id, &route.base);
     if let Some(marker) = model_marker_matches(&p, &route, &provider_key) {
-        return Ok(json!({"changed":false,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":model_ref(&provider_key,&route.model)},"validation":{"ran":false,"ok":true},"probe":marker.get("probe").cloned().unwrap_or_else(|| json!({"ran":false,"ok":false})),"restart_required":report["running"],"state_version":state_version()}));
+        return Ok(json!({"changed":false,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":model_ref(&provider_key,&route.model)},"validation":{"ran":false,"ok":true},"probe":marker.get("probe").cloned().unwrap_or_else(|| json!({"ran":false,"ok":false})),"restart_required":running,"state_version":state_version()}));
     }
     let nonce = random_token()?;
     let txn = model_txn_root(&p).join(&nonce);
@@ -852,7 +861,7 @@ pub fn configure_model(route: ModelRoute) -> Result<Value, String> {
             if old != secret && old.file_name().and_then(|x| x.to_str()).is_some_and(|x| x.starts_with("model-")) { let _ = fs::remove_file(old); }
         }
         let _ = fs::remove_dir_all(&txn);
-        Ok(json!({"changed":true,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":reference},"validation":{"ran":true,"ok":true},"probe":probe_view,"restart_required":report["running"],"state_version":state_version()}))
+        Ok(json!({"changed":true,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":reference},"validation":{"ran":true,"ok":true},"probe":probe_view,"restart_required":running,"state_version":state_version()}))
     })();
     match result {
         Ok(value) => Ok(value),
@@ -1533,6 +1542,35 @@ mod tests {
         (32_000u16..64_000u16).step_by(131)
             .find(|base| reserve_port_family(*base).is_ok())
             .expect("应能找到完整可用的 OpenClaw2 端口族")
+    }
+    #[cfg(windows)]
+    #[test]
+    fn configure_model_runs_private_candidate_then_keeps_secret_out_of_live_outputs() {
+        let p = paths_from_root(std::env::temp_dir().join(format!("uking-openclaw2-model-txn-{}", now_nanos())));
+        create_layout(&p).unwrap();
+        private_node_for_gateway_test(&p).expect("测试机需要 Node");
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::write(cli_file(&p), r#"const args = process.argv.slice(2);
+if (args.includes('validate') || args.includes('--help')) { console.log(JSON.stringify({ok:true})); process.exit(0); }
+if (args.includes('infer')) { console.log(JSON.stringify({reply:'openclaw2-probe-ok'})); process.exit(0); }
+process.exit(2);
+"#).unwrap();
+        fs::write(config_file(&p), serde_json::to_vec(&json!({"gateway":{"auth":{"token":"gateway-sentinel"}},"workspace":{"sentinel":true}})).unwrap()).unwrap();
+        let route = || ModelRoute { source_id:"demo".into(), source_name:"Demo".into(), base:"https://example.com/v1".into(), model:"demo-chat".into(), key:"model-secret-never-output".into(), key_source:"explicit".into() };
+        let first = configure_model_at(&p, route(), false).unwrap();
+        let live = fs::read_to_string(config_file(&p)).unwrap();
+        let marker = fs::read_to_string(model_marker_file(&p)).unwrap();
+        let output = serde_json::to_string(&first).unwrap();
+        assert_eq!(first["changed"], true);
+        assert!(live.contains("gateway-sentinel"));
+        assert!(!live.contains("model-secret-never-output"));
+        assert!(!marker.contains("model-secret-never-output"));
+        assert!(!output.contains("model-secret-never-output"));
+        let secret_name = serde_json::from_str::<Value>(&marker).unwrap()["secret_basename"].as_str().unwrap().to_string();
+        assert!(model_secrets_dir(&p).join(secret_name).is_file());
+        let second = configure_model_at(&p, route(), false).unwrap();
+        assert_eq!(second["changed"], false, "same private route 不许二次 probe/write");
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[cfg(windows)]
     #[test]
