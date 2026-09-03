@@ -68,7 +68,7 @@ U-King
 | U 盘随机写 | 8.45MB/s |
 | U 盘随机读 | 38.10MB/s |
 | U 盘顺序读 | 106.34MB/s |
-| 已知兼容问题 | ~~thinking 400~~ **已定案（2026-09-03 P0 实验）**：`provider: ""` 6 轮 stress 复现 400（2/6），改 `provider: "deepseek"` 0/6 全绿——配置问题，非上游缺陷。产品模板默认 deepseek；§9 缩为回归 fixture |
+| 已知兼容问题 | **thinking 400 已定位（A-B-A 交叉复证）**：`provider: ""` 两臂各 12 轮复现 400（2/12、2/12），`provider: "deepseek"` 12 轮 0/12，A-B-A 闭环——配置问题，非上游缺陷。产品模板默认 deepseek；§9 缩为回归 fixture |
 | C 盘行为 | 取证主链路中 PicoClaw 归属新增、修改均为 0；源码另有 `%TEMP%` 输入历史及少数可选频道的硬编码路径，产品必须主动约束 |
 
 ---
@@ -564,7 +564,7 @@ P2 增加定时工作流：
 ### P0 实测结果（2026-09-03，真机 F 盘）
 
 - **cn 网关 + 设备钱包（G1/G7）**：`api.u-claw.org.cn` + U-King 设备钱包 key（`official_device` 路径）真实制作 → 单轮 `cn-gateway-ok` → 工具调用（write_file+exec）→ 12 轮混合 stress，全通。
-- **provider=deepseek 实验（G2）**：如上表，一行配置消灭 400。
+- **provider=deepseek 实验（G2）**：A-B-A 交叉（n=12/臂，max_llm_retries=0，独立 session）：deepseek 臂 0/12，留空臂 2/12 且 A2 复现 2/12——一行配置消灭 400，闭环。另修出模板级缺陷：onboard 写出的 config.json 带绝对 workspace 路径，工具盘模板必须重写为本盘路径（opus 终审抓出）。
 - **启动器（G3）**：纯 ASCII、6 环境变量（HOME/CONFIG/BINARY/BUILTIN_SKILLS/LOG_FILE/TEMP+TMP）、工具盘布局交互 roundtrip 通过；宿主 `%TEMP%` 零 picoclaw 历史，输入历史落盘 `data\tmp\.picoclaw_history`。
 - **现场卫生**：测试余额 ¥2 已还原服务端（双向留痕）；本地凭据文件全清，复扫零残留。
 - **遗留 blocker**：exFAT 真盘待专用空盘（E/F 皆有既有内容，不硬测）。
