@@ -9,6 +9,17 @@ set "PICOCLAW_BUILTIN_SKILLS=%PICOCLAW_HOME%\workspace\skills"
 set "PICOCLAW_LOG_FILE=%PICOCLAW_HOME%\logs\picoclaw.log"
 set "TEMP=%PICOCLAW_HOME%\tmp"
 set "TMP=%PICOCLAW_HOME%\tmp"
+echo.
+echo U-King USB AI Genie
+echo Runtime: %PICOCLAW_BINARY%
+echo Data and sessions: %PICOCLAW_HOME%
+if exist "%PICOCLAW_HOME%\.security.yml" (
+  echo AI account: portable credential configured on this USB drive
+) else (
+  echo AI account: no portable credential configured
+)
+echo Exit AI Genie before removing this USB drive.
+echo.
 if not exist "%PICOCLAW_HOME%\workspace" mkdir "%PICOCLAW_HOME%\workspace"
 if not exist "%PICOCLAW_HOME%\logs" mkdir "%PICOCLAW_HOME%\logs"
 if not exist "%PICOCLAW_HOME%\tmp" mkdir "%PICOCLAW_HOME%\tmp"
