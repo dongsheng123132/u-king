@@ -119,6 +119,8 @@ export const ACTION = {
   RUNTIME_MINIAPP_UNINSTALL: "runtime.miniapp.uninstall",
   /** Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
+  /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
+  RUNTIME_OPENCLAW2_CONFIGURE_MODEL: "runtime.openclaw2.configure_model",
   /** Read only U-King's private OpenClaw 2 runtime and state. It never probes ClawX or legacy OpenClaw paths. */
   RUNTIME_OPENCLAW2_INSPECT: "runtime.openclaw2.inspect",
   /** Download and verify U-King's pinned private Node and OpenClaw 2 runtime. It never changes PATH, global npm, shims, ClawX, or legacy OpenClaw. */
@@ -253,6 +255,7 @@ export type ActionInputMap = {
   "runtime.miniapp.restore": { expected_state_version?: string; };
   "runtime.miniapp.uninstall": { expected_state_version?: string; id: string; purge_data?: boolean; };
   "runtime.network.inspect": Record<string, never>;
+  "runtime.openclaw2.configure_model": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
   "runtime.openclaw2.inspect": Record<string, never>;
   "runtime.openclaw2.install": { expected_state_version?: string; };
   "runtime.openclaw2.launch": { expected_state_version?: string; };
@@ -349,6 +352,7 @@ export type ActionOutputMap = {
   "runtime.miniapp.restore": Record<string, unknown>;
   "runtime.miniapp.uninstall": Record<string, unknown>;
   "runtime.network.inspect": Record<string, unknown>;
+  "runtime.openclaw2.configure_model": Record<string, unknown>;
   "runtime.openclaw2.inspect": Record<string, unknown>;
   "runtime.openclaw2.install": Record<string, unknown>;
   "runtime.openclaw2.launch": Record<string, unknown>;

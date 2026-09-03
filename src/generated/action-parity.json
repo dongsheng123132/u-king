@@ -964,6 +964,69 @@
     {
       "bindings": [
         {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.configure_model --json --no-input"
+        }
+      ],
+      "description": "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 180000
+      },
+      "id": "runtime.openclaw2.configure_model",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "configured",
+          "ready",
+          "provider",
+          "model",
+          "validation",
+          "probe",
+          "restart_required",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Configure an isolated OpenClaw 2 model"
+    },
+    {
+      "bindings": [
+        {
           "surface": "desktop",
           "target": "tauri:command/action_run"
         },
