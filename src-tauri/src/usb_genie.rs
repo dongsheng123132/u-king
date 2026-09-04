@@ -1016,6 +1016,96 @@ mod tests {
         assert_eq!(v["model_list"][0]["provider"], "deepseek");
         assert_eq!(v["model_list"][0]["api_base"], GATEWAY);
     }
+    /// 递归扫描一个 `Value`（含数组/对象嵌套）里所有字符串值，收集看起来像
+    /// 「盘符绝对路径」（`Z:\...`、`Z:/...`）或 UNC 路径（`\\host\share`）的那些，
+    /// 供下面两条契约测试断言「一个都不该有」。
+    fn absolute_path_like_strings(value: &Value, out: &mut Vec<String>) {
+        match value {
+            Value::String(s) => {
+                let bytes = s.as_bytes();
+                let looks_like_drive_letter_path = bytes.len() >= 3
+                    && bytes[0].is_ascii_alphabetic()
+                    && bytes[1] == b':'
+                    && (bytes[2] == b'\\' || bytes[2] == b'/');
+                let looks_like_unc_path = s.starts_with("\\\\");
+                if looks_like_drive_letter_path || looks_like_unc_path {
+                    out.push(s.clone());
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    absolute_path_like_strings(item, out);
+                }
+            }
+            Value::Object(map) => {
+                for v in map.values() {
+                    absolute_path_like_strings(v, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn config_value_never_bakes_a_drive_letter_path_into_the_written_config() {
+        // 契约回归（对应 e783681「stop baking absolute workspace paths into
+        // tool-disk config」）：那次事故是 `agents.defaults.workspace` 被写成
+        // 制作机的绝对路径，picoclaw 照单全收、不回退 PICOCLAW_HOME，导致
+        // 「换盘符就全坏、从制成盘打的 zip 也全坏」——真拿第三块 FAT32 U 盘实测
+        // 才逮住。这里不锁单个字段名，而是递归遍历 `config_value` 产出的整份
+        // JSON，禁止任何字符串值形似盘符绝对路径（`Z:\...`）或 UNC 路径
+        // （`\\host\share`）——下次换个字段名重犯同一类错误也会被挡住。
+        for fake_root in [Path::new("Z:\\"), Path::new("X:\\")] {
+            let v = config_value(fake_root);
+            let mut hits = Vec::new();
+            absolute_path_like_strings(&v, &mut hits);
+            assert!(
+                hits.is_empty(),
+                "config_value({fake_root:?}) 写进了看起来像绝对路径的字符串：{hits:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn config_value_is_drive_letter_agnostic() {
+        // 契约：`config_value` 的输出不许随传入的盘根变化——制盘/换盘符/从制成盘
+        // 打 zip 都不该产出不同内容。目前没有任何字段设计上需要随盘变化，所以
+        // 默认是逐字节相同；哪天真的出现「必须随盘变」的字段，要在这里显式列出
+        // 白名单字段并写清原因，而不是让这条测试悄悄松绑。
+        let a = config_value(Path::new("Z:\\"));
+        let b = config_value(Path::new("X:\\"));
+        assert_eq!(
+            serde_json::to_vec(&a).unwrap(),
+            serde_json::to_vec(&b).unwrap(),
+            "config_value 在两个不同盘根下产出了不同内容——盘符不该泄漏进配置"
+        );
+    }
+
+    #[test]
+    fn merge_config_migration_strips_legacy_absolute_paths_regardless_of_drive() {
+        // 契约：即便磁盘上已经存在 e783681 之前烙进去的绝对路径（旧盘/旧 zip 上
+        // 残留的 `agents.defaults.workspace`），`merge_config` 的迁移逻辑也必须
+        // 把它清掉，且清掉之后的结果同样不许含任何盘符绝对路径——不管污染源
+        // 当初是哪个盘符写的。
+        for (poisoned_drive, fresh_root) in
+            [("Z:\\", Path::new("Z:\\")), ("X:\\", Path::new("X:\\"))]
+        {
+            let mut existing = json!({
+                "agents": { "defaults": {
+                    "workspace": format!("{poisoned_drive}U-King\\AI-Genie\\data\\workspace"),
+                    "custom": true
+                }}
+            });
+            merge_config(&mut existing, config_value(fresh_root));
+            let mut hits = Vec::new();
+            absolute_path_like_strings(&existing, &mut hits);
+            assert!(
+                hits.is_empty(),
+                "merge_config 迁移之后仍残留看起来像绝对路径的字符串：{hits:?}"
+            );
+        }
+    }
+
     #[test]
     fn config_merge_keeps_unknown_fields_and_other_models() {
         let p = root();
