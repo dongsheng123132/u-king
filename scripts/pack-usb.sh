@@ -42,6 +42,25 @@ else
   echo "       要出「U 盘版」请先： pnpm tauri build --features usb-guard  再跑本脚本。"
 fi
 
+# —— 硬闸：前端到底内嵌了没有 ——
+# 2026-09-04 烧掉过一次线上发布（usb-ai-genie v0.1.0）：用 `cargo build --release` 出的 exe
+# 少了 tauri 的 custom-protocol feature，dist/ 没被打进去，运行时回落到 devUrl
+# http://localhost:1430，客户机上双击 = ERR_CONNECTION_REFUSED。上面那道护符闸【拦不住它】
+# ——无护符只是少个保护，前端没内嵌是根本打不开，所以这条是 exit 1 不是告警。
+#
+# 判据取内嵌资源表里的 `assets/index`（vite 产物固定命名）。实测：`pnpm tauri build` 出的
+# exe 命中 4 次，`cargo build --release` 出的命中 0 次。不要拿 "localhost:1430" 反过来断言
+# ——它在好坏两种 exe 里都在（tauri.conf 作为配置数据一起内嵌），据此判断会得到假绿灯。
+ASSET_HITS="$(grep -a -o "assets/index" "$OUT/U-King.exe" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${ASSET_HITS:-0}" -gt 0 ]; then
+  echo "[OK] 前端已内嵌（assets/index 命中 $ASSET_HITS 次）"
+else
+  echo "[FAIL] 该 exe 【前端没内嵌】（assets/index 命中 0 次）——烧进 U 盘客户双击只会看到"
+  echo "       ERR_CONNECTION_REFUSED。这是 cargo build --release 的产物，不是发布产物。"
+  echo "       请改用： pnpm tauri build --features usb-guard  重新构建后再跑本脚本。"
+  exit 1
+fi
+
 # 资源
 cp "$HERE/src-tauri/icons/icon.ico" "$OUT/U-King/icon.ico" 2>/dev/null || true
 
