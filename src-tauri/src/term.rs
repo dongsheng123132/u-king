@@ -522,11 +522,28 @@ fn resolve_cwd(cwd: Option<String>) -> String {
 /// 待运行命令校验：放宽到支持带参命令（`claude --resume`、`codex --model x` 等），
 /// 同时挡住 shell 注入。
 ///
-/// 规则：按空格切 token —— 首 token（程序名）必须在固定允许集内；其余每个 token 只允许
-/// `[A-Za-z0-9-_=./:]` 且不含 `..`（防元字符注入与路径穿越）。空命令直接拒绝。
+/// 规则：按空格切 token —— 首 token（程序名）必须在固定允许集内；其余每个 token 里的
+/// **ASCII 字符**只允许 `[A-Za-z0-9-_=./:]` 且不含 `..`（防元字符注入与路径穿越）；
+/// **非 ASCII 字符**（如中文提示词）一律放行 —— cmd.exe / PowerShell 的元字符
+/// （`&|<>^%!"` `` ` `` `;$(){}` 等）全部是 ASCII，非 ASCII 字符不可能被 shell 当元字符
+/// 解释，所以只放行非 ASCII 不会削弱现有的注入防护（见 `src/opencodex/apps.ts` 里
+/// cline 的中文一次性任务提示词 `cline 说说你能做什么`，旧的纯 ASCII 白名单会把它整条拒绝）。
+/// 空命令、以及超过 512 字符的命令直接拒绝（后者是防呆：bat 单行长度有实际上限）。
+///
+/// ## 风险留痕：中文命令不要走 `term_open_external`
+/// `term_open_external` 把命令写进 UTF-8 编码的 .bat 文件再交给 cmd.exe 解析，但 cmd.exe
+/// 解析 .bat 文件用的是当前系统 OEM 代码页，bat 内 `chcp 65001 >nul` 只切了**运行时**代码页，
+/// 对同一份 bat 文件后续行本身怎么被解析并不可靠（GBK 系统上可能把中文命令行解析乱）。
+/// 含非 ASCII 字符的命令应当只走内嵌 PTY（`term_open_pty`）执行，不应走 `term_open_external`；
+/// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
+/// 附近注释，实现时不要漏掉这一条。
 fn validate_cmd(cmd: &str) -> bool {
     const ALLOWED_PROGRAMS: &[&str] =
         &["claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "cline", "node", "npm", "git", "ollama"];
+    const MAX_LEN: usize = 512;
+    if cmd.len() > MAX_LEN {
+        return false;
+    }
     let mut tokens = cmd.split_whitespace();
     let Some(prog) = tokens.next() else {
         return false;
@@ -536,8 +553,9 @@ fn validate_cmd(cmd: &str) -> bool {
     }
     tokens.all(|t| {
         !t.contains("..")
-            && t.chars()
-                .all(|c| c.is_ascii_alphanumeric() || "-_=./:".contains(c))
+            && t.chars().all(|c| {
+                !c.is_ascii() || c.is_ascii_alphanumeric() || "-_=./:".contains(c)
+            })
     })
 }
 
@@ -782,6 +800,12 @@ pub async fn headless_session_test() -> Result<String, String> {
 ///
 /// 安全：命令仍过 `validate_cmd` 白名单（claude/codex/openclaw/hermes/...），挡 shell 注入。
 /// 空命令（纯开终端）允许，此时只 `cmd /K` 给个已注入 PATH 的交互 shell。
+///
+/// ⚠️ 含非 ASCII 字符（如中文提示词）的命令目前**仍会**被这里的 `.bat` 路由接受（`validate_cmd`
+/// 已放行非 ASCII），但 bat 文件按 OEM 代码页解析、`chcp 65001` 只切运行时代码页这一风险尚未
+/// 在这里处理（详见 `validate_cmd` 函数上方注释）。本阶段不在此处加检测拒绝——「打开独立终端」
+/// 是通用功能（cwd 为空、纯开一个 shell 也走这里），现在加限制风险不对称；路由判断留给
+/// 后续 `runtime.tool.launch` 动作实现，不要漏掉。
 #[tauri::command]
 pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<(), String> {
     let cmd = cmd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
@@ -992,6 +1016,20 @@ pub async fn term_open_pty(
     // 必须在 PowerShell 下载、PTY 分配、命令解析等任何资源动作之前拿到在飞票据。
     // 票据直到会话入表才释放，升级冻结便能无竞态地等待这批调用全部可见。
     let _opening = InFlightOpenGuard::begin()?;
+
+    // 校验「启动即执行」的初始命令，越早越好：命令非法就直接拒绝这次 open 请求，不必先
+    // 付出 PS7 下载/PTY 分配的代价，也不能静默丢掉命令后仍然开一个空终端——那样调用方
+    // 以为命令生效了，实际什么都没跑，是另一种静默失败（手敲进已打开终端的后续输入走
+    // `term_write`，不在这里，也不受这条校验约束）。
+    let initial_cmd = match initial_cmd.map(|cmd| cmd.trim().to_string()) {
+        Some(cmd) if cmd.is_empty() => None,
+        Some(cmd) if !validate_cmd(&cmd) => {
+            crate::ulog::write("term", &format!("term_open_pty 拒绝：初始命令未过白名单 {cmd}"));
+            return Err(format!("不允许的命令：{cmd}"));
+        }
+        other => other,
+    };
+
     // 首次开终端且客户机没有 PowerShell 7 时，下发便携 PS7（很多老机器只有 5.1，中文易乱码、
     // 无 PSReadLine）。进度直接写进本终端窗格（on_data 已就绪），下完这一次之后 shell_builder
     // 里的 find_pwsh 就命中便携版、秒开。下载失败回落 5.1，终端照常能开。
@@ -1010,11 +1048,6 @@ pub async fn term_open_pty(
     }
 
     let resolved_cwd = resolve_cwd(cwd);
-    // 只记录真正会被执行的初始命令：无效命令既不写入 PTY，也不应在升级后被重放。
-    let initial_cmd = initial_cmd.and_then(|cmd| {
-        let cmd = cmd.trim().to_string();
-        validate_cmd(&cmd).then_some(cmd)
-    });
 
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -1636,7 +1669,8 @@ pub fn openclaw_webui_url() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_cmd;
+    use super::{term_open_pty, validate_cmd};
+    use tauri::ipc::Channel;
 
     #[test]
     fn allows_plain_and_parametered() {
@@ -1649,6 +1683,8 @@ mod tests {
         assert!(validate_cmd("dsh --profile headless --help"));
         assert!(validate_cmd("harness-doctor --target all --no-ports"));
         assert!(validate_cmd("npm install -g openclaw"));
+        assert!(validate_cmd("pi --tools read"));
+        assert!(validate_cmd("opencode --continue"));
     }
 
     #[test]
@@ -1659,6 +1695,47 @@ mod tests {
         assert!(!validate_cmd("claude && evil"));
         assert!(!validate_cmd("claude | tee out"));
         assert!(!validate_cmd("git ../escape")); // 路径穿越
+        assert!(!validate_cmd("claude ..\\x")); // Windows 风格路径穿越
         assert!(!validate_cmd("powershell -c whoami")); // 程序名不在白名单
+    }
+
+    /// 非 ASCII 放行：中文提示词能通过，但 ASCII 层面的 shell 元字符依旧全部被挡。
+    #[test]
+    fn allows_non_ascii_but_still_blocks_ascii_metacharacters() {
+        let cases: &[(&str, bool)] = &[
+            ("cline 说说你能做什么", true),
+            ("cline history", true),
+            ("cline & calc", false),      // '&' 是 ASCII 元字符
+            ("cline %PATH%", false),      // '%' 变量展开
+            ("cline <evil>", false),
+            ("cline `whoami`", false),
+            ("cline \"quoted\"", false),
+            ("cline $(whoami)", false),
+        ];
+        for (cmd, expected) in cases {
+            assert_eq!(validate_cmd(cmd), *expected, "cmd={cmd:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_over_length_command() {
+        let long_cmd = format!("claude {}", "a".repeat(600));
+        assert!(long_cmd.len() > 512);
+        assert!(!validate_cmd(&long_cmd));
+    }
+
+    #[test]
+    fn term_open_pty_rejects_invalid_initial_cmd() {
+        // 无头场景下不需要 webview，Channel::new 直接可用（见 headless_session_test 的用法）。
+        let ch: Channel<Vec<u8>> = Channel::new(|_| Ok(()));
+        let result = tauri::async_runtime::block_on(term_open_pty(
+            80,
+            24,
+            ch,
+            Some("rm -rf /".into()),
+            None,
+            None,
+        ));
+        assert!(result.is_err(), "非法初始命令应被拒绝，而不是静默忽略并开出空终端");
     }
 }
