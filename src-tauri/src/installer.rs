@@ -5614,8 +5614,9 @@ const USB_TOOL_SEARCH_PATH_TTL: std::time::Duration = std::time::Duration::from_
 #[cfg(windows)]
 const USB_TOOL_SEARCH_PATH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// 可移动盘 / 副固定盘 / 本机便携绿色位上的工具目录，带来源标签（`"portable"` =
-/// `%LOCALAPPDATA%\Programs\*` 这类本机绿色位；`"removable"` = 可移动盘/副固定盘）。
+/// 自包含（拷走就能用）的工具目录，全部标 `"portable"`——盘符不参与分类：
+/// 本机便携绿色位（`%LOCALAPPDATA%\Programs\*`）、任意可移动盘、任意非系统固定盘、
+/// U-King 自己造的 usb_genie 工具盘，本质都是「整个目录拷走就能用」，不区分盘符。
 /// 供 `search_paths` 追加，也供 `providers::driver_status` 的 `discovered` 字段复用
 /// 同一份扫描结果，不重新走一遍磁盘（宪法第 8 条）。
 ///
@@ -5741,14 +5742,14 @@ fn scan_removable_and_portable_search_paths() -> Vec<(PathBuf, &'static str)> {
         let root = &slot.root;
         for fixed in [root.clone(), root.join("bin")] {
             if fixed.exists() {
-                out.push((fixed, "removable"));
+                out.push((fixed, "portable"));
             }
         }
         for app_dir in list_subdirs(root, 64) {
             for sub in ["bin", "resources/cli", "node_modules/.bin"] {
                 let p = app_dir.join(sub);
                 if p.exists() {
-                    out.push((p, "removable"));
+                    out.push((p, "portable"));
                 }
             }
         }
@@ -5761,7 +5762,7 @@ fn scan_removable_and_portable_search_paths() -> Vec<(PathBuf, &'static str)> {
             .join("runtime")
             .join("current");
         if genie_current.exists() {
-            out.push((genie_current, "removable"));
+            out.push((genie_current, "portable"));
         }
     }
     out
@@ -6848,7 +6849,7 @@ mod tests {
 
         fn slow_scan() -> Vec<(PathBuf, &'static str)> {
             std::thread::sleep(std::time::Duration::from_millis(300));
-            vec![(PathBuf::from("Z:\\slow-usb-drive\\bin"), "removable")]
+            vec![(PathBuf::from("Z:\\slow-usb-drive\\bin"), "portable")]
         }
 
         // 第一次调用：注入一个远小于扫描耗时的超时预算，模拟「慢盘首扫超过等待窗口」。
@@ -6876,7 +6877,7 @@ mod tests {
         );
         assert_eq!(
             second,
-            vec![(PathBuf::from("Z:\\slow-usb-drive\\bin"), "removable")],
+            vec![(PathBuf::from("Z:\\slow-usb-drive\\bin"), "portable")],
             "后台线程扫完之后应当已经把真结果写进缓存，下一次调用不该还是空——\
              不必等满 45 秒 TTL 就该看到慢盘上的工具"
         );

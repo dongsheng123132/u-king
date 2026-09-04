@@ -5531,9 +5531,9 @@ pub struct DriverStatus {
     /// `installer::tool_installed`，不另写一份探测。
     pub extra_installed: std::collections::BTreeMap<String, bool>,
     /// **在哪里发现了每个 AI 工具的可执行文件**——不止「装没装」，还答「装在哪、
-    /// 是不是 U 盘上的、跟当前生效的是不是同一份」（ActionParity 第 15 条：结果要可见）。
-    /// 覆盖 `LIST_TOOLS` 这 8 个；同名多处发现时全部保留，按 system > portable >
-    /// removable 排序，第一条是当前 `search_paths`/`tool_installed` 实际会用到的那个。
+    /// 是不是自包含绿色版、跟当前生效的是不是同一份」（ActionParity 第 15 条：结果要可见）。
+    /// 覆盖 `LIST_TOOLS` 这 8 个；同名多处发现时全部保留，按 machine > portable
+    /// 排序，第一条是当前 `search_paths`/`tool_installed` 实际会用到的那个。
     /// 不新增探测：复用 `installer::search_paths` 已经在走的目录 + 已经算出来的 `active`，
     /// 不为它单独起进程（`version` 拿不到就是 `null`，不为它多花一次进程调用）。
     pub discovered: Vec<ToolDiscovery>,
@@ -5544,8 +5544,12 @@ pub struct DriverStatus {
 pub struct ToolDiscovery {
     pub name: String,
     pub path: String,
-    /// `"system"` | `"portable"`（本机 `%LOCALAPPDATA%\Programs\*` 等绿色位）|
-    /// `"removable"`（可移动盘 / 副固定盘，含 U-King 自己造的 usb_genie 工具盘）。
+    /// 跟谁走，不是「在哪块盘上」——`"machine"` = 装在本机系统位置（`%APPDATA%\npm`、
+    /// `%USERPROFILE%\bin`、`~/.local/bin`、U-King 自带便携 node/python/git 等既有
+    /// `search_paths` 来源）；`"portable"` = 自包含目录，整个目录拷走就能用（含
+    /// `%LOCALAPPDATA%\Programs\*` 绿色位、任意可移动盘/非系统固定盘、U-King 自己造的
+    /// usb_genie 工具盘 `<盘>/U-King/AI-Genie/runtime/current`）。盘符本身不进这个模型：
+    /// 绿色版放系统盘也是 portable，非系统固定盘上的普通安装也不算 machine。
     pub source: String,
     /// 只在零成本时填（同目录/上级目录有 package.json）。拿不到就是 `None`——
     /// 绝不为它起一次 `--version` 进程（那是 `tool_installed` 的兜底路径，不是这里）。
@@ -6059,9 +6063,10 @@ pub fn driver_status() -> DriverStatus {
 }
 
 /// `search_paths` 已经走过的目录，打上来源标签：出自
-/// `installer::removable_and_portable_search_paths_classified` 的记作 portable/removable，
-/// 其余（便携 Python/Git、系统 npm 目录等既有来源）记作 system。**不重新扫盘**——
-/// 直接对 `installer::search_paths` 返回的目录做一次 O(n) 归类。
+/// `installer::removable_and_portable_search_paths_classified` 的记作 portable
+/// （自包含、拷走就能用——绿色位 / 可移动盘 / 非系统固定盘，盘符不参与判断），
+/// 其余（便携 Python/Git、系统 npm 目录等既有来源）记作 machine（装在本机系统位置）。
+/// **不重新扫盘**——直接对 `installer::search_paths` 返回的目录做一次 O(n) 归类。
 fn classify_search_dirs() -> Vec<(PathBuf, &'static str)> {
     let dirs = crate::installer::search_paths(crate::installer::portable_node_dir().as_deref());
     let tagged: std::collections::HashMap<PathBuf, &'static str> =
@@ -6070,7 +6075,7 @@ fn classify_search_dirs() -> Vec<(PathBuf, &'static str)> {
             .collect();
     dirs.into_iter()
         .map(|d| {
-            let source = tagged.get(&d).copied().unwrap_or("system");
+            let source = tagged.get(&d).copied().unwrap_or("machine");
             (d, source)
         })
         .collect()
@@ -6098,7 +6103,7 @@ fn cheap_version_hint(dir: &Path) -> Option<String> {
 /// `DriverStatus::discovered` 的实际计算：覆盖 `LIST_TOOLS` 这 8 个工具，
 /// 每个工具在每处已知搜索目录里查文件是否存在（跟 `tool_installed` 同款
 /// 纯文件存在性检查，不起进程），同名多处发现全部保留，按
-/// system > portable > removable 排序。
+/// machine > portable 排序（本机装的优先，别让盘上的遮蔽本机的）。
 fn discover_tools(active: &std::collections::BTreeMap<String, String>) -> Vec<ToolDiscovery> {
     let exts: &[&str] = if cfg!(windows) {
         &["", ".cmd", ".exe", ".bat", ".ps1"]
@@ -6124,10 +6129,9 @@ fn discover_tools(active: &std::collections::BTreeMap<String, String>) -> Vec<To
             }
         }
         found.sort_by_key(|d| match d.source.as_str() {
-            "system" => 0,
+            "machine" => 0,
             "portable" => 1,
-            "removable" => 2,
-            _ => 3,
+            _ => 2,
         });
         out.extend(found);
     }
