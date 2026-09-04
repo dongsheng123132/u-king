@@ -667,9 +667,20 @@ fn verify(root: &Path) -> Result<Value, String> {
         .and_then(|value| value.get("artifact_hashes"))
         .map(|expected| artifacts_match(root, expected))
         .unwrap_or(false);
-    let credential_absent_when_none = current_meta
+    // Bidirectional: `credential_mode` in current.json and the actual presence
+    // of `.security.yml` must agree in both directions, not just one. The old
+    // check only forbade "mode says none but file is present"; it never
+    // noticed "mode says official_device but file was already deleted" (that
+    // second drift is exactly what a bare `fs::remove_file` in
+    // `action_credential_remove` used to leave behind — a disk that verifies
+    // green on the workbench and then 401s at runtime once plugged in).
+    let credential_state_consistent = current_meta
         .as_ref()
-        .map(|v| v["credential_mode"] != "none" || !data(root).join(".security.yml").exists())
+        .map(|v| {
+            let mode_is_none = v["credential_mode"] == "none";
+            let security_file_exists = data(root).join(".security.yml").exists();
+            mode_is_none == !security_file_exists
+        })
         .unwrap_or(false);
     let files_ok = exe.is_file()
         && versioned_exe.is_file()
@@ -696,7 +707,7 @@ fn verify(root: &Path) -> Result<Value, String> {
         "picoclaw_version": {"ok":version_ok,"detail":"picoclaw.exe version reports 0.3.1"},
         "launcher": {"ok":launcher_ok,"detail":"root launcher exists and is ASCII-only"},
         "config": {"ok":config_ok,"detail":"model provider is deepseek and uses the China gateway"},
-        "credential_template": {"ok":credential_absent_when_none,"detail":"credential-free templates contain no .security.yml"}
+        "credential_template": {"ok":credential_state_consistent,"detail":"credential_mode and .security.yml presence agree in both directions"}
     });
     let mut blockers = Vec::new();
     for (name, check) in checks.as_object().unwrap() {
@@ -965,8 +976,14 @@ pub fn action_credential_remove(
     input: Value,
     _: &crate::actions::ProgressSink,
 ) -> Result<Value, String> {
-    let root = target(&input)?;
-    let path = data(&root).join(".security.yml");
+    Ok(attach_inventory_state(credential_remove(&target(&input)?)?))
+}
+/// Core of `action_credential_remove`, split out from target resolution so
+/// tests can exercise it against a plain temp directory instead of a real
+/// removable disk (the public action's `target()` only accepts targets that
+/// `portable_targets()` currently enumerates from real Windows drives).
+fn credential_remove(root: &Path) -> Result<Value, String> {
+    let path = data(root).join(".security.yml");
     let fingerprint = fs::read(&path)
         .ok()
         .map(|b| crate::installer::sha256_hex_bytes(&b)[..12].to_string());
@@ -976,9 +993,36 @@ pub fn action_credential_remove(
     } else {
         false
     };
-    Ok(
-        attach_inventory_state(json!({"changed":removed,"removed":removed,"previous_fingerprint":fingerprint,"target_state_version":state_version(&root)})),
-    )
+    // Two facts about "does this disk have a credential" must never drift apart
+    // (CLAUDE.md 第 8 条: 同一事实存在几份就会漂移几份，只认单一真相源）. The
+    // key file above and `credential_mode` in current.json are that pair, so
+    // the delete must be followed by a metadata update, atomically written.
+    //
+    // Order matters and is deliberate: delete the key file *first*, then sync
+    // the metadata. If this process crashes between the two steps, the disk
+    // is left saying "credential_mode: official_device" while the file is
+    // already gone. That is an *observable* lie — `verify()`'s bidirectional
+    // credential_template check (above) now catches exactly this drift and
+    // refuses to report ok. The reverse order (flip metadata to "none" first,
+    // then delete the file) would instead risk crashing with metadata already
+    // saying "none" while the real key file still sits on disk untouched —
+    // a silent credential leak that no later `verify()` run would ever flag,
+    // because the "none" branch of the check only demands file absence, it
+    // never re-checks contents. A caught drift beats an invisible leak.
+    let meta_path = current_json(root);
+    let meta_bytes = fs::read(&meta_path)
+        .map_err(|e| format!("读取 current.json 失败，凭据模式未同步: {e}"))?;
+    let mut meta: Value = serde_json::from_slice(&meta_bytes)
+        .map_err(|e| format!("current.json 无法解析，凭据模式未同步: {e}"))?;
+    let meta_object = meta
+        .as_object_mut()
+        .ok_or("current.json 顶层不是对象，凭据模式未同步")?;
+    meta_object.insert("credential_mode".into(), Value::String("none".into()));
+    atomic_write(
+        &meta_path,
+        &serde_json::to_vec_pretty(&meta).map_err(|e| e.to_string())?,
+    )?;
+    Ok(json!({"changed":removed,"removed":removed,"previous_fingerprint":fingerprint,"target_state_version":state_version(root)}))
 }
 
 #[cfg(test)]
@@ -1248,5 +1292,100 @@ mod tests {
         let error = ensure_space(MIN_DEPLOY_FREE_BYTES - 1).unwrap_err();
         assert!(error.contains("insufficient_space"), "{error}");
         assert!(error.contains("未写入任何文件"), "{error}");
+    }
+
+    /// 造一块假盘：既有 `.security.yml`，`current.json` 里 `credential_mode`
+    /// 也说是 `official_device`——两份事实一致地「有凭据」。
+    fn fake_target_with_credential(p: &Path) {
+        fs::create_dir_all(data(p)).unwrap();
+        fs::write(data(p).join(".security.yml"), "model_list:\n  usb-genie:0:\n    api_keys:\n      - sk-fake\n").unwrap();
+        atomic_write(
+            &current_json(p),
+            serde_json::to_vec_pretty(&json!({
+                "schema_version": 1,
+                "version": VERSION,
+                "archive_sha256": "0".repeat(64),
+                "runtime_dir": format!("picoclaw-{VERSION}"),
+                "credential_mode": "official_device",
+                "artifact_hashes": {}
+            })).unwrap().as_slice(),
+        ).unwrap();
+    }
+
+    #[test]
+    fn credential_remove_syncs_current_json_alongside_deleting_the_key_file() {
+        // 锁本次修的 bug 本身：`action_credential_remove` 不能只删
+        // `.security.yml` 而把 `current.json` 里的 `credential_mode` 晾在原地——
+        // 那样擦过密钥的盘会继续对外声称「有凭据」。删除之后两份事实必须一起
+        // 变成「没有」。
+        let p = root();
+        fake_target_with_credential(&p);
+
+        let result = credential_remove(&p).unwrap();
+        assert_eq!(result["removed"], true);
+        assert_eq!(result["changed"], true);
+
+        assert!(!data(&p).join(".security.yml").exists(), "凭据文件应已被删除");
+        let meta: Value = serde_json::from_slice(&fs::read(current_json(&p)).unwrap()).unwrap();
+        assert_eq!(meta["credential_mode"], "none", "current.json 的 credential_mode 必须同步更新为 none");
+
+        let _ = fs::remove_dir_all(p);
+    }
+
+    #[test]
+    fn verify_no_longer_reports_a_false_green_after_credential_remove() {
+        // 回归：擦除后 verify 不该继续假绿；直接锁住本次要修的漂移 bug。
+        let p = root();
+        fake_target_with_credential(&p);
+
+        credential_remove(&p).unwrap();
+        let after_removal = verify(&p).unwrap();
+        assert_eq!(
+            after_removal["checks"]["credential_template"]["ok"], true,
+            "擦除之后两份事实一致，凭据检查应为 true: {after_removal}"
+        );
+
+        // 手工制造漂移：把 credential_mode 改回 official_device，但密钥文件
+        // 已经不在了——这正是修复之前 action_credential_remove 会留下的状态。
+        let mut meta: Value = serde_json::from_slice(&fs::read(current_json(&p)).unwrap()).unwrap();
+        meta["credential_mode"] = Value::String("official_device".into());
+        atomic_write(&current_json(&p), serde_json::to_vec_pretty(&meta).unwrap().as_slice()).unwrap();
+        assert!(!data(&p).join(".security.yml").exists());
+
+        let drifted = verify(&p).unwrap();
+        assert_eq!(
+            drifted["checks"]["credential_template"]["ok"], false,
+            "credential_mode 说有凭据但文件已不在，凭据检查必须报 false: {drifted}"
+        );
+
+        let _ = fs::remove_dir_all(p);
+    }
+
+    #[test]
+    fn verify_still_catches_the_original_direction_of_drift() {
+        // 反方向（原检查已覆盖的方向）：credential_mode 说 none，但
+        // .security.yml 却还在——确保这次改动没有把这个方向改坏。
+        let p = root();
+        fs::create_dir_all(data(&p)).unwrap();
+        fs::write(data(&p).join(".security.yml"), "leftover").unwrap();
+        atomic_write(
+            &current_json(&p),
+            serde_json::to_vec_pretty(&json!({
+                "schema_version": 1,
+                "version": VERSION,
+                "archive_sha256": "0".repeat(64),
+                "runtime_dir": format!("picoclaw-{VERSION}"),
+                "credential_mode": "none",
+                "artifact_hashes": {}
+            })).unwrap().as_slice(),
+        ).unwrap();
+
+        let result = verify(&p).unwrap();
+        assert_eq!(
+            result["checks"]["credential_template"]["ok"], false,
+            "credential_mode 说 none 但文件还在，凭据检查必须报 false: {result}"
+        );
+
+        let _ = fs::remove_dir_all(p);
     }
 }
