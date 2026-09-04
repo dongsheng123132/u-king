@@ -6073,6 +6073,18 @@ fn classify_search_dirs() -> Vec<(PathBuf, &'static str)> {
         crate::installer::removable_and_portable_search_paths_classified()
             .into_iter()
             .collect();
+    classify_search_dirs_from(dirs, tagged)
+}
+
+/// `classify_search_dirs` 的纯函数核心：目录列表 + 已分类目录表都作为参数注入，
+/// 不碰真实磁盘/环境变量/`installer::` 的扫盘逻辑，只测「归类」这一步本身——
+/// 单测借此锁住：出现在 `tagged` 里的目录保留它给的标签（含 `"portable"`），
+/// 没出现在 `tagged` 里的一律落回 `"machine"`（`search_paths` 里那批既有来源，
+/// 如 `%APPDATA%\npm`、`%USERPROFILE%\bin`、便携 node 目录，本身从不进 `tagged`）。
+fn classify_search_dirs_from(
+    dirs: Vec<PathBuf>,
+    tagged: std::collections::HashMap<PathBuf, &'static str>,
+) -> Vec<(PathBuf, &'static str)> {
     dirs.into_iter()
         .map(|d| {
             let source = tagged.get(&d).copied().unwrap_or("machine");
@@ -6100,24 +6112,125 @@ fn cheap_version_hint(dir: &Path) -> Option<String> {
     None
 }
 
+/// 锁 `ToolDiscovery.source` 的语义（`"machine"` / `"portable"`），防止
+/// `3cf52fa` 重构之后这条契约在下次改动里悄悄滑回旧的「盘是不是可移动」判法。
+/// 全部用注入的纯函数（`classify_search_dirs_from` / `discover_tools_from`），
+/// 不碰真实磁盘/环境变量/起进程。
+#[cfg(test)]
+mod tool_discovery_source_tests {
+    use super::*;
+    use std::collections::{BTreeMap, HashMap};
+
+    /// ① 本机来源标 `machine`：`search_paths` 那批既有来源（`%APPDATA%\npm`、
+    /// `%USERPROFILE%\bin`、U-King 自带便携 node 目录等）从不出现在
+    /// `removable_and_portable_search_paths_classified()` 的 `tagged` 表里，
+    /// `classify_search_dirs_from` 对它们的默认归类必须是 `"machine"`。
+    #[test]
+    fn machine_sources_are_tagged_machine() {
+        let dirs = vec![
+            PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm"),
+            PathBuf::from(r"C:\Users\demo\bin"),
+            PathBuf::from(r"C:\Users\demo\.local\bin"),
+            PathBuf::from(r"C:\Users\demo\.uking\portable-node\node-v20"),
+        ];
+        // 空 tagged 表：模拟这些目录压根没被 `removable_and_portable_search_paths_classified`
+        // 打过标——它们是 `search_paths` 里除可移动/绿色位之外的既有来源。
+        let tagged: HashMap<PathBuf, &'static str> = HashMap::new();
+        let out = classify_search_dirs_from(dirs.clone(), tagged);
+        assert_eq!(out.len(), dirs.len());
+        for (dir, source) in &out {
+            assert_eq!(*source, "machine", "本机来源 {dir:?} 不该被标成别的");
+        }
+    }
+
+    /// ② 盘上/绿色位来源标 `portable`：`%LOCALAPPDATA%\Programs\*`、可移动盘、
+    /// **非系统固定盘**（重点：旧规则「按盘是不是可移动」会把非系统固定盘错标成
+    /// `removable`，新规则「跟谁走」下它和绿色位一样是 `portable`）、以及
+    /// usb_genie 工具盘 `<盘>/U-King/AI-Genie/runtime/current`，全部归 `"portable"`。
+    #[test]
+    fn portable_sources_are_tagged_portable() {
+        let green_dir = PathBuf::from(r"C:\Users\demo\AppData\Local\Programs\ClaudeCode\resources\cli");
+        let removable_drive_dir = PathBuf::from(r"E:\claude-tools");
+        // 非系统固定盘（D 盘是固定盘但不是系统盘）—— 这是重点回归用例。
+        let secondary_fixed_drive_dir = PathBuf::from(r"D:\claude-tools");
+        let usb_genie_runtime_dir =
+            PathBuf::from(r"E:\U-King\AI-Genie\runtime\current");
+        let dirs = vec![
+            green_dir.clone(),
+            removable_drive_dir.clone(),
+            secondary_fixed_drive_dir.clone(),
+            usb_genie_runtime_dir.clone(),
+        ];
+        let tagged: HashMap<PathBuf, &'static str> = dirs
+            .iter()
+            .cloned()
+            .map(|d| (d, "portable"))
+            .collect();
+        let out = classify_search_dirs_from(dirs.clone(), tagged);
+        assert_eq!(out.len(), dirs.len());
+        for (dir, source) in &out {
+            assert_eq!(*source, "portable", "盘上/绿色位来源 {dir:?} 不该被标成别的");
+        }
+    }
+
+    /// ③ 排序契约：同一个工具在 machine 和 portable 两处都被发现时，两条都保留，
+    /// 且 `machine` 排在前——本机装的优先，不让盘上的遮蔽本机的。
+    #[test]
+    fn same_tool_found_in_both_sources_keeps_both_and_sorts_machine_first() {
+        let machine_dir = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
+        let portable_dir = PathBuf::from(r"E:\U-King\AI-Genie\runtime\current");
+        // 刻意把 portable 排在 dirs 列表前面，验证排序不是靠输入顺序侥幸对的。
+        let dirs: Vec<(PathBuf, &'static str)> =
+            vec![(portable_dir.clone(), "portable"), (machine_dir.clone(), "machine")];
+        let names: &[&str] = &["claude"];
+        let active: BTreeMap<String, String> = BTreeMap::new();
+
+        // 两处都能找到 claude.exe。
+        let machine_file = machine_dir.join("claude.exe");
+        let portable_file = portable_dir.join("claude.exe");
+        let exists = move |p: &Path| p == machine_file || p == portable_file;
+
+        let out = discover_tools_from(&dirs, &active, names, exists);
+        assert_eq!(out.len(), 2, "同一工具两处都发现，两条都要保留");
+        assert_eq!(out[0].source, "machine", "machine 必须排第一");
+        assert_eq!(out[1].source, "portable", "portable 排在 machine 之后");
+        assert_eq!(out[0].name, "claude");
+        assert_eq!(out[1].name, "claude");
+    }
+}
+
 /// `DriverStatus::discovered` 的实际计算：覆盖 `LIST_TOOLS` 这 8 个工具，
 /// 每个工具在每处已知搜索目录里查文件是否存在（跟 `tool_installed` 同款
 /// 纯文件存在性检查，不起进程），同名多处发现全部保留，按
 /// machine > portable 排序（本机装的优先，别让盘上的遮蔽本机的）。
 fn discover_tools(active: &std::collections::BTreeMap<String, String>) -> Vec<ToolDiscovery> {
+    let dirs = classify_search_dirs();
+    discover_tools_from(&dirs, active, LIST_TOOLS, |p| p.is_file())
+}
+
+/// `discover_tools` 的纯函数核心：已分类目录列表、工具名单、文件是否存在的判据
+/// 全部作为参数注入，生产路径仍然传真实 `classify_search_dirs()` + `Path::is_file`，
+/// 行为不变；单测借此在不碰真实磁盘的前提下锁「同名多处发现全部保留 + 按
+/// machine > portable 排序」这条契约（machine 排前面，本机装的优先，不让盘上的
+/// 遮蔽本机的）。
+fn discover_tools_from(
+    dirs: &[(PathBuf, &'static str)],
+    active: &std::collections::BTreeMap<String, String>,
+    names: &[&str],
+    exists: impl Fn(&Path) -> bool,
+) -> Vec<ToolDiscovery> {
     let exts: &[&str] = if cfg!(windows) {
         &["", ".cmd", ".exe", ".bat", ".ps1"]
     } else {
         &[""]
     };
-    let dirs = classify_search_dirs();
     let mut out = Vec::new();
-    for name in LIST_TOOLS {
+    for name in names {
         let mut found: Vec<ToolDiscovery> = Vec::new();
-        for (dir, source) in &dirs {
+        for (dir, source) in dirs {
             for ext in exts {
                 let file = dir.join(format!("{name}{ext}"));
-                if file.is_file() {
+                if exists(&file) {
                     found.push(ToolDiscovery {
                         name: (*name).to_string(),
                         path: file.display().to_string(),
