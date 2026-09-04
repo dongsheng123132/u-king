@@ -787,6 +787,7 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
     let cmd = cmd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
     if let Some(c) = &cmd {
         if !validate_cmd(c) {
+            crate::ulog::write("launch", &format!("term_open_external 拒绝：命令未过白名单 {c}"));
             return Err(format!("不允许的命令：{c}"));
         }
     }
@@ -827,7 +828,11 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
             .join(format!("uking_term_{}_{}.bat", std::process::id(), next_id()));
         std::fs::File::create(&bat_file)
             .and_then(|mut f| f.write_all(bat.as_bytes()))
-            .map_err(|e| format!("\u{5199}\u{7ec8}\u{7aef}\u{542f}\u{52a8}\u{811a}\u{672c}\u{5931}\u{8d25}: {e}"))?;
+            .map_err(|e| {
+                let msg = format!("\u{5199}\u{7ec8}\u{7aef}\u{542f}\u{52a8}\u{811a}\u{672c}\u{5931}\u{8d25}: {e}");
+                crate::ulog::write("launch", &format!("term_open_external {msg}"));
+                msg
+            })?;
 
         // `cmd /C start "" <bat>` —— start 把 bat 拉成独立新控制台进程（与 U-King 无父子关系）。
         // 头一个空 "" 是 start 的窗口标题占位（不可省，否则带引号的路径会被当标题）。
@@ -835,7 +840,12 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
             .args(["/C", "start", ""])
             .arg(&bat_file)
             .spawn()
-            .map_err(|e| format!("\u{542f}\u{52a8}\u{72ec}\u{7acb}\u{7ec8}\u{7aef}\u{5931}\u{8d25}: {e}"))?;
+            .map_err(|e| {
+                let msg = format!("\u{542f}\u{52a8}\u{72ec}\u{7acb}\u{7ec8}\u{7aef}\u{5931}\u{8d25}: {e}");
+                crate::ulog::write("launch", &format!("term_open_external {msg}"));
+                msg
+            })?;
+        crate::ulog::write("launch", &format!("term_open_external ✓ cmd={}", cmd.as_deref().unwrap_or("-")));
         return Ok(());
     }
 
@@ -1633,6 +1643,7 @@ mod tests {
         assert!(validate_cmd("claude"));
         assert!(validate_cmd("claude --resume"));
         assert!(validate_cmd("codex --model gpt-5.3-codex"));
+        assert!(validate_cmd("codex --no-alt-screen"));
         assert!(validate_cmd("openclaw gateway run --port 18789"));
         assert!(validate_cmd("dsh web"));
         assert!(validate_cmd("dsh --profile headless --help"));

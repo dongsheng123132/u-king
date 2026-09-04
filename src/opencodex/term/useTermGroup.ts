@@ -170,7 +170,18 @@ type TermSession = {
   restartCmd?: string | null;
   /** 升级快照的稳定条目号；重试时复用同一个 xterm，绝不把已成功项再开一遍。 */
   restoreKey?: number;
+  /** 最近一次 ensurePty 失败时捕获到的错误信息，供 RunOutcome.detail 使用。 */
+  lastError?: string;
 };
+
+/**
+ * `runInActive` / `runInNew` / `writeToActive` 这类「找终端 → 建 PTY → 写命令」调用的结果。
+ * 之前这些函数是 `void` 返回，调用方（工具启动按钮）在类型层面就没有「失败」这个概念——
+ * PTY 建不出来就是彻底静默：按钮点了、没有任何提示。改成显式结果，调用方才有机会 toast。
+ */
+export type RunOutcome =
+  | { ok: true; sessionId: string }
+  | { ok: false; reason: "no_host" | "pty_failed"; detail?: string };
 
 /** 升级快照的一条可重开记录；它描述的是新 PTY 的启动条件，不是旧会话的复活。 */
 export type TermRestore = { cwd: string | null; cmd: string | null; tool: string | null; restoreKey?: number };
@@ -553,11 +564,11 @@ export type TermGroup = {
   /** 把标签 `key` 拖到标签 `beforeKey` 之前（`beforeKey` 为 null = 挪到最后）。只动顺序，不碰 PTY */
   moveTab: (key: number, beforeKey: number | null) => void;
   /** 在当前激活终端（没有则新建）跑一条命令 */
-  runInActive: (cmd: string) => void;
+  runInActive: (cmd: string) => Promise<RunOutcome>;
   /** 在全新的终端标签里跑一条命令（用于会占住前台的长驻模式） */
-  runInNew: (cmd: string) => void;
+  runInNew: (cmd: string) => Promise<RunOutcome>;
   /** 往当前激活终端（没有则新建）**写入文本但不回车** —— 拖文件进来贴路径用 */
-  writeToActive: (text: string) => void;
+  writeToActive: (text: string) => Promise<RunOutcome>;
   /**
    * 移动当前终端的显示视口，不向 PTY 写任何按键。
    * Codex 等 TUI 自己会使用 ↑/↓（输入历史、选择菜单），所以宿主不能劫持它们翻回滚。
@@ -582,6 +593,28 @@ const ENGLISH_TUIS = ["claude", "codex", "hermes", "qwen", "crush", "opencode", 
 function tuiOf(cmd: string): string | null {
   const head = cmd.trim().split(/\s+/)[0]?.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase() ?? "";
   return ENGLISH_TUIS.includes(head) ? head : null;
+}
+
+/**
+ * Codex 的全屏 TUI 默认进入备用屏。备用屏没有 xterm 回滚缓冲，且会接管鼠标滚轮，
+ * 所以用户无法像普通终端那样回看先前输出。Codex CLI 自带 `--no-alt-screen`，正是
+ * 为嵌入式终端保留历史而设；在这里集中补上，旧的快捷词和用户保存的 `codex --yolo`
+ * 也会立即受益。
+ *
+ * 只处理交互式入口（bare codex / codex resume / 带全局选项的 codex）。`exec`、`review`
+ * 等非交互子命令不认识该选项，绝不能误加。
+ */
+const CODEX_NON_INTERACTIVE_SUBCOMMANDS = new Set([
+  "agents", "exec", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server",
+  "remote-control", "app", "completion", "update", "doctor", "sandbox", "debug", "apply", "queue",
+  "archive", "delete", "migrate-rollouts", "unarchive", "fork", "cloud", "exec-server", "features", "help",
+]);
+export function preserveCodexScrollback(cmd: string): string {
+  const prefix = cmd.match(/^\s*codex(?:\.(?:exe|cmd|bat))?(?=\s|$)/i);
+  if (!prefix || /(?:^|\s)--no-alt-screen(?:\s|$)/.test(cmd)) return cmd;
+  const firstArg = cmd.slice(prefix[0].length).trim().split(/\s+/, 1)[0]?.toLowerCase();
+  if (firstArg && CODEX_NON_INTERACTIVE_SUBCOMMANDS.has(firstArg)) return cmd;
+  return `${cmd.trimEnd()} --no-alt-screen`;
 }
 
 /**
@@ -713,6 +746,7 @@ export function useTermGroup(opts: {
         return sid;
       } catch (e) {
         s.input.clear();
+        s.lastError = String(e);
         s.term.writeln(`\x1b[31m打开终端失败: ${String(e)}\x1b[0m`);
         return null;
       } finally {
@@ -796,7 +830,8 @@ export function useTermGroup(opts: {
       ? initialCmdRef.current
       : null;
     if (firstInitialCmd) initialFiredRef.current = true;
-    const launchCmd = restore?.cmd ?? firstInitialCmd;
+    const rawLaunchCmd = restore?.cmd ?? firstInitialCmd;
+    const launchCmd = rawLaunchCmd ? preserveCodexScrollback(rawLaunchCmd) : null;
     s = {
       key,
       title: `终端 ${key}`,
@@ -1008,75 +1043,73 @@ export function useTermGroup(opts: {
     };
   }, [open, pendingRestores, newTerm, ensurePty, onRestoreFailed, onConsumedRestores]);
 
-  // 待运行命令：在当前（或新建）终端里跑
-  useEffect(() => {
-    if (!open || !pendingCmd) return;
-    let cancelled = false;
-    (async () => {
-      let s = sessionsRef.current.find((x) => x.key === activeKey);
-      if (!s) s = newTerm();
-      if (!s) return;
+  /**
+   * 「找终端（没有则新建）→ 建 PTY → 往里写」这套逻辑被 `runInActive` / `runInNew` /
+   * 待运行命令 effect 共用三份，抽成一个 helper —— 调用方只需决定「用哪个终端」。
+   * `send` 决定写进去之后要不要回车（`writeToActive` 只贴路径，不回车、不切 activeTui）。
+   */
+  const runCmdInSession = useCallback(
+    async (s: TermSession | undefined, cmd: string, opts?: { asCommand?: boolean }): Promise<RunOutcome> => {
+      if (!s) return { ok: false, reason: "no_host" };
       const sid = await ensurePty(s);
-      if (cancelled || !sid) return;
-      setActiveTui(tuiOf(pendingCmd));
-      s.input.push(pendingCmd + "\r");
-      onConsumedCmd?.();
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, pendingCmd]);
+      if (!sid) return { ok: false, reason: "pty_failed", detail: s.lastError };
+      if (opts?.asCommand === false) {
+        s.input.push(cmd);
+      } else {
+        const command = preserveCodexScrollback(cmd);
+        setActiveTui(tuiOf(command));
+        s.input.push(command + "\r");
+      }
+      s.term.focus();
+      return { ok: true, sessionId: sid };
+    },
+    [ensurePty],
+  );
 
   // 在当前激活终端（没有则新建）跑一条命令 —— 终端顶部快捷按钮用
   const runInActive = useCallback(
-    (cmd: string) => {
-      void (async () => {
-        let s = sessionsRef.current.find((x) => x.key === activeKeyRef.current);
-        if (!s) s = newTerm();
-        if (!s) return;
-        const sid = await ensurePty(s);
-        if (!sid) return;
-        setActiveTui(tuiOf(cmd));
-        s.input.push(cmd + "\r");
-        s.term.focus();
-      })();
+    (cmd: string): Promise<RunOutcome> => {
+      let s = sessionsRef.current.find((x) => x.key === activeKeyRef.current);
+      if (!s) s = newTerm();
+      return runCmdInSession(s, cmd);
     },
-    [newTerm, ensurePty],
+    [newTerm, runCmdInSession],
   );
 
   // 在全新的终端标签里跑命令。Web server / TUI 都会长期占住前台 shell；模式切换若复用
   // 当前标签，命令会被写进正在运行的程序而不是交给 shell。DSH 的 Web / 终端双入口用这条。
   const runInNew = useCallback(
-    (cmd: string) => {
-      void (async () => {
-        const s = newTerm();
-        if (!s) return;
-        const sid = await ensurePty(s);
-        if (!sid) return;
-        setActiveTui(tuiOf(cmd));
-        s.input.push(cmd + "\r");
-        s.term.focus();
-      })();
+    (cmd: string): Promise<RunOutcome> => {
+      const s = newTerm();
+      return runCmdInSession(s, cmd);
     },
-    [newTerm, ensurePty],
+    [newTerm, runCmdInSession],
   );
 
   // 往当前激活终端写入文本但**不回车**（拖文件进来贴路径用）—— 走 PTY，shell 会回显
   const writeToActive = useCallback(
-    (text: string) => {
-      void (async () => {
-        let s = sessionsRef.current.find((x) => x.key === activeKeyRef.current);
-        if (!s) s = newTerm();
-        if (!s) return;
-        const sid = await ensurePty(s);
-        if (!sid) return;
-        s.input.push(text);
-        s.term.focus();
-      })();
+    (text: string): Promise<RunOutcome> => {
+      let s = sessionsRef.current.find((x) => x.key === activeKeyRef.current);
+      if (!s) s = newTerm();
+      return runCmdInSession(s, text, { asCommand: false });
     },
-    [newTerm, ensurePty],
+    [newTerm, runCmdInSession],
   );
+
+  // 待运行命令：在当前（或新建）终端里跑。复用 runInActive，避免重复一份
+  // 「找终端 → 建 PTY → 写命令」的判断逻辑。
+  useEffect(() => {
+    if (!open || !pendingCmd) return;
+    let cancelled = false;
+    void runInActive(pendingCmd).then((r) => {
+      if (cancelled || !r.ok) return;
+      onConsumedCmd?.();
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pendingCmd]);
 
   // 只滚 xterm 的 viewport，不把控制字符送给正在运行的 Codex CLI。
   // `scrollToBottom` 比反复向下滚可靠：新输出或窗口尺寸变化后仍可精确回到实时位置。

@@ -792,6 +792,12 @@ async fn term_open(
 ) -> Result<String, String> {
     let tag = tool.clone();
     let r = term::term_open_pty(cols, rows, on_data, initial_cmd, cwd, tool).await;
+    // 「点了没反应」在终端这条链路上尤其容易发生（懒启动、异步建 PTY），且以前失败路径
+    // 完全没有日志——客户报「工具没起来」时我们连它到底是没建成 PTY 还是别的都不知道。
+    match &r {
+        Ok(sid) => crate::ulog::write("launch", &format!("term_open tool={} ✓ sid={sid}", tag.as_deref().unwrap_or("-"))),
+        Err(e) => crate::ulog::write("launch", &format!("term_open tool={} ✗ {e}", tag.as_deref().unwrap_or("-"))),
+    }
     if r.is_ok() {
         if let Some(t) = tag {
             metrics::log_tool_use(&t, "term");

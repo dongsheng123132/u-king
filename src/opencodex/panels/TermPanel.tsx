@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronUp, Plus, RotateCw, X } from "lucide-react";
-import { useTermGroup } from "../term/useTermGroup";
+import { useTermGroup, type RunOutcome } from "../term/useTermGroup";
 import { copyToClipboard } from "../../lib/clipboard";
 import { isWindows } from "../../lib/platform";
 import { AnchoredMenu } from "../../components/AnchoredMenu";
@@ -107,8 +107,8 @@ const CHEAT_OFF_KEY = "uking:term-cheatsheet-off";
 
 /** TermPanel 暴露给父级的命令式接口：runCmd=当前标签；runCmdNew=新标签；paste=贴文本不回车。 */
 export type TermPanelApi = {
-  runCmd: (cmd: string) => void;
-  runCmdNew: (cmd: string) => void;
+  runCmd: (cmd: string) => Promise<RunOutcome>;
+  runCmdNew: (cmd: string) => Promise<RunOutcome>;
   paste: (text: string) => void;
 };
 

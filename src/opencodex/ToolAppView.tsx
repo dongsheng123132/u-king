@@ -99,6 +99,8 @@ export function ToolAppView({
   const [cfgOpen, setCfgOpen] = useState(true);
   // 是否已启动（点过启动按钮）—— 决定是否还盖着启动遮罩。一旦启动就长驻不再盖。
   const [launched, setLaunched] = useState(false);
+  // handleStart 正在跑（还没确认命令真的起来）—— 挡住手快连点两下开出两个 PTY 会话。
+  const [starting, setStarting] = useState(false);
   const [hermesStatus, setHermesStatus] = useState<HermesBrowserStatus | null>(null);
   const [checkingHermes, setCheckingHermes] = useState(false);
   const termApi = useRef<TermPanelApi | null>(null);
@@ -124,12 +126,15 @@ export function ToolAppView({
   const startPrompt = app.prompts[0];
 
   // 在独立系统终端窗口跑命令（term_open_external 已注入便携工具 PATH + OPENCLAW_* + 过白名单）。
-  const runExternal = async (cmd: string) => {
+  // 返回是否真的打开成功 —— 调用方据此决定要不要揭开启动遮罩（不能揭早了）。
+  const runExternal = async (cmd: string): Promise<boolean> => {
     try {
       await invoke("term_open_external", { cmd });
       onToast(t("{name} 已在独立终端窗口打开（显示区域更大）", { name: app.name }));
+      return true;
     } catch (e) {
       onToast(t("打开独立终端失败：{e}", { e: String(e) }));
+      return false;
     }
   };
 
@@ -181,36 +186,50 @@ export function ToolAppView({
   };
 
   const handleStart = async () => {
-    // external 应用（Hermes）：不依赖内嵌终端 —— 先按需配好虾盘云（规避裸跑 hermes → 401 老坑），
-    // 再弹一个独立系统终端窗口跑，显示区域更大、不挤在 U-King 界面里。
-    if (isExternal) {
-      setLaunched(true);
-      await ensureWebToolConfigured();
-      if (startPrompt) await runExternal(startPrompt.cmd);
-      return;
-    }
-    if (!termApi.current) {
-      onToast(t("终端还没就绪，请稍候再试"));
-      return;
-    }
-    setLaunched(true);
-    // OpenClaw 且 ClawX 桌面版正在运行：ClawX 就是完整 OpenClaw（占着 18789）。此时 U-King
-    // 啥都别碰 —— 不写它配置（免「全部覆盖了」客户自己的 ClawX 设置）、不抢端口、不开连不上的
-    // 网页壳，直接把 ClawX 拉到前台让客户用。这是「装了 ClawX 必然打不开」的根因修复。
-    if (isOpenClaw && (await invoke<boolean>("clawx_running").catch(() => false))) {
-      onToast(
-        t("检测到 ClawX 桌面版正在运行 —— 它就是完整的 OpenClaw，已为你打开，无需在这里重复启动"),
-      );
-      invoke("launch_app", { app: "clawx" }).catch(() => {});
-      return;
-    }
-    await ensureWebToolConfigured(); // 仅 openclaw/hermes/dsh 且未配过时；claude/codex 不碰配置
-    if (isOpenClaw) {
-      launchOpenClawWebUI();
-    } else if (isDsh) {
-      launchDshWebUI();
-    } else if (startPrompt) {
-      termApi.current.runCmd(startPrompt.cmd);
+    setStarting(true);
+    try {
+      // external 应用（Hermes）：不依赖内嵌终端 —— 先按需配好虾盘云（规避裸跑 hermes → 401 老坑），
+      // 再弹一个独立系统终端窗口跑，显示区域更大、不挤在 U-King 界面里。
+      // 🔴 setLaunched(true) 只能在确认命令真的跑起来之后才调用，不能像以前那样先揭遮罩再跑命令。
+      if (isExternal) {
+        await ensureWebToolConfigured();
+        const ok = startPrompt ? await runExternal(startPrompt.cmd) : true;
+        if (ok) setLaunched(true);
+        return;
+      }
+      if (!termApi.current) {
+        onToast(t("终端还没就绪，请稍候再试"));
+        return;
+      }
+      // OpenClaw 且 ClawX 桌面版正在运行：ClawX 就是完整 OpenClaw（占着 18789）。此时 U-King
+      // 啥都别碰 —— 不写它配置（免「全部覆盖了」客户自己的 ClawX 设置）、不抢端口、不开连不上的
+      // 网页壳，直接把 ClawX 拉到前台让客户用。这是「装了 ClawX 必然打不开」的根因修复。
+      if (isOpenClaw && (await invoke<boolean>("clawx_running").catch(() => false))) {
+        onToast(
+          t("检测到 ClawX 桌面版正在运行 —— 它就是完整的 OpenClaw，已为你打开，无需在这里重复启动"),
+        );
+        invoke("launch_app", { app: "clawx" }).catch(() => {});
+        return;
+      }
+      await ensureWebToolConfigured(); // 仅 openclaw/hermes/dsh 且未配过时；claude/codex 不碰配置
+      if (isOpenClaw) {
+        if (await launchOpenClawWebUI()) setLaunched(true);
+      } else if (isDsh) {
+        if (await launchDshWebUI()) setLaunched(true);
+      } else if (startPrompt) {
+        const r = await termApi.current.runCmd(startPrompt.cmd);
+        if (!r.ok) {
+          onToast(
+            r.reason === "no_host"
+              ? t("终端还没就绪，请稍候再试")
+              : t(r.detail ? "启动失败：{e}" : "启动失败，请重试", { e: r.detail ?? "" }),
+          );
+          return;
+        }
+        setLaunched(true);
+      }
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -226,10 +245,11 @@ export function ToolAppView({
   //     别再开一个连不上的网页壳，直接把 ClawX 拉到前台，让客户用它（功能完全一样，还更好用）。
   //  ② 端口被我们之前起的 gateway 占着：用它**真实** token（后端读配置）开网页。
   //  ③ 端口空闲：先把 token 钉成已知值（prepare_openclaw_home）再起 gateway，就绪后用真实 token 开。
-  const launchOpenClawWebUI = async () => {
+  // 返回是否真的把命令跑起来了（不是「网页是否已就绪」——那只是锦上添花，见下方 ready 分支）。
+  const launchOpenClawWebUI = async (): Promise<boolean> => {
     if (!termApi.current) {
       onToast(t("终端还没就绪，请稍候再试"));
-      return;
+      return false;
     }
     const already = await invoke<boolean>("wait_port", { port: OPENCLAW_PORT, timeoutMs: 0 }).catch(
       () => false,
@@ -242,24 +262,33 @@ export function ToolAppView({
           t("检测到 ClawX 桌面版正在运行 —— 它就是完整的 OpenClaw，已为你打开，无需在这里重复启动"),
         );
         invoke("launch_app", { app: "clawx" }).catch(() => {});
-        return;
+        return true;
       }
       // 是我们自己之前起的 gateway（切走又切回 / 之前点过）—— 用它真实 token 开网页。
       await openWebUI();
-      return;
+      return true;
     }
     // 端口空闲：先钉好 token 再起 gateway（后端轮询 18789 就绪，通了立刻开网页，不固定等 6s）。
     await invoke("prepare_openclaw_home").catch(() => {});
-    termApi.current.runCmd(OPENCLAW_GATEWAY_CMD);
+    const r = await termApi.current.runCmd(OPENCLAW_GATEWAY_CMD);
+    if (!r.ok) {
+      onToast(
+        r.reason === "no_host"
+          ? t("终端还没就绪，请稍候再试")
+          : t(r.detail ? "启动失败：{e}" : "启动失败，请重试", { e: r.detail ?? "" }),
+      );
+      return false;
+    }
     onToast(t("正在启动 OpenClaw 网页版，就绪后自动打开控制台…"));
     const ready = await invoke<boolean>("wait_port", { port: OPENCLAW_PORT, timeoutMs: 30000 }).catch(
       () => false,
     );
     if (!ready) {
       onToast(t("网页版启动较慢或失败，请看下方终端日志，或稍后点右上角「打开网页版」重试"));
-      return;
+      return true; // gateway 命令已经跑起来了，只是网页还没就绪 —— 不算启动失败
     }
     await openWebUI();
+    return true;
   };
 
   // DeepSeek Harness 官方的人类入口是 Web UI。PTY 只承载 server 日志；按钮负责等待服务真正
@@ -277,20 +306,39 @@ export function ToolAppView({
   // 不如在这儿用它的**单次探测**（timeoutMs:0）自己循环：还能顺带报出已等了多久。
   const DSH_HOT_MS = 60_000; // 热启动实测 ~22s；超过这条线就该改口说「首次初始化」
   const DSH_GIVEUP_MS = 10 * 60_000; // 到这儿仍不通才算真出事，且仍然只说事实、不叫用户重装
-  const launchDshWebUI = async () => {
+  // 🔴 返回时机必须是「runCmd 命令已经跑起来」，绝不能是「端口已经就绪」——冷启动可能要等到
+  // 10 分钟（DSH_GIVEUP_MS），调用方（handleStart）会 await 这个返回值才揭遮罩，等满 10 分钟
+  // 就是把「点启动」卡死 10 分钟。端口轮询改成不被 await 的后台任务，自己异步继续。
+  const launchDshWebUI = async (): Promise<boolean> => {
     if (!termApi.current) {
       onToast(t("终端还没就绪，请稍候再试"));
-      return;
+      return false;
     }
     if (dshWaiting) {
       onToast(t("已经在等 DeepSeek Harness 就绪了，就绪后会自动打开"));
-      return; // 不可重入：再点一次会再起一个 `dsh web`，两个实例抢同一个端口
+      return false; // 不可重入：再点一次会再起一个 `dsh web`，两个实例抢同一个端口
     }
     const already = await invoke<boolean>("wait_port", { port: DSH_PORT, timeoutMs: 0 }).catch(() => false);
-    if (!already) {
-      termApi.current.runCmd("dsh web");
-      setDshWaiting(true);
-      setDshPhase(t("正在启动 DeepSeek Harness…"));
+    if (already) {
+      // DSH 0.1.0-rc.7 实测未设置 X-Frame-Options / frame-ancestors，故原位嵌进工作区。
+      // 同时收起驱动栏，保证 1120px 主窗口也留给 Web UI 足够宽度；用户仍可收起工作台回到配置。
+      setCfgOpen(false);
+      setDshWebVisible(true);
+      return true;
+    }
+    const r = await termApi.current.runCmd("dsh web");
+    if (!r.ok) {
+      onToast(
+        r.reason === "no_host"
+          ? t("终端还没就绪，请稍候再试")
+          : t(r.detail ? "启动失败：{e}" : "启动失败，请重试", { e: r.detail ?? "" }),
+      );
+      return false;
+    }
+    setDshWaiting(true);
+    setDshPhase(t("正在启动 DeepSeek Harness…"));
+    // 端口轮询是异步的后台任务，不 await —— launchDshWebUI 在这里就该返回了。
+    void (async () => {
       const t0 = Date.now();
       try {
         for (;;) {
@@ -320,18 +368,17 @@ export function ToolAppView({
                   s: String(Math.round(ms / 1000)),
                 }),
           );
-          await new Promise((r) => setTimeout(r, 2000));
+          await new Promise((r2) => setTimeout(r2, 2000));
         }
       } finally {
         setDshWaiting(false);
         setDshPhase("");
       }
       if (dshAbort.current) return;
-    }
-    // DSH 0.1.0-rc.7 实测未设置 X-Frame-Options / frame-ancestors，故原位嵌进工作区。
-    // 同时收起驱动栏，保证 1120px 主窗口也留给 Web UI 足够宽度；用户仍可收起工作台回到配置。
-    setCfgOpen(false);
-    setDshWebVisible(true);
+      setCfgOpen(false);
+      setDshWebVisible(true);
+    })();
+    return true;
   };
 
   // 安全阀，不作为第二个主入口：iframe 在客户机 WebView2 上若有上传、存储等兼容问题，
@@ -342,14 +389,23 @@ export function ToolAppView({
 
   // dsh 官方 headless 只跑一次任务；这里启动开源 dsh-terminal profile，在同一个真实
   // Agent/Session 上连续对话。每次用新 PTY 标签，避免 Web server 已占住当前 shell 时命令失效。
-  const launchDshTerminal = () => {
+  const launchDshTerminal = async (): Promise<boolean> => {
     if (!termApi.current) {
       onToast(t("终端还没就绪，请稍候再试"));
-      return;
+      return false;
+    }
+    const r = await termApi.current.runCmdNew("dsh --profile terminal");
+    if (!r.ok) {
+      onToast(
+        r.reason === "no_host"
+          ? t("终端还没就绪，请稍候再试")
+          : t(r.detail ? "启动失败：{e}" : "启动失败，请重试", { e: r.detail ?? "" }),
+      );
+      return false;
     }
     setLaunched(true);
-    termApi.current.runCmdNew("dsh --profile terminal");
     onToast(t("DeepSeek Harness 终端模式已在新标签打开"));
+    return true;
   };
 
   // 已移除「进页即 autoLaunch 自动启动」：它绕过用户点击 = 「打开页面就自动启动 / 自动接管」，
@@ -498,7 +554,8 @@ export function ToolAppView({
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     onClick={handleStart}
-                    className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition"
+                    disabled={starting}
+                    className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition disabled:opacity-60"
                   >
                     <Rocket size={18} />
                     {t("Web 工作台")}
@@ -514,7 +571,8 @@ export function ToolAppView({
               ) : (
                 <button
                   onClick={handleStart}
-                  className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition"
+                  disabled={starting}
+                  className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition disabled:opacity-60"
                 >
                   <Play size={18} className="fill-current" />
                   {isOpenClaw ? t("一键启动并打开网页版") : (app.launchLabel ? t(app.launchLabel) : t("启动 {name}", { name: app.name }))}
