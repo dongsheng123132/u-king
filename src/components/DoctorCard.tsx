@@ -142,16 +142,24 @@ function StateBadge({ item }: { item: AiCheckupItem }) {
 export function DoctorCard({
   onRecharge,
   onSelfUpdate,
+  collapsedByDefault,
 }: {
   /** 打开充值页（沿用 Manager 那条路：独立 webview 子窗口）。 */
   onRecharge?: (url?: string | null) => void;
   /** 本体一键升级（复用 App 的 doSelfUpdate：进度/失败账本全在那一层管）。 */
   onSelfUpdate?: () => void;
+  /** 首次挂载时是否折叠（2026-09-04，「我的 AI」页顶部用：全绿别占地方）。
+   *  只影响**初始**折叠态，不影响下面 runCheck 里「体检完发现有问题就自动展开」那条既有逻辑——
+   *  两者不冲突：collapsedByDefault=true 时若体检回来是全绿，`!isAllGreen` 算出 false，
+   *  折叠态原样保持；若有问题，同一行逻辑会把它自动展开，这是期望行为。
+   *  不传时保持原来的行为（默认展开），Manager 页以前的调用方式不受影响——虽然
+   *  Manager 页那处挂载点本身已在本次改动中删除，这里仍保留「不传即展开」以防未来别处复用。 */
+  collapsedByDefault?: boolean;
 }) {
   const { t } = useI18n();
   const [report, setReport] = useState<DoctorReport | null>(null);
   const [checkedAt, setCheckedAt] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!collapsedByDefault);
   const [checking, setChecking] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   // 每个工具的升级状态 + 最近一行日志（事件来一条覆盖一条，够看清在干什么）
@@ -231,18 +239,59 @@ export function DoctorCard({
   const upFail = Object.values(upStates).filter((u) => u.state === "fail").length;
   const allGreen = !!report && isAllGreen(report);
 
-  if (allGreen && !expanded) {
+  // 折叠态按严重度分三档，条件从「全绿才折叠」放宽成「只要 expanded===false 就折」——
+  // 因为折叠现在也可能是 collapsedByDefault 带来的初始态，而不是只有全绿才会出现。
+  if (!expanded) {
+    // 体检还没跑完（含 collapsedByDefault=true 时挂载即体检那一小段窗口）：中性 loading 态。
+    if (!report) {
+      return (
+        <section className="mb-4 rounded-card border border-white/[0.08] bg-bg-1/90 shadow-card overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            title={t("点击查看体检详情")}
+            className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-white/[0.03]"
+          >
+            <Loader2 size={16} className="text-ink-4 shrink-0 animate-spin" />
+            <span className="min-w-0 flex-1 text-[13px] font-medium text-ink-1">{t("体检中…")}</span>
+            <ChevronDown size={15} className="text-ink-4 shrink-0" />
+          </button>
+        </section>
+      );
+    }
+    if (allGreen) {
+      return (
+        <section className="mb-4 rounded-card border border-success-400/20 bg-bg-1/90 shadow-card overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            title={t("点击查看体检详情")}
+            className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-white/[0.03]"
+          >
+            <CheckCircle2 size={16} className="text-success-400 shrink-0" />
+            <span className="min-w-0 flex-1 text-[13px] font-medium text-ink-1">
+              {t("✅ 环境正常 · 刚检查 {time}", { time: checkedAt ? checkedTime(checkedAt) : "--:--" })}
+            </span>
+            <ChevronDown size={15} className="text-ink-4 shrink-0" />
+          </button>
+        </section>
+      );
+    }
+    // 有问题但非「idle 缺件」（比如有更新 / 余额低 / 环境缺件）：idleTools.length 可能是 0，
+    // 这时用不点数字的通用文案，避免出现「0 个 AI 还没配好」这种误导。
     return (
-      <section className="mb-4 rounded-card border border-success-400/20 bg-bg-1/90 shadow-card overflow-hidden">
+      <section className="mb-4 rounded-card border border-amber-500/25 bg-bg-1/90 shadow-card overflow-hidden">
         <button
           type="button"
           onClick={() => setExpanded(true)}
           title={t("点击查看体检详情")}
           className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-white/[0.03]"
         >
-          <CheckCircle2 size={16} className="text-success-400 shrink-0" />
+          <AlertTriangle size={16} className="text-amber-500 shrink-0" />
           <span className="min-w-0 flex-1 text-[13px] font-medium text-ink-1">
-            {t("✅ 环境正常 · 刚检查 {time}", { time: checkedAt ? checkedTime(checkedAt) : "--:--" })}
+            {idleTools.length > 0
+              ? t("⚠️ {n} 个 AI 还没配好", { n: idleTools.length })
+              : t("⚠️ 环境有项待处理")}
           </span>
           <ChevronDown size={15} className="text-ink-4 shrink-0" />
         </button>

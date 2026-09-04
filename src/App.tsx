@@ -45,6 +45,7 @@ import { ProviderManager } from "./components/ProviderManager";
 import { ApplyScopeDialog } from "./components/ApplyScopeDialog";
 import { PanelBoundary } from "./components/PanelBoundary";
 import type { LaunchPlan } from "./components/LaunchBlocked";
+import { DoctorCard } from "./components/DoctorCard";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 
 // 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
@@ -1262,21 +1263,11 @@ export function App() {
                 onGoPage={(tb) => setTab(tb as TabId)}
                 onDeviceKeyChange={setDeviceKey}
                 onRecharge={(url) => openRechargeAndWatch(url)}
-                onSelfUpdate={doSelfUpdate}
                 onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "ai-settings-repair" }); setTab("chat"); }}
-                // 「左装右选 → 合并启动」用的三件（2026-08-20）。**全是复用现成的**：
-                // 装机走 `openTool`（跟「我的 AI」同一条），启动走 `launchTool`
-                // （CLI 落进 U-CLI 会话 / GUI 应用外部弹出，也是同一条）。
-                // Manager 自己不实现装和启动 —— 那两件在 App 这层已经各有唯一一份。
+                // tools 只为读真实安装态（Manager::realInstalled，渲染「未安装」徽章）。
+                // 装 / 启动 / 卸载 2026-09-04 搬去了「我的 AI」页，本页不再传 onInstallTool/
+                // onLaunchTool（那两条唯一实现 openTool/launchTool 仍在下面 MyAI 那处调用）。
                 tools={tools}
-                onInstallTool={(target) => {
-                  const t = tools.find((x) => x.id === MANAGER_TARGET_TOOL_ID[target]);
-                  if (t) openTool(t);
-                }}
-                onLaunchTool={(target) => {
-                  const t = tools.find((x) => x.id === MANAGER_TARGET_TOOL_ID[target]);
-                  if (t) launchTool(t);
-                }}
               />
             ) : tab === "create" ? (
               <Create deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
@@ -1378,6 +1369,7 @@ export function App() {
                 onApplyXiapan={applyXiapan}
                 onImportXiapan={importToUuswitch}
                 onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
+                onSelfUpdate={doSelfUpdate}
                 onManageProviders={(editId) => setProviderMgr({ editId })}
                 onRefreshDriver={refresh}
                 termSnapshot={termSnapshot}
@@ -1968,30 +1960,10 @@ const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote"]);
 
 /** 支持「一键卸载」的工具 id —— 镜像后端 cleanup::uninstall_ai_tool 的 match（改一处同步另一处）。
  *  url 型第三方工具（Obsidian / UU远程）不由我们装，不给卸载入口。 */
-/**
- * 「AI 设置」里那四个配置目标 → 「我的 AI」里对应的工具 id。
- *
- * 这两套 id **本来就不一样**（配置目标是 `claude`，工具是 `claude-code`），
- * 以前不用对齐是因为两个页面各管各的；「左装右选」把装机和配模型并进一屏之后，
- * 才需要一张明确的对照表。写在这里而不是 Manager 里：**Manager 不该知道工具 id**，
- * 它只说「我要装/起哪个配置目标」，由组合根翻译成具体的 ToolInfo（同四铁律的方向）。
- */
-const MANAGER_TARGET_TOOL_ID: Record<string, string> = {
-  claude: "claude-code",
-  codex: "codex",
-  clawx: "clawx",
-  hermes: "hermes",
-  // dsh / pi 是 2026-08-22 补的 Manager Tab（同 Manager.tsx::TARGET_TOOL_ID 那张表）——
-  // 少了这两行，「左装右选」的装/启动按钮对这两个 Tab 会查不到 tools 里的条目、
-  // 静默什么都不做（onInstallTool/onLaunchTool 里的 `tools.find` 会是 undefined）。
-  dsh: "dsh",
-  pi: "pi",
-  // opencode 2026-08-24 同批加入（同上：少这一行，「左装右选」的装/启动按钮对
-  // OpenCode 这个 Tab 会查不到 tools 条目、静默什么都不做）。
-  opencode: "opencode",
-  // cline 2026-08-29 上架同批加入（AI 设置页新 Tab 的「左装右选」装/启动按钮）。
-  cline: "cline",
-};
+// 「AI 设置」里那四个配置目标 → 「我的 AI」工具 id 的对照表（原 MANAGER_TARGET_TOOL_ID）
+// 2026-09-04 随「左装右选 → 合并启动」一起删除：Manager 页不再自己触发装/启动，
+// 这张表的唯一消费者（onInstallTool/onLaunchTool 回调）已不存在。
+// Manager.tsx::TARGET_TOOL_ID 是同名但独立用途的表（只读安装态判断「未安装」徽章），未受影响。
 
 const UNINSTALLABLE = new Set([
   "claude-code",
@@ -2024,6 +1996,7 @@ function MyAI({
   onApplyXiapan,
   onImportXiapan,
   onRecharge,
+  onSelfUpdate,
   termSnapshot,
   recoveringTermSnapshot,
   failedTermRestoreCount,
@@ -2047,6 +2020,8 @@ function MyAI({
   onApplyXiapan: () => void;
   onImportXiapan: () => void;
   onRecharge: () => void;
+  /** 本体一键升级（App 的 doSelfUpdate，带进度/失败账本/重启流程）—— 传给顶部 DoctorCard。 */
+  onSelfUpdate?: () => void;
   termSnapshot: TermSnapshotInfo | null;
   recoveringTermSnapshot: boolean;
   failedTermRestoreCount: number;
@@ -2094,6 +2069,10 @@ function MyAI({
 
   return (
     <div className="space-y-6 pb-2">
+      {/* 一键体检 / 一键升级（2026-09-04 从「AI 设置」页顶部搬来）：按动词分家后，
+          「我的 AI」= 装/启动/卸载/体检/升级，「AI 设置」只配。默认折叠（`collapsedByDefault`），
+          全绿时不占地方，有问题才自动展开。 */}
+      <DoctorCard collapsedByDefault onRecharge={() => onRecharge()} onSelfUpdate={onSelfUpdate} />
       {termSnapshot && termSnapshot.sessions.length > 0 && (
         <section className="flex flex-wrap items-center gap-3 rounded-card border border-accent/30 bg-accent/[0.07] px-4 py-3">
           <TerminalIcon size={18} className="text-accent shrink-0" />

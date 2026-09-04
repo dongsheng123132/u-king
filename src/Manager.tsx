@@ -50,7 +50,6 @@ import { XIAPAN_MODELS, priceyModelHint, codexProtocolHint } from "./lib/models"
 import { ShareButton } from "./components/ShareCard";
 import { WalletCard } from "./components/WalletCard";
 import { ToolCheckup } from "./components/ToolCheckup";
-import { DoctorCard } from "./components/DoctorCard";
 import { FreerouterCard } from "./components/FreerouterCard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./lib/providerTemplates";
 import { FREE_GUIDE, type FreeGuide } from "./lib/freeGuide";
@@ -200,8 +199,9 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
   { target: "cline", label: "Cline", icon: "cline" },
 ];
 
-/** 配置目标 → 「我的 AI」里的工具 id。跟 `App.tsx::MANAGER_TARGET_TOOL_ID` 是同一张表；
- *  那边负责「装/起哪个」，这边只负责「装没装」，两处都只读不写，不构成第二份实现。 */
+/** 配置目标 → 「我的 AI」里的工具 id，只为 `realInstalled()` 读安装态（渲染「未安装」徽章）。
+ *  2026-09-04：装/启动改到「我的 AI」页后，App.tsx 里原来同名的对照表
+ *  （`MANAGER_TARGET_TOOL_ID`）随它的唯一消费者一起删了，这张表不再有姊妹表。 */
 const TARGET_TOOL_ID: Record<string, string> = {
   claude: "claude-code",
   codex: "codex",
@@ -446,10 +446,7 @@ export function Manager({
   onGoPage,
   onDeviceKeyChange,
   onRecharge,
-  onSelfUpdate,
   tools,
-  onInstallTool,
-  onLaunchTool,
   onAskAI,
 }: {
   onGoCodex?: () => void;
@@ -460,20 +457,15 @@ export function Manager({
   onGoPage?: (tab: string) => void;
   onDeviceKeyChange?: (dk: DeviceKey) => void;
   onRecharge?: (url?: string) => void;
-  /** 本体一键升级（App 的 doSelfUpdate，带进度/失败账本/重启流程 —— 本页不重造第二份）。 */
-  onSelfUpdate?: () => void;
   /**
-   * 「我的 AI」那份工具清单 —— 只为读**真实**安装态。
+   * 「我的 AI」那份工具清单 —— 只为读**真实**安装态（`realInstalled`，见 L1788 那处
+   * 「未安装」徽章）。
    *
    * 🔴 故意只声明用得到的两个字段，**不再抄一份 `ToolInfo`**：那个类型在 App / Advanced /
    * CodexZone 里已经各有一份本地定义（三份），再加第四份就是第四处会漂的地方（宪法 8）。
    * 本页只关心「装没装」，结构类型足够。
    */
   tools?: { id: string; installed: boolean }[];
-  /** 装这个配置目标。由 App 翻成 ToolInfo 后走「我的 AI」同一条装机流，本页不自己实现。 */
-  onInstallTool?: (target: string) => void;
-  /** 起这个配置目标。CLI 落进 U-CLI 会话、GUI 应用外部弹出 —— 也是 App 那条唯一实现。 */
-  onLaunchTool?: (target: string) => void;
   /** 将已脱敏的供应商故障交给 U-Chat；页面本身不读取或转交 API Key。 */
   onAskAI?: (prompt: string) => void;
 }) {
@@ -1329,14 +1321,6 @@ export function Manager({
         </div>
       </section>
 
-      {/* 「一键体检 / 一键升级」（2026-08-31，参考 claude doctor / hermes doctor）：
-          客户只按一个按钮就拿到「这台机器现在能不能好好用 AI」的完整判词 ——
-          本体版本 / 钱包 / 环境 / 各 AI 配置状态一次看全；升级也是一键（CLI 逐个重装到 latest）。 */}
-      <DoctorCard
-        onRecharge={(url) => (onRecharge ? onRecharge(url ?? undefined) : openRecharge(url))}
-        onSelfUpdate={onSelfUpdate}
-      />
-
       {/* 分区切换 —— 每次只呈现一件事。
           顺序按**用的频率**排，不按功能亲缘：换模型（天天）→ 供应商库（偶尔）→
           用量（想起来才看）→ 高级（基本不看）。
@@ -1744,10 +1728,9 @@ export function Manager({
         {/* 🔴 「左装右选」（2026-08-20，借鉴 EchoBird）。
             以前：装在「我的 AI」页、配模型在本页，**两页分离** —— 客户要先跳过去装、
             装完跳回来配，中间还得记住自己刚装了哪个。
-            现在：左栏一列 AI（含未装的，就地能装），右栏是**跟着左边选中项走**的配置区，
-            底下一颗启动。装 → 配 → 用压成一屏一条线。
-            ★ 我们比 EchoBird 多一样东西：**启动落进 U-CLI 的会话**，不是弹个裸终端
-            （见 App 传进来的 `onLaunchTool`）。EchoBird 只能弹窗，因为它没有壳。
+            现在：左栏一列 AI（含未装的），右栏是**跟着左边选中项走**的配置区。
+            2026-09-04：底下那颗「启动」按动词分家搬去了「我的 AI」页（那边启动落进
+            U-CLI 的会话，不是弹个裸终端），本页只留配置这一段。
             窄屏（<lg）自动退回上下堆叠，不硬挤两栏。 */}
         <div className="grid gap-4 lg:grid-cols-[minmax(210px,250px)_minmax(0,1fr)] items-start">
           {/* ① 左栏：装 */}
@@ -1974,41 +1957,17 @@ export function Manager({
           </div>
         </div>
 
-            {/* ③ 合并启动 —— 「装 → 配 → 用」这条线的收口。
-                🔴 **没有「保存」这一步**：`switchOneTool` 是选完立即生效的，
-                硬造一颗「保存」按钮等于让界面撒谎（客户点了会以为刚才没生效）。
-                所以这里只有「启动」。
-                🔴 未装的显示「装好并启动」而不是「启动」—— 装没装读的是 `list_tools`
-                的真实结果，不是 `toolInstalledOf`（那个对 claude/codex 恒真，
-                会让没装的工具也显示「启动」，点了什么都不发生）。
-                拿不到清单时（`null` = 不知道）按「已装」渲染但文案不承诺，见下。 */}
-            {(() => {
-              const inst = realInstalled(tools, activeTab);
-              const label = TOOL_TABS.find((x) => x.target === activeTab)?.label ?? activeTab;
-              const isGui = activeTab === "clawx";
-              return (
-                <div className="mt-5 pt-4 border-t border-white/[0.06] flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => (inst === false ? onInstallTool?.(activeTab) : onLaunchTool?.(activeTab))}
-                    disabled={!!busy}
-                    data-action-id={inst === false ? undefined : "runtime.tool.launch"}
-                    className="inline-flex items-center gap-2 h-10 px-5 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 disabled:opacity-50 shadow-sm"
-                  >
-                    <Power size={15} />
-                    {inst === false
-                      ? t("装好 {name} 并启动", { name: label })
-                      : t("启动 {name}", { name: label })}
-                  </button>
-                  <span className="text-[11.5px] text-ink-4">
-                    {inst === false
-                      ? t("还没装 —— 会先走装机流程，装完再按上面选好的驱动启动")
-                      : isGui
-                        ? t("ClawX 是独立桌面应用，会单独开一个窗口")
-                        : t("按上面选好的驱动，在 U-CLI 里开一个配好的会话（想拉出去有「拉出」按钮）")}
-                  </span>
-                </div>
-              );
-            })()}
+            {/* 装 / 启动 / 卸载已搬去「我的 AI」页（2026-09-04 按动词分家：本页只配，
+                不再重复一个启动入口）。这里只留一条指路，不留死胡同。 */}
+            <div className="mt-5 pt-4 border-t border-white/[0.06] flex flex-wrap items-center gap-2 text-[11.5px] text-ink-4">
+              {t("装 / 启动 / 卸载在「我的 AI」页")}
+              <button
+                onClick={() => onGoPage?.("myai")}
+                className="text-accent hover:underline font-medium"
+              >
+                {t("去我的 AI")}
+              </button>
+            </div>
           </div>
         </div>
 
