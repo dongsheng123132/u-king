@@ -2224,6 +2224,12 @@ function MyAI({
                         : t.id === "clawx"
                           ? driver?.clawx_model
                           : null;
+              // 卡片上「装在哪」——后端 `discover_tools` 用的名字跟前端 t.id 有两处不一样
+              // （claude-code→claude，codex-cli→codex），其余 id 本来就同名。同名可能有
+              // 多条（本机一条、盘上一条），后端已按 machine > portable 排好，取第一条
+              // 就是当前 search_paths/tool_installed 实际会命中的那份。
+              const discoveryName = t.id === "claude-code" ? "claude" : t.id === "codex-cli" ? "codex" : t.id;
+              const primaryDiscovery = driver?.discovered?.find((d) => d.name === discoveryName);
               return (
                 <div
                   key={t.id}
@@ -2263,6 +2269,24 @@ function MyAI({
                           <Cpu size={11} className="shrink-0" /> {tr("还没配模型")}
                         </div>
                       ) : null}
+                      {/* 装在哪 —— 同名工具可能本机一份、U 盘一份，客户得知道点「打开」启动的
+                          是哪一份。machine 是默认情况不打扰；只有 portable（绿色版/U 盘/
+                          usb_genie）才值得一个显著徽章。path 一直露出（tooltip 里也有全路径），
+                          它是用户从别处看不到的信息。`discovered` 可能是老后端没给的 undefined，
+                          此时 primaryDiscovery 是 undefined，这一段整体不渲染，界面跟以前一样。 */}
+                      {primaryDiscovery && (
+                        <div
+                          className="text-[10.5px] text-ink-4 flex items-center gap-1 mt-0.5"
+                          title={primaryDiscovery.path}
+                        >
+                          {primaryDiscovery.source === "portable" && (
+                            <span className="shrink-0 inline-flex items-center rounded-full bg-warning-500/15 px-1.5 py-0.5 text-[9.5px] font-semibold text-warning-600 dark:text-warning-400">
+                              {tr("便携")}
+                            </span>
+                          )}
+                          <span className="truncate max-w-[220px]">{primaryDiscovery.path}</span>
+                        </div>
+                      )}
                     </div>
                     {t.launch_app ? (
                       <button

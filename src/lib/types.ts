@@ -62,4 +62,20 @@ export type DriverStatus = {
   /** 后上架那批 CLI（pi/qwen/crush/opencode）装没装。后端 `EXTRA_APPLY_TOOLS` 那一批，
    *  判据 = 它 apply 时用的同一个 `tool_installed` —— 界面能勾的必须 ⊇ 后端会配的。 */
   extra_installed?: Record<string, boolean>;
+  /** 每个 AI 工具的可执行文件在哪发现的，不止「装没装」（后端 providers.rs discover_tools）。
+   *  同名多处发现时全部保留，按 machine > portable 排好序，第一条是当前
+   *  `search_paths`/`tool_installed` 实际会用到的那个。可选：老版本后端不返回它。 */
+  discovered?: ToolDiscovery[];
+};
+
+/** `DriverStatus.discovered` 的一条记录（对应后端 `providers.rs::ToolDiscovery`）。 */
+export type ToolDiscovery = {
+  name: string;
+  path: string;
+  /** `"machine"` = 装在本机系统位置；`"portable"` = 自包含目录（绿色位/U 盘/usb_genie）。 */
+  source: string;
+  /** 只在零成本时填（同目录/上级目录有 package.json），拿不到就是 null。 */
+  version: string | null;
+  /** 这一处发现是不是 `active` 里记录的、当前实际生效的那份。 */
+  configured: boolean;
 };
