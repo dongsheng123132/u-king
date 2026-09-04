@@ -125,8 +125,22 @@ const SECONDARY_BUILTINS: &[&str] = &["deepseek", "glm", "kimi", "ollama"];
 /// Tab 能切驱动但列表增删改会当场报错。
 /// 2026-08-29：加入 `cline` —— 同 pi/opencode 的第三批。apply_cline 当天新写（写
 /// `~/.cline/data/settings/providers.json` 的 `openai-compatible` 槽位），AI 设置页同步开 Tab。
-pub const LIST_TOOLS: &[&str] =
-    &["claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode", "cline"];
+///
+/// 2026-09-04（Phase C）：这份清单本身不再手写字面量——改成从 `tools::TOOL_SPECS` 里
+/// `in_list_tools == true` 的项按表内原有顺序派生（`OnceLock` 只是避免每次调用都重新
+/// 过滤一遍，`TOOL_SPECS` 本身是编译期常量，这份清单不会在运行时变化）。上面这些历史
+/// 注释描述的仍然是「这份清单该收哪些工具」的产品判断，继续有效，只是「收谁」现在改
+/// 由 `tools.rs` 一处维护，不用这里再抄一遍 id。
+pub fn list_tools_targets() -> &'static [&'static str] {
+    static CACHE: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        crate::tools::TOOL_SPECS
+            .iter()
+            .filter(|s| s.in_list_tools)
+            .filter_map(|s| s.config_target)
+            .collect()
+    })
+}
 
 /// 用户**看得到**的 provider 列表 = （默认内置 − 被移除的 + 被加回的 + 在用的）+ 用户自定义，
 /// 按用户排的序。
@@ -813,10 +827,13 @@ fn tool_slot<'a>(prefs: &'a mut ListPrefs, tool: &str) -> &'a mut ToolListPrefs 
 
 /// 工具 id 合法性 —— 打错一个字就该当场报错，不能静默去改另一份偏好。
 fn check_tool(tool: &str) -> Result<(), String> {
-    if LIST_TOOLS.contains(&tool) {
+    if list_tools_targets().contains(&tool) {
         Ok(())
     } else {
-        Err(format!("未知的 AI 工具「{tool}」（只认 {}）", LIST_TOOLS.join(" / ")))
+        Err(format!(
+            "未知的 AI 工具「{tool}」（只认 {}）",
+            list_tools_targets().join(" / ")
+        ))
     }
 }
 
@@ -6182,7 +6199,7 @@ mod tool_discovery_source_tests {
         // 刻意把 portable 排在 dirs 列表前面，验证排序不是靠输入顺序侥幸对的。
         let dirs: Vec<(PathBuf, &'static str)> =
             vec![(portable_dir.clone(), "portable"), (machine_dir.clone(), "machine")];
-        let names: &[&str] = &["claude"];
+        let entries: &[(&str, &str)] = &[("claude", "claude")];
         let active: BTreeMap<String, String> = BTreeMap::new();
 
         // 两处都能找到 claude.exe。
@@ -6190,12 +6207,39 @@ mod tool_discovery_source_tests {
         let portable_file = portable_dir.join("claude.exe");
         let exists = move |p: &Path| p == machine_file || p == portable_file;
 
-        let out = discover_tools_from(&dirs, &active, names, exists);
+        let out = discover_tools_from(&dirs, &active, entries, exists);
         assert_eq!(out.len(), 2, "同一工具两处都发现，两条都要保留");
         assert_eq!(out[0].source, "machine", "machine 必须排第一");
         assert_eq!(out[1].source, "portable", "portable 排在 machine 之后");
         assert_eq!(out[0].name, "claude");
         assert_eq!(out[1].name, "claude");
+    }
+
+    /// **回归（Phase C，2026-09-04）**：`clawx`（驱动配置 target）在 PATH 上从来没有一个
+    /// 叫 `clawx.exe` 的文件——真正的可执行文件叫 `openclaw`。这条锁住
+    /// `discover_tools_from` 用 `cmd`（"openclaw"）去搜索、但仍然用 `name`（"clawx"）
+    /// 报告和回查 `active`，防止「改回按 name 搜索」这种退化重演（`clawx` 会从
+    /// 「设备发现」里永久消失，即使 openclaw 明明装在这台机器上）。
+    #[test]
+    fn config_target_is_discovered_via_its_real_executable_name() {
+        let machine_dir = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
+        let dirs: Vec<(PathBuf, &'static str)> = vec![(machine_dir.clone(), "machine")];
+        // 只有 openclaw.exe 存在，没有 clawx.exe。
+        let openclaw_file = machine_dir.join("openclaw.exe");
+        let exists = move |p: &Path| p == openclaw_file;
+        let entries: &[(&str, &str)] = &[("clawx", "openclaw")];
+        let mut active: BTreeMap<String, String> = BTreeMap::new();
+        active.insert("clawx".to_string(), "xiapan".to_string());
+
+        let out = discover_tools_from(&dirs, &active, entries, exists);
+        assert_eq!(out.len(), 1, "clawx 应当通过 openclaw 可执行文件被发现");
+        assert_eq!(out[0].name, "clawx", "报告的名字仍是驱动 target 'clawx'，不是 cmd");
+        assert!(
+            out[0].path.ends_with("openclaw.exe"),
+            "实际搜到的文件必须是 openclaw.exe：{}",
+            out[0].path
+        );
+        assert!(out[0].configured, "active 回查也要用 'clawx' 这个 name，不是 cmd");
     }
 }
 
@@ -6203,20 +6247,35 @@ mod tool_discovery_source_tests {
 /// 每个工具在每处已知搜索目录里查文件是否存在（跟 `tool_installed` 同款
 /// 纯文件存在性检查，不起进程），同名多处发现全部保留，按
 /// machine > portable 排序（本机装的优先，别让盘上的遮蔽本机的）。
+///
+/// 2026-09-04（Phase C）：搜索用的文件名和「这是哪个驱动配置 target」是两件事——
+/// `clawx` 是配置 target，真正在 PATH 上的可执行文件叫 `openclaw`；以前这里直接拿
+/// `LIST_TOOLS` 的字符串去 PATH 上找同名文件，clawx 永远搜不到（PATH 上没有一个叫
+/// `clawx.exe` 的文件）。现在从 `tools::TOOL_SPECS` 取 `(config_target, cmd)` 配对，
+/// 搜索用 `cmd`，报告/`active` 回查仍用 `config_target`，两者解耦。
 fn discover_tools(active: &std::collections::BTreeMap<String, String>) -> Vec<ToolDiscovery> {
     let dirs = classify_search_dirs();
-    discover_tools_from(&dirs, active, LIST_TOOLS, |p| p.is_file())
+    let entries: Vec<(&'static str, &'static str)> = crate::tools::TOOL_SPECS
+        .iter()
+        .filter(|s| s.in_list_tools)
+        .filter_map(|s| s.config_target.map(|target| (target, s.cmd)))
+        .collect();
+    discover_tools_from(&dirs, active, &entries, |p| p.is_file())
 }
 
-/// `discover_tools` 的纯函数核心：已分类目录列表、工具名单、文件是否存在的判据
+/// `discover_tools` 的纯函数核心：已分类目录列表、`(name, cmd)` 配对、文件是否存在的判据
 /// 全部作为参数注入，生产路径仍然传真实 `classify_search_dirs()` + `Path::is_file`，
 /// 行为不变；单测借此在不碰真实磁盘的前提下锁「同名多处发现全部保留 + 按
 /// machine > portable 排序」这条契约（machine 排前面，本机装的优先，不让盘上的
 /// 遮蔽本机的）。
+///
+/// `entries` 里每一项是 `(name, cmd)`：`name` 是对外报告 / `active` 回查用的 id
+/// （驱动配置 target，如 `"clawx"`），`cmd` 是 PATH 上真正要找的可执行文件名
+/// （如 `"openclaw"`）——两者可能不同，见 [`discover_tools`] 的注释。
 fn discover_tools_from(
     dirs: &[(PathBuf, &'static str)],
     active: &std::collections::BTreeMap<String, String>,
-    names: &[&str],
+    entries: &[(&str, &str)],
     exists: impl Fn(&Path) -> bool,
 ) -> Vec<ToolDiscovery> {
     let exts: &[&str] = if cfg!(windows) {
@@ -6225,11 +6284,11 @@ fn discover_tools_from(
         &[""]
     };
     let mut out = Vec::new();
-    for name in names {
+    for (name, cmd) in entries {
         let mut found: Vec<ToolDiscovery> = Vec::new();
         for (dir, source) in dirs {
             for ext in exts {
-                let file = dir.join(format!("{name}{ext}"));
+                let file = dir.join(format!("{cmd}{ext}"));
                 if exists(&file) {
                     found.push(ToolDiscovery {
                         name: (*name).to_string(),
@@ -8423,7 +8482,7 @@ mod provider_list_ownership_tests {
                 r#"{"hidden":["xiapan"],"shown":[],"order":[]}"#,
             )
             .unwrap();
-            for tool in LIST_TOOLS {
+            for tool in list_tools_targets() {
                 assert!(
                     !ids_of(tool).contains(&"xiapan".to_string()),
                     "{tool}：老用户删掉的东西升级后又冒出来了"
@@ -8457,7 +8516,7 @@ mod provider_list_ownership_tests {
 
             // 不带 tool = 彻底删：所有 AI 的列表都没了，定义也没了
             remove_provider_for(None, &id).unwrap();
-            for tool in LIST_TOOLS {
+            for tool in list_tools_targets() {
                 assert!(!ids_of(tool).contains(&id), "{tool}：彻底删除后还留着一行");
             }
             assert!(!all_providers().iter().any(|p| p.id == id), "定义该跟着删掉");

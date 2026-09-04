@@ -24,34 +24,32 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 /// 让模型原样回显的标记。取个不像自然语言的串，避免它出现在思考过程里造成误判。
-const MARKER: &str = "UKPROBE7X";
-const PROMPT: &str = "Reply with exactly: UKPROBE7X";
+pub(crate) const MARKER: &str = "UKPROBE7X";
+pub(crate) const PROMPT: &str = "Reply with exactly: UKPROBE7X";
 
 /// 单个工具跑一次的死线。推理型模型（deepseek-v4-pro）先烧 reasoning 再写正文，给足时间；
 /// 到点仍没回 = 对客户而言就是不能用，如实记 `ok:false`，不给它「再等等也许行」的宽容。
 const TIMEOUT: Duration = Duration::from_secs(150);
 
-/// 各工具的无头入口。**每一条都是 2026-08-04 在本机实测过的写法**，不是照文档抄的。
-/// 加新工具时：先手工把这条命令跑通，再往这儿加——否则跑道会把「我们命令写错了」
-/// 报成「这个工具坏了」，然后据此下架一个其实好好的工具。
-const PROBES: &[(&str, Option<&[&str]>)] = &[
-    ("claude", Some(&["-p", PROMPT])),
-    ("codex", Some(&["exec", PROMPT])),
-    ("hermes", Some(&["-z", PROMPT])),
-    ("pi", Some(&["-p", PROMPT])),
-    ("qwen", Some(&["-p", PROMPT])),
-    ("crush", Some(&["run", PROMPT])),
-    ("opencode", Some(&["run", PROMPT])),
-    // openclaw = None：**它没有可靠的无头一次性推理入口**，不是它坏了。
-    // 实测（2026-08-04）：`infer model run` 走的是另一套模型目录（catalog），
-    // 认不出 agent 侧注册的 provider —— 显式传 `--model custom-ukingxia/deepseek-v4-flash`
-    // 直接 `Unknown model`，而 U-King 写的 openclaw.json / auth-profiles.json /
-    // models.json 三份配置一个字段都没错。它的正常用法是 `gateway run` + 面板。
-    //
-    // 与其留一条会误报的跑道，不如如实说「测不了」：按本表开头那条规矩，
-    // 把「我们命令用错了」报成「这个工具坏了」，会导致据此砍掉一个其实好好的工具。
-    ("openclaw", None),
-];
+/// 各工具的无头入口 —— 从 `tools::TOOL_SPECS` 派生（单一真相源，见该文件头注释：
+/// 之前这里是一份独立硬编码数组，cline 上架时就漏加了这一处）。
+///
+/// 派生规则：`ToolSpec.probe_args`
+/// - `None` —— 这个工具压根不在探测范围内（不进这份列表）；
+/// - `Some(&[])` —— 在探测范围内，但没有可靠的一次性无头入口（如 `openclaw`：
+///   `probe_all()` 见到空参数会如实报「测不了」，而不是把它从结果里彻底抹掉——
+///   「没测」和「不存在」是两件事，见 `openclaw` 那条 `ToolSpec` 上的注释）；
+/// - `Some(非空)` —— 真的会拿这组参数去跑一次。
+///
+/// **每一条参数都是 2026-08-04（cline 是 2026-09-04）在本机实测过的写法**，不是照文档抄的
+/// ——`tools::TOOL_SPECS` 里加新工具的探测参数时同样要遵守：先手工把命令跑通再写进去，
+/// 否则会把「我们命令写错了」报成「这个工具坏了」，然后据此下架一个其实好好的工具。
+fn probes() -> Vec<(&'static str, &'static [&'static str])> {
+    crate::tools::TOOL_SPECS
+        .iter()
+        .filter_map(|s| s.probe_args.map(|args| (s.cmd, args)))
+        .collect()
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProbeResult {
@@ -79,18 +77,19 @@ pub struct ProbeResult {
 ///    工具读到了吗」，跟客户机上原本是什么状态无关。
 pub fn probe_all(only: Option<&str>, sandbox: Option<&std::path::Path>, emit: &dyn Fn(&str)) -> Vec<ProbeResult> {
     let mut out = Vec::new();
-    for (tool, args) in PROBES {
+    for (tool, args) in probes() {
         if let Some(o) = only {
-            if o != *tool {
+            if o != tool {
                 continue;
             }
         }
-        // 没有无头入口的工具：如实报「测不了」，不计入 broken（见 PROBES 表注释）
-        let Some(args) = args else {
+        // 没有无头入口的工具（空参数，如 openclaw）：如实报「测不了」，不计入 broken
+        // （见 `probes()` 和 `tools::ToolSpec::probe_args` 上的注释）。
+        if args.is_empty() {
             let installed = crate::installer::tool_installed(tool);
             emit(&format!("{tool}: 无无头入口，本跑道测不了"));
             out.push(ProbeResult {
-                tool: (*tool).into(),
+                tool: tool.into(),
                 installed,
                 probed: false,
                 ok: false,
@@ -98,11 +97,11 @@ pub fn probe_all(only: Option<&str>, sandbox: Option<&std::path::Path>, emit: &d
                 note: "无可靠的无头入口（正常用法是 gateway + 面板），本跑道测不了".into(),
             });
             continue;
-        };
+        }
         if !crate::installer::tool_installed(tool) {
             emit(&format!("{tool}: 未安装，跳过"));
             out.push(ProbeResult {
-                tool: (*tool).into(),
+                tool: tool.into(),
                 installed: false,
                 probed: false,
                 ok: false,
@@ -128,7 +127,7 @@ pub fn probe_all(only: Option<&str>, sandbox: Option<&std::path::Path>, emit: &d
             ms,
             if note.is_empty() { String::new() } else { format!(" {note}") }
         ));
-        out.push(ProbeResult { tool: (*tool).into(), installed: true, probed: true, ok, ms, note });
+        out.push(ProbeResult { tool: tool.into(), installed: true, probed: true, ok, ms, note });
     }
     out
 }

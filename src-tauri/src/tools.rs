@@ -41,6 +41,247 @@ pub struct ToolInfo {
     pub hidden: bool,
 }
 
+/// 工具注册表的单一真相源（Phase C，2026-09-04）。
+///
+/// 在这之前「某工具是否存在/怎么探测/怎么显示」分散在四份互相独立的清单里（本文件的
+/// `list_tools()`、`providers.rs` 的 `LIST_TOOLS`/`discover_tools_from`、`toolprobe.rs` 的
+/// `PROBES`、`lib.rs` 的 `collect_ai_checkup_items`），上新工具（cline）时漏了后两处——
+/// 体检和无头探测都不认识它。这张表把「一个工具有哪些身份」收成一行数据，其余三处
+/// 从它派生，不再各自维护一份平行清单。
+///
+/// `id` 必须与 [`list_tools()`] 构造出的每个 `ToolInfo.id` 一一对应（`tool_specs_tests`
+/// 单测锁住这条，任何一边加/删工具忘了同步另一边，`cargo test` 就会红）。
+pub struct ToolSpec {
+    /// 稳定 id，等于 `list_tools()` 里同一工具的 `ToolInfo.id`（如 `"claude-code"`）。
+    pub id: &'static str,
+    /// 探测/搜索用的可执行文件名。**不一定等于 `id`**——例如 `clawx`（ClawX 桌面版）
+    /// 复用的 CLI 可执行文件叫 `openclaw`，不叫 `clawx`；`claude-code`/`qwen-code` 这两个
+    /// id 是产品页文案，可执行文件其实是 `claude`/`qwen`。纯 GUI、没有独立 CLI 概念的工具
+    /// （Obsidian、UU远程…）留空串，不承担探测语义。
+    pub cmd: &'static str,
+    /// 归属哪个驱动配置目标（`providers.rs` 里 `apply_provider`/`effective_config` 认的
+    /// `target` 字符串）。`None` = 不接驱动切换体系（体检类/纯下载类工具）。
+    pub config_target: Option<&'static str>,
+    /// 是否进 `providers::LIST_TOOLS`（= 前端「AI 设置」页有没有它独立的 Tab）。
+    pub in_list_tools: bool,
+    /// 是否进「一键体检」清单；`Some(展示 label)` 时才进，label 就是体检卡片上显示的名字。
+    pub in_checkup: Option<&'static str>,
+    /// 无头探测参数（`toolprobe.rs` 用）：
+    /// - `None` —— 不在探测范围内（不是 CLI，或压根没接入这条跑道，如 `dsh`/Obsidian）。
+    /// - `Some(&[])` —— **在探测范围内，但没有可靠的一次性无头入口**（如 `openclaw`：
+    ///   它的正常用法是 `gateway run` + 面板，不是一次性推理；硬测会把「我们没测对」
+    ///   报成「它坏了」）。`toolprobe.rs` 见到空切片会如实标注「无头入口，测不了」，
+    ///   而不是把这个工具从探测结果里彻底抹掉——「没测」和「不存在」是两件事。
+    /// - `Some(非空)` —— 真的会拿这组参数去跑一次。
+    pub probe_args: Option<&'static [&'static str]>,
+}
+
+/// Cline 的探测 prompt：**不能是塞进一个 argv 位的整句**。本机实测（`src/opencodex/apps.ts`
+/// 同名条目注释记录）它拿 commander 解析位置参数，单 token（哪怕内部带空格、但只占一个
+/// argv 位）会被当成未知子命令拒绝，必须拆成多个 argv token 传。这里手工拆开
+/// `toolprobe::PROMPT` 的词，不在运行时切（一次性写死更直白，也避免运行时分词规则跑偏）。
+///
+/// 🔴 **没有本机真机验证过这条命令** —— `toolprobe.rs` 文件头的规矩是「先手工把命令跑通
+/// 再往表里加，否则会把『我们命令写错了』报成『这个工具坏了』」，这条是记录在案的例外：
+/// 写这张表时环境里没装 Cline，没法验证。发版前务必先手工跑一次再信这份数据。
+const CLINE_PROBE_ARGS: &[&str] = &[
+    "--json",
+    "Reply",
+    "with",
+    "exactly:",
+    crate::toolprobe::MARKER,
+];
+
+pub const TOOL_SPECS: &[ToolSpec] = &[
+    ToolSpec {
+        id: "claude-code",
+        cmd: "claude",
+        config_target: Some("claude"),
+        in_list_tools: true,
+        in_checkup: Some("Claude Code"),
+        probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        id: "codex",
+        cmd: "codex",
+        config_target: Some("codex"),
+        in_list_tools: true,
+        in_checkup: Some("Codex"),
+        probe_args: Some(&["exec", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        // CLI 版 OpenClaw：探测/装机走这条 id，但驱动配置跟桌面版 `clawx` 共用同一个
+        // target（见 `apps.ts` 里 `configTargets: ["clawx"]` 的同款注释）。
+        id: "openclaw",
+        cmd: "openclaw",
+        config_target: Some("clawx"),
+        in_list_tools: false,
+        in_checkup: None,
+        // 见上面 `probe_args` 字段文档：openclaw 没有可靠的一次性无头入口，
+        // 空切片 = 「在探测范围内，但测不了」，不是「不存在」。
+        probe_args: Some(&[]),
+    },
+    ToolSpec {
+        id: "qwen-code",
+        cmd: "qwen",
+        config_target: Some("qwen"),
+        in_list_tools: false,
+        in_checkup: Some("Qwen Code"),
+        probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        // ClawX 桌面版：GUI，装没装走 `providers::clawx_app_installed()`（不是 `cmd` 探测），
+        // 但它复用的 CLI 可执行文件确实叫 `openclaw`——`discover_tools_from` 找「clawx 这个
+        // 驱动 target 在 PATH 上对应哪个文件」时要用这个 `cmd`，不能拿 id 直接当文件名猜。
+        id: "clawx",
+        cmd: "openclaw",
+        config_target: Some("clawx"),
+        in_list_tools: true,
+        in_checkup: Some("ClawX"),
+        // GUI，没有 CLI 一次性无头入口，从来没进过 `PROBES`。
+        probe_args: None,
+    },
+    ToolSpec {
+        id: "hermes",
+        cmd: "hermes",
+        config_target: Some("hermes"),
+        in_list_tools: true,
+        in_checkup: Some("Hermes"),
+        probe_args: Some(&["-z", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        id: "dsh",
+        cmd: "dsh",
+        config_target: Some("dsh"),
+        in_list_tools: true,
+        in_checkup: Some("DeepSeek Harness"),
+        // dsh 从来没进过 `PROBES`（人类主入口是 Web 工作台，不是一次性无头推理）。
+        probe_args: None,
+    },
+    // 🔴 下面 pi/opencode/crush/cline 在 `TOOL_SPECS` 里的相对顺序不是随意的：
+    // `providers::list_tools_targets()` 按本表原有顺序过滤派生 `LIST_TOOLS`，而
+    // `apply_everywhere_contract_lists_every_target_the_backend_configures` 用例要求
+    // 派生结果的**顺序**严格等于历史上手写的 `["claude","codex","clawx","hermes","dsh",
+    // "pi","opencode","cline"]`（跟 `APPLY_ALL_TARGETS` 字面量顺序对齐）。这里的顺序
+    // 就是照那份历史顺序摆的，挪动会让那条用例返工——不是巧合，动之前先看那条用例。
+    ToolSpec {
+        id: "pi",
+        cmd: "pi",
+        config_target: Some("pi"),
+        in_list_tools: true,
+        in_checkup: Some("pi"),
+        probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        id: "opencode",
+        cmd: "opencode",
+        config_target: Some("opencode"),
+        in_list_tools: true,
+        in_checkup: Some("OpenCode"),
+        probe_args: Some(&["run", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        id: "crush",
+        cmd: "crush",
+        config_target: Some("crush"),
+        in_list_tools: false,
+        in_checkup: Some("Crush"),
+        probe_args: Some(&["run", crate::toolprobe::PROMPT]),
+    },
+    ToolSpec {
+        id: "cline",
+        cmd: "cline",
+        config_target: Some("cline"),
+        in_list_tools: true,
+        in_checkup: Some("Cline"),
+        probe_args: Some(CLINE_PROBE_ARGS),
+    },
+    ToolSpec {
+        id: "harness-doctor",
+        cmd: "harness-doctor",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+    ToolSpec {
+        id: "obsidian",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+    ToolSpec {
+        id: "uu-remote",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+    ToolSpec {
+        // Codex 桌面版：config.toml 跟 Codex CLI 共用同一份，`config_target` 复用 "codex"，
+        // 但没有独立的「AI 设置」Tab（跟 CLI 共用），体检/探测也都挂在 CLI 那条 id 下。
+        id: "codex-app",
+        cmd: "",
+        config_target: Some("codex"),
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+    ToolSpec {
+        id: "open365",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+    ToolSpec {
+        id: "hermes-app",
+        cmd: "",
+        config_target: Some("hermes"),
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+    ToolSpec {
+        id: "uu-switch",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+    },
+];
+
+#[cfg(test)]
+mod tool_specs_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// `TOOL_SPECS` 的 id 集合必须和 `list_tools()` 实际构造出的 `ToolInfo.id` 集合完全一致
+    /// ——加/删一个工具，两边有一边忘了同步，这条测试就会红，而不是等到运行时才发现
+    /// 体检/探测清单里少了一个工具。
+    ///
+    /// 注：`list_tools()` 里 codex-app/open365/hermes-app/uu-switch 四项挂在
+    /// `#[cfg(windows)]`/`#[cfg(any(windows, target_os = "macos"))]` 后面，`TOOL_SPECS`
+    /// 目前没有对应套 cfg（const 数组内按元素条件编译不方便）。这条测试只在实际跑它的平台
+    /// 上生效——本仓库 `cargo test` 目前只在 Windows 机器上跑，跟这四项的 cfg 覆盖一致；
+    /// 如果以后要在纯 Linux CI 上跑这条测试，需要把 `TOOL_SPECS` 也拆成按平台 cfg 的子表。
+    #[test]
+    fn tool_specs_ids_match_list_tools_ids() {
+        let list_ids: BTreeSet<String> = list_tools().into_iter().map(|t| t.id).collect();
+        let spec_ids: BTreeSet<String> =
+            TOOL_SPECS.iter().map(|s| s.id.to_string()).collect();
+        assert_eq!(
+            list_ids, spec_ids,
+            "TOOL_SPECS 的 id 集合必须和 list_tools() 构造出的 ToolInfo id 集合完全一致"
+        );
+    }
+}
+
 fn uking_home() -> PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))

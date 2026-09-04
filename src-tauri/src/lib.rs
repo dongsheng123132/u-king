@@ -2799,7 +2799,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             15_000,
             serde_json::json!({
                 "id": { "type": "string", "description": "Provider id (built-in or custom)." },
-                "tool": { "type": "string", "enum": providers::LIST_TOOLS, "description": "Only remove it from this AI's list. Omit to remove from every AI's list (and delete custom definitions)." }
+                "tool": { "type": "string", "enum": providers::list_tools_targets(), "description": "Only remove it from this AI's list. Omit to remove from every AI's list (and delete custom definitions)." }
             }),
             &["id"],
             &["removed"],
@@ -2821,7 +2821,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "required",
             serde_json::json!({
                 "id": { "type": "string", "description": "Provider id to restore (must still have a definition)." },
-                "tool": { "type": "string", "enum": providers::LIST_TOOLS, "description": "Only restore it into this AI's list. Omit to restore into every AI's list." }
+                "tool": { "type": "string", "enum": providers::list_tools_targets(), "description": "Only restore it into this AI's list. Omit to restore into every AI's list." }
             }),
             &["id"],
             &["restored"],
@@ -2851,14 +2851,14 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             serde_json::json!({
                 "target": {
                     "type": "string",
-                    "enum": providers::LIST_TOOLS,
+                    "enum": providers::list_tools_targets(),
                     "description": "Only read back this one target. Omit to read them all."
                 }
             }),
             &["targets"],
             |_, input, _| {
                 let one = input["target"].as_str();
-                let list: Vec<serde_json::Value> = providers::LIST_TOOLS
+                let list: Vec<serde_json::Value> = providers::list_tools_targets()
                     .iter()
                     .filter(|t| one.is_none_or(|w| w == **t))
                     .map(|t| serde_json::to_value(providers::effective_config(t)).unwrap_or_default())
@@ -4496,7 +4496,7 @@ mod action_parity_adapter_tests {
         );
         // 那份常量本身 = 有独立列表偏好的四件套 + 后上架那批。三份清单的关系钉在这儿，
         // 谁单方面改了都会红（LIST_TOOLS 和 APPLY_ALL_TARGETS 是两个事实，只是前缀相同）。
-        let want: Vec<&str> = providers::LIST_TOOLS
+        let want: Vec<&str> = providers::list_tools_targets()
             .iter()
             .chain(providers::EXTRA_APPLY_TOOLS.iter())
             .copied()
@@ -6889,20 +6889,19 @@ fn ai_checkup_item(target: &str, label: &str, cmd: &str, driver: &providers::Dri
 /// 工具清单以前只活在 ai_checkup 里，「一键体检」要同一份事实，复制一份必然漂移。
 fn collect_ai_checkup_items() -> Vec<AiCheckupItem> {
     let driver = providers::driver_status();
-    [
-        ("claude", "Claude Code", "claude"),
-        ("codex", "Codex", "codex"),
-        ("clawx", "ClawX", "openclaw"),
-        ("hermes", "Hermes", "hermes"),
-        ("dsh", "DeepSeek Harness", "dsh"),
-        ("qwen", "Qwen Code", "qwen"),
-        ("opencode", "OpenCode", "opencode"),
-        ("pi", "pi", "pi"),
-        ("crush", "Crush", "crush"),
-    ]
-    .into_iter()
-    .map(|(target, label, cmd)| ai_checkup_item(target, label, cmd, &driver))
-    .collect()
+    // 从 `tools::TOOL_SPECS` 派生（单一真相源，见该常量文件头注释）：以前这里是一份独立
+    // 硬编码列表，cline 上架时漏了这一处，体检永远不知道有 cline 这个工具。
+    // `target` 用 `config_target`（体检要读的是驱动配置目标，不是 tools.rs 的产品 id），
+    // 一个工具没有 `config_target` 就没法体检，`ai_checkup_item` 也无从下手。
+    tools::TOOL_SPECS
+        .iter()
+        .filter_map(|s| {
+            let label = s.in_checkup?;
+            let target = s.config_target?;
+            Some((target, label, s.cmd))
+        })
+        .map(|(target, label, cmd)| ai_checkup_item(target, label, cmd, &driver))
+        .collect()
 }
 
 #[tauri::command]
