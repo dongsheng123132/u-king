@@ -450,6 +450,39 @@ fn build_path() -> String {
     }
 }
 
+/// `runtime.tool.inspect`/`runtime.tool.launch`（`tools.rs::plan_for`）用：`build_path()`
+/// 展开的目录列表里能不能解析到 `prog`（不带参数的裸程序名）。找到就返回完整路径，
+/// 与 `installer::tool_installed` 的口径类似（同一套扩展名探测），但走的是 `build_path()`
+/// 实际会用的目录集合（`search_paths` 前缀 + 当前进程 `PATH`），不是 `search_paths` 单独一份——
+/// 这是「显示已装、点了没反应」的真正判据：工具可能装在 `search_paths` 之外、只在系统 `PATH`
+/// 上（`tool_installed` 的 ① 分支能兜到），但 `build_path()` 理论上也含系统 `PATH`，只有当
+/// 系统 `PATH` 本身缺失/异常时两者才会分叉——分叉出现就正是这个函数存在的意义。
+pub fn resolve_on_terminal_path(prog: &str) -> Option<String> {
+    let prog = prog.trim();
+    if prog.is_empty() {
+        return None;
+    }
+    let path = build_path();
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let exts: &[&str] = if cfg!(windows) {
+        &["", ".cmd", ".exe", ".bat", ".ps1"]
+    } else {
+        &[""]
+    };
+    for dir in path.split(sep) {
+        if dir.is_empty() {
+            continue;
+        }
+        for ext in exts {
+            let candidate = Path::new(dir).join(format!("{prog}{ext}"));
+            if candidate.is_file() {
+                return Some(candidate.display().to_string());
+            }
+        }
+    }
+    None
+}
+
 fn home_dir() -> String {
     std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
@@ -537,7 +570,7 @@ fn resolve_cwd(cwd: Option<String>) -> String {
 /// 含非 ASCII 字符的命令应当只走内嵌 PTY（`term_open_pty`）执行，不应走 `term_open_external`；
 /// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
 /// 附近注释，实现时不要漏掉这一条。
-fn validate_cmd(cmd: &str) -> bool {
+pub fn validate_cmd(cmd: &str) -> bool {
     const ALLOWED_PROGRAMS: &[&str] =
         &["claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "cline", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;

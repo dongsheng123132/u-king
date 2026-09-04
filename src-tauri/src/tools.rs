@@ -74,6 +74,186 @@ pub struct ToolSpec {
     ///   而不是把这个工具从探测结果里彻底抹掉——「没测」和「不存在」是两件事。
     /// - `Some(非空)` —— 真的会拿这组参数去跑一次。
     pub probe_args: Option<&'static [&'static str]>,
+    /// 启动判定核心（Phase D，2026-09-04）用：这个工具「该怎么起」。派生依据见各条目内联注释
+    /// （引用了 `App.tsx::launchTool` / `ToolAppView.tsx` / `apps.ts::TUI_APPS` 里实际读到的现状，
+    /// 不是凭空指定）。`LaunchMode::None` = 没有可执行入口（从开始菜单/桌面图标打开）。
+    pub launch_mode: LaunchMode,
+    /// `launch_mode == RouteTab` 时，前端要切去哪个 tab（对应 `App.tsx::setTab` 的参数）。
+    /// 其余模式下为 `None`。
+    pub route_tab: Option<&'static str>,
+}
+
+/// 一个工具「该怎么起」——`runtime.tool.inspect`/`runtime.tool.launch` 判定核心的分派方式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LaunchMode {
+    /// 独立 GUI 应用（如 ClawX 桌面版）：Rust 直接 `launch_app` 拉起。
+    GuiApp,
+    /// 一次性/诊断类 CLI，没有专属内嵌终端 tab：Rust 走 `term_open_external` 开系统终端窗口。
+    ExternalTerm,
+    /// 普通 CLI，有专属内嵌终端 tab：前端拿 `launch_cmd` 自己去内嵌 xterm 跑。
+    EmbeddedPty,
+    /// 有自己一整套专属页面/时序逻辑的工具（openclaw/hermes/dsh）：前端只需切到那个 tab，
+    /// 该 tab 自己的启动逻辑（ToolAppView::handleStart）继续负责，Rust 判定核心不重复实现。
+    RouteTab,
+    /// 纯打开网址（当前 `TOOL_SPECS` 里没有工具落这一档；`ToolInfo.action=="url"` 的下载类
+    /// 走 `openTool`，不经过这条启动判定核心，保留这个变体只是对齐设计文档的分类，防止
+    /// 以后真出现「点了就该打开一个网址」的启动需求时要再加一次这套判定逻辑）。
+    Url,
+    /// 没有可执行入口（GUI 得从开始菜单/桌面图标自己开，我们帮不了）。
+    None,
+}
+
+/// 一个工具「能不能起」的状态——顺序即语义，`plan()` 按这个顺序判定，见该函数文档。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LaunchStatus {
+    Ready,
+    NotInstalled,
+    NotFoundInPath,
+    RejectedCmd,
+    NoLauncher,
+}
+
+/// `plan()` 的可注入依赖：把「这个工具在 TOOL_SPECS 里能查到的静态形状」和「运行时判据」
+/// 分开——`plan()` 本身不碰 TOOL_SPECS/磁盘/PATH，全部由调用方（生产路径 `plan_for`，
+/// 或测试）算好传进来。`None` = 在生产路径里表示「这个 tool_id 在 TOOL_SPECS 里找不到」。
+#[derive(Debug, Clone)]
+pub struct LaunchSpec {
+    pub cmd: String,
+    pub launch_cmd: String,
+    pub mode: LaunchMode,
+    pub route: Option<String>,
+}
+
+/// 一次启动判定的完整结果——`runtime.tool.inspect`/`runtime.tool.launch` 的核心产物，
+/// 序列化后直接是这两个动作的（部分）输出。
+#[derive(Debug, Clone, Serialize)]
+pub struct LaunchPlan {
+    pub tool_id: String,
+    pub cmd: String,
+    pub installed: bool,
+    pub resolved_path: Option<String>,
+    pub source: String,
+    /// `term.rs::build_path()` 展开的 PATH 上能不能解析到 `cmd`——这是「显示已装、点了没
+    /// 反应」的真正判据（工具装在 `search_paths` 之外的某处，`installed` 判 true，但终端
+    /// 起的子进程用的是注入过的 PATH，那条 PATH 上未必找得到它）。
+    pub on_terminal_path: bool,
+    pub mode: LaunchMode,
+    pub route: Option<String>,
+    pub launch_cmd: String,
+    pub cmd_allowed: bool,
+    pub status: LaunchStatus,
+    pub blockers: Vec<String>,
+}
+
+/// 判定核心：给定一个工具的静态形状（`spec`）和运行时判据（其余参数），算出它现在到底
+/// 「能不能起、该怎么起」。**纯函数**——不碰 `TOOL_SPECS`、不碰磁盘、不碰 PATH，全部依赖
+/// 由调用方注入，因此可以在不碰真实文件系统的前提下用假数据覆盖全部 5 种 [`LaunchStatus`]。
+/// 生产路径 [`plan_for`] 负责把真实判据算好再调用这里。
+///
+/// status 判定顺序**即语义**，不能调换：
+/// 1. `spec` 是 `None`（这个 `tool_id` 不在 `TOOL_SPECS` 里）→ `Err`；
+/// 2. `!installed` → `NotInstalled`；
+/// 3. 这个 `mode` 需要走终端（`EmbeddedPty`/`ExternalTerm`/`RouteTab`——`GuiApp`/`Url`/`None`
+///    不需要，`GuiApp` 靠 `launch_app` 直接拉起，不查 PATH）且 `!on_terminal_path` →
+///    `NotFoundInPath`；
+/// 4. `launch_cmd` 非空且 `!cmd_allowed`（`term::validate_cmd` 的结果）→ `RejectedCmd`；
+/// 5. `mode == LaunchMode::None` → `NoLauncher`；
+/// 6. 否则 → `Ready`。
+pub fn plan(
+    tool_id: &str,
+    spec: Option<LaunchSpec>,
+    installed: bool,
+    on_terminal_path: bool,
+    cmd_allowed: bool,
+    resolved_path: Option<String>,
+    source: &str,
+) -> Result<LaunchPlan, String> {
+    let Some(spec) = spec else {
+        return Err(format!("invalid_input: 未知的 tool_id '{tool_id}'（不在 TOOL_SPECS 里）"));
+    };
+    let needs_terminal_path = matches!(
+        spec.mode,
+        LaunchMode::EmbeddedPty | LaunchMode::ExternalTerm | LaunchMode::RouteTab
+    );
+    let mut blockers: Vec<String> = Vec::new();
+    let status = if !installed {
+        blockers.push(format!("还没检测到「{tool_id}」已安装，请先安装。"));
+        LaunchStatus::NotInstalled
+    } else if needs_terminal_path && !on_terminal_path {
+        blockers.push(format!(
+            "检测到「{tool_id}」已安装，但终端环境的 PATH 里找不到它，需要重新装到默认位置或修复 PATH。"
+        ));
+        LaunchStatus::NotFoundInPath
+    } else if !spec.launch_cmd.is_empty() && !cmd_allowed {
+        blockers.push(format!("启动命令「{}」被安全校验拒绝，这是我们的 bug，请反馈。", spec.launch_cmd));
+        LaunchStatus::RejectedCmd
+    } else if spec.mode == LaunchMode::None {
+        blockers.push(format!("「{tool_id}」没有可执行入口，请从开始菜单/桌面图标打开。"));
+        LaunchStatus::NoLauncher
+    } else {
+        LaunchStatus::Ready
+    };
+    Ok(LaunchPlan {
+        tool_id: tool_id.to_string(),
+        cmd: spec.cmd.clone(),
+        installed,
+        resolved_path,
+        source: source.to_string(),
+        on_terminal_path,
+        mode: spec.mode,
+        route: spec.route.clone(),
+        launch_cmd: spec.launch_cmd.clone(),
+        cmd_allowed,
+        status,
+        blockers,
+    })
+}
+
+/// [`plan`] 的生产路径包装：真的去查 `TOOL_SPECS`/`list_tools()`/PATH/`validate_cmd`。
+/// 单个工具版本，`plan_all` 遍历 `TOOL_SPECS` 复用它。
+pub fn plan_for(tool_id: &str) -> Result<LaunchPlan, String> {
+    let spec = TOOL_SPECS.iter().find(|s| s.id == tool_id).map(|s| {
+        let info = list_tools().into_iter().find(|t| t.id == tool_id);
+        let (launch_cmd, cmd_installed) = match &info {
+            Some(t) => (t.launch_cmd.clone(), t.installed),
+            None => (String::new(), false),
+        };
+        (
+            LaunchSpec {
+                cmd: s.cmd.to_string(),
+                launch_cmd,
+                mode: s.launch_mode,
+                route: s.route_tab.map(|r| r.to_string()),
+            },
+            cmd_installed,
+        )
+    });
+    let (spec, installed) = match spec {
+        Some((s, i)) => (Some(s), i),
+        None => (None, false),
+    };
+    let launch_cmd = spec.as_ref().map(|s| s.launch_cmd.clone()).unwrap_or_default();
+    let resolved_path = if launch_cmd.is_empty() {
+        None
+    } else {
+        let prog = launch_cmd.split_whitespace().next().unwrap_or("");
+        crate::term::resolve_on_terminal_path(prog)
+    };
+    let on_terminal_path = resolved_path.is_some();
+    let source = if on_terminal_path { "terminal_path".to_string() } else { String::new() };
+    let cmd_allowed = launch_cmd.is_empty() || crate::term::validate_cmd(&launch_cmd);
+    plan(tool_id, spec, installed, on_terminal_path, cmd_allowed, resolved_path, &source)
+}
+
+/// [`plan_for`] 遍历全部 `TOOL_SPECS`——`runtime.tool.inspect` 用。已知 id 一定命中
+/// （来自 `TOOL_SPECS` 本身），这里的 `Result` 只是复用同一个签名，不会真的走 `Err` 分支。
+pub fn plan_all() -> Vec<LaunchPlan> {
+    TOOL_SPECS
+        .iter()
+        .filter_map(|s| plan_for(s.id).ok())
+        .collect()
 }
 
 /// Cline 的探测 prompt：**不能是塞进一个 argv 位的整句**。本机实测（`src/opencodex/apps.ts`
@@ -100,6 +280,10 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("Claude Code"),
         probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+        // apps.ts::TUI_APPS 里有专属 tab（id "claude"），Dock 点它走 ToolAppView 内嵌终端；
+        // launch_mode 与该现状对齐。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         id: "codex",
@@ -108,6 +292,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("Codex"),
         probe_args: Some(&["exec", crate::toolprobe::PROMPT]),
+        // apps.ts::TUI_APPS 专属 tab id 是 "codex-cli"（toolId: "codex"）—— 有内嵌终端。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         // CLI 版 OpenClaw：探测/装机走这条 id，但驱动配置跟桌面版 `clawx` 共用同一个
@@ -120,6 +307,10 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         // 见上面 `probe_args` 字段文档：openclaw 没有可靠的一次性无头入口，
         // 空切片 = 「在探测范围内，但测不了」，不是「不存在」。
         probe_args: Some(&[]),
+        // App.tsx::launchTool 硬编码分支：`if (t.id === "openclaw") { setTab("openclaw"); return; }`
+        // —— 有自己的专属页（ToolAppView 走 gateway 起停 + WebUI 时序），不能当普通 EmbeddedPty。
+        launch_mode: LaunchMode::RouteTab,
+        route_tab: Some("openclaw"),
     },
     ToolSpec {
         id: "qwen-code",
@@ -128,6 +319,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: Some("Qwen Code"),
         probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+        // apps.ts::TUI_APPS 专属 tab id 是 "qwen"（toolId: "qwen-code"）—— 有内嵌终端。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         // ClawX 桌面版：GUI，装没装走 `providers::clawx_app_installed()`（不是 `cmd` 探测），
@@ -140,6 +334,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: Some("ClawX"),
         // GUI，没有 CLI 一次性无头入口，从来没进过 `PROBES`。
         probe_args: None,
+        // list_tools() 里 launch_app="clawx"（GUI 应用，doLaunchApp 直接 invoke launch_app）。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
     },
     ToolSpec {
         id: "hermes",
@@ -148,6 +345,11 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("Hermes"),
         probe_args: Some(&["-z", crate::toolprobe::PROMPT]),
+        // App.tsx::launchTool 硬编码分支：`if (t.id === "hermes") { setTab("hermes"); return; }`
+        // —— ToolAppView 把它当 external 应用处理（apps.ts TUI_APPS 的 hermes 条目 external:true），
+        // 启动时还要按需配虾盘云（ensureWebToolConfigured），不能当普通 EmbeddedPty。
+        launch_mode: LaunchMode::RouteTab,
+        route_tab: Some("hermes"),
     },
     ToolSpec {
         id: "dsh",
@@ -157,6 +359,11 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: Some("DeepSeek Harness"),
         // dsh 从来没进过 `PROBES`（人类主入口是 Web 工作台，不是一次性无头推理）。
         probe_args: None,
+        // App.tsx::launchTool 硬编码分支：`if (t.id === "dsh") { setTab("dsh"); return; }`
+        // —— ToolAppView 的 launchDshWebUI/launchDshTerminal 有专属等待就绪时序，不能当普通
+        // EmbeddedPty。
+        launch_mode: LaunchMode::RouteTab,
+        route_tab: Some("dsh"),
     },
     // 🔴 下面 pi/opencode/crush/cline 在 `TOOL_SPECS` 里的相对顺序不是随意的：
     // `providers::list_tools_targets()` 按本表原有顺序过滤派生 `LIST_TOOLS`，而
@@ -171,6 +378,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("pi"),
         probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+        // apps.ts::TUI_APPS 专属 tab id 是 "pi" —— 有内嵌终端。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         id: "opencode",
@@ -179,6 +389,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("OpenCode"),
         probe_args: Some(&["run", crate::toolprobe::PROMPT]),
+        // apps.ts::TUI_APPS 专属 tab id 是 "opencode" —— 有内嵌终端。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         id: "crush",
@@ -187,6 +400,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: Some("Crush"),
         probe_args: Some(&["run", crate::toolprobe::PROMPT]),
+        // apps.ts::TUI_APPS 专属 tab id 是 "crush" —— 有内嵌终端。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         id: "cline",
@@ -195,6 +411,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("Cline"),
         probe_args: Some(CLINE_PROBE_ARGS),
+        // apps.ts::TUI_APPS 专属 tab id 是 "cline" —— 有内嵌终端。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         id: "harness-doctor",
@@ -203,6 +422,11 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // 有 launch_cmd（list_tools() 里 "harness-doctor --target all --no-ports"），但不在
+        // apps.ts::TUI_APPS 里、没有专属内嵌终端 tab —— 一次性诊断脚本，当前 App.tsx::launchTool
+        // 对它走的正是通用兜底分支 `invoke("term_open_external", ...)`，与此对齐。
+        launch_mode: LaunchMode::ExternalTerm,
+        route_tab: None,
     },
     ToolSpec {
         id: "obsidian",
@@ -211,6 +435,10 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // list_tools() 里 launch_cmd=""、launch_app=""，action="url" 跳官网下载页
+        // ——App.tsx::launchTool 命中 `if (!t.launch_cmd) { flash(...); return; }`，没有可执行入口。
+        launch_mode: LaunchMode::None,
+        route_tab: None,
     },
     ToolSpec {
         id: "uu-remote",
@@ -219,6 +447,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // 同 obsidian：launch_cmd=""、launch_app=""，只能跳官网下载页。
+        launch_mode: LaunchMode::None,
+        route_tab: None,
     },
     ToolSpec {
         // Codex 桌面版：config.toml 跟 Codex CLI 共用同一份，`config_target` 复用 "codex"，
@@ -229,6 +460,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // list_tools() 里 launch_app="codex-app"（GUI，doLaunchApp 直接 invoke launch_app）。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
     },
     ToolSpec {
         id: "open365",
@@ -237,6 +471,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // list_tools() 里 launch_app="open365"。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
     },
     ToolSpec {
         id: "hermes-app",
@@ -245,6 +482,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // list_tools() 里 launch_app="hermes-app"。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
     },
     ToolSpec {
         id: "uu-switch",
@@ -253,6 +493,9 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
+        // list_tools() 里 launch_app="uu-switch"。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
     },
 ];
 
@@ -279,6 +522,117 @@ mod tool_specs_tests {
             list_ids, spec_ids,
             "TOOL_SPECS 的 id 集合必须和 list_tools() 构造出的 ToolInfo id 集合完全一致"
         );
+    }
+}
+
+#[cfg(test)]
+mod launch_plan_tests {
+    use super::*;
+
+    fn spec(mode: LaunchMode, route: Option<&str>, launch_cmd: &str) -> LaunchSpec {
+        LaunchSpec {
+            cmd: "some-cmd".to_string(),
+            launch_cmd: launch_cmd.to_string(),
+            mode,
+            route: route.map(|r| r.to_string()),
+        }
+    }
+
+    /// 状态判定第 1 条：tool_id 不在 TOOL_SPECS 里（这里用 `spec = None` 模拟）→ Err。
+    #[test]
+    fn unknown_tool_id_is_err() {
+        let result = plan("no-such-tool", None, false, false, true, None, "");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("invalid_input"), "错误信息应带 invalid_input 前缀：{msg}");
+    }
+
+    /// 状态判定第 2 条：未安装 → NotInstalled，即便其余判据都是"通过"的。
+    #[test]
+    fn not_installed_wins_even_if_everything_else_ok() {
+        let s = spec(LaunchMode::EmbeddedPty, None, "claude");
+        let p = plan("claude-code", Some(s), false, true, true, None, "").unwrap();
+        assert_eq!(p.status, LaunchStatus::NotInstalled);
+        assert!(!p.blockers.is_empty());
+    }
+
+    /// 状态判定第 3 条：已安装，但需要终端环境的模式（EmbeddedPty/ExternalTerm/RouteTab）
+    /// 在 PATH 上找不到 → NotFoundInPath。这是要重点锁的场景：装在非默认位置，
+    /// installed=true（比如别的探测方式认出来了），但 on_terminal_path=false。
+    #[test]
+    fn installed_but_not_on_terminal_path_is_not_found_in_path() {
+        let s = spec(LaunchMode::EmbeddedPty, None, "claude");
+        let p = plan(
+            "claude-code",
+            Some(s),
+            true,
+            false,
+            true,
+            Some("C:/some/weird/place/claude.exe".to_string()),
+            "custom_probe",
+        )
+        .unwrap();
+        assert_eq!(p.status, LaunchStatus::NotFoundInPath);
+    }
+
+    /// GuiApp 模式不需要终端 PATH——即便 on_terminal_path=false，也不该被判成 NotFoundInPath。
+    #[test]
+    fn gui_app_mode_does_not_require_terminal_path() {
+        let s = spec(LaunchMode::GuiApp, None, "");
+        let p = plan("clawx", Some(s), true, false, true, None, "").unwrap();
+        assert_eq!(p.status, LaunchStatus::Ready);
+    }
+
+    /// 状态判定第 4 条：launch_cmd 非空但被 validate_cmd 拒绝 → RejectedCmd。
+    #[test]
+    fn rejected_cmd_when_validate_cmd_fails() {
+        let s = spec(LaunchMode::EmbeddedPty, None, "rm -rf /");
+        let p = plan("claude-code", Some(s), true, true, false, None, "").unwrap();
+        assert_eq!(p.status, LaunchStatus::RejectedCmd);
+    }
+
+    /// launch_cmd 为空时不校验 cmd_allowed（空字符串不该被当成"被拒绝的命令"）。
+    #[test]
+    fn empty_launch_cmd_skips_cmd_allowed_check() {
+        let s = spec(LaunchMode::GuiApp, None, "");
+        let p = plan("clawx", Some(s), true, true, false, None, "").unwrap();
+        assert_ne!(p.status, LaunchStatus::RejectedCmd);
+    }
+
+    /// 状态判定第 5 条：mode == None（没有任何启动方式）→ NoLauncher。
+    #[test]
+    fn no_launcher_when_mode_is_none() {
+        let s = spec(LaunchMode::None, None, "");
+        let p = plan("obsidian", Some(s), true, true, true, None, "").unwrap();
+        assert_eq!(p.status, LaunchStatus::NoLauncher);
+    }
+
+    /// 全部判据通过 → Ready，且 route/launch_cmd 原样透传。
+    #[test]
+    fn all_checks_pass_is_ready() {
+        let s = spec(LaunchMode::RouteTab, Some("hermes"), "hermes");
+        let p = plan(
+            "hermes",
+            Some(s),
+            true,
+            true,
+            true,
+            Some("C:/tools/hermes.cmd".to_string()),
+            "terminal_path",
+        )
+        .unwrap();
+        assert_eq!(p.status, LaunchStatus::Ready);
+        assert_eq!(p.route, Some("hermes".to_string()));
+        assert_eq!(p.launch_cmd, "hermes");
+        assert_eq!(p.mode, LaunchMode::RouteTab);
+    }
+
+    /// RouteTab 模式也需要终端 PATH（hermes/dsh 底层还是要能在终端里解析到命令）。
+    #[test]
+    fn route_tab_mode_requires_terminal_path() {
+        let s = spec(LaunchMode::RouteTab, Some("dsh"), "dsh");
+        let p = plan("dsh", Some(s), true, false, true, None, "").unwrap();
+        assert_eq!(p.status, LaunchStatus::NotFoundInPath);
     }
 }
 

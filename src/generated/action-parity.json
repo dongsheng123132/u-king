@@ -481,6 +481,41 @@
       "bindings": [
         {
           "surface": "cli",
+          "target": "cli:action run runtime.tool.inspect --json --no-input"
+        }
+      ],
+      "description": "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.tool.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "tools"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect tool launch plans"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
           "target": "cli:action run runtime.creator.reel_presets.inspect --json --no-input"
         }
       ],
@@ -1257,6 +1292,10 @@
     },
     {
       "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
         {
           "surface": "cli",
           "target": "cli:action run runtime.usb_genie.credential_remove --json --no-input"
@@ -3204,6 +3243,58 @@
         "type": "object"
       },
       "title": "Launch PodApp (泊舟 AI 小程序)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.tool.launch --json --no-input"
+        }
+      ],
+      "description": "Judge whether a tool (by tools::TOOL_SPECS id) can launch, reusing the same plan() used by runtime.tool.inspect. If blocked, launches nothing and returns why. If it launches a GUI app or needs its own terminal window, this action does it. If it needs an embedded terminal or a dedicated tab, it returns an instruction for the caller instead of executing anything.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.tool.launch",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "tool_id": {
+            "description": "tools::TOOL_SPECS 里的工具 id，例如 claude-code / openclaw / hermes / clawx",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "next"
+        ],
+        "type": "object"
+      },
+      "title": "Launch a tool"
     },
     {
       "bindings": [

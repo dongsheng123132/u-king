@@ -1991,6 +1991,7 @@ export function Manager({
                   <button
                     onClick={() => (inst === false ? onInstallTool?.(activeTab) : onLaunchTool?.(activeTab))}
                     disabled={!!busy}
+                    data-action-id={inst === false ? undefined : "runtime.tool.launch"}
                     className="inline-flex items-center gap-2 h-10 px-5 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 disabled:opacity-50 shadow-sm"
                   >
                     <Power size={15} />

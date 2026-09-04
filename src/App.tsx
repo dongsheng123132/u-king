@@ -44,6 +44,12 @@ import type { Engine } from "./opencodex/types";
 import { ProviderManager } from "./components/ProviderManager";
 import { ApplyScopeDialog } from "./components/ApplyScopeDialog";
 import { PanelBoundary } from "./components/PanelBoundary";
+import type { LaunchPlan } from "./components/LaunchBlocked";
+import { ACTION, createTauriActionClient } from "./generated/action-client";
+
+// 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
+// （Manager 挂载点 / launchTool / ToolAppView::handleStart 三条前端路径共用这一个 client）。
+const callAction = createTauriActionClient(invoke, { surface: "gui" });
 
 // 懒加载「条件渲染、非首屏」的页面 —— 首屏只解析外壳 + 当前页，其余按需拉各自 chunk。
 // 治「打开慢」（原本一次性 eager import 全部页面塞进 1.6MB 主包），并缩小首屏解析面（降低
@@ -732,56 +738,70 @@ export function App() {
       });
   };
 
-  // 启动工具：GUI 应用直接打开程序，CLI 工具进应用内终端自动运行
-  const launchTool = (t: ToolInfo) => {
-    // OpenClaw：卡片已 hidden（2026-07-07 起 ClawX = 唯一人类入口），正常不会走到这里；
-    // 留着这条路由是为将来把 hidden 改回 false 时无需重接线。
-    if (t.id === "openclaw") {
-      setTab("openclaw");
-      return;
-    }
-    // Hermes：点卡片进 Hermes app 页（ToolAppView）。大按钮「启动」先按需配好虾盘云
-    // （ensureWebToolConfigured 传 model:null → 落 preset 默认 deepseek-v4-flash）再进终端 TUI
-    // （2026-07-07 定：终端优先，网页版降为备选）。不走下面 term_open_external 裸跑 `hermes`：
-    // 那条不配虾盘云，是当年客户「Hermes 还要手动配很多」的根因。claude 仍走终端：它本就
-    // 命令行、且策略上不替用户切驱动（常有自己的 Pro/Max 订阅），所以不在此列。
-    if (t.id === "hermes") {
-      setTab("hermes");
-      return;
-    }
-    // DeepSeek Harness：进入专属页，由 ToolAppView 启动 dsh web、等端口就绪后原位嵌进右侧工作区。
-    // 不能走通用外部终端，否则客户只看到 server 日志，却不知道工作台在 127.0.0.1:3080。
-    if (t.id === "dsh") {
-      setTab("dsh");
-      return;
-    }
-    if (t.launch_app) {
-      // ClawX 首次启动：先弹「允许访问网络」引导（只弹一次，记 localStorage）。
-      const firstClawx =
-        t.launch_app === "clawx" && localStorage.getItem("uking.clawxNetHintShown") !== "1";
-      if (firstClawx) {
-        setClawxNetHint(() => () => {
-          localStorage.setItem("uking.clawxNetHintShown", "1");
-          setClawxNetHint(null);
-          doLaunchApp(t);
-        });
+  // 「能不能启动、该怎么启动」只在 `runtime.tool.launch` 判一次；这里只负责按它的回答分派：
+  // GuiApp/ExternalTerm 那两种 Rust 已经直接执行完了（拿到 next:"done"）；EmbeddedPty/RouteTab
+  // 那两种 Rust 只回了「该怎么做」，因为只有前端知道该用哪个标签/会话去跑。
+  type ToolLaunchResult = {
+    next: "done" | "blocked" | "embedded_pty" | "route_tab";
+    message?: string;
+    route?: string | null;
+    launch_cmd?: string;
+    cmd_allowed?: boolean;
+    plan?: LaunchPlan;
+  };
+
+  const runLaunchAction = async (t: ToolInfo) => {
+    try {
+      const env = await callAction(ACTION.RUNTIME_TOOL_LAUNCH, { tool_id: t.id }, { confirmed: true });
+      if (!env.ok) {
+        flash(tr("{name} 启动失败：{msg}", { name: t.name, msg: env.error.message }));
         return;
       }
-      doLaunchApp(t);
-      return;
+      const result = env.result as unknown as ToolLaunchResult;
+      switch (result.next) {
+        case "done":
+          flash(result.message ?? tr("已启动 {name}", { name: t.name }));
+          return;
+        case "route_tab":
+          if (result.route) setTab(result.route as TabId);
+          return;
+        case "embedded_pty":
+          // 「打开终端」＝弹内嵌终端页跑这条命令（复用现有 pendingCmd 机制，
+          // useTermGroup::runInActive 消费）。不允许的命令原样透传给终端页兜底提示，
+          // 不在这里静默改写命令内容。
+          setPendingCmd(result.launch_cmd ?? t.launch_cmd ?? "");
+          setTab("terminal");
+          return;
+        case "blocked":
+        default:
+          // 未安装 = 走原来那条"一键安装"向导，其余状态原样把 Rust 给的引导文案 flash 出来
+          // （更细的分状态展示见 LaunchBlocked，目前 launchTool 这条路径只有 flash 一种呈现）。
+          if (result.plan?.status === "not_installed") {
+            openTool(t);
+          } else {
+            flash(result.message ?? tr("暂时无法启动"));
+          }
+          return;
+      }
+    } catch (e) {
+      flash(tr("{name} 启动失败：{msg}", { name: t.name, msg: String(e) }));
     }
-    if (!t.launch_cmd) {
-      flash(tr("该工具从开始菜单 / 应用列表打开"));
-      return;
-    }
-    // 「打开终端」= 弹一个独立的系统终端窗口（带注入好的 PATH），就像打开一个独立 app。
-    // 关掉 U-King 主窗口它照常活着（openclaw gateway 不被一起杀）。失败再回落到内嵌终端页。
-    invoke("term_open_external", { cmd: t.launch_cmd })
-      .then(() => flash(tr("已为 {name} 打开独立终端", { name: t.name })))
-      .catch(() => {
-        setPendingCmd(t.launch_cmd!);
-        setTab("terminal");
+  };
+
+  // 启动工具：GUI 应用直接打开程序，CLI 工具进应用内终端自动运行
+  const launchTool = (t: ToolInfo) => {
+    // ClawX 首次启动：先弹「允许访问网络」引导（只弹一次，记 localStorage）。这是纯 UI 提示，
+    // 不是「能不能启动」的判断——判断已经交给 runtime.tool.launch，这里只决定要不要先弹个框。
+    const firstClawx = t.launch_app === "clawx" && localStorage.getItem("uking.clawxNetHintShown") !== "1";
+    if (firstClawx) {
+      setClawxNetHint(() => () => {
+        localStorage.setItem("uking.clawxNetHintShown", "1");
+        setClawxNetHint(null);
+        void runLaunchAction(t);
       });
+      return;
+    }
+    void runLaunchAction(t);
   };
 
   // 卸载一个 AI 工具：删本体 + 一切会被探测成"已装"的残留（修「删了还检测到、重装又冒出来」）。
@@ -2291,6 +2311,7 @@ function MyAI({
                     {t.launch_app ? (
                       <button
                         onClick={() => onLaunch(t)}
+                        data-action-id="runtime.tool.launch"
                         className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 shadow-sm transition-colors"
                       >
                         <Sparkles size={14} /> {tr("打开应用")}
@@ -2298,6 +2319,7 @@ function MyAI({
                     ) : t.launch_cmd ? (
                       <button
                         onClick={() => onLaunch(t)}
+                        data-action-id="runtime.tool.launch"
                         className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 shadow-sm transition-colors"
                       >
                         {/* Hermes 已改主推终端版（2026-07-07）：点了进 app 页起 TUI 而非网页版，统一「打开终端」。 */}

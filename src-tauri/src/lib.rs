@@ -1815,6 +1815,20 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 Ok(serde_json::json!({ "count": items.len(), "items": action_json(items)? }))
             },
         ),
+        // Manager 挂载点 / App.tsx::launchTool / ToolAppView::handleStart 三条前端路径各自都在判断
+        // 「这个工具能不能启动、该怎么启动」——这条只读动作把判断本身收敛成单一实现（tools::plan()），
+        // 三条前端路径只消费它的结果，不重复判断。
+        actions::readonly(
+            actions::TOOL_INSPECT,
+            "Inspect tool launch plans",
+            "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing.",
+            15_000,
+            &["tools"],
+            |_, _, _| {
+                let items = tools::plan_all();
+                Ok(serde_json::json!({ "tools": action_json(items)? }))
+            },
+        ),
         actions::readonly(
             actions::CREATOR_REEL_PRESETS_INSPECT,
             "Inspect one-click reel presets",
@@ -2920,6 +2934,71 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &[],
             &["message"],
             |_, _, _| Ok(serde_json::json!({ "message": podapp::launch()? })),
+            None,
+        ),
+        // 判定 + 分派：状态不是 Ready 就不碰任何进程，直接回 blocked。GUI 应用 / 需要独立终端窗口
+        // 的命令由这里直接启动（复用 tools::launch_app / term::term_open_external，不是第二份实现）；
+        // 需要内嵌 xterm 或路由到专属标签页的，只回一句「该怎么做」，交给前端执行——只有前端知道
+        // 该用哪个标签 / 哪个会话（同步跑一个 wait_port 式轮询会把这条判定动作卡住）。
+        actions::write(
+            actions::TOOL_LAUNCH,
+            "Launch a tool",
+            "Judge whether a tool (by tools::TOOL_SPECS id) can launch, reusing the same plan() used by runtime.tool.inspect. If blocked, launches nothing and returns why. If it launches a GUI app or needs its own terminal window, this action does it. If it needs an embedded terminal or a dedicated tab, it returns an instruction for the caller instead of executing anything.",
+            30_000,
+            "required",
+            serde_json::json!({
+                "tool_id": { "type": "string", "description": "tools::TOOL_SPECS 里的工具 id，例如 claude-code / openclaw / hermes / clawx" }
+            }),
+            &["tool_id"],
+            &["next"],
+            |_, input, _| {
+                let tool_id = input
+                    .get("tool_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "invalid_input: 缺少 tool_id".to_string())?;
+                let plan = tools::plan_for(tool_id)?;
+                if plan.status != tools::LaunchStatus::Ready {
+                    let message = plan
+                        .blockers
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "无法启动".to_string());
+                    crate::ulog::write(
+                        "launch",
+                        &format!("判定 {tool_id} 不可启动：{:?}，{message}", plan.status),
+                    );
+                    return Ok(serde_json::json!({
+                        "next": "blocked",
+                        "message": message,
+                        "plan": action_json(plan)?,
+                    }));
+                }
+                match plan.mode {
+                    tools::LaunchMode::GuiApp => {
+                        tools::launch_app(&plan.tool_id)?;
+                        Ok(serde_json::json!({ "next": "done", "message": format!("已启动 {tool_id}") }))
+                    }
+                    tools::LaunchMode::ExternalTerm => {
+                        term::term_open_external(Some(plan.launch_cmd.clone()), None)?;
+                        crate::ulog::write("launch", &format!("已为 {tool_id} 打开独立终端"));
+                        Ok(serde_json::json!({ "next": "done", "message": format!("已为 {tool_id} 打开独立终端") }))
+                    }
+                    tools::LaunchMode::EmbeddedPty => Ok(serde_json::json!({
+                        "next": "embedded_pty",
+                        "launch_cmd": plan.launch_cmd,
+                        "cmd_allowed": plan.cmd_allowed,
+                    })),
+                    tools::LaunchMode::RouteTab => Ok(serde_json::json!({
+                        "next": "route_tab",
+                        "route": plan.route,
+                    })),
+                    // TOOL_SPECS 目前没有任何条目声明 Url/None 模式还能走到 Ready
+                    // （None 在 plan() 里已经被判成 NoLauncher，不会到这里）；留着分支只为穷尽匹配。
+                    tools::LaunchMode::Url | tools::LaunchMode::None => {
+                        Err(format!("未支持的启动方式：{:?}", plan.mode))
+                    }
+                }
+            },
             None,
         ),
         // —— 优化大师的「动手」那一半 ——

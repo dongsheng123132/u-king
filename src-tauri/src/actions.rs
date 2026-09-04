@@ -472,6 +472,15 @@ pub const MINIAPP_RESTORE: &str = "runtime.miniapp.restore";
 pub const UU_REMOTE_INSTALL: &str = "runtime.uu_remote.install";
 pub const PODAPP_INSTALL: &str = "runtime.podapp.install";
 pub const PODAPP_LAUNCH: &str = "runtime.podapp.launch";
+/// 遍历 `tools::TOOL_SPECS`，对每个工具跑一遍 `tools::plan()` 判定核心，只读、不启动任何东西。
+///
+/// 「能不能启动、该怎么启动」这件事本身就是三条前端路径（Manager 挂载点/App.tsx::launchTool/
+/// ToolAppView::handleStart）各自判断的重复逻辑，收敛到这一个只读动作里，GUI 只是展示它的结果。
+pub const TOOL_INSPECT: &str = "runtime.tool.inspect";
+/// 对单个工具执行「判定 + 分派」：状态不是 Ready 就直接回 `blocked`，不碰任何进程；
+/// GUI 应用/需要外部终端窗口的命令由本动作直接启动；需要内嵌 xterm 或路由到专属标签页的，
+/// 只回一个「该怎么做」的指令，实际执行留给前端（只有前端知道该用哪个标签/会话）。
+pub const TOOL_LAUNCH: &str = "runtime.tool.launch";
 // 身份与说明书。三个都幂等：同样的入参重放，结果一样。
 // `IDENTITY_PUBLISH` 是**编译**动作 —— 它把动作表现场渲染成 llms.txt，
 // 所以「加了新动作要重新发布说明书」这件事只有一条路径，不会出现手写的第二份。

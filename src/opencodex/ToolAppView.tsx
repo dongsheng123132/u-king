@@ -14,9 +14,16 @@ import type { TuiApp } from "./apps";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
 import { ProviderSwitch } from "../components/ProviderSwitch";
 import { ToolIcon } from "../components/ToolIcon";
+import { LaunchBlocked, type LaunchPlan } from "../components/LaunchBlocked";
+import { ACTION, createTauriActionClient } from "../generated/action-client";
 import type { DeviceKey, DriverStatus } from "../lib/types";
 import { useViewport } from "../lib/useViewport";
 import { useI18n } from "../i18n";
+
+// 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次；这里只读它的结果（不走
+// `runtime.tool.launch`——本视图的启动仍是各工具自己那套 handleStart 时序，判定核心只用来
+// 决定"要不要盖 LaunchBlocked"，不接管实际启动）。
+const callAction = createTauriActionClient(invoke, { surface: "gui" });
 
 /** 这个工具是否已被任何驱动接管（接管了就别自动回灌，尊重用户可能切到的官方直连）。 */
 function targetConfigured(app: TuiApp, d: DriverStatus | null): boolean {
@@ -112,6 +119,22 @@ export function ToolAppView({
   /** 卸载标记：等待循环要停得掉，否则组件没了它还在轮询 + setState。 */
   const dshAbort = useRef(false);
   useEffect(() => () => { dshAbort.current = true; }, []);
+  /** `runtime.tool.inspect` 的判定结果——只用来决定盖不盖 `LaunchBlocked`，不接管启动本身。 */
+  const [launchPlan, setLaunchPlan] = useState<LaunchPlan | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    callAction(ACTION.RUNTIME_TOOL_INSPECT, {})
+      .then((env) => {
+        if (!alive || !env.ok) return;
+        const list = (env.result as unknown as { tools: LaunchPlan[] }).tools ?? [];
+        setLaunchPlan(list.find((p) => p.tool_id === app.toolId) ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [active, app.toolId]);
 
   const isOpenClaw = app.id === "openclaw";
   const isHermes = app.id === "hermes";
@@ -550,11 +573,16 @@ export function ToolAppView({
                   </div>
                 </div>
               )}
-              {isDsh ? (
+              {launchPlan && launchPlan.status !== "ready" ? (
+                <div className="w-full max-w-[440px]">
+                  <LaunchBlocked plan={launchPlan} onInstall={onGoManage} />
+                </div>
+              ) : isDsh ? (
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     onClick={handleStart}
                     disabled={starting}
+                    data-action-id="runtime.tool.launch"
                     className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition disabled:opacity-60"
                   >
                     <Rocket size={18} />
@@ -572,6 +600,7 @@ export function ToolAppView({
                 <button
                   onClick={handleStart}
                   disabled={starting}
+                  data-action-id="runtime.tool.launch"
                   className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition disabled:opacity-60"
                 >
                   <Play size={18} className="fill-current" />
