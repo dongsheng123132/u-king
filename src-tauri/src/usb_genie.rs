@@ -255,11 +255,17 @@ fn state_version(root: &Path) -> String {
 }
 
 fn config_value(root: &Path) -> Value {
-    let workspace = data(root).join("workspace").to_string_lossy().to_string();
+    // No absolute `workspace` path on purpose: the pinned value would bake the
+    // manufacturing machine's drive letter into every disk (and any zip built
+    // from it).  PicoClaw resolves the default workspace from PICOCLAW_HOME,
+    // which the launcher always sets to this disk's data dir (verified
+    // 2026-09-04: removing the field makes `status` report
+    // `<PICOCLAW_HOME>\workspace` ✓; a wrong absolute path is followed
+    // verbatim and marked ✗).
     json!({
         "version": 3,
         "agents": { "defaults": {
-            "workspace": workspace, "restrict_to_workspace": true,
+            "restrict_to_workspace": true,
             "allow_read_outside_workspace": false, "provider": "deepseek",
             "model_name": "usb-genie", "max_llm_retries": 0
         }},
@@ -314,6 +320,20 @@ fn merge_config(existing: &mut Value, desired: Value) {
         } else {
             existing_object.insert(key.clone(), desired_value.clone());
         }
+    }
+    // Migration: config written before 2026-09-04 baked an absolute workspace
+    // path (the manufacturing machine's drive letter) into agents.defaults.
+    // PicoClaw follows that path verbatim and never falls back to
+    // PICOCLAW_HOME, so a stale field breaks every disk that changes drives.
+    // Drop it after merging — the launcher's PICOCLAW_HOME always provides the
+    // right default (verified live 2026-09-04).
+    if let Some(defaults) = existing_object
+        .get_mut("agents")
+        .and_then(|agents| agents.as_object_mut())
+        .and_then(|agents| agents.get_mut("defaults"))
+        .and_then(|defaults| defaults.as_object_mut())
+    {
+        defaults.remove("workspace");
     }
 }
 
@@ -946,12 +966,15 @@ mod tests {
         assert!(filesystem_supported("NTFS"));
     }
     #[test]
-    fn config_uses_portable_workspace_and_deepseek() {
+    fn config_has_no_absolute_workspace_so_zips_stay_portable() {
+        // 契约：config 不得写绝对 workspace 路径——绝对路径会把制作机的盘符烙进
+        // 每一块盘和每一个发布 zip（真盘实测 2026-09-04：picoclaw 对错误绝对路径
+        // 照单全收并标 ✗，不回退 PICOCLAW_HOME；删字段则回退 <PICOCLAW_HOME>\workspace ✓）。
         let p = root();
         let v = config_value(&p);
-        assert_eq!(
-            v["agents"]["defaults"]["workspace"],
-            data(&p).join("workspace").to_string_lossy().as_ref()
+        assert!(
+            v["agents"]["defaults"].get("workspace").is_none(),
+            "workspace must resolve from PICOCLAW_HOME, not a baked absolute path"
         );
         assert_eq!(v["model_list"][0]["provider"], "deepseek");
         assert_eq!(v["model_list"][0]["api_base"], GATEWAY);
