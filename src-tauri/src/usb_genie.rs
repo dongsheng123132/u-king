@@ -709,11 +709,52 @@ fn verify(root: &Path) -> Result<Value, String> {
     )
 }
 
+/// One raw drive slot as reported by Windows, before any USB-Genie-specific
+/// filtering (removable-only, ownership, etc). Shared with `installer.rs`'s
+/// tool path discovery so the two features never maintain two separate drive
+/// scans (CLAUDE.md 第 8/13 条: 同一事实只查一次，公共能力复用不复制).
+#[derive(Clone, Debug)]
+pub(crate) struct DriveSlot {
+    pub root: PathBuf,
+    /// Raw `GetDriveTypeW` value: 2 = removable, 3 = fixed, others = remote/CD/ramdisk/unknown.
+    pub drive_type: u32,
+}
+
+pub(crate) const DRIVE_TYPE_REMOVABLE: u32 = 2;
+pub(crate) const DRIVE_TYPE_FIXED: u32 = 3;
+
+/// Enumerate every assigned drive letter and its raw type. Deliberately just
+/// `GetLogicalDrives` + `GetDriveTypeW` per letter — both are cheap local
+/// bitmask/registry-ish lookups, not filesystem I/O, so this alone cannot
+/// block on a disconnected mapped drive. Callers still must not call
+/// `Path::exists()` etc. on the returned roots without their own timeout.
 #[cfg(windows)]
-fn portable_targets() -> Vec<PortableTarget> {
+pub(crate) fn enumerate_drive_slots() -> Vec<DriveSlot> {
     extern "system" {
         fn GetLogicalDrives() -> u32;
         fn GetDriveTypeW(root: *const u16) -> u32;
+    }
+    let mask = unsafe { GetLogicalDrives() };
+    (0..26)
+        .filter_map(|index| {
+            if mask & (1 << index) == 0 {
+                return None;
+            }
+            let root = format!("{}:\\", (b'A' + index as u8) as char);
+            let wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+            let drive_type = unsafe { GetDriveTypeW(wide.as_ptr()) };
+            Some(DriveSlot { root: PathBuf::from(root), drive_type })
+        })
+        .collect()
+}
+#[cfg(not(windows))]
+pub(crate) fn enumerate_drive_slots() -> Vec<DriveSlot> {
+    Vec::new()
+}
+
+#[cfg(windows)]
+fn portable_targets() -> Vec<PortableTarget> {
+    extern "system" {
         fn GetVolumeInformationW(
             root: *const u16,
             volume_name: *mut u16,
@@ -736,18 +777,14 @@ fn portable_targets() -> Vec<PortableTarget> {
             volume_name_len: u32,
         ) -> i32;
     }
-    const DRIVE_REMOVABLE: u32 = 2;
-    let mask = unsafe { GetLogicalDrives() };
-    (0..26)
-        .filter_map(|index| {
-            if mask & (1 << index) == 0 {
+    enumerate_drive_slots()
+        .into_iter()
+        .filter_map(|slot| {
+            if slot.drive_type != DRIVE_TYPE_REMOVABLE {
                 return None;
             }
-            let root = format!("{}:\\", (b'A' + index as u8) as char);
+            let root = slot.root.to_string_lossy().into_owned();
             let wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
-            if unsafe { GetDriveTypeW(wide.as_ptr()) } != DRIVE_REMOVABLE {
-                return None;
-            }
             let mut label = [0u16; 261];
             let mut filesystem = [0u16; 261];
             let mut serial = 0u32;

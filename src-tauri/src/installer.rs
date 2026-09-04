@@ -5571,6 +5571,11 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
                 }
             }
         }
+        // 本机便携绿色位 + 可移动盘 / 副固定盘上的工具盘（U-King 自己用 usb_genie 造的、
+        // 或桌面版 claude/codex 那种 resources/cli 形状）。排在已有来源之后：不能让 U 盘上
+        // 的同名工具遮蔽系统已装的那个（先到先得，search_paths 的调用方按顺序取第一个命中）。
+        // TTL 缓存 + 超时保护见 `removable_and_portable_search_paths`。
+        v.extend(removable_and_portable_search_paths());
     }
     #[cfg(not(windows))]
     {
@@ -5591,6 +5596,194 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
         }
     }
     v
+}
+
+/// TTL 缓存：`search_paths`/`tool_installed` 在托盘周期刷新等热路径上被频繁调用
+/// （`providers::driver_status` → `tool_installed`，见 `tray.rs` 的后台线程），
+/// 驱动器 + 目录展开这部分不能每次都重扫；但 U 盘会中途插拔，**不许用 `OnceLock`
+/// 永久缓存**（宪法第 10 条）。TTL 45 秒：介于「30–60 秒」区间中点。
+#[cfg(windows)]
+static USB_TOOL_SEARCH_PATH_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<Option<(std::time::Instant, Vec<(PathBuf, &'static str)>)>>,
+> = std::sync::OnceLock::new();
+#[cfg(windows)]
+static USB_TOOL_SEARCH_SCAN_IN_FLIGHT: std::sync::OnceLock<std::sync::atomic::AtomicBool> =
+    std::sync::OnceLock::new();
+#[cfg(windows)]
+const USB_TOOL_SEARCH_PATH_TTL: std::time::Duration = std::time::Duration::from_secs(45);
+#[cfg(windows)]
+const USB_TOOL_SEARCH_PATH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// 可移动盘 / 副固定盘 / 本机便携绿色位上的工具目录，带来源标签（`"portable"` =
+/// `%LOCALAPPDATA%\Programs\*` 这类本机绿色位；`"removable"` = 可移动盘/副固定盘）。
+/// 供 `search_paths` 追加，也供 `providers::driver_status` 的 `discovered` 字段复用
+/// 同一份扫描结果，不重新走一遍磁盘（宪法第 8 条）。
+///
+/// 断开的映射盘上 `Path::exists()` 可阻塞数秒到数十秒（宪法第 10 条：凡会卡的
+/// 一律异步 + 超时）：真正的扫描放进后台线程，主线程用 `mpsc::recv_timeout` 兜底。
+/// 超时不代表扫描结果是空——后台线程仍在跑，跑完后**由它自己**把真结果写进缓存
+/// （而不是让主线程用当轮的空 Vec 覆盖缓存，那会把「这轮没等到」误当成「确实没有」
+/// 缓存 45 秒，慢盘从此永久看不见）。`USB_TOOL_SEARCH_SCAN_IN_FLIGHT` 防止慢盘反复
+/// 超时时每次调用都新起一条扫描线程：已有扫描在跑就直接用当前缓存（可能仍是旧值
+/// 或空），不重复起线程。
+#[cfg(windows)]
+pub(crate) fn removable_and_portable_search_paths_classified() -> Vec<(PathBuf, &'static str)> {
+    let cache = USB_TOOL_SEARCH_PATH_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    let in_flight =
+        USB_TOOL_SEARCH_SCAN_IN_FLIGHT.get_or_init(|| std::sync::atomic::AtomicBool::new(false));
+    removable_and_portable_search_paths_core(
+        cache,
+        in_flight,
+        USB_TOOL_SEARCH_PATH_TTL,
+        USB_TOOL_SEARCH_PATH_TIMEOUT,
+        scan_removable_and_portable_search_paths,
+    )
+}
+
+/// `removable_and_portable_search_paths_classified` 的可测试核心：缓存/in-flight
+/// 标记、TTL、超时预算、扫描函数全部作为参数注入，方便单测用短超时 + 假扫描函数
+/// 而不用真的等 3 秒或碰真磁盘。生产路径固定传统计里的两个 `'static` 存储位。
+#[cfg(windows)]
+fn removable_and_portable_search_paths_core(
+    cache: &'static std::sync::Mutex<Option<(std::time::Instant, Vec<(PathBuf, &'static str)>)>>,
+    in_flight: &'static std::sync::atomic::AtomicBool,
+    ttl: std::time::Duration,
+    timeout: std::time::Duration,
+    scan: fn() -> Vec<(PathBuf, &'static str)>,
+) -> Vec<(PathBuf, &'static str)> {
+    if let Some((at, paths)) = cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        if at.elapsed() < ttl {
+            return paths.clone();
+        }
+    }
+
+    let became_scanner = in_flight
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_ok();
+
+    if became_scanner {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = scan();
+            // 无条件回写：即便主线程已经等超时放弃了，这份真结果依旧要进缓存，
+            // 否则慢盘就要等满 45 秒 TTL 才有机会被再扫一次。
+            *cache.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some((std::time::Instant::now(), result.clone()));
+            in_flight.store(false, std::sync::atomic::Ordering::SeqCst);
+            let _ = tx.send(result);
+        });
+        if let Ok(paths) = rx.recv_timeout(timeout) {
+            return paths;
+        }
+    }
+
+    // 要么这轮等超时了（后台线程还在跑，稍后会自己把真结果写进缓存），要么已经有
+    // 别的调用在扫了（不重复起线程）：两种情况都退回当前缓存值，没有就是空 Vec——
+    // 绝不用「这轮没等到」当作「确实没有」去污染缓存的新鲜度。
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|(_, paths)| paths.clone())
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn removable_and_portable_search_paths() -> Vec<PathBuf> {
+    removable_and_portable_search_paths_classified()
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect()
+}
+/// 非 Windows：可移动盘 U 盘布局是 Windows 专属概念（usb_genie 一期仅支持
+/// Windows x64），这里给个空实现，方便 `providers.rs` 的发现逻辑无条件调用。
+#[cfg(not(windows))]
+pub(crate) fn removable_and_portable_search_paths_classified() -> Vec<(PathBuf, &'static str)> {
+    Vec::new()
+}
+
+/// `removable_and_portable_search_paths_classified` 的实际扫描体，跑在后台线程里。
+/// 只做纯文件存在性检查，绝不起进程；候选路径固定、深度 ≤2，绝不递归全盘。
+#[cfg(windows)]
+fn scan_removable_and_portable_search_paths() -> Vec<(PathBuf, &'static str)> {
+    let mut out = Vec::new();
+    // 本机便携绿色位：claude/codex 桌面版这类装到 %LOCALAPPDATA%\Programs\<app>\ 的形状。
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let programs = Path::new(&local).join("Programs");
+        for app_dir in list_subdirs(&programs, 64) {
+            for sub in ["bin", "resources/cli"] {
+                let p = app_dir.join(sub);
+                if p.exists() {
+                    out.push((p, "portable"));
+                }
+            }
+        }
+    }
+    // 可移动盘（DriveType==2）+ 非系统固定盘（DriveType==3 且非 %SystemDrive%）。
+    let system_drive_root = std::env::var("SystemDrive")
+        .map(|d| format!("{}\\", d.to_uppercase()))
+        .unwrap_or_default();
+    for slot in crate::usb_genie::enumerate_drive_slots() {
+        let is_removable = slot.drive_type == crate::usb_genie::DRIVE_TYPE_REMOVABLE;
+        let is_secondary_fixed = slot.drive_type == crate::usb_genie::DRIVE_TYPE_FIXED
+            && !slot
+                .root
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&system_drive_root);
+        if !is_removable && !is_secondary_fixed {
+            continue;
+        }
+        let root = &slot.root;
+        for fixed in [root.clone(), root.join("bin")] {
+            if fixed.exists() {
+                out.push((fixed, "removable"));
+            }
+        }
+        for app_dir in list_subdirs(root, 64) {
+            for sub in ["bin", "resources/cli", "node_modules/.bin"] {
+                let p = app_dir.join(sub);
+                if p.exists() {
+                    out.push((p, "removable"));
+                }
+            }
+        }
+        // usb_genie DEPLOY 造出来的工具盘布局：<root>/U-King/AI-Genie/runtime/current/
+        // 里放 picoclaw.exe（见 usb_genie.rs 的 genie/runtime/current 三个私有 helper）。
+        // U-King 自己造的 U 盘，U-King 必须认得出来 —— 这条不能漏。
+        let genie_current = root
+            .join("U-King")
+            .join("AI-Genie")
+            .join("runtime")
+            .join("current");
+        if genie_current.exists() {
+            out.push((genie_current, "removable"));
+        }
+    }
+    out
+}
+
+/// 只读一层、不跟随 symlink/junction，最多取 `limit` 个条目就停 —— 一个塞了几千个
+/// 文件夹的盘不能让 `*` 通配展开爆掉。
+#[cfg(windows)]
+fn list_subdirs(dir: &Path, limit: usize) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_type()
+                .map(|t| t.is_dir() && !t.is_symlink())
+                .unwrap_or(false)
+        })
+        .take(limit)
+        .map(|e| e.path())
+        .collect()
 }
 
 /// PATH 分隔符。
@@ -6587,6 +6780,143 @@ mod tests {
             );
         }
         eprintln!("（本机可断言的工具数：{checked}）");
+    }
+
+    /// 回归：`search_paths` 扩了可移动盘/便携绿色位来源之后，**已有来源的返回顺序和
+    /// 内容不变**——本机没有插着任何 U 盘时，新增来源应当查不到任何路径，与改动前
+    /// 逐项相同（`extra` 传相同参数两次的结果也必须相同，排除非确定性）。
+    #[cfg(windows)]
+    #[test]
+    fn search_paths_unchanged_shape_without_removable_drives() {
+        let extra = portable_node_dir();
+        let a = search_paths(extra.as_deref());
+        let b = search_paths(extra.as_deref());
+        assert_eq!(a, b, "search_paths 在无输入变化时必须确定性返回同样的目录列表");
+        // 新增来源只应贡献「查了但什么都没发现」——不应引入野路径（比如把 C:\ 本身
+        // 当成候选，或把非法/不存在目录塞进结果，那会让子进程 PATH 里混进空气）。
+        for dir in &a {
+            assert!(
+                dir.exists(),
+                "search_paths 返回了一个不存在的目录 {dir:?}——只做存在性检查的候选不该出现在结果里"
+            );
+        }
+    }
+
+    /// 缓存生效：TTL 窗口内连续调用不应重新枚举驱动器（用调用耗时间接验证——
+    /// 第二次应当明显快于「真的又扫了一遍磁盘」的量级；同时结果必须一致）。
+    #[cfg(windows)]
+    #[test]
+    fn removable_and_portable_search_paths_are_cached_within_ttl() {
+        let first = removable_and_portable_search_paths_classified();
+        let t0 = std::time::Instant::now();
+        let second = removable_and_portable_search_paths_classified();
+        let ms = t0.elapsed().as_millis();
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "TTL 窗口内两次调用应命中同一份缓存快照"
+        );
+        assert!(
+            ms < 200,
+            "第二次调用花了 {ms}ms——缓存命中应当是一次 Mutex 加锁 + clone，不该再去扫驱动器/读目录"
+        );
+    }
+
+    /// 超时保护：`removable_and_portable_search_paths_classified` 的后台线程超时预算是
+    /// 3 秒；即便扫描逻辑本身出问题变慢，调用方也不该被永久卡住——用整体墙钟时间断言。
+    #[cfg(windows)]
+    #[test]
+    fn removable_and_portable_search_paths_never_blocks_past_its_timeout_budget() {
+        let t0 = std::time::Instant::now();
+        let _ = removable_and_portable_search_paths_classified();
+        let ms = t0.elapsed().as_millis();
+        assert!(
+            ms < 4000,
+            "调用花了 {ms}ms，超过了 3 秒的后台扫描超时预算 + 少量调度余量"
+        );
+    }
+
+    /// 回归：超时那一轮不许把空结果写进缓存。慢扫描（模拟慢速 U 盘冷启动马达转起来）
+    /// 超过注入的短超时后，主线程应当空手而归，但后台线程仍在跑；等它跑完，*不用等满
+    /// TTL*，下一次调用就该拿到后台线程回写的真结果。
+    #[cfg(windows)]
+    #[test]
+    fn removable_and_portable_search_paths_timeout_does_not_poison_cache() {
+        static CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<(PathBuf, &'static str)>)>> =
+            std::sync::Mutex::new(None);
+        static IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+        fn slow_scan() -> Vec<(PathBuf, &'static str)> {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            vec![(PathBuf::from("Z:\\slow-usb-drive\\bin"), "removable")]
+        }
+
+        // 第一次调用：注入一个远小于扫描耗时的超时预算，模拟「慢盘首扫超过等待窗口」。
+        let t0 = std::time::Instant::now();
+        let first = removable_and_portable_search_paths_core(
+            &CACHE,
+            &IN_FLIGHT,
+            std::time::Duration::from_secs(45),
+            std::time::Duration::from_millis(50),
+            slow_scan,
+        );
+        let ms = t0.elapsed().as_millis();
+        assert!(first.is_empty(), "超时这一轮应当空手而归，而不是提前拿到还没扫完的结果");
+        assert!(ms < 1000, "调用本身不该被拖到扫描线程结束才返回，实际花了 {ms}ms");
+
+        // 等后台线程把真结果扫完、回写缓存——这个等待时间远小于 45 秒 TTL。
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let second = removable_and_portable_search_paths_core(
+            &CACHE,
+            &IN_FLIGHT,
+            std::time::Duration::from_secs(45),
+            std::time::Duration::from_millis(50),
+            slow_scan,
+        );
+        assert_eq!(
+            second,
+            vec![(PathBuf::from("Z:\\slow-usb-drive\\bin"), "removable")],
+            "后台线程扫完之后应当已经把真结果写进缓存，下一次调用不该还是空——\
+             不必等满 45 秒 TTL 就该看到慢盘上的工具"
+        );
+    }
+
+    /// 回归：慢盘反复超时时，不许每次调用都新起一条扫描线程——in-flight 期间应当
+    /// 直接复用当前缓存（哪怕是空的），等已有那条扫描线程跑完再说。
+    #[cfg(windows)]
+    #[test]
+    fn removable_and_portable_search_paths_does_not_pile_up_threads() {
+        static CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<(PathBuf, &'static str)>)>> =
+            std::sync::Mutex::new(None);
+        static IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        static SCAN_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+        fn counted_slow_scan() -> Vec<(PathBuf, &'static str)> {
+            SCAN_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            Vec::new()
+        }
+
+        // 连续三次调用，每次的超时预算都远小于扫描耗时，模拟「慢盘还没扫完，UI 又
+        // 触发了一轮刷新」。只有第一次应当真的起扫描线程，后两次应当看到 in-flight
+        // 直接退回当前缓存，不再新起线程。
+        for _ in 0..3 {
+            let _ = removable_and_portable_search_paths_core(
+                &CACHE,
+                &IN_FLIGHT,
+                std::time::Duration::from_secs(45),
+                std::time::Duration::from_millis(20),
+                counted_slow_scan,
+            );
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(
+            SCAN_CALLS.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "慢盘反复超时期间不该每次调用都新起一条扫描线程"
+        );
     }
 
     /// `tail` 在任何切点上都不许 panic。

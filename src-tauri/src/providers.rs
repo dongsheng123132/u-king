@@ -24,7 +24,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::installer::curl;
@@ -5530,6 +5530,28 @@ pub struct DriverStatus {
     /// 界面列的和后端真会去配的必须是同一批，所以这里的判据就是那边用的
     /// `installer::tool_installed`，不另写一份探测。
     pub extra_installed: std::collections::BTreeMap<String, bool>,
+    /// **在哪里发现了每个 AI 工具的可执行文件**——不止「装没装」，还答「装在哪、
+    /// 是不是 U 盘上的、跟当前生效的是不是同一份」（ActionParity 第 15 条：结果要可见）。
+    /// 覆盖 `LIST_TOOLS` 这 8 个；同名多处发现时全部保留，按 system > portable >
+    /// removable 排序，第一条是当前 `search_paths`/`tool_installed` 实际会用到的那个。
+    /// 不新增探测：复用 `installer::search_paths` 已经在走的目录 + 已经算出来的 `active`，
+    /// 不为它单独起进程（`version` 拿不到就是 `null`，不为它多花一次进程调用）。
+    pub discovered: Vec<ToolDiscovery>,
+}
+
+/// `DriverStatus::discovered` 的一条记录。
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolDiscovery {
+    pub name: String,
+    pub path: String,
+    /// `"system"` | `"portable"`（本机 `%LOCALAPPDATA%\Programs\*` 等绿色位）|
+    /// `"removable"`（可移动盘 / 副固定盘，含 U-King 自己造的 usb_genie 工具盘）。
+    pub source: String,
+    /// 只在零成本时填（同目录/上级目录有 package.json）。拿不到就是 `None`——
+    /// 绝不为它起一次 `--version` 进程（那是 `tool_installed` 的兜底路径，不是这里）。
+    pub version: Option<String>,
+    /// 这一处发现是不是 `active` 里记录的、当前实际生效的那份。
+    pub configured: bool,
 }
 
 /// 「一键配好全部」认得、但不在 `LIST_TOOLS` 独立列表页里的工具。
@@ -6032,7 +6054,84 @@ pub fn driver_status() -> DriverStatus {
     // 「用户在用自己的 Key」判据 —— 铁律：探测到就绝不推虾盘云、绝不抢。
     st.claude_own_key = claude_owns_config();
     st.codex_own_key = codex_owns_config();
+    st.discovered = discover_tools(&st.active);
     st
+}
+
+/// `search_paths` 已经走过的目录，打上来源标签：出自
+/// `installer::removable_and_portable_search_paths_classified` 的记作 portable/removable，
+/// 其余（便携 Python/Git、系统 npm 目录等既有来源）记作 system。**不重新扫盘**——
+/// 直接对 `installer::search_paths` 返回的目录做一次 O(n) 归类。
+fn classify_search_dirs() -> Vec<(PathBuf, &'static str)> {
+    let dirs = crate::installer::search_paths(crate::installer::portable_node_dir().as_deref());
+    let tagged: std::collections::HashMap<PathBuf, &'static str> =
+        crate::installer::removable_and_portable_search_paths_classified()
+            .into_iter()
+            .collect();
+    dirs.into_iter()
+        .map(|d| {
+            let source = tagged.get(&d).copied().unwrap_or("system");
+            (d, source)
+        })
+        .collect()
+}
+
+/// 只在零成本时填版本：同目录或上级目录有 `package.json` 就读它的 `version` 字段，
+/// 拿不到就是 `None`。绝不为它起进程——那是 `installer::tool_installed` 的活。
+fn cheap_version_hint(dir: &Path) -> Option<String> {
+    let mut candidates = vec![dir.join("package.json")];
+    if let Some(parent) = dir.parent() {
+        candidates.push(parent.join("package.json"));
+    }
+    for candidate in candidates {
+        if let Ok(text) = std::fs::read_to_string(&candidate) {
+            if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+                    return Some(ver.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// `DriverStatus::discovered` 的实际计算：覆盖 `LIST_TOOLS` 这 8 个工具，
+/// 每个工具在每处已知搜索目录里查文件是否存在（跟 `tool_installed` 同款
+/// 纯文件存在性检查，不起进程），同名多处发现全部保留，按
+/// system > portable > removable 排序。
+fn discover_tools(active: &std::collections::BTreeMap<String, String>) -> Vec<ToolDiscovery> {
+    let exts: &[&str] = if cfg!(windows) {
+        &["", ".cmd", ".exe", ".bat", ".ps1"]
+    } else {
+        &[""]
+    };
+    let dirs = classify_search_dirs();
+    let mut out = Vec::new();
+    for name in LIST_TOOLS {
+        let mut found: Vec<ToolDiscovery> = Vec::new();
+        for (dir, source) in &dirs {
+            for ext in exts {
+                let file = dir.join(format!("{name}{ext}"));
+                if file.is_file() {
+                    found.push(ToolDiscovery {
+                        name: (*name).to_string(),
+                        path: file.display().to_string(),
+                        source: (*source).to_string(),
+                        version: cheap_version_hint(dir),
+                        configured: active.get(*name).is_some(),
+                    });
+                }
+            }
+        }
+        found.sort_by_key(|d| match d.source.as_str() {
+            "system" => 0,
+            "portable" => 1,
+            "removable" => 2,
+            _ => 3,
+        });
+        out.extend(found);
+    }
+    out
 }
 
 /// 用户的 Claude 是否是「自己的」配置（非 U-King 虾盘云）。
