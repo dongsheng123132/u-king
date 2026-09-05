@@ -12,11 +12,11 @@ export const sidebar: Record<string, string> = {
   // 核心 4 项 CORE（2026-07-19 信息架构梳理）
   "首页 · 我的 AI": "Home · My AI",
   "我的 AI": "My AI",
-  "装机 · 一键配好 · 启动": "Install · One-click setup · Launch",
+  "装机 · 体检 · 启动": "Install · Checkup · Launch",
   "AI 创作": "AI Studio",
   "作图 · 视频 · 海报二维码": "Images · Video · Poster QR",
   "换模型 · 余额 · 用自己的 Key": "Switch models · Balance · Your own key",
-  "换模型 · 余额 · 一键体检升级": "Models · Balance · One-click checkup & update",
+  "换模型 · 余额": "Models · Balance",
   "虾盘云 · 充值": "Xiapan Cloud · Top up",
   "上手教程": "Getting Started",
   "技能市场 · 怎么用 AI": "Skill market · How to use AI",
