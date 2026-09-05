@@ -106,6 +106,26 @@ export const settings: Record<string, string> = {
   关闭: "Close",
 
   // ── Manager.tsx ──
+  "装 / 启动 / 卸载在「我的 AI」页": "Install / launch / uninstall live on the \"My AIs\" page",
+  "去我的 AI": "Go to My AIs",
+
+  // ── 体检卡收起态提示（DoctorCard，2026-09-06 重打：09-05 版随 rm -rf 事故丢失）──
+  "⚠️ {n} 个 AI 还没配好": "⚠️ {n} AIs not configured yet",
+  "⚠️ 环境有项待处理": "⚠️ Environment needs attention",
+
+  // ── 启动被拦截提示（LaunchBlocked，2026-09-06 重打）──
+  "还没安装「{name}」，请先安装。": "\"{name}\" is not installed yet — please install it first.",
+  "去安装": "Install",
+  "已在 {path} 检测到，但终端里找不到它，需要重新装到默认位置 / 修复 PATH。":
+    "Detected at {path}, but the terminal can't find it — reinstall to the default location or fix PATH.",
+  "检测到已安装，但终端里找不到它，需要重新装到默认位置 / 修复 PATH。":
+    "It is installed, but the terminal can't find it — reinstall to the default location or fix PATH.",
+  "反馈问题": "Report a problem",
+  "启动命令「{cmd}」被安全校验拒绝，这是我们的 bug，请反馈。":
+    "The launch command \"{cmd}\" was rejected by the safety check — this is our bug, please report it.",
+  "从开始菜单 / 桌面图标打开，这里帮不了。": "Open it from the Start menu / desktop icon — it can't be launched from here.",
+  "暂时无法启动。": "Unable to start right now.",
+
   // token 数字单位（数值已除以 1 万；×10k 保持数值不变，仅换单位说明）
   万: "×10k",
   "{model}（Codex 推荐）": "{model} (Codex recommended)",

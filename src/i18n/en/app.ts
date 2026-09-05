@@ -212,6 +212,12 @@ export const app: Record<string, string> = {
     "U-King was already running (in the tray) — switched you back to it.",
   "U-King 本来就开着（在托盘里），已经帮你切回来了 —— 你双击的那份「{name}」不会再开一个窗口。":
     "U-King was already running (in the tray) — switched you back to it. The copy you double-clicked ({name}) will not open a second window.",
+  // ---- App: 启动 toast / 便携徽标（2026-09-06 重打：09-05 版随 rm -rf 事故丢失）----
+  "{name} 启动失败：{msg}": "{name} failed to start: {msg}",
+  "已启动 {name}": "{name} started",
+  "暂时无法启动": "Unable to start right now",
+  "便携": "Portable",
+
   // 「并行调试实例」常驻条（--allow-multi-instance 起第二个 U-King 时）。见 src-tauri/src/instance.rs
   "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但定时任务、技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。":
     "This is a parallel debug instance (a second U-King). The UI, terminals and working folder are identical to the first one, but scheduled automations, skill-pack sync and Codex proxy self-heal are owned by the first instance and are not run twice here. Tasks and chat-resume ids created here are not saved.",

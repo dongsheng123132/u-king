@@ -1,6 +1,6 @@
 {
-  "pairs": 47,
-  "why": "首次立基线：现状 N 条存量耦合（08-11 删模块时暴露过三处删不掉，就是这些）。新增即红，存量不阻断。",
+  "pairs": 49,
+  "why": "1a12a4b 的 tools/toolprobe 收敛重构引入的双向引用（TOOL_SPECS 单一真相源 + 探测标记），09-05 基线更新随 rm -rf 事故丢失，重新登记",
   "list": [
     "agent → device",
     "agent → journal",
@@ -43,9 +43,11 @@
     "report → device",
     "report → feedback",
     "report → metrics",
+    "toolprobe → tools",
     "tools → install",
     "tools → providers",
     "tools → term",
+    "tools → toolprobe",
     "tools → uuswitch",
     "uuswitch → device",
     "uuswitch → providers"
