@@ -1822,7 +1822,9 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             actions::TOOL_INSPECT,
             "Inspect tool launch plans",
             "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing.",
-            15_000,
+            // 每个工具都要 spawn 一次终端探测 PATH，串行累加；1.3.0 发版冒烟在真机实测 24.5s，
+            // 15s 预算直接超时。磁盘忙 / 杀软扫描时更慢，留足余量。
+            45_000,
             &["tools"],
             |_, _, _| {
                 let items = tools::plan_all();
@@ -1934,7 +1936,9 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             actions::OPENCLAW2_PREFLIGHT,
             "Preflight the isolated OpenClaw 2 runtime",
             "Run only the private OpenClaw 2 doctor's lint JSON check, plus private gateway RPC status when it is running. It never repairs or migrates anything.",
-            60_000,
+            // 内部给 doctor 子进程的超时就是 60s（run_oc），声明预算必须留出余量，
+            // 否则 doctor 一慢（真机实测 57s）conformance 就恒撞线。
+            90_000,
             &["ok", "ready", "blockers", "warnings", "runtime", "config", "doctor", "gateway"],
             openclaw2::action_preflight,
         ),
