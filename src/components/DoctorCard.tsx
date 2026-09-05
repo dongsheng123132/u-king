@@ -27,34 +27,8 @@ import {
 import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 
-type AiCheckupItem = {
-  target: string;
-  label: string;
-  installed: boolean;
-  state: "ready" | "idle" | "self-managed" | "absent";
-  model: string | null;
-  can_auto_fix: boolean;
-};
-
-type CmdProbe = { found: boolean; version: string | null };
-
-type DoctorReport = {
-  update: { current: string; latest: string; has_update: boolean; checked_ok: boolean; fail_reason?: string; failed_attempts?: number };
-  wallet: {
-    charged: boolean;
-    low_balance: boolean;
-    balance: { text?: string } | null;
-    recharge_url: string;
-  } | null;
-  stack: {
-    node: CmdProbe;
-    npm: CmdProbe;
-    git: CmdProbe;
-    portable_node: boolean;
-    system_proxy: string | null;
-  };
-  tools: AiCheckupItem[];
-};
+import { isAllGreen } from "../lib/doctorHealth";
+import type { AiCheckupItem, CmdProbe, DoctorReport } from "../lib/doctorHealth";
 
 /** 同一轮体检的事实在各挂载点共用，避免切页时重复打版本/余额网络请求。 */
 const DOCTOR_CACHE_MS = 5 * 60 * 1000;
@@ -76,13 +50,6 @@ function loadDoctorReport(force = false) {
       });
   }
   return doctorCheckInFlight;
-}
-
-/** 「自管」是已明确配置的正常状态；其余非 ready 状态都需要用户处理。 */
-function isAllGreen(report: DoctorReport) {
-  const toolsReady = report.tools.length > 0 && report.tools.every((item) => item.installed && (item.state === "ready" || item.state === "self-managed"));
-  const stackReady = report.stack.node.found && report.stack.npm.found && report.stack.git.found;
-  return report.update.checked_ok && !report.update.has_update && !!report.wallet?.charged && !report.wallet.low_balance && stackReady && toolsReady;
 }
 
 function checkedTime(timestamp: number) {
@@ -277,7 +244,7 @@ export function DoctorCard({
         </section>
       );
     }
-    // 有问题但非「idle 缺件」（比如有更新 / 余额低 / 环境缺件）：idleTools.length 可能是 0，
+    // 有问题但非「idle 缺件」（比如运行时缺件 / 一个已配好的工具都没有）：idleTools.length 可能是 0，
     // 这时用不点数字的通用文案，避免出现「0 个 AI 还没配好」这种误导。
     return (
       <section className="mb-4 rounded-card border border-amber-500/25 bg-bg-1/90 shadow-card overflow-hidden">
