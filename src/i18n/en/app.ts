@@ -214,6 +214,7 @@ export const app: Record<string, string> = {
     "U-King was already running (in the tray) — switched you back to it. The copy you double-clicked ({name}) will not open a second window.",
   // ---- App: 启动 toast / 便携徽标（2026-09-06 重打：09-05 版随 rm -rf 事故丢失）----
   "{name} 启动失败：{msg}": "{name} failed to start: {msg}",
+  "拉出终端窗口失败：{msg}": "Could not open the terminal window: {msg}",
   "已启动 {name}": "{name} started",
   "暂时无法启动": "Unable to start right now",
   "便携": "Portable",

@@ -6,7 +6,7 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Wallet, Wand2, Wrench } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { SidebarMiniApps } from "./SidebarMiniApps";
@@ -270,6 +270,7 @@ export function Sidebar({
   updateFailReason,
   onReinstall,
   onHideToTray,
+  showTerminal,
 }: {
   active: TabId;
   onSelect: (t: TabId) => void;
@@ -310,6 +311,10 @@ export function Sidebar({
   // dockApps / onLaunchDock 仍由 App 传入但侧栏 Dock 已移除，故此处不再解构（保留可选以免 App 改动）
   dockApps?: DockApp[];
   onLaunchDock?: (a: DockApp) => void;
+  /** 内嵌终端页入口平时隐藏（易与「打开终端」弹出的独立窗口混淆）；只在内嵌终端页
+   *  已经挂了会话（termMounted）时才露出，让用户能切回去，不留「进得去出不来」的幽灵页。
+   *  2026-09-06 修：工具启动改走独立窗口后，唯一还会落进内嵌终端页的是快照恢复。 */
+  showTerminal?: boolean;
 }) {
   const { t, lang, setLang } = useI18n();
   /** 矮屏（1366×768 笔记本客户区 ≈ 696px）：这一栏装不下自己。见下方 `short &&` 各处。 */
@@ -663,22 +668,27 @@ export function Sidebar({
         })}
       </div> */}
 
-      {/* 终端页入口已隐藏 —— 现在点工具卡「打开终端」直接弹独立系统终端窗口（term_open_external），
-          内嵌终端整页对小白多余且易混淆（两个"终端"）。代码全留着，要恢复把下面这块解开注释即可。 */}
-      {/* <div className="px-2.5 pt-1 pb-2">
-        <button
-          onClick={() => onSelect("terminal")}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-card text-left transition-colors border-l-2",
-            active === "terminal"
-              ? "bg-accent/[0.10] border-accent text-ink-0"
-              : "border-transparent text-ink-2 hover:bg-white/[0.03]",
-          )}
-        >
-          <TerminalIcon size={16} className={active === "terminal" ? "text-accent" : "text-ink-3"} />
-          <div className="text-[13px] font-medium">终端</div>
-        </button>
-      </div> */}
+      {/* 终端页入口平时隐藏 —— 工具启动已改走独立系统终端窗口，内嵌终端整页只在
+          「快照恢复」这一条路径还会用到（见 App.tsx onRestoreTermSnapshot）。
+          只在内嵌终端页已经挂了会话（showTerminal / termMounted）时露出，
+          否则用户点工具卡不会落进这页，也就没有「回不去」的问题；
+          一旦落进去了，就需要一个能切回来的入口 —— 2026-09-06 修「能进不能回的幽灵页」。 */}
+      {showTerminal && (
+        <div className="px-2.5 pt-1 pb-2">
+          <button
+            onClick={() => onSelect("terminal")}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2 rounded-card text-left transition-colors border-l-2",
+              active === "terminal"
+                ? "bg-accent/[0.10] border-accent text-ink-0"
+                : "border-transparent text-ink-2 hover:bg-white/[0.03]",
+            )}
+          >
+            <TerminalIcon size={16} className={active === "terminal" ? "text-accent" : "text-ink-3"} />
+            <div className="text-[13px] font-medium">{t("U-CLI 终端")}</div>
+          </button>
+        </div>
+      )}
 
       {/* 有新版：常驻升级入口（2026-09-01 弱化：改成页脚版本号旁的迷你图标，
           不再占一整块横幅 —— 用户拍板「升级太强势了，放小小的隐藏」。

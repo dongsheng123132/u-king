@@ -7971,14 +7971,17 @@ fn miniapp_protocol(
 /// 所以两个窗口互不误杀；关掉小窗 = 它那份心跳停 = 它名下的会话按 HEARTBEAT_TIMEOUT 老化回收。
 /// 走自定义协议的话它就成了「小程序」，命令一个都调不到。
 ///
-/// 每个工作目录一个窗口（label 带目录哈希）：同一目录再点就把已开的顶到前面，
-/// 不然点几次就是几个一模一样的窗口，而每个都带着自己的 PTY。
+/// 每个 (工作目录, 起手命令) 一个窗口——同参数再点就顶到前面不重复跑；不同工具（不同 cmd）
+/// 各开各的窗，2026-09-06 修：工具启动改走本命令后，全部 cwd 为空，若只按目录去重会把第二个
+/// 工具的启动命令静默吞掉。
 #[tauri::command]
 async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<String>) -> Result<(), String> {
     let dir = cwd.unwrap_or_default();
     // label 只能是 [A-Za-z0-9-_]，中文目录直接当 label 会被 Tauri 拒 —— 用稳定哈希。
+    // 哈希输入是 dir + '\0' + cmd：先启动 codex 再启动 opencode 时 cwd 都是空，
+    // 只哈希 dir 会撞 label，第二个 cmd 就被当成「已开窗口」直接吞掉。
     let mut h: u64 = 1469598103934665603;
-    for b in dir.as_bytes() {
+    for b in dir.as_bytes().iter().chain(std::iter::once(&0u8)).chain(cmd.as_deref().unwrap_or("").as_bytes()) {
         h ^= *b as u64;
         h = h.wrapping_mul(1099511628211);
     }

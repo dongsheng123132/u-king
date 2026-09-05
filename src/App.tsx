@@ -766,11 +766,12 @@ export function App() {
           if (result.route) setTab(result.route as TabId);
           return;
         case "embedded_pty":
-          // 「打开终端」＝弹内嵌终端页跑这条命令（复用现有 pendingCmd 机制，
-          // useTermGroup::runInActive 消费）。不允许的命令原样透传给终端页兜底提示，
-          // 不在这里静默改写命令内容。
-          setPendingCmd(result.launch_cmd ?? t.launch_cmd ?? "");
-          setTab("terminal");
+          // 「打开终端」＝弹独立 U-CLI 终端小窗跑这条命令（open_terminal_window）。
+          // 2026-09-06 起不再 setTab("terminal") 塞进内嵌终端整页 —— 那页侧栏入口平时隐藏，
+          // 一旦从这里落进去就没有能切回来的入口（幽灵页）。内嵌终端页现在只留给快照恢复用，
+          // pendingCmd / TerminalPage 的 prop 结构不动，只是这个分支不再是它的生产者。
+          void invoke("open_terminal_window", { cwd: null, cmd: result.launch_cmd ?? t.launch_cmd ?? "" })
+            .catch((e) => flash(tr("拉出终端窗口失败：{msg}", { msg: String(e) })));
           return;
         case "blocked":
         default:
@@ -1089,6 +1090,8 @@ export function App() {
           // 矮屏时自定义标题栏被撤（见上），「缩到托盘」搬到侧栏页脚 —— 传 null 表示这台
           // 机器不矮、标题栏还在，侧栏就别重复放一个（同一动作两个入口，迟早漂移）。
           onHideToTray={short ? hideToTray : undefined}
+          // 内嵌终端页入口平时隐藏，只在该页已经挂了会话（快照恢复）时才露出——见 Sidebar 注释。
+          showTerminal={termMounted}
         />
         </PanelBoundary>
 

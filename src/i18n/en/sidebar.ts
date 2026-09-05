@@ -155,4 +155,6 @@ export const sidebar: Record<string, string> = {
   "社区维护的 DSH 插件清单（8.6k star，每日自动抓取 + 人工核实）。挑好之后，复制它的仓库地址回来装。":
     "A community-maintained list of DSH plugins (8.6k stars, auto-crawled daily and hand-checked). Pick one, then paste its repo address back here to install.",
   "U-King 装机时自带的两个：": "The two U-King installs by default:",
+
+  "U-CLI 终端": "U-CLI terminal",
 };
