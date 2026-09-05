@@ -55,4 +55,14 @@ export const deviceWallet: Record<string, string> = {
     "Remove the Device Wallet from this computer only? The server wallet, the old key and the balance are not deleted.\nA new key with zero balance will be created next time you go online; the key you just copied still restores the original wallet.",
   "服务端钱包和余额不会删除；移除前会先把当前 Key 复制给你":
     "The server wallet and balance are kept; your current key is copied for you before removal",
+  // 2026-09-06：U 盘工具盘制作时可选择是否写入随盘凭据（写的是设备钱包 key），这几条是那组选项的文案。
+  "随盘凭据": "Portable credential",
+  "不带凭据（保留盘上已有）": "No credential (keep what's already on the drive)",
+  "写入本机设备钱包凭据（官方算力 key，可随时移除）":
+    "Write this machine's Device Wallet credential (official compute key, removable anytime)",
+  "将写入本机设备钱包凭据（可随时移除）": "Will write this machine's Device Wallet credential (removable anytime)",
+  "不写入凭据（保留盘上已有）": "No credential will be written (keeps what's already on the drive)",
+  "随盘凭据可用下方按钮随时移除": "The portable credential can be removed anytime with the button below",
+  "首次制作会先下载并校验固定 runtime，再写入此盘的受管目录；不会格式化或扫描其它文件。P1 界面不提供更新入口（固定单一 runtime 版本）；随盘凭据是否写入由上方选项决定，写入后可随时用“移除此盘凭据”撤回。":
+    "The first build downloads and verifies the pinned runtime, then writes it to this drive's managed directory; it never formats or scans unrelated files. The P1 UI has no update entry (a single pinned runtime version); whether the portable credential is written is decided by the option above, and once written it can be withdrawn anytime with \"Remove this drive's credential\".",
 };
