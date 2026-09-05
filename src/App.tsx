@@ -82,7 +82,6 @@ const Feedback = lazy(() => import("./Feedback").then((m) => ({ default: m.Feedb
 const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const DshPlugins = lazy(() => import("./DshPlugins").then((m) => ({ default: m.DshPlugins })));
-const OpenCodex = lazy(() => import("./opencodex/OpenCodex").then((m) => ({ default: m.OpenCodex })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
 const TeamSpace = lazy(() => import("./TeamSpace").then((m) => ({ default: m.TeamSpace })));
 const RunCenter = lazy(() => import("./RunCenter").then((m) => ({ default: m.RunCenter })));
@@ -827,9 +826,8 @@ export function App() {
   };
 
   // 底部 Dock：全部 TUI 应用（已装彩色 / 未装灰显）+ 纯 GUI 应用（外部启动）
-  // 注：OpenCodex 工作台暂时隐藏 —— 先把「装机 + 使用 AI」打磨好。代码全留着，
-  // 渲染靠 display:none 控制，tab 永远切不到 "workbench" 即不显示。要恢复：把下面
-  // { id:"opencodex", name:"OpenCodex", kind:"workbench" } 加回数组首项即可。
+  // 注：旧 OpenCodex 工作台外壳已于 2026-09-06 删除（评审③④）——U-Workspace 复用同一套
+  // store/SessionList/ChatPanel/PTY，外壳本身自隐藏起从未有入口。历史实现看 git。
   const tuiToolIds = new Set(TUI_APPS.map((a) => a.toolId));
   const dockApps: DockApp[] = [
     // 纯 GUI 应用（仅 launch_app，非 TUI）→ 外部启动，归「桌面应用」组。已装的都列；
@@ -865,7 +863,6 @@ export function App() {
     })),
   ];
   const onLaunchDock = async (a: DockApp) => {
-    if (a.kind === "workbench") return setTab("workbench");
     if (a.kind === "tui") {
       // 未装的灰色图标 → 先「检测一次」：可能是装好了但 state 还旧（如 Hermes 装完没刷新到）。
       // 真没装才进装机向导；已检测到就直接开 TUI 页，别再让用户白装一遍。
@@ -1095,26 +1092,13 @@ export function App() {
         />
         </PanelBoundary>
 
-        {/* OpenCodex 工作台：现由 U-Workspace 取代（U-Workspace 复用同一套 store/SessionList）。
-            OpenCodex tab 本就不可达，改成**仅 workbench 时才挂载**，避免两个 WorkbenchProvider
-            共享同一 tasks.json 双写。要单独调试老 OpenCodex 时把 tab 切 workbench 即可。 */}
-        {tab === "workbench" && (
-          <main className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}>
-            <PanelBoundary name="workbench">
-              <Suspense fallback={<PageFallback />}>
-                <OpenCodex openedDir={env?.opened_dir ?? null} homeDir={env?.home_dir ?? null} onToast={flash} onGoManage={() => setTab("manage")} />
-              </Suspense>
-            </PanelBoundary>
-          </main>
-        )}
-
-        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢，同 OpenCodex） */}
+        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢） */}
         <main
           className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}
           style={{ display: tab === "chat" ? undefined : "none" }}
         >
           {/* U-Workspace 是唯一 eager 挂载的页（保活），也是崩得最多的页 ——
-              工作台里面还有 U-Chat / U-CLI / 文件 / 浏览器各自的边界（SplitArea.tsx），
+              工作台里面 U-Chat / U-CLI / 文件 / 浏览器各有自己的边界，
               这一层兜的是工作台外壳自身（store / SessionList / 顶栏）。 */}
           <PanelBoundary name="U-Workspace">
             {/* onGoCreate：「AI 创作」2026-08-23 从工作台右侧面板搬回侧栏独立页（一个能力一个入口）。
@@ -1181,7 +1165,7 @@ export function App() {
         )}
 
         {/* 非 TUI 页面（manage/codex/myai/setup）：条件渲染，无 PTY 不需保活 */}
-        {tab !== "workbench" && tab !== "terminal" && tab !== "chat" && !isTuiAppId(tab) && (
+        {tab !== "terminal" && tab !== "chat" && !isTuiAppId(tab) && (
         <main className={cn(
           "flex-1 min-w-0",
           selfHeightTab ? "min-h-0 flex flex-col" : "overflow-y-auto",

@@ -18,7 +18,6 @@ import type { TuiAppId } from "../opencodex/apps";
 // TUI 应用（claude/codex-cli/openclaw/hermes）+ 工作台 + 终端页 + 管家页面 + AI 作图
 export type TabId =
   | TuiAppId
-  | "workbench"
   | "dshplugins"
   | "terminal"
   | "setup"
@@ -240,12 +239,11 @@ const LAB: NavItem[] = [
 /** Dock 项分组：desktop=桌面应用（Codex 桌面版/ClawX）、cli=命令行工具（OpenClaw/Claude/Hermes）。 */
 export type DockGroup = "desktop" | "cli";
 
-/** Dock 快捷项：① workbench=OpenCodex ② tui=独立 TUI 应用（claude/codex/openclaw/hermes，切 tabId）
- *  ③ launch=纯 GUI 应用（Codex 桌面版/ClawX，外部启动）。
+/** Dock 快捷项：① tui=独立 TUI 应用（claude/codex/openclaw/hermes，切 tabId）
+ *  ② launch=纯 GUI 应用（Codex 桌面版/ClawX，外部启动）。
  *  tool=品牌图标 key（claude/codex/openclaw/hermes…）；active=已装/可用（着色，否则灰显）；
  *  group=左侧分桶。 */
 export type DockApp =
-  | { id: string; name: string; kind: "workbench"; group?: DockGroup }
   | { id: string; name: string; kind: "tui"; tabId: TabId; tool: string; active: boolean; group?: DockGroup }
   | { id: string; name: string; kind: "launch"; tool: string; active: boolean; group?: DockGroup };
 
