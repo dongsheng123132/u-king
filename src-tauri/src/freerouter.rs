@@ -117,52 +117,11 @@ pub fn install(on_log: &dyn Fn(&str)) -> Result<(), String> {
     // curl 带了 -o 时 stdout 为空，错误才关心
     dl.map(|_| ()).map_err(|e| format!("下载失败: {e}"))?;
 
-    // SHA-256 校验（复用 installer::verify_download 的思路，独立实现避免动老函数签名）
+    // SHA-256 校验。预期摘要非法是发版错误，必须报错而不是跳过校验。
     let bytes = std::fs::read(&tmp_zip).map_err(|e| format!("读下载文件失败: {e}"))?;
-    if TARBALL_SHA256.len() == 64 {
-        use std::fmt::Write as _;
-        let digest = {
-            // 纯 std 无 sha2 crate：走 certutil（Win10+ 内置）/ shasum（macOS）
-            #[cfg(windows)]
-            {
-                let out = std::process::Command::new("certutil")
-                    .args(["-hashfile"])
-                    .arg(&tmp_zip)
-                    .arg("SHA256")
-                    .output()
-                    .map_err(|e| format!("certutil 失败: {e}"))?;
-                let s = String::from_utf8_lossy(&out.stdout);
-                s.lines()
-                    .skip(1)
-                    .find(|l| !l.trim().is_empty())
-                    .map(|l| l.trim().to_string())
-                    .unwrap_or_default()
-            }
-            #[cfg(not(windows))]
-            {
-                let out = std::process::Command::new("shasum")
-                    .arg("-a")
-                    .arg("256")
-                    .arg(&tmp_zip)
-                    .output()
-                    .map_err(|e| format!("shasum 失败: {e}"))?;
-                String::from_utf8_lossy(&out.stdout)
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("")
-                    .to_string()
-            }
-        };
-        let mut hex = String::new();
-        for b in digest.bytes() {
-            let _ = write!(hex, "{b:02x}");
-        }
-        if hex.to_lowercase() != TARBALL_SHA256 {
-            let _ = std::fs::remove_file(&tmp_zip);
-            return Err(format!(
-                "SHA-256 校验不过（{hex} ≠ {TARBALL_SHA256}）—— 下载内容与审定不符，已拦截。请联系 U-King 更新。"
-            ));
-        }
+    if let Err(reason) = verify_tarball_sha256(&bytes, TARBALL_SHA256) {
+        let _ = std::fs::remove_file(&tmp_zip);
+        return Err(reason);
     }
 
     on_log("解压…");
@@ -394,4 +353,41 @@ pub async fn freerouter_stop() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(stop)
         .await
         .map_err(|e| format!("停止任务异常: {e}"))?
+}
+
+/// 校验下载的 tarball 字节是否匹配审定摘要。提成纯函数以便确定性测试：
+/// 预期摘要非法（长度/字符不对）同样拒绝，绝不把校验变成可静默跳过的步骤。
+fn verify_tarball_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("内置的审定摘要不合法（非 64 位十六进制），拒绝安装。请联系 U-King 更新。".into());
+    }
+    let hex = crate::installer::sha256_hex_bytes(bytes);
+    if hex != expected.to_lowercase() {
+        return Err(format!(
+            "SHA-256 校验不过（{hex} ≠ {expected}）—— 下载内容与审定不符，已拦截。请联系 U-King 更新。"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verify_tarball_sha256;
+
+    // NIST 公开向量："abc" 的 SHA-256。
+    const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    #[test]
+    fn sha_verify_correct_tampered_and_invalid_expected() {
+        // 已知正确字节通过（大小写不敏感）。
+        assert!(verify_tarball_sha256(b"abc", ABC_SHA256).is_ok());
+        assert!(verify_tarball_sha256(b"abc", &ABC_SHA256.to_uppercase()).is_ok());
+        // 篡改内容失败，且错误信息不泄露之外的东西。
+        let err = verify_tarball_sha256(b"abd", ABC_SHA256).unwrap_err();
+        assert!(err.contains("SHA-256 校验不过"), "{err}");
+        // 预期摘要非法（过短 / 含非十六进制字符）必须拒绝，不得静默跳过校验。
+        assert!(verify_tarball_sha256(b"abc", "deadbeef").is_err());
+        let bad = format!("{}zz", &ABC_SHA256[..62]);
+        assert!(verify_tarball_sha256(b"abc", &bad).is_err());
+    }
 }
