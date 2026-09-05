@@ -337,28 +337,21 @@ export const settings: Record<string, string> = {
   "留空 = 仅 OpenAI 兼容": "Blank = OpenAI-compatible only",
 
   // ── ProviderManager.tsx ──
-  请填写名称: "Please enter a name",
-  "至少填一个端点（OpenAI 兼容地址 或 Anthropic 地址）":
-    "Enter at least one endpoint (OpenAI-compatible URL or Anthropic URL)",
+  // 2026-09-06：盲存表单退场（改挂 CustomProviderModal），下面这些键跟着表单一起删——
+  // 死键清单见搬迁报告：请填写名称 / 至少填一个端点(...) / 已删除{name}(settings.ts 这份重复，
+  // 真身在 tools.ts) / 编辑：{name} / 新建自定义 provider / OpenAI 兼容端点(...) /
+  // Anthropic 端点(...) / 小任务模型 / Codex 协议 / chat（老版/通用） / responses（新版 Codex） /
+  // 保存中… / 我的中转站。
   已更新: "Updated",
   "已添加自定义 provider": "Custom provider added",
-  "已删除 {name}": "Deleted {name}",
+  "已添加「{name}」并加入 {tool} 的列表": "Added “{name}” and enrolled it into {tool}'s list",
   "管理驱动 / 中转站": "Manage providers / relays",
   只读: "Read-only",
   "添加自定义 provider": "Add custom provider",
-  "编辑：{name}": "Edit: {name}",
-  "新建自定义 provider": "New custom provider",
-  "OpenAI 兼容端点（Codex/ClawX/Hermes 用）": "OpenAI-compatible endpoint (for Codex/ClawX/Hermes)",
-  "Anthropic 端点（Claude Code 用，可空）": "Anthropic endpoint (for Claude Code, optional)",
   默认模型: "Default model",
-  小任务模型: "Small-task model",
   "Codex 模型（可空）": "Codex model (optional)",
   沿用默认模型: "Use default model",
-  "Codex 协议": "Codex protocol",
-  "chat（老版/通用）": "chat (legacy / general)",
-  "responses（新版 Codex）": "responses (new Codex)",
-  "保存中…": "Saving…",
-  我的中转站: "My relay",
+  "需要先填 OpenAI 兼容端点": "Fill in the OpenAI-compatible endpoint first",
 
   // ── ProviderSwitch.tsx ──
   "{name} 需要先在「AI 设置」填 Key": "{name} needs a key set in “AI Settings” first",

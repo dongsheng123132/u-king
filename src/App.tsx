@@ -239,7 +239,9 @@ export function App() {
   const [updatePct, setUpdatePct] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
   // provider 增删改弹层：null=关；{}=新建；{editId}=编辑该项
-  const [providerMgr, setProviderMgr] = useState<{ editId?: string } | null>(null);
+  // tool：从哪个工具页发起（per-tool key，如 "claude"/"clawx"），新建后自动挂进这个工具的列表
+  // （2026-09-06 修「新建后不挂到当前工具」）；不传 = 无单一工具上下文（如「我的AI」页）。
+  const [providerMgr, setProviderMgr] = useState<{ editId?: string; tool?: string } | null>(null);
   // 半成品状态引导（装了工具没配驱动 / 配了没充值 等）
   const [setupState, setSetupState] = useState<{
     has_tool: boolean;
@@ -1127,7 +1129,7 @@ export function App() {
                   deviceKey={deviceKey}
                   onToast={flash}
                   onGoManage={() => setTab("manage")}
-                  onManageProviders={(editId) => setProviderMgr({ editId })}
+                  onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
                   onRefreshDriver={refresh}
                 />
               </Suspense>
@@ -1406,6 +1408,7 @@ export function App() {
       {providerMgr && (
         <ProviderManager
           editId={providerMgr.editId}
+          addingTo={providerMgr.tool}
           onToast={flash}
           onClose={() => setProviderMgr(null)}
           onChanged={refresh}

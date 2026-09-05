@@ -98,7 +98,7 @@ export function ToolAppView({
   deviceKey: DeviceKey | null;
   onToast: (s: string) => void;
   onGoManage: () => void;
-  onManageProviders: (editId?: string) => void;
+  onManageProviders: (editId?: string, tool?: string) => void;
   onRefreshDriver: () => void;
 }) {
   const { t } = useI18n();
@@ -667,7 +667,9 @@ export function ToolAppView({
               deviceKey={deviceKey}
               onToast={onToast}
               onGoManage={onGoManage}
-              onManageProviders={onManageProviders}
+              // 新建供应商要挂进「这个工具」的列表——configTargets[0] 与 restore_provider 的
+              // tool 参数同一套 per-tool key（见 providers.rs::restore_provider_for）。
+              onManageProviders={(editId) => onManageProviders(editId, app.configTargets[0])}
               onSwitched={onRefreshDriver}
             />
           </div>
