@@ -49,7 +49,6 @@ import type { ProviderPreset } from "./Wizard";
 import { XIAPAN_MODELS, priceyModelHint, codexProtocolHint } from "./lib/models";
 import { ShareButton } from "./components/ShareCard";
 import { WalletCard } from "./components/WalletCard";
-import { ToolCheckup } from "./components/ToolCheckup";
 import { FreerouterCard } from "./components/FreerouterCard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./lib/providerTemplates";
 import { FREE_GUIDE, type FreeGuide } from "./lib/freeGuide";
@@ -1357,9 +1356,6 @@ export function Manager({
           已保存的本机供应商或 Key。 */}
       {settingsTab === "free" && (
         <>
-          {/* 暂保留：它不只是第二份状态展示，还承载“逐工具一键配好”的修复动作。
-              迁入 DoctorCard 前不能为去重而删掉唯一可执行入口。 */}
-          <ToolCheckup />
           {/* Free Router 一键装跑（2026-08-31 会审定案）：本地免费路由网关。
               放体检卡之后、虾盘云引导之前 —— 它是「进了免费页、想要更多免费模型」的进阶路，
               不是主漏斗。上游钉 SHA + tarball 哈希双校验，Key 只落本机 .env。 */}

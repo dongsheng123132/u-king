@@ -21,10 +21,7 @@ export const settings: Record<string, string> = {
   "没有你想要的那家？「供应商库」里有 20 家模板，或者自己手填地址也行。":
     "Don't see the one you want? There are 20 templates under Providers, or just type the endpoint in yourself.",
 
-  // ---- 工具体检（ToolCheckup）----
-  "工具体检": "Tool checkup",
-  "{n} 个工具装好了还没接 AI": "{n} installed tools are not connected to AI yet",
-  "{n} 个 AI 助手全部就绪 ✅": "All {n} AI assistants are ready ✅",
+  // ---- 一键配好（ToolFixButton，从 ToolCheckup 收拢，2026-09-06）----
   "已自行配置": "Self-managed",
   "配好了，去终端试试": "Configured — try it in Terminal",
   "暂不支持自动配置": "Auto-configuration is not supported yet",

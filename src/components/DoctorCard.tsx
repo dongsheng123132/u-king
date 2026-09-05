@@ -29,6 +29,7 @@ import { useI18n } from "../i18n";
 
 import { isAllGreen } from "../lib/doctorHealth";
 import type { AiCheckupItem, CmdProbe, DoctorReport } from "../lib/doctorHealth";
+import { ToolFixButton } from "./ToolFixButton";
 
 /** 同一轮体检的事实在各挂载点共用，避免切页时重复打版本/余额网络请求。 */
 const DOCTOR_CACHE_MS = 5 * 60 * 1000;
@@ -131,6 +132,9 @@ export function DoctorCard({
   const [upgrading, setUpgrading] = useState(false);
   // 每个工具的升级状态 + 最近一行日志（事件来一条覆盖一条，够看清在干什么）
   const [upStates, setUpStates] = useState<Record<string, { state: UpState; note: string }>>({});
+  // 🔴 sol 终审沿用（原 ToolCheckup）：一键配好期间所有目标都禁用，防双击/多目标
+  // 并发各起一条 apply 流水把同一批配置写花。
+  const [fixingAny, setFixingAny] = useState(false);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -415,11 +419,22 @@ export function DoctorCard({
           {/* ④ 各 AI 配置状态 */}
           <div className="pt-1 space-y-1.5">
             {(report.tools.length ? report.tools : []).map((item) => (
-              <div key={item.target} className="flex items-center gap-2 text-[12px]">
+              <div key={item.target} className="flex items-center gap-2 text-[12px] flex-wrap">
                 <span className={cn("w-20 shrink-0 truncate", item.installed ? "text-ink-2" : "text-ink-5")}>
                   {item.label}
                 </span>
                 <StateBadge item={item} />
+                {item.installed && item.state === "idle" && item.can_auto_fix && (
+                  <ToolFixButton
+                    item={item}
+                    disabled={fixingAny}
+                    onFixingChange={setFixingAny}
+                    onFixed={() => runCheck(true)}
+                  />
+                )}
+                {item.installed && item.state === "idle" && !item.can_auto_fix && (
+                  <span className="ml-auto text-[10.5px] text-ink-4 shrink-0">{t("暂不支持自动配置")}</span>
+                )}
               </div>
             ))}
             {idleTools.length > 0 && (
