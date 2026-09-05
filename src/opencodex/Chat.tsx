@@ -9,7 +9,7 @@
  * 审批模式（copy Codex）：每步确认 / 自动（写自动·命令问）/ 全授权（都不问，危险命令仍 Rust 硬拦）。
  *
  * 【U-Workspace 模块】本文件是 U-Workspace（AI 工作台）的对话引擎，随工作台一起收进 opencodex/ 独立演进。
- * 右侧面板直接复用同目录 panels（TermPanel/FilesPanel/BrowserPanel），display 切换保活（切面板不杀 PTY）。
+ * 右侧面板直接复用同目录 panels（TermPanel/FilesPanel），display 切换保活（切面板不杀 PTY）。
  * 自包含，删掉只动 App.tsx + Sidebar.tsx。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -27,7 +27,6 @@ import { describeImages, fileLabel, isImageFile } from "../lib/vision";
 import { MiniMd } from "../lib/miniMd";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
 import { FilesPanel } from "./panels/FilesPanel";
-import { BrowserPanel } from "./panels/BrowserPanel";
 import { ChatPanel, ProducedFile, deliverableExt, previewableExt, producedFiles } from "./panels/ChatPanel";
 import { RedlinePanel } from "../vendor/redline-core";
 import { createTauriRedlineHost } from "./redline-host-tauri";
@@ -72,7 +71,7 @@ type TextItem = { type: "text"; role: "user" | "assistant"; content: string };
 type ToolItem = { type: "tool"; name: string; phase: "running" | "done" | "error"; prompt?: string; path?: string; command?: string; output?: string; b64?: string; url?: string; message?: string; oldStr?: string; newStr?: string; isNew?: boolean };
 type ApprovalItem = { type: "approval"; id: string; tool: string; action?: string; inputKeys?: string[]; path?: string; bytes?: number; command?: string; decided?: "approved" | "rejected"; oldStr?: string; newStr?: string };
 type Item = TextItem | ToolItem | ApprovalItem;
-type RightKind = "terminal" | "files" | "browser" | "preview";
+type RightKind = "terminal" | "files" | "preview";
 // 右侧「预览/画布」内容：生成的图（可放大）/ 视频（可播放）/ 渲染的 HTML / 办公文档（交给 redline 内核）
 type Preview =
   | { kind: "image"; src: string; caption?: string }
@@ -104,7 +103,6 @@ const RIGHT_META: { kind: RightKind; label: string; title: string; icon: typeof 
   { kind: "preview", label: "预览", title: "预览（图 / 网页 / 文档）", icon: Eye, needsWs: false },
   { kind: "terminal", label: "终端", title: "终端（U-CLI）", icon: Terminal, needsWs: true },
   { kind: "files", label: "文件", title: "文件树", icon: FolderTree, needsWs: true },
-  { kind: "browser", label: "浏览器", title: "内置浏览器", icon: Globe, needsWs: false, lab: true },
   // 「创作」面板 2026-08-23 撤掉 —— **能力一点没动**，`Create.tsx` 回到侧栏「AI 创作」独立页。
   //
   // 它 08-21 从侧栏搬进这里，理由是「和 U-Chat 是同一件事的两个入口」。撤回的理由是用户反馈
@@ -202,11 +200,10 @@ function saveChatItems(sessionId: string, items: Item[]) {
   void invoke("chat_archive_replace", { sessionId, items: trimmed }).catch(() => {});
 }
 
-export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert, active = true }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
+export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
   /** 点一位专家 → 带着他开一个会话（宿主负责建会话，本组件不自己造）。 */ onSummonExpert?: (e: Expert) => void;
   /** 这一轮跑起来了 / 跑完了 / 跑挂了 —— 宿主拿去染左侧列表那个小圆点。不传也照常能用。 */
-  onStatus?: (s: "running" | "idle" | "error") => void;
-  /** 会话常驻时由宿主传入；隐藏会话不能继续占用浏览器直播。 */ active?: boolean }) {
+  onStatus?: (s: "running" | "idle" | "error") => void }) {
   const { t } = useI18n();
   // 矮屏（见 lib/useViewport.ts）：顶栏和「按发送前该知道的两件事」那条在
   // 1366×768 上各自都还占着宽松间距，而对话正文只剩三四行。
@@ -421,8 +418,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   });
   // 右侧「预览/画布」：生成的图（可放大）/ 渲染的 HTML；zoom=图片缩放倍数
   const [preview, setPreview] = useState<Preview>(null);
-  /** 「用浏览器打开」要 BrowserPanel 去的地址（真 Chrome，能点链接/跑 JS，iframe 做不到）。 */
-  const [browserUrl, setBrowserUrl] = useState<string>("");
   const [zoom, setZoom] = useState(1);
   // 对话正文字号（测试报告 #007：「字体大小固定」）。记住选择 —— 会调字号的人多半是眼睛累了，
   // 每次开页面再调一遍等于没给。范围卡在 12~22：再小读不清，再大一屏放不下几句话。
@@ -615,7 +610,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     () => [
       { label: "开终端", hint: "右侧开一个终端", run: () => togglePanel("terminal") },
       { label: "开文件面板", hint: "浏览工作文件夹", run: () => togglePanel("files") },
-      { label: "开浏览器", hint: "右侧内置浏览器", run: () => togglePanel("browser") },
       { label: "开预览", hint: "看生成的图 / 网页", run: () => togglePanel("preview") },
       { label: "换工作文件夹", hint: "AI 在哪儿干活", run: () => void pickWorkspace() },
       { label: "清空对话", hint: "这个会话从头开始", run: () => setItems([]) },
@@ -1510,26 +1504,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                 <FilesPanel root={workspace} active={rightOpen && rightKind === "files"} onToast={onToast} />
               </div>
             )}
-            {opened.has("browser") && (
-              <div className="absolute inset-0" style={{ display: rightKind === "browser" ? "block" : "none" }}>
-                {/* 🔴 #67（2026-08-27 客户反馈）：「用浏览器打开」进来的是全屏浏览器，浏览器自己的
-                    后退/刷新只退网页，客户找不到回对话的路。这里给一个明确的「返回对话」出口：
-                    收起面板 + 展开对话列，一步回聊天。 */}
-                {rightKind === "browser" && (
-                  <button
-                    onClick={() => {
-                      setRightOpen(false);
-                      setChatCollapsed(false);
-                    }}
-                    title={t("返回对话")}
-                    className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-bg-1/95 border border-white/[0.12] text-[12px] text-ink-1 shadow-lg hover:bg-bg-1"
-                  >
-                    <MessageSquare size={13} /> {t("返回对话")}
-                  </button>
-                )}
-                <BrowserPanel taskId={sessionId} openUrl={browserUrl} active={active && rightOpen && rightKind === "browser"} />
-              </div>
-            )}
             {opened.has("preview") && (
               <div className="absolute inset-0 flex flex-col" style={{ display: rightKind === "preview" ? "flex" : "none" }}>
                 {!preview ? (
@@ -1576,18 +1550,19 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                   <>
                     <div className="flex items-center gap-1.5 h-9 px-2 border-b border-white/[0.06] shrink-0">
                       <Globe size={13} className="text-ink-4" /><span className="text-[12px] text-ink-3 truncate flex-1">{preview.caption || t("网页预览")}</span>
-                      {/* 「用浏览器打开」：iframe 里的页面点链接不跳、有些脚本被 sandbox 拦；
-                          内置浏览器是独立 Chrome 会话，不继承系统浏览器登录态。只对有真实路径的网页给 ——
-                          整段源码塞进来的那种（read_text_file 那条）没有文件可开。 */}
+                      {/* iframe 里的页面点链接不跳、有些脚本被 sandbox 拦 —— 交给系统浏览器打开，
+                          能点链接、能登录，比内置浏览器更实用（也不再需要维护一整套浏览器面板）。
+                          只对有真实路径的网页给；整段源码塞进来的那种（read_text_file 那条）没有文件可开。 */}
                       {preview.path && (
                         <button
                           onClick={() => {
-                            const u = "file:///" + encodeURI(preview.path!.replace(/\\/g, "/"));
-                            setBrowserUrl(u);
-                            setOpened((s) => (s.has("browser") ? s : new Set(s).add("browser")));
-                            setRightKind("browser");
+                            // 本地文件交给系统默认程序（.html = 系统浏览器）。不能走 browser_nav
+                            // external：它只放行 https/localhost，file:/// 会被校验拦下。
+                            invoke("open_produced_file", { path: preview.path }).catch((e) =>
+                              onToast?.(t("打开系统浏览器失败：{err}", { err: String(e) })),
+                            );
                           }}
-                          title={t("在内置浏览器里打开（能点链接、跑脚本；登录网站请用系统浏览器）")}
+                          title={t("用系统浏览器打开（可点链接、可登录）")}
                           className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-white/[0.10] text-[11px] text-ink-3 hover:text-ink-0 hover:border-accent/40"
                         >
                           <Globe size={11} /> {t("用浏览器打开")}

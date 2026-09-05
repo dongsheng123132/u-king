@@ -68,7 +68,7 @@ export const panels: Record<string, string> = {
     "Use “Clear chat” next to the input box to start fresh, then restate the key points.",
 
   // 成品卡片（办公产物：右侧渲染不了，客户要的是「打开」）
-  // 注意「打开」的翻译在下面 BrowserPanel 那节已有一条，别再加 —— 同名键会让 tsc 直接报 TS1117
+  // 注意「打开」的翻译在下面「预览独立窗口」那节已有一条，别再加 —— 同名键会让 tsc 直接报 TS1117
   "用电脑上的默认程序打开": "Open with your default app",
   "在文件夹中显示": "Show in folder",
   // 心跳行 + 卡死收尾（后端 status:"timeout"）
@@ -134,7 +134,8 @@ export const panels: Record<string, string> = {
   "双击文件预览（图片 / PDF / Word / Excel / PPT / ZIP / 文本 …）":
     "Double-click a file to preview (image / PDF / Word / Excel / PPT / ZIP / text …)",
 
-  // BrowserPanel.tsx —— 浏览器面板
+  // 预览独立窗口（未找到任何组件引用这批 key —— 核实过与工作台浏览面板无关，
+  // 是更早遗留的死键，本次不顺手清，交回主会话判断是否要单独清理）
   "http://localhost:3000 或 https://…": "http://localhost:3000 or https://…",
   "打开": "Open",
   "在独立窗口打开预览页（localhost 也能开）":
@@ -165,10 +166,10 @@ export const panels: Record<string, string> = {
   "窗口开着": "Window open",
   "窗口未开": "Window closed",
   "页面在独立窗口里显示（localhost 也能开）；上面这排按钮控制那个窗口。": "The page opens in its own window (localhost works too); the buttons above control that window.",
-  "本机开发端口": "Local dev ports",
-  "在跑，点了直接开": "Running — click to open",
-  "这个端口上没服务 —— 先让 AI 起开发服务器": "Nothing on this port — have the AI start the dev server",
-  "最近打开": "Recent",
+
+  // Chat.tsx —— 预览工具栏「用浏览器打开」按钮（改交给系统浏览器，2026-09-06）
+  "用系统浏览器打开（可点链接、可登录）": "Open in your system browser (click links, sign in)",
+  "打开系统浏览器失败：{err}": "Failed to open the system browser: {err}",
 
   // ChatPanel.tsx —— Codex 专用模型清单（同上，label 走变量）
   "DeepSeek V4 Flash · 最快最省（默认）": "DeepSeek V4 Flash · fastest & cheapest (default)",
