@@ -14,6 +14,7 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
+use tauri_plugin_opener::OpenerExt;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PROFILE: &str = "uking-openclaw2";
@@ -1068,7 +1069,7 @@ fn configure_model_at_with_probe(p: &Paths, route: ModelRoute, require_runtime_r
         atomic_write(&config_file(&p), &candidate_bytes, &p)?;
         if model_test_fault(&p, "live_commit") { return Err("validation_failed: OpenClaw2 live 配置提交注入失败".into()); }
         if fs::read(config_file(&p)).map_err(|_| "rollback_failed: OpenClaw2 live 配置回读失败")? != candidate_bytes { return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into()); }
-        let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
+        let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"key_source":route.key_source,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
         if model_test_fault(&p, "marker_commit") { return Err("validation_failed: OpenClaw2 model marker 提交注入失败".into()); }
         atomic_write(&model_marker_file(&p), serde_json::to_vec_pretty(&marker).unwrap().as_slice(), &p)?;
         if let Some(old) = old_marker.bytes.as_ref().and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok()).and_then(|m| m.get("secret_basename").and_then(Value::as_str).map(str::to_owned)) {
@@ -1145,7 +1146,22 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
         ("OPENCLAW_DISABLE_BONJOUR".into(), "1".into()),
         ("NO_COLOR".into(), "1".into()),
     ];
+    if crate::portable_context::current().is_some() {
+        // The packaged workspace bundle selects its audited fs-safe sidecar
+        // only under this explicit production marker. Desktop OpenClaw keeps
+        // the upstream strict policy and never loads the sidecar.
+        env.push(("UKING_PORTABLE_COMPAT_EXFAT".into(), "1".into()));
+    }
     env
+}
+
+fn dashboard_opener() -> &'static OnceLock<tauri::AppHandle> {
+    static OPENER: OnceLock<tauri::AppHandle> = OnceLock::new();
+    &OPENER
+}
+
+pub fn set_dashboard_opener(app: tauri::AppHandle) {
+    let _ = dashboard_opener().set(app);
 }
 
 fn gateway_argv(p: &Paths, port: u16) -> Vec<String> {
@@ -1223,8 +1239,30 @@ pub fn dashboard_target() -> Result<String, String> {
 /// Action Core counterpart to the desktop opener. It proves ownership and
 /// readiness but deliberately returns no token-bearing URL.
 pub fn open_dashboard() -> Result<Value, String> {
-    let _ = dashboard_target()?;
+    let target = dashboard_target()?;
+    let app = dashboard_opener().get().ok_or("OpenClaw2 桌面 opener 尚未初始化")?;
+    app.opener()
+        .open_url(target, None::<String>)
+        .map_err(|e| format!("打开 OpenClaw 面板失败: {e}"))?;
     Ok(json!({"changed":false,"opened":true,"state_version":state_version()}))
+}
+
+/// A wallet change may update only the secret that this adapter proved it
+/// created from the device wallet. It never discovers or touches host tools.
+pub fn sync_device_wallet_key(key: Option<&str>) -> Result<(), String> {
+    let p = paths();
+    let Some(marker) = model_owned_marker(&p) else { return Ok(()); };
+    if marker.get("key_source").and_then(Value::as_str) != Some("device_wallet") {
+        return Ok(());
+    }
+    let name = marker.get("secret_basename").and_then(Value::as_str)
+        .filter(|name| !name.contains(['/', '\\']) && name.starts_with("model-"))
+        .ok_or("OpenClaw2 受管 model marker 缺少安全 secret 名称")?;
+    let secret = model_secrets_dir(&p).join(name);
+    match key {
+        Some(key) if !key.trim().is_empty() => atomic_write(&secret, serde_json::to_vec(&json!({"api_key":key})).unwrap().as_slice(), &p),
+        _ => Ok(()),
+    }
 }
 
 /// Start only the private command line. The public Action performs install

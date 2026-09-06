@@ -28,13 +28,14 @@ export function PortableApp() {
   const [notice, setNotice] = useState("正在读取便携包状态…");
 
   const refresh = async () => {
-    const [nextWallet, envelope] = await Promise.all([
+    const [walletResult, runtimeResult] = await Promise.allSettled([
       invoke<DeviceKey>("get_device_key"),
       call(ACTION.inspect, {}, false),
     ]);
-    setWallet(nextWallet);
-    if (!envelope.ok) throw new Error(envelope.error?.message || "读取 OpenClaw 状态失败");
-    setRuntime(envelope.result || null);
+    if (walletResult.status === "fulfilled") setWallet(walletResult.value);
+    if (runtimeResult.status === "rejected") throw runtimeResult.reason;
+    if (!runtimeResult.value.ok) throw new Error(runtimeResult.value.error?.message || "读取 OpenClaw 状态失败");
+    setRuntime(runtimeResult.value.result || null);
   };
 
   useEffect(() => {
@@ -69,18 +70,6 @@ export function PortableApp() {
     }
   };
 
-  const openDashboard = async () => {
-    setBusy("进入");
-    try {
-      await invoke("open_portable_openclaw_dashboard");
-      setNotice("已在系统浏览器打开 OpenClaw 面板。");
-    } catch (error) {
-      setNotice(`进入失败：${String(error)}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const installed = runtime?.installed === true;
   const prepared = runtime?.prepared === true;
   const running = runtime?.running === true;
@@ -107,15 +96,34 @@ export function PortableApp() {
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <ActionButton disabled={disabled || !installed} onClick={() => void run("配置", ACTION.configure, { provider_id: "xiapan" })} id="portable.configure">一键配置</ActionButton>
-          <ActionButton disabled={disabled || !prepared} onClick={() => void run("启动", ACTION.launch)} id="portable.launch">一键启动</ActionButton>
-          <ActionButton disabled={disabled || !running} onClick={() => void openDashboard()} id="portable.dashboard">进入 OpenClaw</ActionButton>
-          <ActionButton disabled={disabled || !running} onClick={() => void run("停止", ACTION.stop)} id="portable.stop">停止</ActionButton>
+          <ActionButton disabled={disabled || !installed} onClick={() => void configure()} id={ACTION.configure}>一键配置</ActionButton>
+          <ActionButton disabled={disabled || !prepared} onClick={() => void run("启动", ACTION.launch)} id={ACTION.launch}>一键启动</ActionButton>
+          <ActionButton disabled={disabled || !running} onClick={() => void run("进入", "runtime.openclaw2.open_dashboard")} id="runtime.openclaw2.open_dashboard">进入 OpenClaw</ActionButton>
+          <ActionButton disabled={disabled || !running} onClick={() => void run("停止", ACTION.stop)} id={ACTION.stop}>停止</ActionButton>
         </div>
         <p className="mt-6 min-h-12 rounded-xl bg-slate-800 px-4 py-3 text-sm leading-6 text-slate-200" aria-live="polite">{notice}</p>
       </section>
     </main>
   );
+
+  async function configure() {
+    setBusy("配置");
+    try {
+      const prepared = await call(ACTION.prepare, {}, true);
+      if (!prepared.ok) throw new Error(prepared.error?.message || "准备私有配置失败");
+      const configured = await call(ACTION.configure, { provider_id: "xiapan" }, true);
+      if (!configured.ok) throw new Error(configured.error?.message || "配置失败");
+      await refresh();
+      setNotice("配置完成，未执行模型探针或扣费调用。");
+    } catch (error) {
+      setNotice(`配置失败：${String(error)}`);
+    } finally {
+      // Offline wallet issuance can fail after the private profile was already
+      // prepared. Preserve that local fact so Start remains available.
+      await refresh().catch(() => {});
+      setBusy(null);
+    }
+  }
 }
 
 async function call(action_id: string, input: Record<string, unknown>, confirmed: boolean): Promise<ActionEnvelope> {

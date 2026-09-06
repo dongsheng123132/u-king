@@ -1312,6 +1312,9 @@ fn device_wallet_consumer_targets() -> Vec<String> {
 /// 漏了对齐模型保持）。所以这里按工具各取 `driver_status` 里它现在的模型：
 /// 取得到就原样写回，取不到（该工具没有专属模型字段）才落回 preset 默认。
 fn sync_device_wallet_consumers(key: Option<&str>) -> Result<(), String> {
+    if portable_context::current().is_some() {
+        return openclaw2::sync_device_wallet_key(key);
+    }
     let targets = device_wallet_consumer_targets();
     if targets.is_empty() {
         return Ok(());
@@ -6339,6 +6342,25 @@ async fn get_driver_status() -> serde_json::Value {
     run_action_blocking(actions::DRIVER_INSPECT).await
 }
 
+fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("U-King AI 管家")
+        .inner_size(1120.0, 720.0)
+        .min_inner_size(900.0, 600.0)
+        .center()
+        .visible(false);
+    if let Some(context) = portable_context::current() {
+        let webview = context.root.join("U-King").join("data").join("webview");
+        std::fs::create_dir_all(&webview)?;
+        // This is evaluated before WebView2 is constructed. A config-relative
+        // data directory is insufficient because Tauri otherwise resolves it
+        // against AppData under the host account.
+        builder = builder.data_directory(webview);
+    }
+    builder.build()?;
+    Ok(())
+}
+
 /// The frontend must decide which application to mount before any desktop
 /// effects run.  Expose only the marker state and package-local data root;
 /// callers never need an OS home directory to render the portable shell.
@@ -6354,27 +6376,6 @@ fn portable_context_status() -> serde_json::Value {
     }
 }
 
-/// Desktop transport for the token-bearing local URL. The Action Core checks
-/// ownership first and returns a redacted result; only this process passes the
-/// private URL to the operating system's opener.
-#[tauri::command]
-async fn open_portable_openclaw_dashboard(app: AppHandle) -> Result<(), String> {
-    if portable_context::current().is_none() {
-        return Err("当前不是 OpenClaw 便携预览包".into());
-    }
-    tauri::async_runtime::spawn_blocking(|| {
-        actions::run(
-            actions::OPENCLAW2_OPEN_DASHBOARD,
-            serde_json::json!({"confirm": true}),
-        )
-    })
-    .await
-    .map_err(|e| format!("动作执行任务异常: {e}"))??;
-    let target = openclaw2::dashboard_target()?;
-    app.opener()
-        .open_url(target, None::<String>)
-        .map_err(|e| format!("打开 OpenClaw 面板失败: {e}"))
-}
 
 /// 每日消耗趋势（最近 N 天）。
 #[tauri::command]
@@ -9942,6 +9943,11 @@ pub fn run() {
             });
         })
         .setup(move |app| {
+            // Action Core owns dashboard opening so CLI, MCP and the desktop
+            // invoke exactly one checked path. Keep the token-bearing URL
+            // inside the process and pass only this capability handle.
+            openclaw2::set_dashboard_opener(app.handle().clone());
+            create_main_window(app)?;
             // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
             // 真的让**外部页面**导航了。整个过程窗口 `visible(false)`，屏幕上什么都不出现，
             // 不抢前台、不动鼠标、不截屏。跑完直接退出进程 —— 不起托盘、不起调度线程。
@@ -10427,7 +10433,6 @@ pub fn run() {
             set_usage_sources,
             get_driver_status,
             portable_context_status,
-            open_portable_openclaw_dashboard,
             get_device_key,
             save_health_report,
             ai_diagnose,
@@ -10554,7 +10559,6 @@ pub fn run() {
                         "portable_context_status"
                             | "get_device_key"
                             | "open_recharge"
-                            | "open_portable_openclaw_dashboard"
                             | "action_run"
                             | "action_parity_call"
                     )

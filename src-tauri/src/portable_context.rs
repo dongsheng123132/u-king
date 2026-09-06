@@ -8,6 +8,7 @@
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 const MARKER: &str = "portable.json";
 const OWNER: &str = "u-king-openclaw-portable";
@@ -51,19 +52,28 @@ pub fn from_root(root: PathBuf) -> Result<PortableContext, String> {
 
 /// Returns the portable context only when the executable sits beside our
 /// marker. No environment variable can enable production portable mode.
+fn detected_current() -> &'static Result<Option<PortableContext>, String> {
+    static DETECTED: OnceLock<Result<Option<PortableContext>, String>> = OnceLock::new();
+    DETECTED.get_or_init(|| {
+        let root = std::env::current_exe().map_err(|e| format!("无法定位当前程序: {e}"))?
+            .parent().ok_or("当前程序没有父目录")?.to_path_buf();
+        if !root.join(MARKER).exists() { return Ok(None); }
+        from_root(root).map(Some)
+    })
+}
+
+/// The executable's mode is fixed for its whole lifetime. In particular, a
+/// marker removed after startup must not make later writes fall back to host
+/// storage.
 pub fn current() -> Option<PortableContext> {
-    let root = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    from_root(root).ok()
+    detected_current().as_ref().ok().and_then(Clone::clone)
 }
 
 /// Startup gate: an absent marker means the ordinary desktop product, while a
 /// present but malformed marker is an unsafe partial portable package and must
 /// never fall through to host storage.
 pub fn validate_current_executable() -> Result<(), String> {
-    let root = std::env::current_exe().map_err(|e| format!("无法定位当前程序: {e}"))?
-        .parent().ok_or("当前程序没有父目录")?.to_path_buf();
-    if !root.join(MARKER).exists() { return Ok(()); }
-    from_root(root).map(|_| ())
+    detected_current().as_ref().map(|_| ()).map_err(Clone::clone)
 }
 
 pub fn uking_home() -> Option<PathBuf> { current().map(|ctx| ctx.uking_home()) }

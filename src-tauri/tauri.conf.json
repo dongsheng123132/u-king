@@ -10,19 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "U-King AI 管家",
-        "width": 1120,
-        "height": 720,
-        "minWidth": 900,
-        "minHeight": 600,
-        "center": true,
-        "dragDropEnabled": true,
-        "visible": false,
-        "additionalBrowserArgs": "--remote-debugging-port=9222 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null,
       "assetProtocol": {
