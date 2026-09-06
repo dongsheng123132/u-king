@@ -20,6 +20,23 @@ const root = path.resolve(out, `U-King-OpenClaw-Portable-${version}-win-x64`);
 if (path.dirname(root) !== path.resolve(out)) throw new Error("portable output escapes requested directory");
 const oc = path.join(root, "U-King", "OpenClaw");
 const sha = async (file) => createHash("sha256").update(await readFile(file)).digest("hex");
+const HASH_WORKERS = 8;
+async function mapBounded(items, work) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = [];
+  for (let i = 0; i < Math.min(HASH_WORKERS, items.length); i += 1) {
+    workers.push((async () => {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        results[index] = await work(items[index], index);
+      }
+    })());
+  }
+  await Promise.all(workers);
+  return results;
+}
 const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 if (execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim()) throw new Error("refusing to package a dirty source tree");
 if (requestedCommit && requestedCommit !== sourceCommit) throw new Error("--source-commit does not match the clean source HEAD");
@@ -27,16 +44,17 @@ const compatRoot = path.resolve(compat);
 if ((await stat(compatRoot)).isDirectory() === false) throw new Error("fs-safe compatibility input must be a directory");
 const pinned = JSON.parse(await readFile(new URL("../src-tauri/resources/openclaw2-runtime.json", import.meta.url), "utf8"));
 const digestTree = async (dir) => {
-  const rows = [];
+  const files = [];
   const visit = async (base, current) => {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) await visit(base, full);
-      else if (entry.isFile()) rows.push(`${path.relative(base, full).replaceAll("\\", "/")}\0${await sha(full)}\n`);
+      else if (entry.isFile()) files.push([path.relative(base, full).replaceAll("\\", "/"), full]);
       else throw new Error(`refusing non-file fs-safe sidecar entry: ${full}`);
     }
   };
   await visit(dir, dir);
+  const rows = await mapBounded(files, async ([rel, full]) => `${rel}\0${await sha(full)}\n`);
   return createHash("sha256").update(rows.sort().join("")).digest("hex");
 };
 const installed = JSON.parse(await readFile(path.join(cache, "installed.json"), "utf8"));
@@ -124,12 +142,12 @@ async function files(dir, base = dir) {
 const manifest = { schema_version: 1, version, root_name: path.basename(root), source_commit: sourceCommit, exe_sha256: await sha(exe), production_build_command: productionBuildCommand, runtime_input: { tree_sha256: runtimeTree, files: 37786 }, openclaw: { version: pinned.openclaw_version, fs_safe: "0.5.6", config_writer: `dist/${io}`, sha256: configWriterHash, workspace_writer: `dist/${workspace}`, workspace_before_sha256: createHash("sha256").update(workspaceBefore).digest("hex"), workspace_after_sha256: workspaceHash, patched: true }, fs_safe_compat: { version: "0.8.2", source_revision: "524e2a2dd50c390f924a0360c6c71ddf74f70f42", tree_sha256: compatTreeHash, root_impl_sha256: compatRootImplHash, native_mode: "off" }, files: (await files(root)).length };
 await writeFile(path.join(root, "runtime-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 const entries = await files(root);
-// Runtime dependencies contain tens of thousands of files. Hash sequentially
-// so Windows never exhausts the process file-handle table (EMFILE).
-const sums = [];
-for (const [rel, full] of entries.filter(([rel]) => rel !== "SHA256SUMS.txt")) {
-  sums.push(`${await sha(full)}  ${rel}`);
-}
+// Runtime dependencies contain tens of thousands of files. Keep at most eight
+// reads open: enough I/O parallelism without an unbounded Promise.all/EMFILE.
+const sums = await mapBounded(
+  entries.filter(([rel]) => rel !== "SHA256SUMS.txt"),
+  async ([rel, full]) => `${await sha(full)}  ${rel}`,
+);
 await writeFile(path.join(root, "SHA256SUMS.txt"), `${sums.sort().join("\n")}\n`);
 const zip = `${root}.zip`;
 try { await stat(zip); throw new Error(`refusing to overwrite existing release ZIP: ${zip}`); } catch (error) { if (error?.code !== "ENOENT") throw error; }
