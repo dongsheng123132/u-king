@@ -6484,8 +6484,10 @@ fn action_open_recharge(_: &str, _: serde_json::Value, _: &actions::ProgressSink
     let url = recharge_url.as_str();
     const ALLOWED: [&str; 2] = ["https://u-claw.org.cn/", "https://cloud.u-claw.org/"];
     if !ALLOWED.iter().any(|p| url.starts_with(p)) { return Err("非法充值地址".into()); }
-    let app = action_opener().get().ok_or("充值 opener 尚未初始化")?;
-    app.opener().open_url(url, None::<String>).map_err(|e| format!("打开充值页失败: {e}"))?;
+    // The browser launch belongs to the Action Core so the GUI, CLI and MCP
+    // share one route. Do not include the credential-bearing recharge URL in
+    // an error returned to any surface.
+    openclaw2::open_system_browser(url).map_err(|_| "打开充值页失败")?;
     Ok(serde_json::json!({"changed":false,"opened":true}))
 }
 
@@ -6499,7 +6501,9 @@ fn mask_device_wallet_key(key: &str) -> String {
 }
 
 fn copy_device_wallet_backup() -> Result<serde_json::Value, String> {
-    let key = device::get_device_key()?.key;
+    // Backing up an existing wallet must work while offline and must never
+    // converge/bind a fresh wallet as a side effect of a copy click.
+    let key = device::device_key_offline()?;
     let mut clipboard = arboard::Clipboard::new()
         .map_err(|_| "无法访问系统剪贴板，请关闭占用剪贴板的程序后重试")?;
     clipboard
