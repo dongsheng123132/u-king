@@ -35,6 +35,14 @@ for (const file of await walk(root)) {
   if ((await stat(file)).size > 2_000_000) continue;
   const text = await readFile(file, "utf8").catch(() => "");
   if (/\b(?:sk|xp)_[A-Za-z0-9_-]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b/.test(text)) {
+    const rel = path.relative(root, file).replaceAll("\\", "/");
+    // This upstream example intentionally contains a fake Authorization
+    // string to test redaction. Pin both its exact path and full file hash;
+    // no other dependency file is exempt from credential scanning.
+    if (rel === "U-King/OpenClaw/runtime/app/node_modules/@mistralai/mistralai/examples/src/observability/redaction_policies.ts"
+      && createHash("sha256").update(await readFile(file)).digest("hex") === "20d241c6200facc29d41635c10a8978babd4f1a9a7db90ee764558e7e3472540") {
+      continue;
+    }
     throw new Error(`credential-like value found in package: ${path.relative(root, file)}`);
   }
 }
