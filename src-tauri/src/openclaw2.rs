@@ -213,6 +213,9 @@ fn create_layout(p: &Paths) -> Result<(), String> {
         &p.workspace,
         &p.run,
         &p.logs,
+        &p.root.join("home"),
+        &p.root.join("tmp"),
+        &p.root.join("cache"),
     ] {
         ensure_private_path(dir, p)?;
         fs::create_dir_all(dir).map_err(|e| format!("创建 OpenClaw2 私有目录失败: {e}"))?;
@@ -1154,6 +1157,19 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
         // only under this explicit production marker. Desktop OpenClaw keeps
         // the upstream strict policy and never loads the sidecar.
         env.push(("UKING_PORTABLE_COMPAT_EXFAT".into(), "1".into()));
+        let home = p.root.join("home");
+        let tmp = p.root.join("tmp");
+        let cache = p.root.join("cache");
+        for (key, value) in [
+            ("OPENCLAW_HOME", p.root.clone()),
+            ("HOME", home.clone()), ("USERPROFILE", home.clone()),
+            ("APPDATA", home.join("AppData/Roaming")),
+            ("LOCALAPPDATA", home.join("AppData/Local")),
+            ("TEMP", tmp.clone()), ("TMP", tmp.clone()), ("TMPDIR", tmp),
+            ("npm_config_cache", cache),
+        ] {
+            env.push((key.into(), value.to_string_lossy().to_string()));
+        }
     }
     env
 }
