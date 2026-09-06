@@ -47,8 +47,6 @@ export type TabId =
   | "nightshift"
   | "localllm"
   | "rtk"
-  | "teamspace"
-  | "runcenter"
   | "usbgenie";
 
 type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
@@ -210,15 +208,8 @@ const MORE: NavItem[] = [
  * 页面和路由全部保留，只是不再和成熟功能混在一起。
  */
 const LAB: NavItem[] = [
-  // 两页是可点击的本机原型，不是已交付的协作/观测服务：团队空间只有 localStorage
-  // 演示数据，运行中心只读开发 collector 文件。归实验室并如实标注，避免客户把空页当故障。
-  // 2026-09-06 用户裁决「不成熟的功能先隐藏」：两条入口先注释掉，页面/路由原样保留。
-  // 团队空间：纯 localStorage 演示数据、无后端 action（见 TeamSpace.tsx:19 自述）——
-  // 等打通真实多设备协作再放出。
-  // { id: "teamspace", label: "团队空间（原型）", sub: "本机演示 · 尚未多设备协作", icon: Layers },
-  // 运行中心：数据源是开发机 otel-traces/ 目录与仓库内 raw 文档（见 RunCenter.tsx:2-3），
-  // 打包版必空（RunCenter.tsx:28 自认）——等有打包版可用数据源再放出。
-  // { id: "runcenter", label: "运行中心（原型）", sub: "仅开发 Trace · 打包版暂不可用", icon: Gauge },
+  // 团队空间/运行中心已移交「本源AI计算机」项目（2026-09-06 裁决），原型代码已删；
+  // 任务可视化的正主是 U-Chat 任务看板（opencodex/TaskBoard.tsx）。
   // 泊舟 AI 小程序（独立应用、自带更新）的入口就在这一页顶部 —— 写进 sub 里，
   // 否则客户根本猜不到「泊舟」藏在「小程序」底下。它按实验室标准归这儿：
   // 是独立发版的外部应用，不在「一键装好你的全部 AI」主线上。

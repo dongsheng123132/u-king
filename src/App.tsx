@@ -86,8 +86,6 @@ const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const DshPlugins = lazy(() => import("./DshPlugins").then((m) => ({ default: m.DshPlugins })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
-const TeamSpace = lazy(() => import("./TeamSpace").then((m) => ({ default: m.TeamSpace })));
-const RunCenter = lazy(() => import("./RunCenter").then((m) => ({ default: m.RunCenter })));
 const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
@@ -1142,7 +1140,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "backup" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift" || tab === "teamspace" || tab === "runcenter"
+                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "backup" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1192,11 +1190,7 @@ export function App() {
                 某页崩了切走再回来自动重置，不用重启整个 U-King。 */}
             <PanelBoundary key={tab} name={tab}>
             <Suspense fallback={<PageFallback />}>
-            {tab === "teamspace" ? (
-              <TeamSpace />
-            ) : tab === "runcenter" ? (
-              <RunCenter />
-            ) : tab === "manage" ? (
+            {tab === "manage" ? (
               <Manager
                 onGoCodex={() => setTab("codex")}
                 onGoAdvanced={() => setTab("advanced")}
