@@ -2787,7 +2787,7 @@ struct ProcessIdentity {
 #[cfg(windows)]
 fn process_identity(pid: u32) -> Option<ProcessIdentity> {
     let script = format!(
-        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if ($null -eq $p) {{ exit 2 }}; $p | Select-Object ExecutablePath,CommandLine,CreationDate | ConvertTo-Json -Compress"
+        "[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false); $p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if ($null -eq $p) {{ exit 2 }}; $p | Select-Object ExecutablePath,CommandLine,CreationDate | ConvertTo-Json -Compress"
     );
     let out = run_capture(
         Path::new("powershell.exe"),
@@ -4397,6 +4397,67 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
             ..identity
         };
         assert!(!identity_matches(&p, 19789, &marker, &reused));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn process_identity_matches_real_node_under_chinese_space_path() {
+        let where_node = Command::new("where.exe").arg("node").output().unwrap();
+        assert!(where_node.status.success(), "test requires the shipped Node toolchain");
+        let source = String::from_utf8_lossy(&where_node.stdout)
+            .lines()
+            .map(str::trim)
+            .map(PathBuf::from)
+            .find(|path| path.is_file())
+            .expect("where node returned an existing executable");
+        let p = paths_from_root(std::env::temp_dir().join(format!(
+            "U-King 中文 identity 路径 {}",
+            now_nanos()
+        )));
+        create_layout(&p).unwrap();
+        fs::create_dir_all(node_exe(&p).parent().unwrap()).unwrap();
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::copy(&source, node_exe(&p)).unwrap();
+        fs::write(cli_file(&p), "setInterval(() => {}, 1000);\n").unwrap();
+        let state = p.state.canonicalize().unwrap();
+        let port = 37621;
+        let cli = cli_file(&p).to_string_lossy().to_string();
+        let port_text = port.to_string();
+        let mut child = Command::new(node_exe(&p))
+            .args([
+                cli.as_str(),
+                "--profile",
+                PROFILE,
+                "gateway",
+                "run",
+                "--port",
+                port_text.as_str(),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let identity = (0..50)
+            .find_map(|_| {
+                let value = process_identity(child.id());
+                if value.is_none() {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                value
+            })
+            .expect("real Node process identity is readable");
+        let marker = json!({
+            "state_dir": state,
+            "process_started": identity.started.clone(),
+        });
+        assert!(!identity.image.contains('\u{fffd}'));
+        assert!(!identity.command_line.contains('\u{fffd}'));
+        assert!(identity.image.contains("中文 identity 路径"));
+        assert!(identity.command_line.contains("中文 identity 路径"));
+        assert!(identity_matches(&p, port, &marker, &identity));
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[test]
     fn prepare_does_not_touch_legacy_openclaw_or_clawx_sentinels() {
