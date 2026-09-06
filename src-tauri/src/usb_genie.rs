@@ -161,6 +161,7 @@ impl PortableTarget {
             "program_path": genie(&self.root),
             "data_path": data(&self.root),
             "credential_path": data(&self.root).join(".security.yml"),
+            "credential_present": data(&self.root).join(".security.yml").is_file(),
             "target_state_version": self.target_state_version(),
         })
     }
@@ -1321,6 +1322,12 @@ mod tests {
         let p = root();
         fake_target_with_credential(&p);
 
+        let target = PortableTarget {
+            id: "test-volume".into(), root: p.clone(),
+            label: "TEST".into(), filesystem: "exFAT".into(), total_bytes: 1, free_bytes: 1, read_only: false,
+        };
+        assert_eq!(target.json()["credential_present"], true, "带凭据的盘 inspect 输出应报 credential_present=true");
+
         let result = credential_remove(&p).unwrap();
         assert_eq!(result["removed"], true);
         assert_eq!(result["changed"], true);
@@ -1328,6 +1335,7 @@ mod tests {
         assert!(!data(&p).join(".security.yml").exists(), "凭据文件应已被删除");
         let meta: Value = serde_json::from_slice(&fs::read(current_json(&p)).unwrap()).unwrap();
         assert_eq!(meta["credential_mode"], "none", "current.json 的 credential_mode 必须同步更新为 none");
+        assert_eq!(target.json()["credential_present"], false, "凭据被移除后 inspect 输出应报 credential_present=false");
 
         let _ = fs::remove_dir_all(p);
     }
