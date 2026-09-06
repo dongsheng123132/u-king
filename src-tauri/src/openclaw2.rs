@@ -1815,9 +1815,17 @@ fn gateway_argv(p: &Paths, port: u16) -> Vec<String> {
 
 pub fn launch() -> Result<Value, String> {
     let ps = paths();
-    let status = inspect()?;
+    let mut status = inspect()?;
     if status.get("installed").and_then(Value::as_bool) != Some(true) {
         return Err("OpenClaw2 未安装或 runtime 校验未通过".into());
+    }
+    // A marked package may have been moved while closed. Re-enter the same
+    // prepare core so the verified relocation path runs before launch; desktop
+    // profiles keep their previous explicit-prepare behavior.
+    if status.get("prepared").and_then(Value::as_bool) != Some(true)
+        && crate::portable_context::current().is_some() {
+        prepare(None)?;
+        status = inspect()?;
     }
     if status.get("prepared").and_then(Value::as_bool) != Some(true) {
         return Err("OpenClaw2 尚未准备私有 profile".into());
@@ -2081,6 +2089,9 @@ fn clear_device_wallet_model(
         fs::remove_file(model_marker_file(p))
             .map_err(|_| "无法移除 OpenClaw2 受管 model marker")?;
         fs::remove_file(secret).map_err(|_| "无法移除 OpenClaw2 受管 file secret")?;
+        if model_test_fault(p, "wallet_clear_profile") {
+            return Err("validation_failed: OpenClaw2 钱包 consumer 清除注入失败".into());
+        }
         refresh_managed_profile_hash(p, &candidate)
     })();
     match result {
