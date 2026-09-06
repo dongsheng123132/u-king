@@ -19,6 +19,8 @@ use std::sync::{
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PROFILE: &str = "uking-openclaw2";
+const GATEWAY_STARTUP_TIMEOUT: Duration = Duration::from_secs(180);
+const GATEWAY_STATUS_TIMEOUT: Duration = Duration::from_secs(30);
 const CONFIG_NAME: &str = "openclaw.json";
 const PROFILE_NAME: &str = "profile.json";
 const SUPERVISOR_NAME: &str = "supervisor.json";
@@ -2284,7 +2286,11 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
         "state_dir":state_dir,
     });
     write_supervisor_or_kill(&mut child, ps, &marker)?;
-    let deadline = Instant::now() + Duration::from_secs(60);
+    // A cold portable Node/OpenClaw profile can spend well over a minute
+    // loading plugins and its secret provider before it opens the listener.
+    // The marker was written above, so an unready process remains strictly
+    // owned and can still be stopped or retried after this bounded window.
+    let deadline = Instant::now() + GATEWAY_STARTUP_TIMEOUT;
     let mut health = json!({"ok":false,"degraded":false,"rpcOk":false});
     while Instant::now() < deadline {
         match child.try_wait() {
@@ -2296,7 +2302,16 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
             Err(_) => return Err("无法检查 OpenClaw2 Gateway 启动进程状态".into()),
         }
         if port_listening(port) {
-            health = gateway_status(ps, port)
+            // Do not let repeated status subprocesses each consume their own
+            // fixed budget after startup has nearly expired.
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let status_timeout = remaining
+                .saturating_sub(Duration::from_secs(2))
+                .min(GATEWAY_STATUS_TIMEOUT);
+            if status_timeout.is_zero() {
+                break;
+            }
+            health = gateway_status_with_timeout(ps, port, status_timeout)
                 .unwrap_or_else(|_| json!({"ok":false,"degraded":false,"rpcOk":false}));
             if health.get("ok").and_then(Value::as_bool) == Some(true) {
                 break;
@@ -2316,9 +2331,20 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
         let _ = child.wait();
         return Err("OpenClaw2 Gateway 启动后进程归属核对失败，已终止".into());
     }
-    Ok(
-        json!({"changed":true,"running":port_listening(port),"ready":ready,"pid":child.id(),"port":port,"dashboard_url":format!("http://127.0.0.1:{port}/"),"health":health,"state_version":state_version()}),
-    )
+    let starting = !ready;
+    Ok(json!({
+        "changed":true,
+        "running":port_listening(port),
+        "ready":ready,
+        "starting":starting,
+        "retryable":starting,
+        "reason":if starting { json!("startup_timeout") } else { Value::Null },
+        "pid":child.id(),
+        "port":port,
+        "dashboard_url":format!("http://127.0.0.1:{port}/"),
+        "health":health,
+        "state_version":state_version()
+    }))
 }
 
 fn gateway_early_exit_error(exit: ExitStatus) -> String {
@@ -2418,7 +2444,7 @@ fn process_identity(pid: u32) -> Option<ProcessIdentity> {
         &["-NoProfile", "-NonInteractive", "-Command", &script],
         &[],
         &std::env::temp_dir(),
-        Duration::from_secs(5),
+        Duration::from_secs(15),
     )
     .ok()?;
     (out.status == Some(0))
@@ -2530,6 +2556,10 @@ fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<Capture, String
     run_capture(&node, &refs, &env, &p.workspace, timeout)
 }
 fn gateway_status(p: &Paths, port: u16) -> Result<Value, String> {
+    gateway_status_with_timeout(p, port, GATEWAY_STATUS_TIMEOUT)
+}
+
+fn gateway_status_with_timeout(p: &Paths, port: u16, timeout: Duration) -> Result<Value, String> {
     let out = run_oc(
         p,
         &[
@@ -2540,7 +2570,7 @@ fn gateway_status(p: &Paths, port: u16) -> Result<Value, String> {
             "--require-rpc",
             "--json",
         ],
-        Duration::from_secs(10),
+        timeout,
     )?;
     let mut v: Value = serde_json::from_str(&out.stdout).unwrap_or_else(|_| json!({}));
     let rpc = v
@@ -3834,6 +3864,9 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
         let pid = launched["pid"].as_u64().unwrap() as u32;
         assert_eq!(launched["running"], true);
         assert_eq!(launched["ready"], true);
+        assert_eq!(launched["starting"], false);
+        assert_eq!(launched["retryable"], false);
+        assert!(launched["reason"].is_null());
         assert_eq!(launched["health"]["nested"]["token"], "[redacted]");
         assert_eq!(
             supervisor_status(&p).unwrap(),
