@@ -89,8 +89,10 @@ export function ProviderLogo({ logo, label, size = 24, className = "" }: Props) 
           style={{
             width: size,
             height: size,
-            WebkitMaskImage: `url(${entry.src})`,
-            maskImage: `url(${entry.src})`,
+            // 必须带双引号：Vite 会把小 SVG 内联成含单引号的 data URI，
+            // 裸 url(...) 遇到引号即解析失败，mask 失效变实心色块（2026-09-06 真机复现）。
+            WebkitMaskImage: `url("${entry.src}")`,
+            maskImage: `url("${entry.src}")`,
             WebkitMaskSize: "contain",
             maskSize: "contain",
             WebkitMaskRepeat: "no-repeat",
