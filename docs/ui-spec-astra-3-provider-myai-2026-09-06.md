@@ -27,17 +27,17 @@
 
 | 改动位置 | 可执行修改 |
 |---|---|
-| [Manager.tsx:2227](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2227) | 移除 `firstScreenNames` 与 `moreTemplates` 的首屏推荐分法，按展示元数据划分两个 tab；数量根据当前 `templates` 动态计算。 |
-| [Manager.tsx:2297](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2297) | iFlow、魔搭各自只保留一条模板行，归入模型平台。免费入口继续调用 `setSettingsTab("free")`，完整免费路线仍在已有分区。 |
-| [Manager.tsx:2301](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2301) | 默认显示所选组前 8 家，超出时显示“展开其余 N 家／收起”。保留组内现有顺序，不另造推荐排名。 |
-| [Manager.tsx:2478](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2478) | 右栏继续宽 `272px`，内边距从 `p-3.5` 收为 `p-2`，释放名称宽度。 |
-| [Manager.tsx:2397](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2397) | 窄窗口仍使用已有折叠区，内部复用同一目录；继续整页滚动。 |
+| [Manager.tsx:2227](../src/Manager.tsx#L2227) | 移除 `firstScreenNames` 与 `moreTemplates` 的首屏推荐分法，按展示元数据划分两个 tab；数量根据当前 `templates` 动态计算。 |
+| [Manager.tsx:2297](../src/Manager.tsx#L2297) | iFlow、魔搭各自只保留一条模板行，归入模型平台。免费入口继续调用 `setSettingsTab("free")`，完整免费路线仍在已有分区。 |
+| [Manager.tsx:2301](../src/Manager.tsx#L2301) | 默认显示所选组前 8 家，超出时显示“展开其余 N 家／收起”。保留组内现有顺序，不另造推荐排名。 |
+| [Manager.tsx:2478](../src/Manager.tsx#L2478) | 右栏继续宽 `272px`，内边距从 `p-3.5` 收为 `p-2`，释放名称宽度。 |
+| [Manager.tsx:2397](../src/Manager.tsx#L2397) | 窄窗口仍使用已有折叠区，内部复用同一目录；继续整页滚动。 |
 
 当前代码的确有重复：`moreTemplates` 只排除了首屏四家，没有排除免费组，因此展开后 iFlow、魔搭会再次出现。
 
 **单行结构建议**
 
-替换 [Manager.tsx:2235](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2235) 的 `renderQuickAddRow`。下面是结构示意，事件接回现有添加、编辑及外链函数：
+替换 [Manager.tsx:2235](../src/Manager.tsx#L2235) 的 `renderQuickAddRow`。下面是结构示意，事件接回现有添加、编辑及外链函数：
 
 ```tsx
 <li className="flex items-center gap-1 rounded-lg
@@ -92,20 +92,20 @@
 - 行高从至少 `64px` 降到至少 `52px`；列表用 `space-y-1`，不再为每行两个图标按钮画独立边框。
 - 第二行始终保留域名。当前“已添加·编辑”会替换域名，建议改由铅笔及其提示表达编辑状态。
 - `displayHost` 只显示解析后的 `URL.host`；完整安全地址在聚焦提示或编辑表单查看，实际端点不改。
-- [Manager.tsx:2268](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2268) 的网络提示退出名称行，放到域名旁的可聚焦说明入口；长说明不挤占品牌名称。
+- [Manager.tsx:2268](../src/Manager.tsx#L2268) 的网络提示退出名称行，放到域名旁的可聚焦说明入口；长说明不挤占品牌名称。
 - tab 容器用 `grid grid-cols-2 gap-1 rounded-lg bg-bg-2 p-1`；按钮高 `32px`，选中态 `bg-bg-1 text-accent`。
 - tab 支持左右方向键、Home/End，以及 `role="tablist"`、`aria-selected`、关联面板。状态放在 Manager 顶层，不能在现有条件渲染 IIFE 内新增 Hook。
 - 桌面与窄屏各用不同 ID 前缀，避免两份 DOM 出现重复的 tab/panel ID。
 
-远程模板继续来自 [Manager.tsx:501](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:501)。无法识别的新来源保留在有明确标题的“其他来源”折叠区，不擅自归为官方，也不丢弃。
+远程模板继续来自 [Manager.tsx:501](../src/Manager.tsx#L501)。无法识别的新来源保留在有明确标题的“其他来源”折叠区，不擅自归为官方，也不丢弃。
 
 **2．Logo：选混合路线，运行时全部离线**
 
 问题不仅是缺素材：
 
-- [Manager.tsx:2259](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2259) 把供应商名称直接传给 `ToolIcon`。
-- [ToolIcon.tsx:103](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/ToolIcon.tsx:103) 将精确的 `openai` 映射成 **Codex**；“OpenAI 官方”又匹配不到，最终显示字母 O。
-- [ToolIcon.tsx:110](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/ToolIcon.tsx:110) 将带“智谱”的名称统一归为 GLM，无法区分海外 Z.ai。
+- [Manager.tsx:2259](../src/Manager.tsx#L2259) 把供应商名称直接传给 `ToolIcon`。
+- [ToolIcon.tsx:103](../src/components/ToolIcon.tsx#L103) 将精确的 `openai` 映射成 **Codex**；“OpenAI 官方”又匹配不到，最终显示字母 O。
+- [ToolIcon.tsx:110](../src/components/ToolIcon.tsx#L110) 将带“智谱”的名称统一归为 GLM，无法区分海外 Z.ai。
 - 因此应该新增专用 `ProviderLogo`，不要继续扩展工具名称的模糊匹配。
 
 | 路线 | 覆盖与成本 | 结论 |
@@ -118,7 +118,7 @@
 
 **24 个模板的键位与素材候选**
 
-下表行号均对应 [providerTemplates.ts](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/lib/providerTemplates.ts:36)。Lobe 名称表示可查到的品牌条目；最终取用前仍需对照品牌当前官方展示，尤其 GLM、MiMo、千帆等产品与公司标志。
+下表行号均对应 [providerTemplates.ts](../src/lib/providerTemplates.ts#L36)。Lobe 名称表示可查到的品牌条目；最终取用前仍需对照品牌当前官方展示，尤其 GLM、MiMo、千帆等产品与公司标志。
 
 | 模板／行号 | 建议 `logo` 键 | 分组 | 素材候选 |
 |---|---|---|---|
@@ -184,7 +184,7 @@ export function resolveProviderPresentation(
 
 图1每张卡都反复出现安装状态行、模型行、路径行，以及独立维修横条。可以压缩，但“当前模型”和“实际启动路径”都有排障价值，应保留。
 
-修改 [App.tsx:2246](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/App.tsx:2246) 与 [App.tsx:2375](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/App.tsx:2375)：
+修改 [App.tsx:2246](../src/App.tsx#L2246) 与 [App.tsx:2375](../src/App.tsx#L2375)：
 
 ```text
 图标  工具名称                   [打开终端] […]
@@ -199,12 +199,12 @@ export function resolveProviderPresentation(
 - 删除原卡底整宽修复横条，仍调用原来的 `onOpen(t)`；维修入口始终可见。
 - 移除名称旁“干活最强／越用越懂你”两个营销徽章，为真实工具名腾空间。
 - 普通卡目标约 **96–108px**，长文案自然增高；不写死高度裁内容。预计每排节约约 **30–40px**，图1六排约少 **180–240px**，最终以同缩放真机测量为准。
-- [App.tsx:2361](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/App.tsx:2361) 的 uu-switch 导入入口仍可见，额外行压到 `h-8`，允许这张卡更高。
+- [App.tsx:2361](../src/App.tsx#L2361) 的 uu-switch 导入入口仍可见，额外行压到 `h-8`，允许这张卡更高。
 - 保留两列，不为了缩短页面把 11 个工具硬塞三列。
 
 **供应商卡**
 
-这里需要先修一个宽度问题：外壳被 [App.tsx:1132](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/App.tsx:1132) 限制为 `1024px`，右栏占 `272px`，但 [Manager.tsx:2405](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2405) 仍按窗口断点强制三列。
+这里需要先修一个宽度问题：外壳被 [App.tsx:1132](../src/App.tsx#L1132) 限制为 `1024px`，右栏占 `272px`，但 [Manager.tsx:2405](../src/Manager.tsx#L2405) 仍按窗口断点强制三列。
 
 按代码估算，主区单卡只有约 **239px**，达不到上一轮规定的 **280px**。仅减高度会让信息更拥挤。
 
@@ -221,11 +221,11 @@ className="grid gap-2.5
 - 卡片 `p-3.5` → `p-3`。
 - Logo＋名称＋域名组成紧凑卡头，域名放在名称下方；模型仍单独一行。
 - 协议标签继续保留，压为 `h-5`；测速仍保留至少 `32px` 操作区。
-- [Manager.tsx:2457](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2457) 去掉左侧孤立的“延迟”标签，让结果、重测、原因顺序靠近；空间不足时明确换行。
-- [Manager.tsx:2464](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2464) 引用行去掉分隔线和额外 `pt-2`，改成 `mt-1 text-[12px] text-ink-2`，文案“用于：Cline · OpenCode”。工具名允许换行。
+- [Manager.tsx:2457](../src/Manager.tsx#L2457) 去掉左侧孤立的“延迟”标签，让结果、重测、原因顺序靠近；空间不足时明确换行。
+- [Manager.tsx:2464](../src/Manager.tsx#L2464) 引用行去掉分隔线和额外 `pt-2`，改成 `mt-1 text-[12px] text-ink-2`，文案“用于：Cline · OpenCode”。工具名允许换行。
 - 普通卡目标 **160–180px**；错误详情展开或工具引用较多时自然增高。
 
-不把错误状态藏起来换取紧凑。复用 [Manager.tsx:1077](/C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:1077) 的同一个测速渲染函数，避免写第二套状态逻辑。
+不把错误状态藏起来换取紧凑。复用 [Manager.tsx:1077](../src/Manager.tsx#L1077) 的同一个测速渲染函数，避免写第二套状态逻辑。
 
 **4．最伤观感与直观性的三个细节**
 

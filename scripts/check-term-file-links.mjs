@@ -126,10 +126,10 @@ for (const [raw, cwd, want, why] of RESOLVE) {
 // —— `~` 展开：TUI（pi/claude 等）爱用的家目录缩写，Windows 上 shell 不展开它，
 //    原样出现在输出里就该按 home 展开，不该被当成普通相对路径拼到终端 cwd 上 ——
 const RESOLVE_HOME = [
-  ["~\\.pi\\agent\\skills\\SKILL.md", "D:\\proj", "C:\\Users\\ZhuanZ", "C:\\Users\\ZhuanZ\\.pi\\agent\\skills\\SKILL.md", "Windows ~ 展开"],
-  ["~/x/y.txt", "/d/proj", "C:/Users/ZhuanZ", "C:/Users/ZhuanZ/x/y.txt", "Mac 风格 ~ 展开"],
+  ["~\\.pi\\agent\\skills\\SKILL.md", "D:\\proj", "C:\\Users\\user1", "C:\\Users\\user1\\.pi\\agent\\skills\\SKILL.md", "Windows ~ 展开"],
+  ["~/x/y.txt", "/d/proj", "C:/Users/user1", "C:/Users/user1/x/y.txt", "Mac 风格 ~ 展开"],
   ["~/x/y.txt", "/d/proj", undefined, undefined, "不传 home 时行为不变（照旧拼 cwd）"],
-  ["~abc/x", "D:\\proj", "C:\\Users\\ZhuanZ", undefined, "~ 后不是分隔符 = 用户名形式，不许展开"],
+  ["~abc/x", "D:\\proj", "C:\\Users\\user1", undefined, "~ 后不是分隔符 = 用户名形式，不许展开"],
 ];
 for (const [raw, cwd, home, want, why] of RESOLVE_HOME) {
   const got = resolvePath(raw, cwd, home);
