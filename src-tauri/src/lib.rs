@@ -2087,7 +2087,10 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "Inspect the device wallet without revealing its key",
             "Return wallet balance and a masked key only. The credential never crosses the Action response boundary.",
             15_000,
-            &["masked_key", "balance", "charged", "low_balance", "wallet_id", "legacy_balance_unrecoverable"],
+            // Offline or zero-balance wallets legitimately report `balance: null`.
+            // Keep the field in the response for the UI, but do not mark it required:
+            // Action conformance treats a null required value as a contract failure.
+            &["masked_key", "charged", "low_balance", "wallet_id", "legacy_balance_unrecoverable"],
             |_, _, _| {
                 let wallet = device::get_device_key()?;
                 Ok(serde_json::json!({

@@ -272,8 +272,38 @@ fn atomic_write(path: &Path, bytes: &[u8], p: &Paths) -> Result<(), String> {
 }
 
 #[cfg(windows)]
+fn extended_absolute_path(path: &Path) -> Result<PathBuf, String> {
+    let parent = path
+        .parent()
+        .ok_or("OpenClaw2 原子替换路径没有父目录")?;
+    let name = path
+        .file_name()
+        .ok_or("OpenClaw2 原子替换路径没有文件名")?;
+    // Both source and destination live in an existing private directory.  Let
+    // Windows canonicalize that directory before adding the leaf: this keeps
+    // a moved portable profile valid even when its transaction subdirectory
+    // would otherwise make a normal Win32 path exceed MAX_PATH.
+    let absolute = fs::canonicalize(parent)
+        .map_err(|e| format!("规范化 OpenClaw2 原子替换目录失败: {e}"))?
+        .join(name);
+    let rendered = absolute.to_string_lossy();
+    if rendered.starts_with(r"\\?\") {
+        return Ok(absolute);
+    }
+    if let Some(unc) = rendered.strip_prefix(r"\\") {
+        return Ok(PathBuf::from(format!(r"\\?\UNC\{unc}")));
+    }
+    if absolute.is_absolute() {
+        return Ok(PathBuf::from(format!(r"\\?\{rendered}")));
+    }
+    Err("OpenClaw2 原子替换路径不是绝对路径".into())
+}
+
+#[cfg(windows)]
 fn atomic_replace_windows(from: &Path, to: &Path) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
+    let from = extended_absolute_path(from)?;
+    let to = extended_absolute_path(to)?;
     let from_wide: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to_wide: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
     // MOVEFILE_REPLACE_EXISTING: replace is a single same-volume rename; do
@@ -296,11 +326,11 @@ fn atomic_replace_windows(from: &Path, to: &Path) -> Result<(), String> {
         )
     } == 0
     {
+        // Capture GetLastError before cleanup. `remove_file` can otherwise
+        // overwrite it with a misleading success code.
+        let error = std::io::Error::last_os_error();
         let _ = fs::remove_file(from);
-        Err(format!(
-            "原子替换 OpenClaw2 配置失败: {}",
-            std::io::Error::last_os_error()
-        ))
+        Err(format!("原子替换 OpenClaw2 配置失败: {error}"))
     } else {
         Ok(())
     }

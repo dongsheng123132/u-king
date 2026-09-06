@@ -53,6 +53,12 @@ export const ACTION = {
   RUNTIME_DEVICE_KEY_ROTATE: "runtime.device.key_rotate",
   /** Clear U-King-managed consumers of the current wallet, then remove only this machine's wallet reference. The server wallet, key and balance are not deleted. The next online convergence creates a new zero-balance device wallet. */
   RUNTIME_DEVICE_WALLET_RESET_LOCAL: "runtime.device.wallet_reset_local",
+  /** Copy the current key directly to the operating-system clipboard for backup. The key is never returned, printed, logged, or accepted through CLI arguments. */
+  RUNTIME_DEVICE_WALLET_COPY_BACKUP: "runtime.device.wallet.copy_backup",
+  /** Open the approved recharge page in the system browser. It never submits or pays an order. */
+  RUNTIME_DEVICE_WALLET_RECHARGE: "runtime.device.wallet.recharge",
+  /** Return wallet balance and a masked key only. The credential never crosses the Action response boundary. */
+  RUNTIME_DEVICE_WALLET_STATUS: "runtime.device.wallet.status",
   /** Collect the same redacted diagnostics the feedback page sends: versions, install logs, crash forensics. Never includes full keys, tokens, emails or user paths. */
   RUNTIME_DIAGNOSTICS_COLLECT: "runtime.diagnostics.collect",
   /** Write the chosen provider's endpoint, key and model into Claude Code / Codex / ClawX / Hermes / DeepSeek Harness config. Reversible: 'official' removes only U-King-owned state. */
@@ -129,6 +135,8 @@ export const ACTION = {
   RUNTIME_OPENCLAW2_INSTALL: "runtime.openclaw2.install",
   /** Launch only U-King's private OpenClaw 2 profile under external supervision. It refuses an externally owned port and never exposes the gateway token. */
   RUNTIME_OPENCLAW2_LAUNCH: "runtime.openclaw2.launch",
+  /** Verify that only this package owns the running gateway before the desktop transport opens its local dashboard. The Action output never contains the gateway token. */
+  RUNTIME_OPENCLAW2_OPEN_DASHBOARD: "runtime.openclaw2.open_dashboard",
   /** Run only the private OpenClaw 2 doctor's lint JSON check, plus private gateway RPC status when it is running. It never repairs or migrates anything. */
   RUNTIME_OPENCLAW2_PREFLIGHT: "runtime.openclaw2.preflight",
   /** Atomically create U-King's private OpenClaw 2 profile, state, workspace, and token. Existing incompatible configuration is refused rather than overwritten. */
@@ -240,6 +248,9 @@ export type ActionInputMap = {
   "runtime.device.key_adopt": { expected_state_version?: string; key: string; };
   "runtime.device.key_rotate": { expected_state_version?: string; };
   "runtime.device.wallet_reset_local": { expected_state_version?: string; };
+  "runtime.device.wallet.copy_backup": { expected_state_version?: string; };
+  "runtime.device.wallet.recharge": { expected_state_version?: string; };
+  "runtime.device.wallet.status": Record<string, never>;
   "runtime.diagnostics.collect": Record<string, never>;
   "runtime.driver.apply": { api_key: string; expected_state_version?: string; model?: string; provider_id: string; targets: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi" | "cline">; };
   "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "cline" | "qwen" | "crush">; };
@@ -278,6 +289,7 @@ export type ActionInputMap = {
   "runtime.openclaw2.inspect": Record<string, never>;
   "runtime.openclaw2.install": { expected_state_version?: string; };
   "runtime.openclaw2.launch": { expected_state_version?: string; };
+  "runtime.openclaw2.open_dashboard": { expected_state_version?: string; };
   "runtime.openclaw2.preflight": Record<string, never>;
   "runtime.openclaw2.prepare": { expected_state_version?: string; port?: number; };
   "runtime.openclaw2.stop": { expected_state_version?: string; };
@@ -346,6 +358,9 @@ export type ActionOutputMap = {
   "runtime.device.key_adopt": Record<string, unknown>;
   "runtime.device.key_rotate": Record<string, unknown>;
   "runtime.device.wallet_reset_local": Record<string, unknown>;
+  "runtime.device.wallet.copy_backup": Record<string, unknown>;
+  "runtime.device.wallet.recharge": Record<string, unknown>;
+  "runtime.device.wallet.status": Record<string, unknown>;
   "runtime.diagnostics.collect": Record<string, unknown>;
   "runtime.driver.apply": Record<string, unknown>;
   "runtime.driver.apply_everywhere": Record<string, unknown>;
@@ -384,6 +399,7 @@ export type ActionOutputMap = {
   "runtime.openclaw2.inspect": Record<string, unknown>;
   "runtime.openclaw2.install": Record<string, unknown>;
   "runtime.openclaw2.launch": Record<string, unknown>;
+  "runtime.openclaw2.open_dashboard": Record<string, unknown>;
   "runtime.openclaw2.preflight": Record<string, unknown>;
   "runtime.openclaw2.prepare": Record<string, unknown>;
   "runtime.openclaw2.stop": Record<string, unknown>;

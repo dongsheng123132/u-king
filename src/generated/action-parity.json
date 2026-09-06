@@ -1170,6 +1170,178 @@
       "bindings": [
         {
           "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.open_dashboard --json --no-input"
+        }
+      ],
+      "description": "Verify that only this package owns the running gateway before the desktop transport opens its local dashboard. The Action output never contains the gateway token.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.openclaw2.open_dashboard",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "opened",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Open the isolated OpenClaw 2 dashboard"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "desktop",
+          "target": "tauri:command/action_run"
+        },
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.device.wallet.recharge --json --no-input"
+        }
+      ],
+      "description": "Open the approved recharge page in the system browser. It never submits or pays an order.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.device.wallet.recharge",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "opened"
+        ],
+        "type": "object"
+      },
+      "title": "Open the device-wallet recharge page"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.device.wallet.status --json --no-input"
+        }
+      ],
+      "description": "Return wallet balance and a masked key only. The credential never crosses the Action response boundary.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.device.wallet.status",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "masked_key",
+          "charged",
+          "low_balance",
+          "wallet_id",
+          "legacy_balance_unrecoverable"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the device wallet without revealing its key"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.device.wallet.copy_backup --json --no-input"
+        }
+      ],
+      "description": "Copy the current key directly to the operating-system clipboard for backup. The key is never returned, printed, logged, or accepted through CLI arguments.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.device.wallet.copy_backup",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "copied"
+        ],
+        "type": "object"
+      },
+      "title": "Copy the device-wallet key to the system clipboard"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
           "target": "cli:action run runtime.usb_genie.inspect --json --no-input"
         }
       ],
