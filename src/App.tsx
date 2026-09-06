@@ -1943,10 +1943,12 @@ function toolTargets(id: string): string[] {
  *   · open365  自家电脑管家，品类是安全卫士替代品，不是 AI 工具；而且它 `installed` 恒 true
  *              （按需下载的设计），于是永远霸占「我装好的 AI 工具」区最显眼的位置
  *   · obsidian / uu-remote  纯第三方，action:url 点了只是跳官网，我们既不装也不管
+ *   · doubao / qwenwork / workbuddy  同 obsidian/uu-remote：闭源消费级 AI 应用，
+ *              action:url 跳官网下载页，用自家模型不接 U-King 配置，2026-09-06 上架
  *
  * 纯展示分组：后端的检测 / 启动 / 卸载能力一个没动，存量已装用户照常使用。
  */
-const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote"]);
+const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy"]);
 
 /** 支持「一键卸载」的工具 id —— 镜像后端 cleanup::uninstall_ai_tool 的 match（改一处同步另一处）。
  *  url 型第三方工具（Obsidian / UU远程）不由我们装，不给卸载入口。 */

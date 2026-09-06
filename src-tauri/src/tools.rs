@@ -452,6 +452,41 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         route_tab: None,
     },
     ToolSpec {
+        // 豆包（字节跳动）：闭源消费级 AI 助手桌面版，用自家模型，不接受 U-King 的模型配置。
+        // 同 obsidian：launch_cmd=""、launch_app=""，只能跳官网下载页，config_target=None
+        // 保证不进体检/探测/模型配置链路。
+        id: "doubao",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+        launch_mode: LaunchMode::None,
+        route_tab: None,
+    },
+    ToolSpec {
+        // 千问办公（阿里，QwenWork）：同 doubao，闭源用自家模型，只跳官网下载页。
+        id: "qwenwork",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+        launch_mode: LaunchMode::None,
+        route_tab: None,
+    },
+    ToolSpec {
+        // WorkBuddy（腾讯云）：同 doubao，闭源订阅制，只跳官网下载页。
+        id: "workbuddy",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+        launch_mode: LaunchMode::None,
+        route_tab: None,
+    },
+    ToolSpec {
         // Codex 桌面版：config.toml 跟 Codex CLI 共用同一份，`config_target` 复用 "codex"，
         // 但没有独立的「AI 设置」Tab（跟 CLI 共用），体检/探测也都挂在 CLI 那条 id 下。
         id: "codex-app",
@@ -1183,6 +1218,49 @@ pub fn list_tools() -> Vec<ToolInfo> {
             installed: uu_remote_installed(),
             action: "url".into(),
             target: UU_REMOTE_DOWNLOAD_PAGE.into(),
+            launch_cmd: "".into(),
+            launch_app: "".into(),
+            hidden: false,
+        },
+        ToolInfo {
+            // 豆包（字节跳动）：闭源消费级 AI 助手桌面版，用自家模型，不走 U-King 的模型配置
+            // ——不进体检/探测、不出现在任何模型配置/供应商链路里。action:url 跳官网下载页。
+            // 2026-09-06 查证：官方域名只认 doubao.com，网上有 win-doubao.com.cn 等仿冒站，不采用。
+            id: "doubao".into(),
+            name: "豆包".into(),
+            summary: "字节跳动 AI 助手桌面版，聊天/写作/读文档。用自家模型，不走 U-King 的模型配置。点开下载官网客户端（认准 doubao.com，勿信仿冒站）。".into(),
+            kind: "standalone".into(),
+            installed: false,
+            action: "url".into(),
+            target: "https://www.doubao.com/download/desktop".into(),
+            launch_cmd: "".into(),
+            launch_app: "".into(),
+            hidden: false,
+        },
+        ToolInfo {
+            // 千问办公（阿里，QwenWork）：闭源，同豆包，用自家模型，不走 U-King 的模型配置。
+            // 2026-09-06 查证。
+            id: "qwenwork".into(),
+            name: "千问办公".into(),
+            summary: "阿里 AI 办公工作台（QwenWork），智能体+钉钉生态。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
+            kind: "standalone".into(),
+            installed: false,
+            action: "url".into(),
+            target: "https://qwenwork.cn/download".into(),
+            launch_cmd: "".into(),
+            launch_app: "".into(),
+            hidden: false,
+        },
+        ToolInfo {
+            // WorkBuddy（腾讯云）：闭源订阅制，同豆包，用自家模型，不走 U-King 的模型配置。
+            // 2026-09-06 查证。
+            id: "workbuddy".into(),
+            name: "WorkBuddy".into(),
+            summary: "腾讯云职场 AI 助手，订阅制付费。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
+            kind: "standalone".into(),
+            installed: false,
+            action: "url".into(),
+            target: "https://www.codebuddy.cn/work/".into(),
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,
