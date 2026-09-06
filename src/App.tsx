@@ -2085,6 +2085,20 @@ function MyAI({
           </button>
         </section>
       )}
+      {/* 🔴 充值引导上移到这（2026-09-06 用户拍板：「虾盘云充值放前面」）—— 充值是从
+          装好到能用的最后一步、也是唯一收费的一步，压在两张安装大卡下面等于把漏斗
+          出口藏在页脚。组件内部自带两条护栏，前移不影响老用户：usingOwnKey → 组件
+          返回 null，不抢用户自带的 Key；全就绪（已有工具 + 已配好）→ 同样返回 null，
+          不占位。原位置（主推两件套 section 之后）留一行注释指路。 */}
+      <XiapanGuide
+        setupState={setupState}
+        deviceKey={deviceKey}
+        hasTool={installed.length > 0}
+        usingOwnKey={usingOwnKey}
+        onApplyXiapan={onApplyXiapan}
+        onRecharge={onRecharge}
+        onGoInstall={onGoInstall}
+      />
       {/* 🔴 「AI 设置」常驻入口（2026-08-25 用户拍板：「AI 设置放到我的 AI，就不隐藏了」）。
           侧栏里它仍收在「更多」折叠组（0.9.83 的下沉决定不变），但装机主流程的页面上
           必须有一张一眼看得见的卡 —— 换模型/余额/免费额度是配好能用的最后一公里，
@@ -2137,15 +2151,9 @@ function MyAI({
           + 「还能装这些」完全重复（同一批工具三处展示）。安装器只留「已装 / 可装」两段更清爽。
           dockApps/onLaunchDock 仍由 App 传入（其它页仍用），此处不再渲染。 */}
 
-      <XiapanGuide
-        setupState={setupState}
-        deviceKey={deviceKey}
-        hasTool={installed.length > 0}
-        usingOwnKey={usingOwnKey}
-        onApplyXiapan={onApplyXiapan}
-        onRecharge={onRecharge}
-        onGoInstall={onGoInstall}
-      />
+      {/* XiapanGuide（充值引导）已搬到本函数上方「DoctorCard / 终端快照条」之后、
+          「AI 设置」常驻入口卡之前 —— 2026-09-06 用户拍板「虾盘云充值放前面」，理由见搬去
+          那处的注释。此处不再渲染。 */}
       {/* 设备钱包不在这儿了 —— 2026-08-22 F6：钱包是**虾盘云这个 provider 的一部分**，
           不是 U-King 的全局功能。删掉虾盘云它就该跟着走，否则留成一块没有归属的死砖。
           唯一实现是 `components/WalletCard.tsx`，挂在「AI 设置 → 供应商库 → 虾盘云卡片」
