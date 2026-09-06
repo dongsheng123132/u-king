@@ -434,6 +434,9 @@ fn current_key() -> Result<String, String> {
     if st.local_reset {
         return Err("本机设备钱包已移除，请联网生成新的设备钱包".into());
     }
+    if crate::portable_context::current().is_some() {
+        return Err("便携包尚未取得随机设备钱包；请联网后重试".into());
+    }
     // 一把都没有：只能先给指纹 key（老路径下它本身就是凭证；新路径下它至少
     // 能让 migrate 认领到钱包）。绝不返回空 —— 上层拿空 key 去写配置会写出一堆废配置。
     fingerprint_key()
@@ -533,6 +536,14 @@ fn reconcile_identity_locked(force: bool) {
     // host fingerprint or attempt legacy migration from the package path: its
     // wallet begins with a server-issued random credential stored in the pack.
     if crate::portable_context::current().is_some() {
+        if let Some(pending) = st.pending_key.clone() {
+            if st.pending_kind == PENDING_ROTATE {
+                finish_pending(&st, &pending);
+            }
+            // A portable package never migrates a host-era pending state. An
+            // unknown/migration record stays intact for explicit recovery.
+            return;
+        }
         if st.kind == KIND_RANDOM && !st.key.is_empty() {
             let _ = apply_wallet_to_consumers(Some(&st.key));
         } else {
