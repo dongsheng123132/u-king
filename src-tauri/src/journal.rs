@@ -74,6 +74,9 @@ fn home_dir() -> PathBuf {
 
 /// `~/.uking/journal/`。
 pub fn journal_dir() -> PathBuf {
+    if let Some(home) = crate::portable_context::uking_home() {
+        return home.join("journal");
+    }
     home_dir().join(".uking").join("journal")
 }
 

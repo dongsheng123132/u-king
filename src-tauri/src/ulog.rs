@@ -34,6 +34,9 @@ fn home_dir() -> PathBuf {
 
 /// 日志根目录 `~/.uking/logs/`。
 pub fn log_dir() -> PathBuf {
+    if let Some(home) = crate::portable_context::uking_home() {
+        return home.join("logs");
+    }
     home_dir().join(".uking").join("logs")
 }
 

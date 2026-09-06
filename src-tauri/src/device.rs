@@ -98,6 +98,11 @@ pub struct DeviceKey {
 }
 
 fn uking_home() -> PathBuf {
+    // Production portable mode is marker-derived, never UKING_TEST_HOME: the
+    // latter intentionally disables bind/rotate and is only a test sandbox.
+    if let Some(portable) = crate::portable_context::uking_home() {
+        return portable;
+    }
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".into());
@@ -523,6 +528,18 @@ fn reconcile_identity_locked(force: bool) {
         return; // 沙箱/selfcheck 不真实建号
     }
     let st = load_state();
+
+    // A new portable package is not an upgrade of this computer. Never read a
+    // host fingerprint or attempt legacy migration from the package path: its
+    // wallet begins with a server-issued random credential stored in the pack.
+    if crate::portable_context::current().is_some() {
+        if st.kind == KIND_RANDOM && !st.key.is_empty() {
+            let _ = apply_wallet_to_consumers(Some(&st.key));
+        } else {
+            bind_fresh_wallet("portable", false, false);
+        }
+        return;
+    }
 
     // 明确移除过本机钱包时直接建新钱包，绝不再按硬件指纹认领旧钱包。
     if st.local_reset {

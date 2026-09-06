@@ -95,7 +95,10 @@ fn set_model_test_fault(p: &Paths, stage: Option<&str>) {
 }
 
 fn paths() -> Paths {
-    paths_from_root(crate::installer::uking_home().join("openclaw2"))
+    // The portable bundle owns a fixed, marker-verified OpenClaw tree. The
+    // normal desktop adapter keeps using its historical private home.
+    paths_from_root(crate::portable_context::openclaw_root()
+        .unwrap_or_else(|| crate::installer::uking_home().join("openclaw2")))
 }
 fn paths_from_root(root: PathBuf) -> Paths {
     Paths {
@@ -990,10 +993,22 @@ fn rollback_model_config(p: &Paths, old_config: &FileSnapshot, old_marker: &File
 
 pub fn configure_model(route: ModelRoute) -> Result<Value, String> {
     let p = paths();
-    configure_model_at(&p, route, true)
+    configure_model_at_with_probe(&p, route, true, true)
+}
+
+/// Commit a validated configuration without an inference request. A newly
+/// bound device wallet legitimately starts at zero balance, so normal setup
+/// must not turn a paid model invocation into an implicit activation gate.
+pub fn configure_model_without_probe(route: ModelRoute) -> Result<Value, String> {
+    let p = paths();
+    configure_model_at_with_probe(&p, route, true, false)
 }
 
 fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool) -> Result<Value, String> {
+    configure_model_at_with_probe(p, route, require_runtime_ready, true)
+}
+
+fn configure_model_at_with_probe(p: &Paths, route: ModelRoute, require_runtime_ready: bool, run_model_probe: bool) -> Result<Value, String> {
     let _guard = model_mutex().lock().map_err(|_| "not_ready: OpenClaw2 model 配置锁不可用")?;
     let running = if require_runtime_ready {
         let report = inspect()?;
@@ -1040,15 +1055,19 @@ fn configure_model_at(p: &Paths, route: ModelRoute, require_runtime_ready: bool)
         let validation = run_oc_transaction(&p, &candidate, &txn_state, &["config", "validate", "--json"], Duration::from_secs(30))?;
         if validation.status != Some(0) { return Err(config_diagnostic("candidate config validation", &validation)); }
         if serde_json::from_str::<Value>(&validation.stdout).is_err() { return Err("validation_failed: candidate config validation returned non-JSON stdout (exit=0, diagnostic=non_json_stdout)".into()); }
-        let began = Instant::now();
         let reference = model_ref(&provider_key, &route.model);
-        let probe = run_oc_transaction(&p, &candidate, &txn_state, &["infer", "model", "run", "--local", "--model", &reference, "--prompt", "Reply exactly: openclaw2-probe-ok", "--json"], Duration::from_secs(90))?;
-        if probe.status != Some(0) { return Err(config_diagnostic("model probe command", &probe).replacen("validation_failed:", "probe_failed:", 1)); }
-        if serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针返回无效 JSON 或未确认固定响应".into()); }
+        let probe_view = if run_model_probe {
+            let began = Instant::now();
+            let probe = run_oc_transaction(&p, &candidate, &txn_state, &["infer", "model", "run", "--local", "--model", &reference, "--prompt", "Reply exactly: openclaw2-probe-ok", "--json"], Duration::from_secs(90))?;
+            if probe.status != Some(0) { return Err(config_diagnostic("model probe command", &probe).replacen("validation_failed:", "probe_failed:", 1)); }
+            if serde_json::from_str::<Value>(&probe.stdout).is_err() || !probe.stdout.contains("openclaw2-probe-ok") { return Err("probe_failed: OpenClaw2 最窄模型探针返回无效 JSON 或未确认固定响应".into()); }
+            json!({"ran":true,"ok":true,"latency_ms":began.elapsed().as_millis() as u64})
+        } else {
+            json!({"ran":false,"ok":false,"reason":"explicit_probe_required"})
+        };
         atomic_write(&config_file(&p), &candidate_bytes, &p)?;
         if model_test_fault(&p, "live_commit") { return Err("validation_failed: OpenClaw2 live 配置提交注入失败".into()); }
         if fs::read(config_file(&p)).map_err(|_| "rollback_failed: OpenClaw2 live 配置回读失败")? != candidate_bytes { return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into()); }
-        let probe_view = json!({"ran":true,"ok":true,"latency_ms":began.elapsed().as_millis() as u64});
         let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
         if model_test_fault(&p, "marker_commit") { return Err("validation_failed: OpenClaw2 model marker 提交注入失败".into()); }
         atomic_write(&model_marker_file(&p), serde_json::to_vec_pretty(&marker).unwrap().as_slice(), &p)?;
@@ -1116,7 +1135,7 @@ pub fn preflight() -> Result<Value, String> {
 }
 
 fn managed_env(p: &Paths) -> Vec<(String, String)> {
-    vec![
+    let mut env = vec![
         ("OPENCLAW_PROFILE".into(), PROFILE.into()),
         ("OPENCLAW_CONFIG_PATH".into(), config_file(p).to_string_lossy().to_string()),
         ("OPENCLAW_STATE_DIR".into(), p.state.to_string_lossy().to_string()),
@@ -1125,7 +1144,8 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
         ("OPENCLAW_SERVICE_REPAIR_POLICY".into(), "external".into()),
         ("OPENCLAW_DISABLE_BONJOUR".into(), "1".into()),
         ("NO_COLOR".into(), "1".into()),
-    ]
+    ];
+    env
 }
 
 fn gateway_argv(p: &Paths, port: u16) -> Vec<String> {
@@ -1151,6 +1171,31 @@ pub fn launch() -> Result<Value, String> {
     }
     let port = parse_profile(&ps)?.ok_or("OpenClaw2 profile 缺少端口")?;
     launch_private_gateway(&ps, port)
+}
+
+/// Stops only the process proved by the marker, executable, command line and
+/// creation-time identity. Never select a process by the generic node name.
+pub fn stop() -> Result<Value, String> {
+    let ps = paths();
+    let (port, pid, owned) = supervisor_status(&ps)?;
+    let (port, pid) = match (port, pid, owned) {
+        (Some(port), Some(pid), true) => (port, pid),
+        (_, Some(_), false) => return Err("OpenClaw2 supervisor 不能证明该进程属于此包，拒绝停止".into()),
+        _ => return Ok(json!({"changed":false,"stopped":true,"state_version":state_version()})),
+    };
+    #[cfg(windows)]
+    {
+        let out = Command::new("taskkill.exe").args(["/PID", &pid.to_string(), "/F", "/T"]).output()
+            .map_err(|e| format!("停止受管 OpenClaw2 Gateway 失败: {e}"))?;
+        if !out.status.success() && process_identity(pid).is_some() { return Err("停止受管 OpenClaw2 Gateway 失败".into()); }
+    }
+    #[cfg(not(windows))]
+    { return Err("OpenClaw2 便携预览当前仅支持 Windows x64".into()); }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while process_identity(pid).is_some() && Instant::now() < deadline { std::thread::sleep(Duration::from_millis(100)); }
+    if process_identity(pid).is_some() || port_listening(port) { return Err("受管 OpenClaw2 Gateway 未在期限内停止".into()); }
+    fs::remove_file(supervisor_file(&ps)).map_err(|e| format!("清理受管 Gateway 状态失败: {e}"))?;
+    Ok(json!({"changed":true,"stopped":true,"state_version":state_version()}))
 }
 
 /// Start only the private command line. The public Action performs install
@@ -1560,6 +1605,7 @@ pub fn action_preflight(
 pub fn action_launch(_: &str, _: Value, _: &crate::actions::ProgressSink) -> Result<Value, String> {
     launch()
 }
+pub fn action_stop(_: &str, _: Value, _: &crate::actions::ProgressSink) -> Result<Value, String> { stop() }
 
 #[cfg(test)]
 mod tests {

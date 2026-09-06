@@ -1,0 +1,97 @@
+//! Explicit context for the self-contained OpenClaw preview bundle.
+//!
+//! A green executable alone is not portable: the application must decide its
+//! storage roots before wallet or runtime code asks for a home directory.  The
+//! marker is deliberately opt-in so the normal installed U-King keeps its
+//! existing semantics. `UKING_TEST_HOME` remains a test sandbox only.
+
+use serde::Deserialize;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const MARKER: &str = "portable.json";
+const OWNER: &str = "u-king-openclaw-portable";
+
+#[derive(Debug, Deserialize)]
+struct Marker {
+    schema_version: u32,
+    owner: String,
+    runtime_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableContext {
+    pub root: PathBuf,
+}
+
+impl PortableContext {
+    pub fn uking_home(&self) -> PathBuf { self.root.join("U-King").join("data").join("uking") }
+    pub fn openclaw_root(&self) -> PathBuf { self.root.join("U-King").join("OpenClaw") }
+}
+
+fn is_safe_root(root: &Path) -> bool {
+    // The marker lives beside the executable. Reject a marker reached through
+    // a reparse point instead of treating an arbitrary host directory as part
+    // of the portable package.
+    root.is_dir()
+        && fs::symlink_metadata(root).map(|m| !m.file_type().is_symlink()).unwrap_or(false)
+}
+
+pub fn from_root(root: PathBuf) -> Result<PortableContext, String> {
+    if !is_safe_root(&root) { return Err("便携包根目录不存在或是重解析点".into()); }
+    let marker_path = root.join(MARKER);
+    let marker: Marker = serde_json::from_slice(&fs::read(&marker_path)
+        .map_err(|_| "便携包缺少 portable.json 标记")?)
+        .map_err(|_| "portable.json 无效")?;
+    if marker.schema_version != 1 || marker.owner != OWNER || marker.runtime_id != "openclaw2" {
+        return Err("portable.json 不属于受管的 OpenClaw 便携包".into());
+    }
+    Ok(PortableContext { root })
+}
+
+/// Returns the portable context only when the executable sits beside our
+/// marker. No environment variable can enable production portable mode.
+pub fn current() -> Option<PortableContext> {
+    let root = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    from_root(root).ok()
+}
+
+/// Startup gate: an absent marker means the ordinary desktop product, while a
+/// present but malformed marker is an unsafe partial portable package and must
+/// never fall through to host storage.
+pub fn validate_current_executable() -> Result<(), String> {
+    let root = std::env::current_exe().map_err(|e| format!("无法定位当前程序: {e}"))?
+        .parent().ok_or("当前程序没有父目录")?.to_path_buf();
+    if !root.join(MARKER).exists() { return Ok(()); }
+    from_root(root).map(|_| ())
+}
+
+pub fn uking_home() -> Option<PathBuf> { current().map(|ctx| ctx.uking_home()) }
+pub fn openclaw_root() -> Option<PathBuf> { current().map(|ctx| ctx.openclaw_root()) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_marker_resolves_only_package_relative_paths() {
+        let root = std::env::temp_dir().join(format!("uking-portable-context-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(MARKER), br#"{"schema_version":1,"owner":"u-king-openclaw-portable","runtime_id":"openclaw2"}"#).unwrap();
+        let ctx = from_root(root.clone()).unwrap();
+        assert_eq!(ctx.uking_home(), root.join("U-King/data/uking"));
+        assert_eq!(ctx.openclaw_root(), root.join("U-King/OpenClaw"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unknown_marker_fails_closed() {
+        let root = std::env::temp_dir().join(format!("uking-portable-invalid-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(MARKER), br#"{"schema_version":1,"owner":"other","runtime_id":"openclaw2"}"#).unwrap();
+        assert!(from_root(root.clone()).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+}

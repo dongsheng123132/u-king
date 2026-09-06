@@ -18,6 +18,7 @@ mod chatstore;
 mod cleanup;
 mod clawx;
 mod openclaw2;
+mod portable_context;
 mod usb_genie;
 mod claude_proxy;
 mod codex;
@@ -2009,6 +2010,41 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 )?;
                 openclaw2::configure_model(route)
             },
+            Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::OPENCLAW2_CONFIGURE_MODEL_NO_PROBE,
+            "Configure an isolated OpenClaw 2 model without paid probe",
+            "Validate and commit one OpenAI-compatible model without calling it. runtime.openclaw2.configure_model is the separate, explicit potentially chargeable probe.",
+            60_000,
+            "required",
+            serde_json::json!({
+                "provider_id": { "type": "string", "minLength": 1 },
+                "model": { "type": "string" },
+                "api_key": { "type": "string", "writeOnly": true }
+            }),
+            &["provider_id"],
+            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "state_version"],
+            |_, input, _| {
+                let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
+                    .ok_or("invalid_input: provider_id 必填")?;
+                let api_key = input.get("api_key").and_then(serde_json::Value::as_str);
+                let device_key = if api_key.is_some_and(|key| !key.trim().is_empty()) { None } else { device::device_key_offline().ok() };
+                let route = providers::resolve_openai_route_for_openclaw2(provider_id, input.get("model").and_then(serde_json::Value::as_str), api_key, device_key.as_deref())?;
+                openclaw2::configure_model_without_probe(route)
+            },
+            Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::OPENCLAW2_STOP,
+            "Stop the isolated OpenClaw 2 gateway",
+            "Stop only the gateway whose process identity is owned by this private OpenClaw 2 tree; it never kills unrelated node processes.",
+            15_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["changed", "stopped", "state_version"],
+            openclaw2::action_stop,
             Some(openclaw2::state_version),
         ),
         actions::readonly(
@@ -8280,8 +8316,13 @@ fn cli_help_text() -> String {
 }
 
 pub fn run() {
+    if let Err(error) = portable_context::validate_current_executable() {
+        eprintln!("[portable] {error}");
+        return;
+    }
     // 无头自检模式：U-King.exe --selfcheck [out.json]
     let args: Vec<String> = std::env::args().collect();
+    let portable_preview = portable_context::current().is_some();
     // 影核协议通用 CLI：U-King.exe action list|describe|manifest|run <id> --json --no-input
     // 当前切片只提供只读 runtime.command_guard.inspect；未知动作/非法输入返回结构化错误且不副作用。
     // Token 压缩机的 hook 包装器：U-King.exe rtk-hook（读 stdin 出 stdout）。
@@ -9703,7 +9744,7 @@ pub fn run() {
     // 只迁移旧版 U-King 自己写出的两行 CLI shim：旧写法把 Unicode 用户目录以 UTF-8
     // 字面量塞进 .cmd，cmd.exe 按 ACP 读取时会找不到 Codex。此处不创建 shim、不改 PATH、
     // 不覆盖未知脚本，因此普通启动的副作用只限于修复已识别的历史坏文件。
-    let migrated_cli_shims = installer::migrate_legacy_cli_command_guards();
+    let migrated_cli_shims = if portable_preview { 0 } else { installer::migrate_legacy_cli_command_guards() };
     if migrated_cli_shims > 0 {
         ulog::write("installer", &format!("已迁移 {migrated_cli_shims} 个 Unicode 安全 CLI shim"));
     }
@@ -9714,7 +9755,7 @@ pub fn run() {
     // U 盘护符口味**不**做静默自升级：服务器上的绿色 exe 是「下载版（无护符）」，自动替换会把护符
     // 悄悄抹掉。U 盘版按「换新盘 / 装到本地后走安装版」拿更新。下载版照旧静默升级。
     #[cfg(windows)]
-    if !cfg!(feature = "usb-guard") && args.len() <= 1 && installer::apply_staged_update() {
+    if !portable_preview && !cfg!(feature = "usb-guard") && args.len() <= 1 && installer::apply_staged_update() {
         std::process::exit(0);
     }
 
@@ -9903,7 +9944,7 @@ pub fn run() {
             //
             // 调试实例不发：新旧两版的动作表和技能目录不同，而落盘是同名覆盖 ——
             // 两个实例会轮流把对方刚写的说明书刷掉，别家 AI 读到哪一版全看谁最后启动。
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
                 std::thread::spawn(|| {
                     let dir = identity::uking_dir();
                     let id = identity::load_identity_in(&dir);
@@ -9968,7 +10009,7 @@ pub fn run() {
             if cfg!(feature = "demo-uninstaller") {
                 return Ok(());
             }
-            tray::install(app.handle())?;
+            if !portable_context::current().is_some() { tray::install(app.handle())?; }
             // 崩溃取证开一次会话：结上次的账（没正常退出的话留证据）+ 落本次标记 + 起心跳。
             // **必须在这儿而不是 run() 顶上** —— 无头模式（--selfcheck / action run / mcp serve）
             // 都在 tauri::Builder 之前就 exit 了，放上面会让运维远程跑一条 `action run`
@@ -10003,7 +10044,7 @@ pub fn run() {
             // 短命的那条还会 `report_bug` 灌进 bug 采集。
             //
             // （这跟 08-23 那版 leader.rs 被把关打回的第一条是同一个坑：拿自己的镜像名判别人。）
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
                 if let Some(prev) = crashlog::begin_session() {
                     // 上报只挑短命的那种（启动即崩 / 崩溃循环）：跑了几小时的异常退出多半是关机，
                     // 全报会把 issue 区淹掉，反而让真信号沉底。本地留痕则一条不落。
@@ -10022,7 +10063,7 @@ pub fn run() {
             // 🔴 门控写成 `if !is_sidecar { … }` 而不是抽成一个函数：抽出来就得有第二个调用点
             // 才划算，而这版**刻意没有晋升**（见 `instance.rs` 模块头），只有这一个调用点。
             // 一个只被调一次的函数，只是把「启动时到底跑了什么」多藏了一层。
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
             // ClawX 例行检查：只放行防火墙（让 ClawX 能联网），**不再后台静默写用户配置**。
             //（旧 auto_heal_clawx 会偷偷把 ClawX 切到虾盘云，已废弃；是否接入改由前端引导用户手动点。）
             std::thread::spawn(providers::clawx_firewall_only);
@@ -10097,7 +10138,7 @@ pub fn run() {
             //   上面的 `set_notifier` / `set_keep_awake` **刻意留在门外**：它们只是注入，
             //   不起任何线程、不写任何共享文件。调试实例里用户照样能手点「立即运行一次」，
             //   注入没做的话那次手动运行会静悄悄跑完、连个提示都没有。
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
             automation::start(Box::new(run_automation_job));
             // Codex 省钱路由自愈：客户开过 DeepSeek 本地路由（config 指向 127.0.0.1:15722）
             // 但代理进程已不在（最常见：重启电脑后）→ 自动拉回来，否则 codex 全废且客户不知道
