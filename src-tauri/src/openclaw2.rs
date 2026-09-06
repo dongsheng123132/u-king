@@ -1956,7 +1956,10 @@ pub fn open_dashboard() -> Result<Value, String> {
 /// A wallet change may update only the secret that this adapter proved it
 /// created from the device wallet. It never discovers or touches host tools.
 pub fn sync_device_wallet_key(key: Option<&str>) -> Result<(), String> {
-    let p = paths();
+    sync_device_wallet_key_at(&paths(), key)
+}
+
+fn sync_device_wallet_key_at(p: &Paths, key: Option<&str>) -> Result<(), String> {
     let Some(marker) = model_owned_marker(&p) else {
         return Ok(());
     };
@@ -1970,15 +1973,76 @@ pub fn sync_device_wallet_key(key: Option<&str>) -> Result<(), String> {
         .ok_or("OpenClaw2 受管 model marker 缺少安全 secret 名称")?;
     let secret = model_secrets_dir(&p).join(name);
     match key {
-        Some(key) if !key.trim().is_empty() => atomic_write(
-            &secret,
-            serde_json::to_vec(&json!({"api_key":key}))
-                .unwrap()
-                .as_slice(),
-            &p,
-        ),
+        Some(key) if !key.trim().is_empty() => {
+            // The marker is only a historical assertion. Re-check the live
+            // config generation before replacing a file secret, otherwise a
+            // wallet balance refresh could overwrite a user-edited route.
+            verify_device_wallet_generation(p, &marker, &secret)?;
+            atomic_write(
+                &secret,
+                serde_json::to_vec(&json!({"api_key":key}))
+                    .unwrap()
+                    .as_slice(),
+                p,
+            )
+        }
         _ => clear_device_wallet_model(&p, &marker, name, &secret),
     }
+}
+
+/// Prove that a marker, live config and file secret are still the exact
+/// device-wallet generation that this adapter created. Both update and clear
+/// paths use it; a stale marker must never authorize either mutation.
+fn verify_device_wallet_generation(
+    p: &Paths,
+    marker: &Value,
+    secret: &Path,
+) -> Result<(String, String), String> {
+    let bytes = fs::read(config_file(p))
+        .map_err(|_| "OpenClaw2 私有配置不可读，拒绝修改钱包 consumer")?;
+    let hash = crate::installer::sha256_hex_bytes(&bytes);
+    let provider_key = marker
+        .get("provider_key")
+        .and_then(Value::as_str)
+        .ok_or("OpenClaw2 受管 model marker 缺少 provider，拒绝修改钱包 consumer")?;
+    let model = marker
+        .get("model")
+        .and_then(Value::as_str)
+        .ok_or("OpenClaw2 受管 model marker 缺少 model，拒绝修改钱包 consumer")?;
+    if marker.get("owner").and_then(Value::as_str) != Some(PROFILE)
+        || marker.get("config_hash").and_then(Value::as_str) != Some(hash.as_str())
+        || !secret.is_file()
+    {
+        return Err("OpenClaw2 受管 model marker 与当前配置不一致，拒绝修改钱包 consumer".into());
+    }
+    let config: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| "OpenClaw2 私有配置已损坏，拒绝修改钱包 consumer")?;
+    let provider = config
+        .pointer(&format!("/models/providers/{provider_key}"))
+        .ok_or("OpenClaw2 当前配置缺少受管 model provider，拒绝修改钱包 consumer")?;
+    let file_provider = config
+        .pointer(&format!("/secrets/providers/{MODEL_SECRET_PROVIDER}"))
+        .ok_or("OpenClaw2 当前配置缺少受管 file secret provider，拒绝修改钱包 consumer")?;
+    if provider.pointer("/apiKey/source").and_then(Value::as_str) != Some("file")
+        || provider.pointer("/apiKey/provider").and_then(Value::as_str)
+            != Some(MODEL_SECRET_PROVIDER)
+        || provider.pointer("/apiKey/id").and_then(Value::as_str) != Some("/api_key")
+        || file_provider.get("source").and_then(Value::as_str) != Some("file")
+        || file_provider.get("mode").and_then(Value::as_str) != Some("json")
+        || file_provider.get("path").and_then(Value::as_str)
+            != Some(secret.to_string_lossy().as_ref())
+    {
+        return Err("OpenClaw2 当前配置不是受管 file secret consumer，拒绝修改".into());
+    }
+    let reference = model_ref(provider_key, model);
+    if config
+        .pointer("/agents/defaults/model/primary")
+        .and_then(Value::as_str)
+        != Some(reference.as_str())
+    {
+        return Err("OpenClaw2 当前默认模型不是受管钱包 consumer，拒绝修改".into());
+    }
+    Ok((provider_key.to_owned(), model.to_owned()))
 }
 
 /// Removing a device wallet must remove the adapter-owned consumer before the
@@ -1992,6 +2056,7 @@ fn clear_device_wallet_model(
     _name: &str,
     secret: &Path,
 ) -> Result<(), String> {
+    let (provider_key, model) = verify_device_wallet_generation(p, marker, secret)?;
     let old_config = snapshot_file(&config_file(p));
     let old_marker = snapshot_file(&model_marker_file(p));
     let old_secret = snapshot_file(secret);
@@ -2000,48 +2065,9 @@ fn clear_device_wallet_model(
         .bytes
         .as_ref()
         .ok_or("OpenClaw2 私有配置不可读，拒绝移除钱包 consumer")?;
-    let hash = crate::installer::sha256_hex_bytes(bytes);
-    let provider_key = marker
-        .get("provider_key")
-        .and_then(Value::as_str)
-        .ok_or("OpenClaw2 受管 model marker 缺少 provider，拒绝移除钱包 consumer")?;
-    let model = marker
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or("OpenClaw2 受管 model marker 缺少 model，拒绝移除钱包 consumer")?;
-    if marker.get("owner").and_then(Value::as_str) != Some(PROFILE)
-        || marker.get("config_hash").and_then(Value::as_str) != Some(hash.as_str())
-        || !secret.is_file()
-    {
-        return Err("OpenClaw2 受管 model marker 与当前配置不一致，拒绝移除钱包 consumer".into());
-    }
     let mut config: Value = serde_json::from_slice(bytes)
         .map_err(|_| "OpenClaw2 私有配置已损坏，拒绝移除钱包 consumer")?;
-    let provider = config
-        .pointer(&format!("/models/providers/{provider_key}"))
-        .ok_or("OpenClaw2 当前配置缺少受管 model provider，拒绝移除钱包 consumer")?;
-    let file_provider = config
-        .pointer(&format!("/secrets/providers/{MODEL_SECRET_PROVIDER}"))
-        .ok_or("OpenClaw2 当前配置缺少受管 file secret provider，拒绝移除钱包 consumer")?;
-    if provider.pointer("/apiKey/source").and_then(Value::as_str) != Some("file")
-        || provider.pointer("/apiKey/provider").and_then(Value::as_str)
-            != Some(MODEL_SECRET_PROVIDER)
-        || provider.pointer("/apiKey/id").and_then(Value::as_str) != Some("/api_key")
-        || file_provider.get("source").and_then(Value::as_str) != Some("file")
-        || file_provider.get("mode").and_then(Value::as_str) != Some("json")
-        || file_provider.get("path").and_then(Value::as_str)
-            != Some(secret.to_string_lossy().as_ref())
-    {
-        return Err("OpenClaw2 当前配置不是受管 file secret consumer，拒绝移除".into());
-    }
-    let reference = model_ref(provider_key, model);
-    if config
-        .pointer("/agents/defaults/model/primary")
-        .and_then(Value::as_str)
-        != Some(reference.as_str())
-    {
-        return Err("OpenClaw2 当前默认模型不是受管钱包 consumer，拒绝移除".into());
-    }
+    let reference = model_ref(&provider_key, &model);
     let (port, _pid, owned) = supervisor_status(p)?;
     if port.is_some_and(port_listening) && !owned {
         return Err("OpenClaw2 Gateway 归属无法证明，拒绝移除钱包 consumer".into());
@@ -2057,7 +2083,7 @@ fn clear_device_wallet_model(
         .and_then(|x| x.get_mut("providers"))
         .and_then(Value::as_object_mut)
     {
-        providers.remove(provider_key);
+        providers.remove(&provider_key);
     }
     if let Some(models) = root
         .get_mut("agents")
@@ -2633,6 +2659,7 @@ mod tests {
         let marker = json!({
             "schema_version":1,
             "owner":PROFILE,
+            "key_source":"device_wallet",
             "provider_key":provider_key,
             "model":model,
             "secret_basename":"model-wallet-clear.json",
@@ -3080,6 +3107,54 @@ mod tests {
         for (path, snapshot) in before {
             assert_eq!(snapshot_file(&path).bytes, snapshot.bytes, "{path:?} bytes must roll back");
             assert_eq!(snapshot_file(&path).modified, snapshot.modified, "{path:?} mtime must roll back");
+        }
+        let _ = fs::remove_dir_all(&p.root);
+    }
+
+    #[test]
+    fn stale_device_wallet_generation_refuses_key_refresh_without_touching_any_file() {
+        let (p, _marker, secret) = wallet_clear_fixture("stale-some");
+        let mut changed: Value = serde_json::from_slice(&fs::read(config_file(&p)).unwrap()).unwrap();
+        changed["user"]["edited_after_wallet_setup"] = json!(true);
+        atomic_write(
+            &config_file(&p),
+            &serde_json::to_vec_pretty(&changed).unwrap(),
+            &p,
+        ).unwrap();
+        let before = [
+            (config_file(&p), snapshot_file(&config_file(&p))),
+            (model_marker_file(&p), snapshot_file(&model_marker_file(&p))),
+            (secret.clone(), snapshot_file(&secret)),
+            (profile_file(&p), snapshot_file(&profile_file(&p))),
+        ];
+        let error = sync_device_wallet_key_at(&p, Some("sk-new-test-wallet-key")).unwrap_err();
+        assert!(error.contains("不一致"), "{error}");
+        for (path, snapshot) in before {
+            assert_eq!(snapshot_file(&path).bytes, snapshot.bytes, "{path:?} bytes must not change");
+            assert_eq!(snapshot_file(&path).modified, snapshot.modified, "{path:?} mtime must not change");
+        }
+        let _ = fs::remove_dir_all(&p.root);
+    }
+
+    #[test]
+    fn byok_marker_skips_wallet_key_refresh_without_touching_any_file() {
+        let (p, mut marker, secret) = wallet_clear_fixture("byok-some");
+        marker["key_source"] = json!("explicit");
+        atomic_write(
+            &model_marker_file(&p),
+            &serde_json::to_vec_pretty(&marker).unwrap(),
+            &p,
+        ).unwrap();
+        let before = [
+            (config_file(&p), snapshot_file(&config_file(&p))),
+            (model_marker_file(&p), snapshot_file(&model_marker_file(&p))),
+            (secret.clone(), snapshot_file(&secret)),
+            (profile_file(&p), snapshot_file(&profile_file(&p))),
+        ];
+        sync_device_wallet_key_at(&p, Some("sk-new-test-wallet-key")).unwrap();
+        for (path, snapshot) in before {
+            assert_eq!(snapshot_file(&path).bytes, snapshot.bytes, "{path:?} bytes must not change");
+            assert_eq!(snapshot_file(&path).modified, snapshot.modified, "{path:?} mtime must not change");
         }
         let _ = fs::remove_dir_all(&p.root);
     }

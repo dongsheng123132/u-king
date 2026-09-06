@@ -147,7 +147,6 @@ pub fn action_allowed(id: &str) -> bool {
             | "runtime.device.wallet.copy_backup"
             | "runtime.device.key_adopt"
             | "runtime.device.key_rotate"
-            | "runtime.device.wallet_reset_local"
     )
 }
 
@@ -233,10 +232,10 @@ mod tests {
             "runtime.device.wallet.copy_backup",
             "runtime.device.key_adopt",
             "runtime.device.key_rotate",
-            "runtime.device.wallet_reset_local",
         ] {
             assert!(action_allowed(id), "便携钱包动作必须经过同一个白名单: {id}");
         }
+        assert!(!action_allowed("runtime.device.wallet_reset_local"));
         assert!(!action_allowed("runtime.device.wallet.delete_server_wallet"));
     }
 
