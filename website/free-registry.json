@@ -1,22 +1,78 @@
 {
   "schema": "u-king.free-registry/v1",
-  "version": 3,
-  "checked": "2026-08-31",
+  "version": 4,
+  "checked": "2026-09-06",
   "status": "reviewed",
   "notice": "条目仅记录人工核验时的公开条件；不代表 U-King 提供、代管或承诺任何免费额度。",
   "entries": [
+    {
+      "id": "iflow",
+      "name": "iFlow 心流",
+      "template": "iFlow 心流",
+      "summary": "国产模型聚合网关，个人永久免费额度含 Qwen3-Coder-480B / Kimi-K2 / GLM-4.6 等旗舰模型。",
+      "key_url": "https://platform.iflow.cn/",
+      "region": "国内直连（不用梯子）",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "手机号注册即可，无需实名；并发数为 1（同一时间只能跑一个请求）。2026-09-06 裸网实测直连可达，不需要科学上网。",
+      "review": "reviewed"
+    },
+    {
+      "id": "modelscope",
+      "name": "魔搭 ModelScope",
+      "template": "魔搭 ModelScope",
+      "summary": "阿里达摩院模型社区，OpenAI 兼容推理接口，官方标称 2000 次/天免费额度。",
+      "key_url": "https://modelscope.cn/my/myaccesstoken",
+      "region": "国内直连（不用梯子）",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "需绑定阿里云账号并完成实名认证后才能创建 Access Token；免费额度以官方页面标称的 2000 次/天为准。",
+      "review": "reviewed"
+    },
+    {
+      "id": "zhipu-bigmodel-free",
+      "name": "智谱 GLM（glm-4.7-flash 免费档）",
+      "template": "智谱 GLM",
+      "summary": "智谱官方长期免费档，模型 glm-4.7-flash。点「我已有 Key，继续」会按「智谱 GLM」模板预填地址，记得把弹窗里的模型改成 glm-4.7-flash。",
+      "key_url": "https://open.bigmodel.cn/usercenter/apikeys",
+      "region": "国内直连（不用梯子）",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "长期免费档；模板默认预填的是收费旗舰 glm-5，导入后请把模型字段手动改成 glm-4.7-flash。🔴 不要跟已下线的 glm-4.5-flash 混淆。具体限流以智谱官方页面公告为准。",
+      "review": "reviewed"
+    },
+    {
+      "id": "siliconflow-free",
+      "name": "硅基流动（Qwen2.5-7B 免费档）",
+      "template": "SiliconFlow（硅基流动）",
+      "summary": "硅基流动永久免费档，模型 Qwen2.5-7B-Instruct。点「我已有 Key，继续」会按「SiliconFlow（硅基流动）」模板预填地址，记得把弹窗里的模型改成 Qwen/Qwen2.5-7B-Instruct。",
+      "key_url": "https://cloud.siliconflow.cn/account/ak",
+      "region": "国内直连（不用梯子）",
+      "targets": [
+        "codex",
+        "pi"
+      ],
+      "note": "该模型为永久免费档；模板默认预填的是收费的 DeepSeek-V3，导入后请把模型字段手动改成 Qwen/Qwen2.5-7B-Instruct。另有 ¥14 新人额度，30 天内有效可用于其它模型。",
+      "review": "reviewed"
+    },
     {
       "id": "openrouter",
       "name": "OpenRouter",
       "template": "OpenRouter",
       "summary": "聚合网关；可在模型列表中选择带 :free 后缀的路由。",
       "key_url": "https://openrouter.ai/keys",
-      "region": "海外",
+      "region": "海外（需科学上网）",
       "targets": [
         "codex",
         "pi"
       ],
-      "note": "需自行注册并领取 Key。免费路由、限额和地区可用性会变化；不要把它当作长期免费承诺。",
+      "note": "需自行注册并领取 Key。免费档约 50 次/天，跑编码类 agent 往往不够用；免费路由、限额和地区可用性会变化，不要把它当作长期免费承诺。",
       "review": "reviewed"
     },
     {
@@ -25,7 +81,7 @@
       "template": "OpenCode Zen",
       "summary": "OpenCode 官方模型网关，模型列表里有带 -free 后缀的免费档。",
       "key_url": "https://opencode.ai/auth",
-      "region": "海外",
+      "region": "海外（需科学上网）",
       "targets": [
         "codex",
         "pi"
@@ -39,12 +95,12 @@
       "template": "Google Gemini",
       "summary": "AI Studio 可创建 API Key，并提供受规则约束的免费档。",
       "key_url": "https://aistudio.google.com/apikey",
-      "region": "海外",
+      "region": "海外（需科学上网）",
       "targets": [
         "codex",
         "pi"
       ],
-      "note": "免费政策、地区与账户要求以 Google 页面为准；只有 OpenAI 兼容层。",
+      "note": "免费政策、地区与账户要求以 Google 页面为准；只有 OpenAI 兼容层；国内一般需要科学上网才能访问。",
       "review": "reviewed"
     },
     {
@@ -53,22 +109,12 @@
       "template": "Groq",
       "summary": "推理速度见长；免费档约 30 RPM / 14400 RPD，适合个人日常对话与批量小任务。",
       "key_url": "https://console.groq.com/keys",
-      "region": "海外",
+      "region": "海外（需科学上网）",
       "targets": [
         "codex",
         "pi"
       ],
       "note": "邮箱注册即可领 Key，无需信用卡（2026-08-30 核）。模型与限额以官方页为准；海外端点国内可达性因网络环境而异，连不上时挂代理再试。",
-      "review": "reviewed"
-    },
-    {
-      "id": "freellm-net",
-      "name": "FreeLLM 目录（freellm.net）",
-      "summary": "免费大模型 API 目录站：451+ 条目、每日更新，标注免不免信用卡、速率限制、上下文窗口，还带 Claude Code / Codex / OpenCode 一键配置生成器。想自己挑家免费档的，从这里逛起。",
-      "key_url": "https://freellm.net/free-llm-api-keys/",
-      "region": "海外",
-      "targets": [],
-      "note": "目录站，不收 Key、不提供 API；列出的各家用哪家领哪家。站点由开源项目（MIT，GitHub 2.6k 星）维护，数据每日自动核。",
       "review": "reviewed"
     },
     {

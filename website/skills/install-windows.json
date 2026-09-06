@@ -844,6 +844,21 @@
       "key_url": "https://console.groq.com/keys",
       "key_hint": "gsk_ 开头，免信用卡有免费额度",
       "website": "https://console.groq.com"
+    },
+    {
+      "name": "iFlow 心流",
+      "openai_base": "https://apis.iflow.cn/v1",
+      "key_url": "https://platform.iflow.cn/",
+      "key_hint": "手机号注册即可，无需实名；注册后在控制台创建 Key",
+      "website": "https://platform.iflow.cn/"
+    },
+    {
+      "name": "魔搭 ModelScope",
+      "openai_base": "https://api-inference.modelscope.cn/v1",
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "key_url": "https://modelscope.cn/my/myaccesstoken",
+      "key_hint": "需绑定阿里云账号并完成实名认证后才能创建 Access Token",
+      "website": "https://modelscope.cn"
     }
   ]
 }

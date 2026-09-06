@@ -21,6 +21,12 @@ export const settings: Record<string, string> = {
   "没有你想要的那家？「供应商库」里有 20 家模板，或者自己手填地址也行。":
     "Don't see the one you want? There are 20 templates under Providers, or just type the endpoint in yourself.",
 
+  // ---- 免费额度导流（2026-09-06：右栏快速添加置顶组 + 我的 AI 首页导流卡）----
+  "国内直连，手机号注册就能领": "Direct in mainland China — just sign up with a phone number",
+  "免费": "Free",
+  "免费模型 · 不花钱先跑通": "Free models — get running without spending a cent",
+  "国产直连免费额度，手机号注册就能领": "Free quota from domestic providers with direct access — sign up with a phone number",
+
   // ---- 一键配好（ToolFixButton，从 ToolCheckup 收拢，2026-09-06）----
   "已自行配置": "Self-managed",
   "配好了，去终端试试": "Configured — try it in Terminal",

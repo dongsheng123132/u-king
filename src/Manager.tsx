@@ -426,6 +426,7 @@ export function Manager({
   onRecharge,
   tools,
   onAskAI,
+  initialSettingsTab,
 }: {
   onGoCodex?: () => void;
   onGoAdvanced?: () => void;
@@ -446,6 +447,10 @@ export function Manager({
   tools?: { id: string; installed: boolean }[];
   /** 将已脱敏的供应商故障交给 U-Chat；页面本身不读取或转交 API Key。 */
   onAskAI?: (prompt: string) => void;
+  /** 从「我的 AI」首页的免费模型导流卡深链进来时指定要打开的分区（如 "free"）；
+   *  不传就照旧默认 "tools"。本组件外层有 `key={tab}` 边界，每次进页都是全新挂载，
+   *  用 useState 初值接这个 prop 足够，不需要额外的 effect 同步。 */
+  initialSettingsTab?: "tools" | "providers" | "free" | "usage" | "advanced";
 }) {
   const { t } = useI18n();
   /**
@@ -458,7 +463,9 @@ export function Manager({
    * 改成分区后每次只呈现一件事。**不动任何一段的内部实现** —— 只是把它们分到 4 个 tab，
    * 所以这不是重写，是把已有的东西摆正（用户：「不要大改原来的」）。
    */
-  const [settingsTab, setSettingsTab] = useState<"tools" | "providers" | "free" | "usage" | "advanced">("tools");
+  const [settingsTab, setSettingsTab] = useState<"tools" | "providers" | "free" | "usage" | "advanced">(
+    initialSettingsTab ?? "tools",
+  );
   const initialSnapshot = managerSnapshots.get("claude");
   const [providers, setProviders] = useState<ProviderPreset[]>(() => initialSnapshot?.providers ?? []);
   /** 被用户移出列表的内置驱动 id（决定底部「添加虾盘云」出不出现）。 */
@@ -2222,7 +2229,7 @@ export function Manager({
           .filter((x): x is ProviderTemplate => !!x);
         const firstScreenTemplates = matchedFirst.length > 0 ? matchedFirst : templates.slice(0, 3);
         const moreTemplates = templates.filter((tp) => !firstScreenTemplates.includes(tp));
-        const renderQuickAddRow = (tpl: ProviderTemplate) => {
+        const renderQuickAddRow = (tpl: ProviderTemplate, free?: boolean) => {
           const existing = providers.find((p) => p.openai_base === tpl.openai_base);
           return (
             <div
@@ -2248,7 +2255,14 @@ export function Manager({
               )}
               <ToolIcon tool={tpl.name} size={22} className="shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-semibold text-ink-1 truncate">{tpl.name}</div>
+                <div className="text-[13px] font-semibold text-ink-1 truncate flex items-center gap-1.5">
+                  <span className="truncate">{tpl.name}</span>
+                  {free && (
+                    <span className="shrink-0 inline-flex items-center px-1.5 h-[15px] rounded-full text-[12px] leading-none font-semibold bg-success-500/12 text-success-400 border border-success-500/25">
+                      {t("免费")}
+                    </span>
+                  )}
+                </div>
                 <div className="text-[12px] text-ink-3 truncate">
                   {existing ? t("已添加·编辑") : tpl.openai_base.replace(/^https?:\/\//, "")}
                 </div>
@@ -2265,20 +2279,41 @@ export function Manager({
             </div>
           );
         };
+        // A6：免费额度置顶组（2026-09-06，09-06 主会话裁决改回复用已有模板）——
+        // 跟下面「首屏」快速添加同一批数据、同一个 openAddTemplate，只是单独摘出来提前展示，
+        // 不新增机制。智谱/硅基流动**故意不新开模板**，直接指向已有的「智谱 GLM」/
+        // 「SiliconFlow（硅基流动）」——CustomProviderModal 按 openai_base 逐字匹配
+        // activeTpl，同一个 base URL 开两个模板会让弹窗匹配错模板（见 providerTemplates.ts
+        // 顶部注释）。默认预填仍是这两家的付费旗舰模型，免费档模型 id 靠
+        // free-registry.json 对应条目的说明文案提示手动改，不在这里另开分支。
+        // 找不到模板（改名/下线）就整组不渲染，不留死胡同。
+        const freeTemplateNames = ["iFlow 心流", "魔搭 ModelScope", "智谱 GLM", "SiliconFlow（硅基流动）"];
+        const freeTemplates = freeTemplateNames
+          .map((n) => templates.find((tp) => tp.name === n))
+          .filter((x): x is ProviderTemplate => !!x);
         const renderQuickAdd = () => (
           <div className="space-y-3">
+            {freeTemplates.length > 0 && (
+              <div>
+                <div className="text-[13px] font-semibold text-ink-1">{t("免费额度")}</div>
+                <div className="mt-0.5 text-[11px] text-ink-4">{t("国内直连，手机号注册就能领")}</div>
+                <div className="mt-1.5 space-y-1.5">
+                  {freeTemplates.map((tpl) => renderQuickAddRow(tpl, true))}
+                </div>
+              </div>
+            )}
             <div>
               <div className="text-[13px] font-semibold text-ink-1">{t("快速添加")}</div>
               <div className="mt-0.5 text-[11px] text-ink-4">{t("选一家，自动填好地址")}</div>
             </div>
-            <div className="space-y-1.5">{firstScreenTemplates.map(renderQuickAddRow)}</div>
+            <div className="space-y-1.5">{firstScreenTemplates.map((tpl) => renderQuickAddRow(tpl))}</div>
             {moreTemplates.length > 0 && (
               <details className="group/more">
                 <summary className="cursor-pointer select-none list-none inline-flex items-center gap-1 text-[11.5px] text-ink-3 hover:text-ink-1">
                   <ChevronRight size={12} className="transition-transform group-open/more:rotate-90" />
                   {t("更多来源")}
                 </summary>
-                <div className="mt-1.5 space-y-1.5">{moreTemplates.map(renderQuickAddRow)}</div>
+                <div className="mt-1.5 space-y-1.5">{moreTemplates.map((tpl) => renderQuickAddRow(tpl))}</div>
               </details>
             )}
             {hidden.length > 0 && (

@@ -229,4 +229,32 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     key_hint: "gsk_ 开头，免信用卡有免费额度",
     website: "https://console.groq.com",
   },
+  // 2026-09-06：国产直连免费额度专项（竞品 EchoBird 主打免费入口，实测是 OpenRouter :free
+  // 聚合，中国用户要梯子且 50 次/天；我们调研后决定主推国产直连）。
+  // 🔴 智谱/硅基流动的免费档**不在这里新开模板** —— 它们跟已有的「智谱 GLM」/
+  // 「SiliconFlow（硅基流动）」openai_base 逐字相同，而 CustomProviderModal 是按
+  // `openai_base === value.openai_base.trim()` 回填 activeTpl 的：两个模板同一个
+  // base URL 会让弹窗匹配到错误的那个（标题/预填走错家）。免费档模型 id 改写进
+  // `website/free-registry.json` 对应条目的说明文案里，引导用户复用已有模板、
+  // 手动把模型换成免费档（见该文件与 Manager.tsx 免费额度组，2026-09-06 主会话裁决）。
+  {
+    // 个人永久免费，含 Qwen3-Coder-480B / Kimi-K2 / GLM-4.6 等旗舰模型，但并发数为 1。
+    // model 故意留空：引导用「拉取模型」按钮按账户权限选择，而不是写死一个可能变动的 id。
+    name: "iFlow 心流",
+    openai_base: "https://apis.iflow.cn/v1",
+    key_url: "https://platform.iflow.cn/",
+    key_hint: "手机号注册即可，无需实名；注册后在控制台创建 Key",
+    website: "https://platform.iflow.cn/",
+  },
+  {
+    // 阿里达摩院模型社区，OpenAI 兼容推理接口，官方标称 2000 次/天免费额度。
+    // ⚠️ anthropic_base：当天没能在官方文档里核实到独立的 Anthropic 兼容路径，
+    // 宁可留空也不编一个假端点（同本文件规矩），待真机验证后再补。
+    name: "魔搭 ModelScope",
+    openai_base: "https://api-inference.modelscope.cn/v1",
+    model: "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    key_url: "https://modelscope.cn/my/myaccesstoken",
+    key_hint: "需绑定阿里云账号并完成实名认证后才能创建 Access Token",
+    website: "https://modelscope.cn",
+  },
 ];
