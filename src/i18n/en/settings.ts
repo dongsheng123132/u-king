@@ -556,8 +556,19 @@ export const settings: Record<string, string> = {
   "保存后，到工具分配中选择使用": "After saving, pick it under Tools",
   "快速添加": "Quick add",
   "选一家，自动填好地址": "Pick one — we'll fill in the endpoint",
-  "更多来源": "More sources",
-  "已添加·编辑": "Added · Edit",
   "加回 {tool}": "Add {tool} back",
   "添加其他来源": "Add another source",
+
+  // ── 右栏两 tab + 紧凑品牌行改版（ui-spec-astra-3-provider-myai-2026-09-06.md ①②③⑥⑧⑩）──
+  "编辑：{name}": "Edit: {name}",
+  "添加：{name}，预填地址/模型，进弹窗只需补 Key": "Add: {name} — endpoint/model prefilled, just fill in your key in the dialog",
+  "申请 Key：{name}": "Apply for key: {name}",
+  "免费算力 →": "Free compute →",
+  "模型厂商 {n}": "Vendors {n}",
+  "模型平台 {n}": "Platforms {n}",
+  "供应商来源分组": "Provider source group",
+  "展开其余 {n} 家": "Show {n} more",
+  "其他来源": "Other sources",
+  "加回工具": "Restore a tool",
+  "用于：{tools}": "Used by: {tools}",
 };
