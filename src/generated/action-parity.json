@@ -497,7 +497,7 @@
         "headless": true,
         "idempotent": true,
         "progress_events": false,
-        "timeout_ms": 15000
+        "timeout_ms": 45000
       },
       "id": "runtime.tool.inspect",
       "input_schema": {
@@ -826,7 +826,7 @@
         "headless": true,
         "idempotent": true,
         "progress_events": false,
-        "timeout_ms": 60000
+        "timeout_ms": 90000
       },
       "id": "runtime.openclaw2.preflight",
       "input_schema": {
@@ -1058,6 +1058,113 @@
         "type": "object"
       },
       "title": "Configure an isolated OpenClaw 2 model"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.configure_model_no_probe --json --no-input"
+        }
+      ],
+      "description": "Validate and commit one OpenAI-compatible model without calling it. runtime.openclaw2.configure_model is the separate, explicit potentially chargeable probe.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "runtime.openclaw2.configure_model_no_probe",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "configured",
+          "ready",
+          "provider",
+          "model",
+          "validation",
+          "probe",
+          "restart_required",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Configure an isolated OpenClaw 2 model without paid probe"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.openclaw2.stop --json --no-input"
+        }
+      ],
+      "description": "Stop only the gateway whose process identity is owned by this private OpenClaw 2 tree; it never kills unrelated node processes.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 15000
+      },
+      "id": "runtime.openclaw2.stop",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "stopped",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Stop the isolated OpenClaw 2 gateway"
     },
     {
       "bindings": [
@@ -4994,7 +5101,7 @@
   "application": {
     "id": "org.u-king.desktop",
     "name": "U-King",
-    "version": "1.3.0"
+    "version": "1.3.1-portable.1"
   },
   "conformance_targets": [
     "AP-1",
@@ -5002,7 +5109,7 @@
   ],
   "generated_from": {
     "generator": "U-King Action Registry host projection",
-    "revision": "1.3.0"
+    "revision": "1.3.1-portable.1"
   },
   "spec_version": "0.5.0",
   "state": {
