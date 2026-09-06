@@ -2296,78 +2296,82 @@ function MyAI({
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <div className="flex items-center gap-1">
-                        {t.launch_app ? (
-                          <button
-                            onClick={() => onLaunch(t)}
-                            data-action-id="runtime.tool.launch"
-                            className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 shadow-sm transition-colors"
-                          >
-                            <Sparkles size={14} /> {tr("打开应用")}
-                          </button>
-                        ) : t.launch_cmd ? (
-                          <button
-                            onClick={() => onLaunch(t)}
-                            data-action-id="runtime.tool.launch"
-                            className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 shadow-sm transition-colors"
-                          >
-                            {/* Hermes 已改主推终端版（2026-07-07）：点了进 app 页起 TUI 而非网页版，统一「打开终端」。 */}
-                            <TerminalIcon size={14} /> {tr("打开终端")}
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-ink-4 shrink-0 text-right">{tr("从开始菜单打开")}</span>
+                    {/* 2026-09-06 修锯齿：右列改两行两列网格，打开按钮/更多菜单/升级修复各自成列，
+                        右缘对成一条线。第一列宽 104px 按「打开终端」按钮实测渲染宽度定（不含
+                        阴影的 padding+图标+文字总宽约在此区间），没有更多菜单的卡在第二列留一个
+                        同尺寸空位占位，不能省略——省了第一列又会跟着漂。 */}
+                    <div className="grid grid-cols-[104px_32px] gap-1 shrink-0">
+                      {t.launch_app ? (
+                        <button
+                          onClick={() => onLaunch(t)}
+                          data-action-id="runtime.tool.launch"
+                          className="col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-1.5 px-2 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shadow-sm transition-colors"
+                        >
+                          <Sparkles size={14} /> {tr("打开应用")}
+                        </button>
+                      ) : t.launch_cmd ? (
+                        <button
+                          onClick={() => onLaunch(t)}
+                          data-action-id="runtime.tool.launch"
+                          className="col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-1.5 px-2 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shadow-sm transition-colors"
+                        >
+                          {/* Hermes 已改主推终端版（2026-07-07）：点了进 app 页起 TUI 而非网页版，统一「打开终端」。 */}
+                          <TerminalIcon size={14} /> {tr("打开终端")}
+                        </button>
+                      ) : (
+                        <span className="col-start-1 row-start-1 self-center text-[11px] text-ink-4 text-right">{tr("从开始菜单打开")}</span>
+                      )}
+                      {/* 2026-09-06 Astra UI 规格 B2：换模型 + 卸载从卡底整行入口收进这个
+                          「更多」菜单，卡片只留「打开」一个主动作。卸载的二次确认流程和
+                          red-on-hover 破坏性视觉、卸载动作绑定（下方按钮上的 data-action-id）
+                          原样保留，只是换了触发位置。 */}
+                      {(targets.length > 0 || UNINSTALLABLE.has(t.id)) ? (
+                      <ToolMoreMenu>
+                        {(close) => (
+                          <>
+                            {targets.length > 0 && (
+                              <button
+                                onClick={() => {
+                                  close();
+                                  onGoManage();
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-2 hover:bg-white/[0.05] hover:text-ink-0 transition-colors"
+                              >
+                                <Cpu size={13} />
+                                {tr("单独给这个工具换模型（高级）")}
+                              </button>
+                            )}
+                            {/* 卸载：彻底删本体 + 残留清理（修「删了还检测到、重装又冒出来」）。二次确认在 onUninstall。 */}
+                            {UNINSTALLABLE.has(t.id) && (
+                              <button
+                                data-action-id="runtime.aitool.uninstall"
+                                onClick={() => {
+                                  close();
+                                  onUninstall(t);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06] transition-colors"
+                                title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
+                              >
+                                <Trash2 size={13} />
+                                {tr("卸载")}
+                              </button>
+                            )}
+                          </>
                         )}
-                        {/* 2026-09-06 Astra UI 规格 B2：换模型 + 卸载从卡底整行入口收进这个
-                            「更多」菜单，卡片只留「打开」一个主动作。卸载的二次确认流程和
-                            red-on-hover 破坏性视觉、卸载动作绑定（下方按钮上的 data-action-id）
-                            原样保留，只是换了触发位置。 */}
-                        {(targets.length > 0 || UNINSTALLABLE.has(t.id)) && (
-                        <ToolMoreMenu>
-                          {(close) => (
-                            <>
-                              {targets.length > 0 && (
-                                <button
-                                  onClick={() => {
-                                    close();
-                                    onGoManage();
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-2 hover:bg-white/[0.05] hover:text-ink-0 transition-colors"
-                                >
-                                  <Cpu size={13} />
-                                  {tr("单独给这个工具换模型（高级）")}
-                                </button>
-                              )}
-                              {/* 卸载：彻底删本体 + 残留清理（修「删了还检测到、重装又冒出来」）。二次确认在 onUninstall。 */}
-                              {UNINSTALLABLE.has(t.id) && (
-                                <button
-                                  data-action-id="runtime.aitool.uninstall"
-                                  onClick={() => {
-                                    close();
-                                    onUninstall(t);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06] transition-colors"
-                                  title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
-                                >
-                                  <Trash2 size={13} />
-                                  {tr("卸载")}
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </ToolMoreMenu>
-                        )}
-                      </div>
+                      </ToolMoreMenu>
+                      ) : (
+                        <span className="col-start-2 row-start-1 w-8 h-8" aria-hidden="true" />
+                      )}
                       {/* 重新安装 / 修复：已装的卡片原来只有「打开」，一旦「已装」判错，
                           客户就被彻底困住 —— 卸载了还显示已装、点了只能打开、没有任何路子重装
                           （线上 issue #237）。检测再准也不该成为唯一出路：这里永远留一条重装口，
                           且必须始终可见，不藏进「更多」菜单。
                           2026-09-06 方案「⑨工具卡压缩」：从卡底整宽横条挪到右列按钮下方的
-                          h-8 紧凑入口，调用同一个 onOpen(t)。 */}
+                          h-8 紧凑入口，调用同一个 onOpen(t)，第一列 w-full 与打开按钮同宽对齐。 */}
                       {t.action === "install" && (
                         <button
                           onClick={() => onOpen(t)}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 h-8 rounded-lg border border-white/[0.10] text-[12px] text-ink-2 hover:text-accent hover:bg-bg-2 transition-colors"
+                          className="col-start-1 row-start-2 w-full inline-flex items-center justify-center gap-1 px-2.5 h-8 rounded-lg border border-white/[0.10] text-[12px] text-ink-2 hover:text-accent hover:bg-bg-2 transition-colors"
                           title={tr("重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里")}
                         >
                           <Download size={12} />
