@@ -312,6 +312,12 @@ pub const OPENCLAW2_CONFIGURE_MODEL_NO_PROBE: &str = "runtime.openclaw2.configur
 pub const OPENCLAW2_STOP: &str = "runtime.openclaw2.stop";
 pub const OPENCLAW2_OPEN_DASHBOARD: &str = "runtime.openclaw2.open_dashboard";
 pub const DEVICE_WALLET_RECHARGE: &str = "runtime.device.wallet.recharge";
+/// Read device-wallet state without serializing the credential to a UI, CLI
+/// response, or action log.
+pub const DEVICE_WALLET_STATUS: &str = "runtime.device.wallet.status";
+/// Copy the current device-wallet key directly to the OS clipboard. The Action
+/// result deliberately contains only `copied`.
+pub const DEVICE_WALLET_COPY_BACKUP: &str = "runtime.device.wallet.copy_backup";
 pub const USB_GENIE_INSPECT: &str = "runtime.usb_genie.inspect";
 pub const USB_GENIE_DEPLOY: &str = "runtime.usb_genie.deploy";
 pub const USB_GENIE_VERIFY: &str = "runtime.usb_genie.verify";

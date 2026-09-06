@@ -2076,10 +2076,40 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "Open the approved recharge page in the system browser. It never submits or pays an order.",
             10_000,
             "required",
-            serde_json::json!({"url":{"type":"string","minLength":1,"writeOnly":true}}),
-            &["url"],
+            serde_json::json!({}),
+            &[],
             &["changed", "opened"],
             action_open_recharge,
+            None,
+        ),
+        actions::readonly(
+            actions::DEVICE_WALLET_STATUS,
+            "Inspect the device wallet without revealing its key",
+            "Return wallet balance and a masked key only. The credential never crosses the Action response boundary.",
+            15_000,
+            &["masked_key", "balance", "charged", "low_balance", "wallet_id", "legacy_balance_unrecoverable"],
+            |_, _, _| {
+                let wallet = device::get_device_key()?;
+                Ok(serde_json::json!({
+                    "masked_key": mask_device_wallet_key(&wallet.key),
+                    "balance": wallet.balance,
+                    "charged": wallet.charged,
+                    "low_balance": wallet.low_balance,
+                    "wallet_id": wallet.wallet_id,
+                    "legacy_balance_unrecoverable": wallet.legacy_balance_unrecoverable,
+                }))
+            },
+        ),
+        actions::write(
+            actions::DEVICE_WALLET_COPY_BACKUP,
+            "Copy the device-wallet key to the system clipboard",
+            "Copy the current key directly to the operating-system clipboard for backup. The key is never returned, printed, logged, or accepted through CLI arguments.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["copied"],
+            |_, _, _| copy_device_wallet_backup(),
             None,
         ),
         actions::readonly(
@@ -6390,6 +6420,7 @@ fn portable_context_status() -> serde_json::Value {
     match portable_context::current() {
         Some(context) => serde_json::json!({
             "portable": true,
+            "package_root": context.root,
             "data_root": context.uking_home(),
             "openclaw_root": context.openclaw_root(),
         }),
@@ -6446,13 +6477,35 @@ async fn open_recharge(app: AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
-fn action_open_recharge(_: &str, input: serde_json::Value, _: &actions::ProgressSink) -> Result<serde_json::Value, String> {
-    let url = input.get("url").and_then(serde_json::Value::as_str).ok_or("invalid_input: url 必填")?;
+fn action_open_recharge(_: &str, _: serde_json::Value, _: &actions::ProgressSink) -> Result<serde_json::Value, String> {
+    // The key-bearing URL is derived and consumed in the core. Passing it
+    // through a renderer request risks exposing it in devtools or adapter logs.
+    let recharge_url = device::get_device_key()?.recharge_url;
+    let url = recharge_url.as_str();
     const ALLOWED: [&str; 2] = ["https://u-claw.org.cn/", "https://cloud.u-claw.org/"];
     if !ALLOWED.iter().any(|p| url.starts_with(p)) { return Err("非法充值地址".into()); }
     let app = action_opener().get().ok_or("充值 opener 尚未初始化")?;
     app.opener().open_url(url, None::<String>).map_err(|e| format!("打开充值页失败: {e}"))?;
     Ok(serde_json::json!({"changed":false,"opened":true}))
+}
+
+fn mask_device_wallet_key(key: &str) -> String {
+    if key.chars().count() <= 7 {
+        return "已设置".into();
+    }
+    let prefix: String = key.chars().take(3).collect();
+    let suffix: String = key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    format!("{prefix}••••••••{suffix}")
+}
+
+fn copy_device_wallet_backup() -> Result<serde_json::Value, String> {
+    let key = device::get_device_key()?.key;
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|_| "无法访问系统剪贴板，请关闭占用剪贴板的程序后重试")?;
+    clipboard
+        .set_text(key)
+        .map_err(|_| "无法写入系统剪贴板，请关闭占用剪贴板的程序后重试")?;
+    Ok(serde_json::json!({ "copied": true }))
 }
 
 /// 本机某个端口上有没有服务在听（给「预览网页」用；测试报告 #015）。
@@ -8404,7 +8457,9 @@ fn cli_help_text() -> String {
 pub fn run() {
     if let Err(error) = portable_context::validate_current_executable() {
         eprintln!("[portable] {error}");
-        return;
+        // An invalid marker is a failed safety gate, not a successful no-op.
+        // Do not let automation accept it or fall back to host storage.
+        std::process::exit(2);
     }
     // 无头自检模式：U-King.exe --selfcheck [out.json]
     let args: Vec<String> = std::env::args().collect();
@@ -9902,7 +9957,17 @@ pub fn run() {
     // 只借「跳过单实例」这一件事，**不复用 `nav_probe` 本身** —— 它在下面还会真的去跑
     // 浏览器导航跑道（`run_browser_nav_probe`）。把两者混成一个布尔，多开预览会莫名其妙
     // 起一个探针然后自己退出，而症状看起来会像「新版启动就崩」。
-    let skip_single_instance = nav_probe || allow_multi;
+    let portable_gui = portable_context::current().is_some();
+    // A portable package uses its root-hashed OS mutex below. The normal
+    // plugin's identifier-wide mutex would make independent USB packages
+    // block one another.
+    let skip_single_instance = nav_probe || allow_multi || portable_gui;
+    if portable_gui {
+        if let Err(error) = claim_portable_gui_instance() {
+            eprintln!("[portable] {error}");
+            return;
+        }
+    }
 
     // 演示卸载绿色版是**独立分发的另一个产品**，却和主程序共用同一份 tauri.conf.json（=同一个
     // identifier，也就是同一把单实例锁）。不排除它的话，客户机上开着 U-King 时那个绿色版
@@ -9982,7 +10047,6 @@ pub fn run() {
             // Action Core owns dashboard opening so CLI, MCP and the desktop
             // invoke exactly one checked path. Keep the token-bearing URL
             // inside the process and pass only this capability handle.
-            openclaw2::set_dashboard_opener(app.handle().clone());
             set_action_opener(app.handle().clone());
             create_main_window(app)?;
             // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
@@ -10006,7 +10070,7 @@ pub fn run() {
             //
             // 无头模式（`action run` / `mcp serve` / `--selfcheck`）走不到这儿，
             // 对它们 `inspect()` 报 headless、能力完整 —— 不该因为界面开着就被降权。
-            let is_sidecar = allow_multi;
+            let is_sidecar = allow_multi && !portable_gui;
             instance::mark(is_sidecar);
             // ★ 「这两份缓存只读」由组合根注入，**不是让 tasks/agent 去 import instance**
             //   —— 模块独立铁律禁止模块间横向 import，`check-module-coupling` 拦过这一版。
@@ -10594,7 +10658,6 @@ pub fn run() {
                     && !matches!(
                         cmd.as_str(),
                         "portable_context_status"
-                            | "get_device_key"
                             | "open_recharge"
                             | "action_run"
                             | "action_parity_call"
@@ -10635,6 +10698,66 @@ pub fn run() {
                 }
             }
         });
+}
+
+// The regular desktop product uses the Tauri identifier-wide single-instance
+// plugin. A portable package needs a narrower scope: two launches of the same
+// folder must converge, while two separately copied packages may run together.
+// Keep this GUI-only; `action run` and MCP exit before the window path and must
+// remain usable for diagnostics while the GUI is open.
+static PORTABLE_GUI_MUTEX: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+fn claim_portable_gui_instance() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        unsafe extern "system" {
+            fn CreateMutexW(
+                attributes: *const std::ffi::c_void,
+                initial_owner: i32,
+                name: *const u16,
+            ) -> *mut std::ffi::c_void;
+            fn GetLastError() -> u32;
+            fn SetLastError(error: u32);
+            fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+            fn MessageBoxW(
+                hwnd: *mut std::ffi::c_void,
+                text: *const u16,
+                caption: *const u16,
+                kind: u32,
+            ) -> i32;
+        }
+
+        const ERROR_ALREADY_EXISTS: u32 = 183;
+        const MB_OK: u32 = 0;
+        const MB_ICONINFORMATION: u32 = 0x40;
+        let context = portable_context::current().ok_or("当前不是受管便携包")?;
+        let root = context.root.to_string_lossy().to_lowercase();
+        let mutex_name = format!("Local\\U-King-OpenClaw-Portable-{}", blake3::hash(root.as_bytes()).to_hex());
+        let wide_name: Vec<u16> = std::ffi::OsStr::new(&mutex_name).encode_wide().chain(Some(0)).collect();
+        unsafe {
+            SetLastError(0);
+            let handle = CreateMutexW(std::ptr::null(), 1, wide_name.as_ptr());
+            if handle.is_null() {
+                return Err("无法创建便携包单实例锁".into());
+            }
+            if GetLastError() == ERROR_ALREADY_EXISTS {
+                let _ = CloseHandle(handle);
+                let text: Vec<u16> = std::ffi::OsStr::new("此绿色包已在运行，已保留原窗口。")
+                    .encode_wide().chain(Some(0)).collect();
+                let title: Vec<u16> = std::ffi::OsStr::new("U-King OpenClaw 绿色版")
+                    .encode_wide().chain(Some(0)).collect();
+                MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
+                return Err("同一便携包已在运行".into());
+            }
+            // Never close this handle: the OS releases it when this GUI exits.
+            // Retaining it in a static prevents a future refactor from dropping
+            // it while the window is still alive.
+            let _ = PORTABLE_GUI_MUTEX.set(handle as usize);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
