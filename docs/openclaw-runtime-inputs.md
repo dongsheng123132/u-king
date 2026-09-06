@@ -14,3 +14,30 @@ values against `src-tauri/resources/openclaw2-runtime.json` before copying:
 The staging process installs dependencies from the normalized lock and does
 not copy any existing OpenClaw state, workspace, logs, device wallet, secret,
 or runtime application directory.
+
+The builder also verifies the complete staging tree: 37,786 files, SHA-256
+`bf78dbf27a3bae3155e53aae49edf548d59e2615b5660ceef260011d4af78003`.
+Tree hashes cover ASCII-sorted records of relative path, NUL, hexadecimal
+file SHA-256, and LF. Archive hashes alone do not authenticate an expanded tree.
+
+## Rebuilding the compatibility sidecar
+
+Check out `openclaw/fs-safe` at
+`524e2a2dd50c390f924a0360c6c71ddf74f70f42`, then run in that checkout:
+
+```sh
+git apply --check /path/to/u-king/patches/fs-safe08-windows-compat.patch
+git apply /path/to/u-king/patches/fs-safe08-windows-compat.patch
+pnpm install --frozen-lockfile
+rustup target add wasm32-unknown-unknown
+pnpm build
+```
+
+Use a separate checkout and dependency directory. On Windows, put the rustup
+toolchain before any system Rust installation in PATH. Pass the resulting
+`dist` directory to the portable builder; do not edit generated JavaScript.
+The verified source rebuild produces 472 files with tree SHA-256
+`02761bf6d5c75c3be9d0fea1897eeb81ee884700be373c2ceef4b34c61712e7c`;
+`root-impl.js` is
+`6f701d377943880178b1478881a613db48e6a949f42a453007301bc61ea9f9fb`.
+These are the same bytes used by the NTFS/exFAT compatibility probes.

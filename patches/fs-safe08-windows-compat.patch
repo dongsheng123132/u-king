@@ -6,7 +6,7 @@ diff --git a/src/root-impl.ts b/src/root-impl.ts
      if (
        process.platform === "win32" &&
 -      (params.renameIdentity === "verify-content-with-lock" || !getNativeBinding())
-+      (params.renameIdentity !== "verify-content-with-lock" && !getNativeBinding())
++      params.renameIdentity !== "verify-content-with-lock" && !getNativeBinding()
      ) {
        await writeFileFallback(root, params);
        return;
