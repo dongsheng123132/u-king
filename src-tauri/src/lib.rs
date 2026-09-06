@@ -1940,7 +1940,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "Inspect the isolated OpenClaw 2 runtime",
             "Read only U-King's private OpenClaw 2 runtime and state. It never probes ClawX or legacy OpenClaw paths.",
             5_000,
-            &["schema_version", "ready", "blockers", "installed", "prepared", "running", "state_version", "profile", "paths", "runtime", "gateway"],
+            &["schema_version", "ready", "blockers", "installed", "prepared", "running", "state_version", "profile", "paths", "runtime", "gateway", "model"],
             openclaw2::action_inspect,
         ),
         actions::readonly(
@@ -1983,18 +1983,18 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             actions::OPENCLAW2_LAUNCH,
             "Launch the isolated OpenClaw 2 gateway",
             "Launch only U-King's private OpenClaw 2 profile under external supervision. It refuses an externally owned port and never exposes the gateway token.",
-            60_000,
+            210_000,
             "required",
             serde_json::json!({}),
             &[],
-            &["changed", "running", "ready", "pid", "port", "dashboard_url", "health", "state_version"],
+            &["changed", "running", "ready", "starting", "retryable", "reason", "pid", "port", "dashboard_url", "health", "state_version"],
             openclaw2::action_launch,
             Some(openclaw2::state_version),
         ),
         actions::write(
             actions::OPENCLAW2_CONFIGURE_MODEL,
             "Configure an isolated OpenClaw 2 model",
-            "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned.",
+            "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are never returned; portable mode injects its verified managed secret only into its own child process.",
             180_000,
             "required",
             serde_json::json!({
@@ -2003,7 +2003,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "api_key": { "type": "string", "writeOnly": true }
             }),
             &["provider_id"],
-            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "state_version"],
+            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "restart_message", "state_version"],
             |_, input, _| {
                 let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
                     .ok_or("invalid_input: provider_id 必填")?;
@@ -2035,7 +2035,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "api_key": { "type": "string", "writeOnly": true }
             }),
             &["provider_id"],
-            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "state_version"],
+            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "restart_message", "state_version"],
             |_, input, _| {
                 let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
                     .ok_or("invalid_input: provider_id 必填")?;
@@ -3329,8 +3329,8 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "required",
             serde_json::json!({}),
             &[],
-            &["message"],
-            |_, _, _| Ok(serde_json::json!({ "message": device::rotate_device_key()? })),
+            &["message", "applies_on_next_start", "restart_required", "restart_message"],
+            |_, _, _| Ok(device_wallet_action_success(device::rotate_device_key()?)),
             None,
         ),
         // 填入一把已有的密钥。**要确认**：它会顶掉本机当前那把 —— 如果当前这把上还有
@@ -3345,10 +3345,10 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "key": { "type": "string", "description": "The sk- access key to use on this machine." }
             }),
             &["key"],
-            &["message"],
+            &["message", "applies_on_next_start", "restart_required", "restart_message"],
             |_, input, _| {
                 let key = input["key"].as_str().unwrap_or_default();
-                Ok(serde_json::json!({ "message": device::adopt_device_key(key)? }))
+                Ok(device_wallet_action_success(device::adopt_device_key(key)?))
             },
             None,
         ),
@@ -6492,6 +6492,23 @@ fn action_open_recharge(_: &str, _: serde_json::Value, _: &actions::ProgressSink
     // an error returned to any surface.
     openclaw2::open_system_browser(url).map_err(|_| "打开充值页失败")?;
     Ok(serde_json::json!({"changed":false,"opened":true}))
+}
+
+/// A portable gateway receives its credential only when it is spawned.  Wallet
+/// mutation deliberately does not restart a potentially active user session,
+/// so every machine caller gets an explicit applicability receipt.
+fn device_wallet_action_success(message: String) -> serde_json::Value {
+    let portable = portable_context::current().is_some();
+    serde_json::json!({
+        "message": message,
+        "applies_on_next_start": portable,
+        "restart_required": portable,
+        "restart_message": if portable {
+            serde_json::json!("请停止并重新启动 OpenClaw，使新密钥生效")
+        } else {
+            serde_json::Value::Null
+        }
+    })
 }
 
 fn mask_device_wallet_key(key: &str) -> String {

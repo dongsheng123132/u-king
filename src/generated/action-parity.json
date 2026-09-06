@@ -800,7 +800,8 @@
           "profile",
           "paths",
           "runtime",
-          "gateway"
+          "gateway",
+          "model"
         ],
         "type": "object"
       },
@@ -967,7 +968,7 @@
         "headless": true,
         "idempotent": true,
         "progress_events": false,
-        "timeout_ms": 60000
+        "timeout_ms": 210000
       },
       "id": "runtime.openclaw2.launch",
       "input_schema": {
@@ -986,6 +987,9 @@
           "changed",
           "running",
           "ready",
+          "starting",
+          "retryable",
+          "reason",
           "pid",
           "port",
           "dashboard_url",
@@ -1003,7 +1007,7 @@
           "target": "cli:action run runtime.openclaw2.configure_model --json --no-input"
         }
       ],
-      "description": "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned.",
+      "description": "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are never returned; portable mode injects its verified managed secret only into its own child process.",
       "effects": {
         "audit_required": true,
         "class": "write",
@@ -1053,6 +1057,7 @@
           "validation",
           "probe",
           "restart_required",
+          "restart_message",
           "state_version"
         ],
         "type": "object"
@@ -1116,6 +1121,7 @@
           "validation",
           "probe",
           "restart_required",
+          "restart_message",
           "state_version"
         ],
         "type": "object"
@@ -4022,7 +4028,10 @@
       },
       "output_schema": {
         "required": [
-          "message"
+          "message",
+          "applies_on_next_start",
+          "restart_required",
+          "restart_message"
         ],
         "type": "object"
       },
@@ -4074,7 +4083,10 @@
       },
       "output_schema": {
         "required": [
-          "message"
+          "message",
+          "applies_on_next_start",
+          "restart_required",
+          "restart_message"
         ],
         "type": "object"
       },

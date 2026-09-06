@@ -27,6 +27,11 @@ const SUPERVISOR_NAME: &str = "supervisor.json";
 const INSTALL_NAME: &str = "installed.json";
 const MODEL_MARKER_NAME: &str = "model-config.json";
 const MODEL_SECRET_PROVIDER: &str = "uking-openclaw2-file";
+const MODEL_ENV_SECRET_PROVIDER: &str = "uking-openclaw2-env";
+// This name is deliberately product-specific. The portable child starts from
+// a cleared environment, so neither a host value with this name nor any
+// provider-shaped host variable can become a model credential.
+const MODEL_ENV_SECRET_NAME: &str = "UKING_OPENCLAW_MODEL_API_KEY";
 const NODE_STAGE_NAME: &str = "node-install-staging";
 const NODE_STAGE_MARKER: &str = ".uking-openclaw2-node-stage.json";
 const NODE_RUNTIME_MARKER: &str = ".uking-openclaw2-node-runtime.json";
@@ -734,8 +739,42 @@ fn relocate_managed_portable_config(p: &Paths) -> Result<bool, String> {
         return Err("OpenClaw2 workspace 不是受管旧根目录引用，拒绝重定位".into());
     }
     let provider_pointer = format!("/secrets/providers/{MODEL_SECRET_PROVIDER}");
+    let env_provider_pointer = format!("/secrets/providers/{MODEL_ENV_SECRET_PROVIDER}");
     let mut marker = None;
-    if let Some(provider) = config.pointer(&provider_pointer) {
+    if let Some(provider) = config.pointer(&env_provider_pointer) {
+        let value: Value = serde_json::from_slice(
+            &fs::read(model_marker_file(p))
+                .map_err(|_| "OpenClaw2 env secret 缺少受管 marker，拒绝重定位")?,
+        )
+        .map_err(|_| "OpenClaw2 env secret marker 已损坏，拒绝重定位")?;
+        let name = value
+            .get("secret_basename")
+            .and_then(Value::as_str)
+            .filter(|name| !name.contains(['/', '\\']) && name.starts_with("model-"))
+            .ok_or("OpenClaw2 env secret marker 缺少安全名称，拒绝重定位")?;
+        let old_hash = crate::installer::sha256_hex_bytes(&old_bytes);
+        if value.get("owner").and_then(Value::as_str) != Some(PROFILE)
+            || value.get("config_hash").and_then(Value::as_str) != Some(old_hash.as_str())
+            || value.get("secret_ref").and_then(Value::as_str) != Some("env")
+            || provider.get("source").and_then(Value::as_str) != Some("env")
+            || provider
+                .get("allowlist")
+                .and_then(Value::as_array)
+                .map(|values| values.len() == 1 && values[0].as_str() == Some(MODEL_ENV_SECRET_NAME))
+                != Some(true)
+        {
+            return Err("OpenClaw2 env secret 不是受管旧根目录引用，拒绝重定位".into());
+        }
+        let secret = model_secrets_dir(p).join(name);
+        ensure_private_path(&secret, p)?;
+        if !secret.is_file() {
+            return Err("OpenClaw2 移动后的受管 env secret 不存在，拒绝重定位".into());
+        }
+        marker = Some(value);
+    } else if let Some(provider) = config.pointer(&provider_pointer) {
+        if crate::portable_context::current().is_some() {
+            return Err("OpenClaw2 便携包不接受旧 file secret 配置，拒绝重定位".into());
+        }
         let value: Value = serde_json::from_slice(
             &fs::read(model_marker_file(p))
                 .map_err(|_| "OpenClaw2 file secret 缺少受管 marker，拒绝重定位")?,
@@ -961,7 +1000,7 @@ pub fn inspect() -> Result<Value, String> {
     let model = fs::read_to_string(model_marker_file(&p))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .map(|marker| json!({"configured":true,"provider_id":marker["source_provider"],"provider_key":marker["provider_key"],"model":marker["model"],"probe":marker["probe"]}))
+        .map(|marker| json!({"configured":true,"provider_id":marker["source_provider"],"provider_key":marker["provider_key"],"model":marker["model"],"secret_ref":marker["secret_ref"],"probe":marker["probe"]}))
         .unwrap_or_else(|| json!({"configured":false}));
     let mut blockers = Vec::<String>::new();
     if !installed {
@@ -1209,6 +1248,18 @@ fn model_secret_file(p: &Paths, nonce: &str) -> PathBuf {
     model_secrets_dir(p).join(format!("model-{nonce}.json"))
 }
 
+fn model_secret_provider(portable: bool) -> &'static str {
+    if portable {
+        MODEL_ENV_SECRET_PROVIDER
+    } else {
+        MODEL_SECRET_PROVIDER
+    }
+}
+
+fn model_secret_ref(portable: bool) -> &'static str {
+    if portable { "env" } else { "file" }
+}
+
 fn model_marker_matches(p: &Paths, route: &ModelRoute, provider_key: &str) -> Option<Value> {
     let marker: Value =
         serde_json::from_str(&fs::read_to_string(model_marker_file(p)).ok()?).ok()?;
@@ -1219,14 +1270,10 @@ fn model_marker_matches(p: &Paths, route: &ModelRoute, provider_key: &str) -> Op
     {
         return None;
     }
-    let secret_name = marker.get("secret_basename").and_then(Value::as_str)?;
-    if secret_name.contains(['/', '\\']) || !secret_name.starts_with("model-") {
-        return None;
-    }
-    let secret: Value =
-        serde_json::from_str(&fs::read_to_string(model_secrets_dir(p).join(secret_name)).ok()?)
-            .ok()?;
-    (secret.get("api_key").and_then(Value::as_str) == Some(route.key.as_str())).then_some(marker)
+    let portable = crate::portable_context::current().is_some();
+    (read_managed_model_api_key(p, &config_file(p), &marker, portable).ok()?.as_str()
+        == route.key)
+        .then_some(marker)
 }
 
 fn model_owned_marker(p: &Paths) -> Option<Value> {
@@ -1236,11 +1283,240 @@ fn model_owned_marker(p: &Paths) -> Option<Value> {
         .filter(|marker| marker.get("owner").and_then(Value::as_str) == Some(PROFILE))
 }
 
+#[cfg(windows)]
+fn require_single_link_secret(file: &fs::File) -> Result<(), String> {
+    use std::os::windows::io::AsRawHandle;
+    #[repr(C)]
+    struct ByHandleFileInformation {
+        attributes: u32,
+        creation_time_low: u32,
+        creation_time_high: u32,
+        access_time_low: u32,
+        access_time_high: u32,
+        write_time_low: u32,
+        write_time_high: u32,
+        volume_serial: u32,
+        file_size_high: u32,
+        file_size_low: u32,
+        number_of_links: u32,
+        file_index_high: u32,
+        file_index_low: u32,
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileInformationByHandle(
+            handle: isize,
+            information: *mut ByHandleFileInformation,
+        ) -> i32;
+    }
+    let mut information = std::mem::MaybeUninit::<ByHandleFileInformation>::zeroed();
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle() as isize, information.as_mut_ptr()) }
+        == 0
+    {
+        return Err("OpenClaw2 无法核验受管 model secret 文件身份，拒绝注入密钥".into());
+    }
+    if unsafe { information.assume_init().number_of_links } != 1 {
+        return Err("OpenClaw2 受管 model secret 存在硬链接，拒绝注入密钥".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn require_single_link_secret(_: &fs::File) -> Result<(), String> {
+    Ok(())
+}
+
+fn read_managed_model_secret_bytes(p: &Paths, secret: &Path, portable: bool) -> Result<Vec<u8>, String> {
+    if portable {
+        let root = fs::canonicalize(&p.root)
+            .map_err(|_| "OpenClaw2 受管根目录不可解析，拒绝注入密钥")?;
+        let state = fs::canonicalize(&p.state)
+            .map_err(|_| "OpenClaw2 受管 state 目录不可解析，拒绝注入密钥")?;
+        let secret_dir = model_secrets_dir(p);
+        crate::portable_context::ensure_owned_path_from_root(&p.root, &secret_dir)
+            .map_err(|_| "OpenClaw2 受管 model secret 目录不安全，拒绝注入密钥")?;
+        crate::portable_context::ensure_owned_path_from_root(&p.root, secret)
+            .map_err(|_| "OpenClaw2 受管 model secret 路径不安全，拒绝注入密钥")?;
+        let canonical_dir = fs::canonicalize(&secret_dir)
+            .map_err(|_| "OpenClaw2 受管 model secret 目录不可解析，拒绝注入密钥")?;
+        let canonical_secret = fs::canonicalize(secret)
+            .map_err(|_| "OpenClaw2 受管 model secret 不可解析，拒绝注入密钥")?;
+        if !state.starts_with(&root)
+            || canonical_dir.parent() != Some(state.as_path())
+            || !canonical_dir.starts_with(&root)
+            || canonical_secret.parent() != Some(canonical_dir.as_path())
+            || !canonical_secret.starts_with(&root)
+        {
+            return Err("OpenClaw2 受管 model secret 越出便携包，拒绝注入密钥".into());
+        }
+    }
+    let before = fs::symlink_metadata(secret)
+        .map_err(|_| "OpenClaw2 受管 model secret 不可读，拒绝注入密钥")?;
+    if !before.is_file() || before.file_type().is_symlink() {
+        return Err("OpenClaw2 受管 model secret 不是普通文件，拒绝注入密钥".into());
+    }
+    let mut file = fs::File::open(secret)
+        .map_err(|_| "OpenClaw2 受管 model secret 不可读，拒绝注入密钥")?;
+    if portable {
+        require_single_link_secret(&file)?;
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|_| "OpenClaw2 读取受管 model secret 失败，拒绝注入密钥")?;
+    let after = fs::symlink_metadata(secret)
+        .map_err(|_| "OpenClaw2 受管 model secret 读取后不可核验，拒绝注入密钥")?;
+    if !after.is_file()
+        || after.file_type().is_symlink()
+        || before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+    {
+        return Err("OpenClaw2 受管 model secret 在读取期间变化，拒绝注入密钥".into());
+    }
+    Ok(bytes)
+}
+
+/// Resolve a model credential only after proving the exact configuration
+/// generation that names it. The returned value remains process-local: callers
+/// may place it in the cleared portable child's environment but never in a
+/// config, argv, Action output or log.
+fn read_managed_model_api_key(
+    p: &Paths,
+    config_path: &Path,
+    marker: &Value,
+    portable: bool,
+) -> Result<String, String> {
+    if portable {
+        crate::portable_context::ensure_owned_path_from_root(&p.root, config_path)
+            .map_err(|_| "OpenClaw2 受管 model 配置路径不安全，拒绝注入密钥")?;
+    }
+    let bytes = fs::read(config_path)
+        .map_err(|_| "OpenClaw2 受管 model 配置不可读，拒绝注入密钥")?;
+    let hash = crate::installer::sha256_hex_bytes(&bytes);
+    let provider_key = marker
+        .get("provider_key")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or("OpenClaw2 受管 model marker 缺少 provider，拒绝注入密钥")?;
+    let model = marker
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or("OpenClaw2 受管 model marker 缺少模型，拒绝注入密钥")?;
+    let name = marker
+        .get("secret_basename")
+        .and_then(Value::as_str)
+        .filter(|name| !name.contains(['/', '\\']) && name.starts_with("model-"))
+        .ok_or("OpenClaw2 受管 model marker 缺少安全 secret 名称，拒绝注入密钥")?;
+    if marker.get("owner").and_then(Value::as_str) != Some(PROFILE)
+        || marker.get("config_hash").and_then(Value::as_str) != Some(hash.as_str())
+        || marker
+            .get("secret_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("file")
+            != model_secret_ref(portable)
+    {
+        return Err("OpenClaw2 受管 model marker 与当前配置不一致，拒绝注入密钥".into());
+    }
+    let secret = model_secrets_dir(p).join(name);
+    let secret_value: Value = serde_json::from_slice(
+        &read_managed_model_secret_bytes(p, &secret, portable)?,
+    )
+    .map_err(|_| "OpenClaw2 受管 model secret 已损坏，拒绝注入密钥")?;
+    let key = secret_value
+        .get("api_key")
+        .and_then(Value::as_str)
+        .filter(|key| !key.trim().is_empty())
+        .ok_or("OpenClaw2 受管 model secret 缺少 API Key，拒绝注入密钥")?;
+    let config: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| "OpenClaw2 受管 model 配置已损坏，拒绝注入密钥")?;
+    let provider = config
+        .pointer(&format!("/models/providers/{provider_key}"))
+        .ok_or("OpenClaw2 当前配置缺少受管 model provider，拒绝注入密钥")?;
+    let secret_provider = config
+        .pointer(&format!("/secrets/providers/{}", model_secret_provider(portable)))
+        .ok_or("OpenClaw2 当前配置缺少受管 model secret provider，拒绝注入密钥")?;
+    let expected_id = if portable { MODEL_ENV_SECRET_NAME } else { "/api_key" };
+    if provider.pointer("/apiKey/source").and_then(Value::as_str) != Some(model_secret_ref(portable))
+        || provider.pointer("/apiKey/provider").and_then(Value::as_str)
+            != Some(model_secret_provider(portable))
+        || provider.pointer("/apiKey/id").and_then(Value::as_str) != Some(expected_id)
+        || secret_provider.get("source").and_then(Value::as_str) != Some(model_secret_ref(portable))
+        || config
+            .pointer("/agents/defaults/model/primary")
+            .and_then(Value::as_str)
+            != Some(model_ref(provider_key, model).as_str())
+    {
+        return Err("OpenClaw2 当前配置不是受管 model consumer，拒绝注入密钥".into());
+    }
+    if portable {
+        if secret_provider
+            .get("allowlist")
+            .and_then(Value::as_array)
+            .map(|values| values.len() == 1 && values[0].as_str() == Some(MODEL_ENV_SECRET_NAME))
+            != Some(true)
+        {
+            return Err("OpenClaw2 env secret provider allowlist 不受管，拒绝注入密钥".into());
+        }
+    } else if secret_provider.get("mode").and_then(Value::as_str) != Some("json")
+        || secret_provider.get("path").and_then(Value::as_str)
+            != Some(secret.to_string_lossy().as_ref())
+    {
+        return Err("OpenClaw2 file secret provider 不受管，拒绝注入密钥".into());
+    }
+    Ok(key.to_owned())
+}
+
+fn new_model_marker(
+    route: &ModelRoute,
+    provider_key: &str,
+    secret: &Path,
+    config_bytes: &[u8],
+    portable: bool,
+    probe: Value,
+) -> Value {
+    json!({
+        "schema_version":1,
+        "owner":PROFILE,
+        "source_provider":route.source_id,
+        "key_source":route.key_source,
+        "provider_key":provider_key,
+        "model":route.model,
+        "secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),
+        "secret_ref":model_secret_ref(portable),
+        "config_hash":crate::installer::sha256_hex_bytes(config_bytes),
+        "probe":probe
+    })
+}
+
+fn restart_message_for_running_gateway(running: bool) -> Value {
+    if running && crate::portable_context::current().is_some() {
+        json!("请停止并重新启动 OpenClaw，使新密钥生效")
+    } else {
+        Value::Null
+    }
+}
+
 fn model_candidate_config(
     p: &Paths,
     route: &ModelRoute,
     provider_key: &str,
     secret_file: &Path,
+) -> Result<Vec<u8>, String> {
+    model_candidate_config_with_mode(
+        p,
+        route,
+        provider_key,
+        secret_file,
+        crate::portable_context::current().is_some(),
+    )
+}
+
+fn model_candidate_config_with_mode(
+    p: &Paths,
+    route: &ModelRoute,
+    provider_key: &str,
+    secret_file: &Path,
+    portable: bool,
 ) -> Result<Vec<u8>, String> {
     // The marker is the capability that lets this adapter replace *its own*
     // prior generation.  It is intentionally not scoped to the new key: an
@@ -1291,9 +1567,15 @@ fn model_candidate_config(
     {
         providers.remove(old);
     }
-    // OpenClaw 2026.8.1's `json` file provider addresses values with an
-    // absolute JSON Pointer. A bare key is rejected before inference.
-    providers.insert(provider_key.into(), json!({"baseUrl":route.base,"api":"openai-completions","apiKey":{"source":"file","provider":MODEL_SECRET_PROVIDER,"id":"/api_key"},"models":[{"id":route.model,"name":route.model}]}));
+    let secret_provider = model_secret_provider(portable);
+    let api_key = if portable {
+        json!({"source":"env","provider":secret_provider,"id":MODEL_ENV_SECRET_NAME})
+    } else {
+        // OpenClaw 2026.8.1's `json` file provider addresses values with an
+        // absolute JSON Pointer. A bare key is rejected before inference.
+        json!({"source":"file","provider":secret_provider,"id":"/api_key"})
+    };
+    providers.insert(provider_key.into(), json!({"baseUrl":route.base,"api":"openai-completions","apiKey":api_key,"models":[{"id":route.model,"name":route.model}]}));
     // `models.primary` was an early adapter mistake.  Remove only the exact
     // value that our own marker proves we wrote; preserve any foreign value.
     if models.get("primary").and_then(Value::as_str) == old_ref.as_deref() {
@@ -1335,14 +1617,26 @@ fn model_candidate_config(
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .ok_or("not_ready: OpenClaw2 secrets.providers 形状无效")?;
-    if secret_providers.contains_key(MODEL_SECRET_PROVIDER) && owned_marker.is_none() {
+    if secret_providers.contains_key(secret_provider) && owned_marker.is_none() {
         return Err(
-            "validation_failed: OpenClaw2 file secret provider 不属于本适配器，拒绝覆盖".into(),
+            "validation_failed: OpenClaw2 model secret provider 不属于本适配器，拒绝覆盖".into(),
         );
     }
+    if let Some(previous) = owned_marker
+        .as_ref()
+        .map(|marker| marker.get("secret_ref").and_then(Value::as_str).unwrap_or("file"))
+        .map(|kind| if kind == "env" { MODEL_ENV_SECRET_PROVIDER } else { MODEL_SECRET_PROVIDER })
+        .filter(|previous| *previous != secret_provider)
+    {
+        secret_providers.remove(previous);
+    }
     secret_providers.insert(
-        MODEL_SECRET_PROVIDER.into(),
-        json!({"source":"file","path":secret_file,"mode":"json"}),
+        secret_provider.into(),
+        if portable {
+            json!({"source":"env","allowlist":[MODEL_ENV_SECRET_NAME]})
+        } else {
+            json!({"source":"file","path":secret_file,"mode":"json"})
+        },
     );
     serde_json::to_vec_pretty(&config)
         .map_err(|_| "validation_failed: 无法序列化 OpenClaw2 model 配置".into())
@@ -1354,6 +1648,8 @@ fn run_oc_transaction(
     txn_state: &Path,
     args: &[&str],
     timeout: Duration,
+    marker: Option<&Value>,
+    portable: bool,
 ) -> Result<Capture, String> {
     let node = node_exe(p);
     let cli = cli_file(p);
@@ -1364,7 +1660,7 @@ fn run_oc_transaction(
     ];
     all.extend(args.iter().map(|arg| (*arg).into()));
     let refs: Vec<&str> = all.iter().map(String::as_str).collect();
-    let mut env = managed_env(p);
+    let mut env = managed_env_for_config(p, candidate, marker, portable)?;
     env.retain(|(key, _)| {
         key != "OPENCLAW_CONFIG_PATH" && key != "OPENCLAW_STATE_DIR" && key != "OPENCLAW_AGENT_DIR"
     });
@@ -1589,7 +1885,7 @@ fn configure_model_at_with_probe(
     let provider_key = model_provider_key(&route.source_id, &route.base);
     if let Some(marker) = model_marker_matches(&p, &route, &provider_key) {
         return Ok(
-            json!({"changed":false,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":model_ref(&provider_key,&route.model)},"validation":{"ran":false,"ok":true},"probe":marker.get("probe").cloned().unwrap_or_else(|| json!({"ran":false,"ok":false})),"restart_required":running,"state_version":state_version()}),
+            json!({"changed":false,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":model_ref(&provider_key,&route.model)},"validation":{"ran":false,"ok":true},"probe":marker.get("probe").cloned().unwrap_or_else(|| json!({"ran":false,"ok":false})),"restart_required":running,"restart_message":restart_message_for_running_gateway(running),"state_version":state_version()}),
         );
     }
     let nonce = random_token()?;
@@ -1606,6 +1902,7 @@ fn configure_model_at_with_probe(
     let old_marker = snapshot_file(&model_marker_file(&p));
     let old_profile = snapshot_file(&profile_file(&p));
     let secret = model_secret_file(&p, &nonce);
+    let portable = crate::portable_context::current().is_some();
     let result = (|| -> Result<Value, String> {
         atomic_write(
             &secret,
@@ -1614,8 +1911,22 @@ fn configure_model_at_with_probe(
                 .as_slice(),
             &p,
         )?;
-        let candidate_bytes = model_candidate_config(&p, &route, &provider_key, &secret)?;
+        let candidate_bytes = model_candidate_config_with_mode(
+            &p,
+            &route,
+            &provider_key,
+            &secret,
+            portable,
+        )?;
         atomic_write(&candidate, &candidate_bytes, &p)?;
+        let staged_marker = new_model_marker(
+            &route,
+            &provider_key,
+            &secret,
+            &candidate_bytes,
+            portable,
+            json!({"ran":false,"ok":false,"reason":"transaction_validation"}),
+        );
         // A no-probe setup deliberately makes no inference request: a newly
         // issued wallet may have no balance yet.  It only needs the real JSON
         // config validation below.  The infer command capability is relevant
@@ -1631,8 +1942,15 @@ fn configure_model_at_with_probe(
                     "private CLI infer capability check",
                 ),
             ] {
-                let out =
-                    run_oc_transaction(&p, &candidate, &txn_state, args, Duration::from_secs(20))?;
+                let out = run_oc_transaction(
+                    &p,
+                    &candidate,
+                    &txn_state,
+                    args,
+                    Duration::from_secs(20),
+                    Some(&staged_marker),
+                    portable,
+                )?;
                 if out.status != Some(0) {
                     return Err(config_diagnostic(phase, &out));
                 }
@@ -1644,6 +1962,8 @@ fn configure_model_at_with_probe(
             &txn_state,
             &["config", "validate", "--json"],
             Duration::from_secs(30),
+            Some(&staged_marker),
+            portable,
         )?;
         if validation.status != Some(0) {
             return Err(config_diagnostic(
@@ -1673,6 +1993,8 @@ fn configure_model_at_with_probe(
                     "--json",
                 ],
                 Duration::from_secs(90),
+                Some(&staged_marker),
+                portable,
             )?;
             if probe.status != Some(0) {
                 return Err(config_diagnostic("model probe command", &probe).replacen(
@@ -1701,7 +2023,14 @@ fn configure_model_at_with_probe(
         {
             return Err("rollback_failed: OpenClaw2 live 配置回读不一致".into());
         }
-        let marker = json!({"schema_version":1,"owner":PROFILE,"source_provider":route.source_id,"key_source":route.key_source,"provider_key":provider_key,"model":route.model,"secret_basename":secret.file_name().and_then(|x| x.to_str()).unwrap_or(""),"config_hash":crate::installer::sha256_hex_bytes(&candidate_bytes),"probe":probe_view});
+        let marker = new_model_marker(
+            &route,
+            &provider_key,
+            &secret,
+            &candidate_bytes,
+            portable,
+            probe_view.clone(),
+        );
         if model_test_fault(&p, "marker_commit") {
             return Err("validation_failed: OpenClaw2 model marker 提交注入失败".into());
         }
@@ -1733,7 +2062,7 @@ fn configure_model_at_with_probe(
         }
         let _ = fs::remove_dir_all(&txn);
         Ok(
-            json!({"changed":true,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":reference},"validation":{"ran":true,"ok":true},"probe":probe_view,"restart_required":running,"state_version":state_version()}),
+            json!({"changed":true,"configured":true,"ready":true,"provider":{"id":route.source_id,"name":route.source_name,"key_source":route.key_source},"model":{"id":route.model,"ref":reference},"validation":{"ran":true,"ok":true},"probe":probe_view,"restart_required":running,"restart_message":restart_message_for_running_gateway(running),"state_version":state_version()}),
         )
     })();
     match result {
@@ -1795,7 +2124,7 @@ pub fn preflight() -> Result<Value, String> {
     )
 }
 
-fn managed_env(p: &Paths) -> Vec<(String, String)> {
+fn managed_env_base(p: &Paths, portable: bool) -> Vec<(String, String)> {
     let mut env = vec![
         ("OPENCLAW_PROFILE".into(), PROFILE.into()),
         (
@@ -1815,7 +2144,7 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
         ("OPENCLAW_DISABLE_BONJOUR".into(), "1".into()),
         ("NO_COLOR".into(), "1".into()),
     ];
-    if crate::portable_context::current().is_some() {
+    if portable {
         // The packaged workspace bundle selects its audited fs-safe sidecar
         // only under this explicit production marker. Desktop OpenClaw keeps
         // the upstream strict policy and never loads the sidecar.
@@ -1838,6 +2167,28 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
         }
     }
     env
+}
+
+fn managed_env_for_config(
+    p: &Paths,
+    config_path: &Path,
+    marker: Option<&Value>,
+    portable: bool,
+) -> Result<Vec<(String, String)>, String> {
+    let mut env = managed_env_base(p, portable);
+    if portable {
+        if let Some(marker) = marker {
+            let key = read_managed_model_api_key(p, config_path, marker, true)?;
+            env.push((MODEL_ENV_SECRET_NAME.into(), key));
+        }
+    }
+    Ok(env)
+}
+
+fn managed_env(p: &Paths) -> Result<Vec<(String, String)>, String> {
+    let portable = crate::portable_context::current().is_some();
+    let marker = if portable { model_owned_marker(p) } else { None };
+    managed_env_for_config(p, &config_file(p), marker.as_ref(), portable)
 }
 
 /// The portable gateway is an appliance.  Inheriting a host shell's provider
@@ -2049,7 +2400,15 @@ pub fn sync_device_wallet_key(key: Option<&str>) -> Result<(), String> {
 }
 
 fn sync_device_wallet_key_at(p: &Paths, key: Option<&str>) -> Result<(), String> {
-    let Some(marker) = model_owned_marker(&p) else {
+    sync_device_wallet_key_at_with_mode(p, key, crate::portable_context::current().is_some())
+}
+
+fn sync_device_wallet_key_at_with_mode(
+    p: &Paths,
+    key: Option<&str>,
+    portable: bool,
+) -> Result<(), String> {
+    let Some(marker) = model_owned_marker(p) else {
         return Ok(());
     };
     if marker.get("key_source").and_then(Value::as_str) != Some("device_wallet") {
@@ -2060,13 +2419,13 @@ fn sync_device_wallet_key_at(p: &Paths, key: Option<&str>) -> Result<(), String>
         .and_then(Value::as_str)
         .filter(|name| !name.contains(['/', '\\']) && name.starts_with("model-"))
         .ok_or("OpenClaw2 受管 model marker 缺少安全 secret 名称")?;
-    let secret = model_secrets_dir(&p).join(name);
+    let secret = model_secrets_dir(p).join(name);
     match key {
         Some(key) if !key.trim().is_empty() => {
             // The marker is only a historical assertion. Re-check the live
             // config generation before replacing a file secret, otherwise a
             // wallet balance refresh could overwrite a user-edited route.
-            verify_device_wallet_generation(p, &marker, &secret)?;
+            verify_device_wallet_generation_with_mode(p, &marker, &secret, portable)?;
             atomic_write(
                 &secret,
                 serde_json::to_vec(&json!({"api_key":key}))
@@ -2075,7 +2434,7 @@ fn sync_device_wallet_key_at(p: &Paths, key: Option<&str>) -> Result<(), String>
                 p,
             )
         }
-        _ => clear_device_wallet_model(&p, &marker, name, &secret),
+        _ => clear_device_wallet_model(p, &marker, name, &secret, portable),
     }
 }
 
@@ -2087,9 +2446,20 @@ fn verify_device_wallet_generation(
     marker: &Value,
     secret: &Path,
 ) -> Result<(String, String), String> {
-    let bytes = fs::read(config_file(p))
-        .map_err(|_| "OpenClaw2 私有配置不可读，拒绝修改钱包 consumer")?;
-    let hash = crate::installer::sha256_hex_bytes(&bytes);
+    verify_device_wallet_generation_with_mode(
+        p,
+        marker,
+        secret,
+        crate::portable_context::current().is_some(),
+    )
+}
+
+fn verify_device_wallet_generation_with_mode(
+    p: &Paths,
+    marker: &Value,
+    secret: &Path,
+    portable: bool,
+) -> Result<(String, String), String> {
     let provider_key = marker
         .get("provider_key")
         .and_then(Value::as_str)
@@ -2098,39 +2468,16 @@ fn verify_device_wallet_generation(
         .get("model")
         .and_then(Value::as_str)
         .ok_or("OpenClaw2 受管 model marker 缺少 model，拒绝修改钱包 consumer")?;
-    if marker.get("owner").and_then(Value::as_str) != Some(PROFILE)
-        || marker.get("config_hash").and_then(Value::as_str) != Some(hash.as_str())
-        || !secret.is_file()
-    {
-        return Err("OpenClaw2 受管 model marker 与当前配置不一致，拒绝修改钱包 consumer".into());
-    }
-    let config: Value = serde_json::from_slice(&bytes)
-        .map_err(|_| "OpenClaw2 私有配置已损坏，拒绝修改钱包 consumer")?;
-    let provider = config
-        .pointer(&format!("/models/providers/{provider_key}"))
-        .ok_or("OpenClaw2 当前配置缺少受管 model provider，拒绝修改钱包 consumer")?;
-    let file_provider = config
-        .pointer(&format!("/secrets/providers/{MODEL_SECRET_PROVIDER}"))
-        .ok_or("OpenClaw2 当前配置缺少受管 file secret provider，拒绝修改钱包 consumer")?;
-    if provider.pointer("/apiKey/source").and_then(Value::as_str) != Some("file")
-        || provider.pointer("/apiKey/provider").and_then(Value::as_str)
-            != Some(MODEL_SECRET_PROVIDER)
-        || provider.pointer("/apiKey/id").and_then(Value::as_str) != Some("/api_key")
-        || file_provider.get("source").and_then(Value::as_str) != Some("file")
-        || file_provider.get("mode").and_then(Value::as_str) != Some("json")
-        || file_provider.get("path").and_then(Value::as_str)
-            != Some(secret.to_string_lossy().as_ref())
-    {
-        return Err("OpenClaw2 当前配置不是受管 file secret consumer，拒绝修改".into());
-    }
-    let reference = model_ref(provider_key, model);
-    if config
-        .pointer("/agents/defaults/model/primary")
+    let name = marker
+        .get("secret_basename")
         .and_then(Value::as_str)
-        != Some(reference.as_str())
-    {
-        return Err("OpenClaw2 当前默认模型不是受管钱包 consumer，拒绝修改".into());
+        .filter(|name| !name.contains(['/', '\\']) && name.starts_with("model-"))
+        .ok_or("OpenClaw2 受管 model marker 缺少安全 secret 名称，拒绝修改钱包 consumer")?;
+    if secret != model_secrets_dir(p).join(name) {
+        return Err("OpenClaw2 受管 model secret 路径不一致，拒绝修改钱包 consumer".into());
     }
+    read_managed_model_api_key(p, &config_file(p), marker, portable)
+        .map_err(|_| "OpenClaw2 受管 model generation 与当前配置不一致，拒绝修改钱包 consumer")?;
     Ok((provider_key.to_owned(), model.to_owned()))
 }
 
@@ -2144,8 +2491,10 @@ fn clear_device_wallet_model(
     marker: &Value,
     _name: &str,
     secret: &Path,
+    portable: bool,
 ) -> Result<(), String> {
-    let (provider_key, model) = verify_device_wallet_generation(p, marker, secret)?;
+    let (provider_key, model) =
+        verify_device_wallet_generation_with_mode(p, marker, secret, portable)?;
     let old_config = snapshot_file(&config_file(p));
     let old_marker = snapshot_file(&model_marker_file(p));
     let old_secret = snapshot_file(secret);
@@ -2195,7 +2544,7 @@ fn clear_device_wallet_model(
         .and_then(|x| x.get_mut("providers"))
         .and_then(Value::as_object_mut)
     {
-        providers.remove(MODEL_SECRET_PROVIDER);
+        providers.remove(model_secret_provider(portable));
     }
     let candidate = serde_json::to_vec_pretty(&config)
         .map_err(|_| "无法序列化 OpenClaw2 钱包 consumer 清除配置")?;
@@ -2248,9 +2597,10 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    let launch_env = managed_env(ps)?;
     configure_managed_openclaw_child(
         &mut cmd,
-        &managed_env(ps),
+        &launch_env,
         crate::portable_context::current().is_some(),
     );
     #[cfg(windows)]
@@ -2548,7 +2898,7 @@ fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<Capture, String
     ];
     all.extend(args.iter().map(|x| (*x).into()));
     let refs: Vec<&str> = all.iter().map(String::as_str).collect();
-    let owned_env = managed_env(p);
+    let owned_env = managed_env(p)?;
     let env: Vec<(&str, &str)> = owned_env
         .iter()
         .map(|(key, value)| (key.as_str(), value.as_str()))
@@ -2914,6 +3264,114 @@ mod tests {
         write_managed_profile(&p, 37615, &bytes).unwrap();
         (p, marker, secret)
     }
+
+    fn portable_env_secret_fixture(tag: &str) -> (Paths, Value, PathBuf) {
+        let p = paths_from_root(std::env::temp_dir().join(format!(
+            "uking-openclaw2-portable-env-{tag}-{}",
+            now_nanos()
+        )));
+        create_layout(&p).unwrap();
+        let provider_key = "portable-wallet-provider";
+        let model = "portable-wallet-model";
+        let reference = model_ref(provider_key, model);
+        let secret = model_secrets_dir(&p).join("model-portable-env.json");
+        let config = json!({
+            "gateway":{"mode":"local","port":37617,"bind":"loopback","auth":{"mode":"token","token":"test-token"}},
+            "agents":{"defaults":{"workspace":p.workspace,"model":{"primary":reference},"models":{reference.clone():{}}}},
+            "models":{"providers":{provider_key:{"apiKey":{"source":"env","provider":MODEL_ENV_SECRET_PROVIDER,"id":MODEL_ENV_SECRET_NAME},"models":[{"id":model}]}}},
+            "secrets":{"providers":{MODEL_ENV_SECRET_PROVIDER:{"source":"env","allowlist":[MODEL_ENV_SECRET_NAME]}}}
+        });
+        let bytes = serde_json::to_vec_pretty(&config).unwrap();
+        atomic_write(&config_file(&p), &bytes, &p).unwrap();
+        atomic_write(&secret, br#"{"api_key":"portable-fixture-key"}"#, &p).unwrap();
+        let marker = json!({
+            "schema_version":1,
+            "owner":PROFILE,
+            "key_source":"device_wallet",
+            "provider_key":provider_key,
+            "model":model,
+            "secret_basename":"model-portable-env.json",
+            "secret_ref":"env",
+            "config_hash":crate::installer::sha256_hex_bytes(&bytes)
+        });
+        atomic_write(&model_marker_file(&p), &serde_json::to_vec_pretty(&marker).unwrap(), &p)
+            .unwrap();
+        write_managed_profile(&p, 37617, &bytes).unwrap();
+        (p, marker, secret)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn portable_env_secret_resolver_uses_only_verified_generation() {
+        let (p, marker, secret) = portable_env_secret_fixture("resolver");
+        let prior_host_value = std::env::var_os(MODEL_ENV_SECRET_NAME);
+        std::env::set_var(MODEL_ENV_SECRET_NAME, "host-value-must-not-win");
+        let env = managed_env_for_config(&p, &config_file(&p), Some(&marker), true)
+            .unwrap()
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(env.get(MODEL_ENV_SECRET_NAME).map(String::as_str), Some("portable-fixture-key"));
+        assert_eq!(
+            verify_device_wallet_generation_with_mode(&p, &marker, &secret, true).unwrap(),
+            ("portable-wallet-provider".into(), "portable-wallet-model".into())
+        );
+        sync_device_wallet_key_at_with_mode(&p, Some("portable-rotated-key"), true).unwrap();
+        assert!(fs::read_to_string(&secret).unwrap().contains("portable-rotated-key"));
+        if let Some(value) = prior_host_value {
+            std::env::set_var(MODEL_ENV_SECRET_NAME, value);
+        } else {
+            std::env::remove_var(MODEL_ENV_SECRET_NAME);
+        }
+        let _ = fs::remove_dir_all(&p.root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn portable_env_secret_rejects_tampered_config_and_hardlink() {
+        let (p, marker, secret) = portable_env_secret_fixture("tamper");
+        let mut changed: Value = serde_json::from_slice(&fs::read(config_file(&p)).unwrap()).unwrap();
+        changed["user_edit"] = json!(true);
+        atomic_write(&config_file(&p), &serde_json::to_vec_pretty(&changed).unwrap(), &p).unwrap();
+        assert!(managed_env_for_config(&p, &config_file(&p), Some(&marker), true).is_err());
+        atomic_write(
+            &config_file(&p),
+            &serde_json::to_vec_pretty(&json!({
+                "gateway":{"mode":"local","port":37617,"bind":"loopback","auth":{"mode":"token","token":"test-token"}},
+                "agents":{"defaults":{"workspace":p.workspace,"model":{"primary":"portable-wallet-provider/portable-wallet-model"},"models":{"portable-wallet-provider/portable-wallet-model":{}}}},
+                "models":{"providers":{"portable-wallet-provider":{"apiKey":{"source":"env","provider":MODEL_ENV_SECRET_PROVIDER,"id":MODEL_ENV_SECRET_NAME},"models":[{"id":"portable-wallet-model"}]}}},
+                "secrets":{"providers":{MODEL_ENV_SECRET_PROVIDER:{"source":"env","allowlist":[MODEL_ENV_SECRET_NAME]}}}
+            })).unwrap(),
+            &p,
+        ).unwrap();
+        let bytes = fs::read(config_file(&p)).unwrap();
+        let mut repaired = marker.clone();
+        repaired["config_hash"] = json!(crate::installer::sha256_hex_bytes(&bytes));
+        let external = std::env::temp_dir().join(format!("uking-openclaw2-secret-hardlink-{}", now_nanos()));
+        fs::hard_link(&secret, &external).unwrap();
+        assert!(managed_env_for_config(&p, &config_file(&p), Some(&repaired), true).is_err());
+        let _ = fs::remove_file(external);
+        let _ = fs::remove_dir_all(&p.root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn portable_env_secret_rejects_external_symlink_when_supported() {
+        let (p, marker, secret) = portable_env_secret_fixture("symlink");
+        let external = std::env::temp_dir().join(format!(
+            "uking-openclaw2-secret-symlink-{}",
+            now_nanos()
+        ));
+        fs::write(&external, br#"{"api_key":"outside"}"#).unwrap();
+        fs::remove_file(&secret).unwrap();
+        // Developer Mode or the symlink privilege is not guaranteed on every
+        // Windows test worker. Where it is available the portable boundary
+        // must reject the link before it can be read.
+        if std::os::windows::fs::symlink_file(&external, &secret).is_ok() {
+            assert!(managed_env_for_config(&p, &config_file(&p), Some(&marker), true).is_err());
+        }
+        let _ = fs::remove_file(&external);
+        let _ = fs::remove_dir_all(&p.root);
+    }
     #[test]
     fn node_ranges_are_exact() {
         for v in ["v22.22.2", "v23.0.0", "v24.14.9", "v25.8.9"] {
@@ -3031,6 +3489,7 @@ mod tests {
             ]
         );
         let env = managed_env(&p)
+            .unwrap()
             .into_iter()
             .collect::<std::collections::BTreeMap<_, _>>();
         assert_eq!(
@@ -3312,7 +3771,7 @@ mod tests {
     #[test]
     fn clear_device_wallet_model_removes_only_the_matching_managed_generation() {
         let (p, marker, secret) = wallet_clear_fixture("success");
-        clear_device_wallet_model(&p, &marker, "model-wallet-clear.json", &secret).unwrap();
+        clear_device_wallet_model(&p, &marker, "model-wallet-clear.json", &secret, false).unwrap();
 
         let config: Value = serde_json::from_slice(&fs::read(config_file(&p)).unwrap()).unwrap();
         let provider_key = marker["provider_key"].as_str().unwrap();
@@ -3342,7 +3801,7 @@ mod tests {
             (profile_file(&p), snapshot_file(&profile_file(&p))),
         ];
         set_model_test_fault(&p, Some("wallet_clear_profile"));
-        let error = clear_device_wallet_model(&p, &marker, "model-wallet-clear.json", &secret).unwrap_err();
+        let error = clear_device_wallet_model(&p, &marker, "model-wallet-clear.json", &secret, false).unwrap_err();
         set_model_test_fault(&p, None);
         assert!(error.starts_with("validation_failed:"), "{error}");
         for (path, snapshot) in before {
@@ -4001,6 +4460,44 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
             value["models"].get("primary").is_none(),
             "根 models.primary 不是权威槽位"
         );
+        let _ = fs::remove_dir_all(&p.root);
+    }
+    #[test]
+    fn portable_model_candidate_uses_exact_env_secret_ref_without_key_on_disk() {
+        let p = paths_from_root(
+            std::env::temp_dir().join(format!("uking-openclaw2-env-candidate-{}", now_nanos())),
+        );
+        create_layout(&p).unwrap();
+        fs::write(&config_file(&p), br#"{"gateway":{"auth":{"token":"private"}}}"#).unwrap();
+        let route = ModelRoute {
+            source_id: "portable-demo".into(),
+            source_name: "Portable Demo".into(),
+            base: "https://example.com/v1".into(),
+            model: "portable-chat".into(),
+            key: "portable-key-must-not-enter-config".into(),
+            key_source: "explicit".into(),
+        };
+        let key = model_provider_key(&route.source_id, &route.base);
+        let candidate = model_candidate_config_with_mode(
+            &p,
+            &route,
+            &key,
+            &model_secret_file(&p, "next"),
+            true,
+        )
+        .unwrap();
+        let text = String::from_utf8(candidate).unwrap();
+        assert!(!text.contains(&route.key));
+        let value: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            value["models"]["providers"][key.as_str()]["apiKey"],
+            json!({"source":"env","provider":MODEL_ENV_SECRET_PROVIDER,"id":MODEL_ENV_SECRET_NAME})
+        );
+        assert_eq!(
+            value["secrets"]["providers"][MODEL_ENV_SECRET_PROVIDER],
+            json!({"source":"env","allowlist":[MODEL_ENV_SECRET_NAME]})
+        );
+        assert!(value["secrets"]["providers"].get(MODEL_SECRET_PROVIDER).is_none());
         let _ = fs::remove_dir_all(&p.root);
     }
     #[test]

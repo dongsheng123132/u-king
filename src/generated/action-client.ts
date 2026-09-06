@@ -125,7 +125,7 @@ export const ACTION = {
   RUNTIME_MINIAPP_UNINSTALL: "runtime.miniapp.uninstall",
   /** Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
-  /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
+  /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are never returned; portable mode injects its verified managed secret only into its own child process. */
   RUNTIME_OPENCLAW2_CONFIGURE_MODEL: "runtime.openclaw2.configure_model",
   /** Validate and commit one OpenAI-compatible model without calling it. runtime.openclaw2.configure_model is the separate, explicit potentially chargeable probe. */
   RUNTIME_OPENCLAW2_CONFIGURE_MODEL_NO_PROBE: "runtime.openclaw2.configure_model_no_probe",

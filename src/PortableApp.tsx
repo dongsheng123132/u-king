@@ -66,7 +66,9 @@ export function PortableApp() {
       if (!result.ok) throw new Error(result.error?.message || "操作失败");
       await refreshRuntime();
       void refreshWallet();
-      setNotice(`${label}完成。`);
+      const restartMessage = typeof result.result?.restart_message === "string"
+        ? result.result.restart_message : "";
+      setNotice(restartMessage ? `${label}完成。${restartMessage}` : `${label}完成。`);
     } catch (error) {
       setNotice(`${label}失败：${String(error)}`);
     } finally {
@@ -83,7 +85,9 @@ export function PortableApp() {
       if (!configured.ok) throw new Error(configured.error?.message || "配置失败");
       await refreshRuntime();
       void refreshWallet();
-      setNotice("配置完成，未执行模型探针或扣费调用。");
+      const restartMessage = typeof configured.result?.restart_message === "string"
+        ? configured.result.restart_message : "";
+      setNotice(`配置完成，未执行模型探针或扣费调用。${restartMessage}`);
     } catch (error) {
       setNotice(`配置失败：${String(error)}`);
     } finally {
