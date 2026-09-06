@@ -761,7 +761,11 @@ fn relocate_managed_portable_config(p: &Paths) -> Result<bool, String> {
             p,
             parse_profile(p)?.ok_or("OpenClaw2 受管 profile 缺少端口")?,
             &new_bytes,
-        )
+        )?;
+        if model_test_fault(p, "relocation_profile") {
+            return Err("validation_failed: OpenClaw2 重定位 profile 提交注入失败".into());
+        }
+        Ok(())
     })();
     match result {
         Ok(()) => Ok(true),
@@ -1797,10 +1801,6 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
     env
 }
 
-/// Compatibility no-op for existing desktop setup. Browser opening is now in
-/// the Action core so CLI, MCP and GUI share the system-shell implementation.
-pub fn set_dashboard_opener(_: tauri::AppHandle) {}
-
 fn gateway_argv(p: &Paths, port: u16) -> Vec<String> {
     vec![
         cli_file(p).to_string_lossy().to_string(),
@@ -1898,7 +1898,7 @@ pub fn dashboard_target() -> Result<String, String> {
 }
 
 #[cfg(windows)]
-fn open_system_browser(url: &str) -> Result<(), String> {
+pub(crate) fn open_system_browser(url: &str) -> Result<(), String> {
     use std::iter::once;
     let operation: Vec<u16> = "open".encode_utf16().chain(once(0)).collect();
     let target: Vec<u16> = url.encode_utf16().chain(once(0)).collect();
@@ -1930,7 +1930,7 @@ fn open_system_browser(url: &str) -> Result<(), String> {
     }
 }
 #[cfg(not(windows))]
-fn open_system_browser(url: &str) -> Result<(), String> {
+pub(crate) fn open_system_browser(url: &str) -> Result<(), String> {
     Command::new("xdg-open")
         .arg(url)
         .spawn()
@@ -2596,6 +2596,56 @@ mod tests {
             },
         }
     }
+
+    /// A complete, deliberately local wallet-consumer generation.  Tests use
+    /// this instead of configure_model so clear/rollback coverage never needs
+    /// Node, a gateway, or a real wallet credential.
+    fn wallet_clear_fixture(tag: &str) -> (Paths, Value, PathBuf) {
+        let p = paths_from_root(
+            std::env::temp_dir().join(format!("uking-openclaw2-wallet-clear-{tag}-{}", now_nanos())),
+        );
+        create_layout(&p).unwrap();
+        let provider_key = "wallet-provider";
+        let model = "wallet-demo";
+        let reference = model_ref(provider_key, model);
+        let secret = model_secrets_dir(&p).join("model-wallet-clear.json");
+        let config = json!({
+            "gateway": {"mode":"local", "port":37615, "bind":"loopback", "auth":{"mode":"token", "token":"test-gateway-token"}},
+            "agents": {"defaults": {
+                "workspace": p.workspace,
+                "model": {"primary": reference},
+                "models": {reference.clone(): {"alias":"wallet managed"}, "other/model": {"must_survive":true}},
+                "user_default": "must_survive"
+            }},
+            "models": {"providers": {
+                provider_key.to_string(): {"apiKey":{"source":"file", "provider":MODEL_SECRET_PROVIDER, "id":"/api_key"}, "models":[{"id":model}]},
+                "user-provider": {"must_survive":true}
+            }},
+            "secrets": {"providers": {
+                MODEL_SECRET_PROVIDER.to_string(): {"source":"file", "path":secret, "mode":"json"},
+                "user-secret": {"must_survive":true}
+            }},
+            "user": {"must_survive":true}
+        });
+        let bytes = serde_json::to_vec_pretty(&config).unwrap();
+        atomic_write(&config_file(&p), &bytes, &p).unwrap();
+        atomic_write(&secret, br#"{"api_key":"sk-test-wallet-only"}"#, &p).unwrap();
+        let marker = json!({
+            "schema_version":1,
+            "owner":PROFILE,
+            "provider_key":provider_key,
+            "model":model,
+            "secret_basename":"model-wallet-clear.json",
+            "config_hash":crate::installer::sha256_hex_bytes(&bytes)
+        });
+        atomic_write(
+            &model_marker_file(&p),
+            &serde_json::to_vec_pretty(&marker).unwrap(),
+            &p,
+        ).unwrap();
+        write_managed_profile(&p, 37615, &bytes).unwrap();
+        (p, marker, secret)
+    }
     #[test]
     fn node_ranges_are_exact() {
         for v in ["v22.22.2", "v23.0.0", "v24.14.9", "v25.8.9"] {
@@ -2920,6 +2970,50 @@ mod tests {
         );
         let _ = fs::remove_dir_all(new_root);
     }
+
+    #[test]
+    fn relocation_profile_fault_restores_all_three_files_and_keeps_prior_backup() {
+        let old_root = std::env::temp_dir().join(format!("uking-openclaw2-relocation-rollback-old-{}", now_nanos()));
+        let new_root = std::env::temp_dir().join(format!("uking-openclaw2-relocation-rollback-new-{}", now_nanos()));
+        let old = paths_from_root(old_root.clone());
+        create_layout(&old).unwrap();
+        let secret_name = "model-relocation-rollback.json";
+        let config = json!({
+            "gateway":{"mode":"local","port":37616,"bind":"loopback","auth":{"mode":"token","token":"test-token"}},
+            "agents":{"defaults":{"workspace":old.workspace}},
+            "secrets":{"providers":{MODEL_SECRET_PROVIDER.to_string():{"source":"file","path":old.state.join("secrets").join(secret_name),"mode":"json"}}},
+            "user":{"must_survive":true}
+        });
+        let old_bytes = serde_json::to_vec_pretty(&config).unwrap();
+        atomic_write(&config_file(&old), &old_bytes, &old).unwrap();
+        atomic_write(&model_secrets_dir(&old).join(secret_name), br#"{"api_key":"sk-relocation-test"}"#, &old).unwrap();
+        atomic_write(&model_marker_file(&old), &serde_json::to_vec_pretty(&json!({"schema_version":1,"owner":PROFILE,"secret_basename":secret_name,"config_hash":crate::installer::sha256_hex_bytes(&old_bytes)})).unwrap(), &old).unwrap();
+        write_managed_profile(&old, 37616, &old_bytes).unwrap();
+        fs::rename(&old_root, &new_root).unwrap();
+        let p = paths_from_root(new_root.clone());
+        let prior_backup = p.state.join("openclaw.json.before-relocation-prior-proof.json");
+        fs::write(&prior_backup, b"older recovery evidence must survive").unwrap();
+        let before = [
+            (config_file(&p), snapshot_file(&config_file(&p))),
+            (model_marker_file(&p), snapshot_file(&model_marker_file(&p))),
+            (profile_file(&p), snapshot_file(&profile_file(&p))),
+        ];
+        set_model_test_fault(&p, Some("relocation_profile"));
+        let error = relocate_managed_portable_config(&p).unwrap_err();
+        set_model_test_fault(&p, None);
+        assert!(error.starts_with("validation_failed:"), "{error}");
+        for (path, snapshot) in before {
+            assert_eq!(snapshot_file(&path).bytes, snapshot.bytes, "{path:?} bytes must roll back");
+            assert_eq!(snapshot_file(&path).modified, snapshot.modified, "{path:?} mtime must roll back");
+        }
+        assert_eq!(fs::read(&prior_backup).unwrap(), b"older recovery evidence must survive");
+        assert!(fs::read_dir(&p.state).unwrap().flatten().any(|entry| {
+            entry.path().file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+                name.starts_with("openclaw.json.before-relocation-") && name != "openclaw.json.before-relocation-prior-proof.json"
+            })
+        }), "本次失败前写下的独立备份仍须保留，不能覆盖既有恢复证据");
+        let _ = fs::remove_dir_all(new_root);
+    }
     #[test]
     fn relocation_refuses_unproved_old_workspace_without_writing() {
         let old_root =
@@ -2945,6 +3039,49 @@ mod tests {
                 .to_string_lossy()
                 .starts_with("openclaw.json.before-relocation-")));
         let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn clear_device_wallet_model_removes_only_the_matching_managed_generation() {
+        let (p, marker, secret) = wallet_clear_fixture("success");
+        clear_device_wallet_model(&p, &marker, "model-wallet-clear.json", &secret).unwrap();
+
+        let config: Value = serde_json::from_slice(&fs::read(config_file(&p)).unwrap()).unwrap();
+        let provider_key = marker["provider_key"].as_str().unwrap();
+        let reference = model_ref(provider_key, marker["model"].as_str().unwrap());
+        assert!(config.pointer(&format!("/models/providers/{provider_key}")).is_none());
+        assert!(config.pointer(&format!("/secrets/providers/{MODEL_SECRET_PROVIDER}")).is_none());
+        assert!(config.pointer("/agents/defaults/model/primary").is_none());
+        assert!(config.pointer(&format!("/agents/defaults/models/{reference}")).is_none());
+        assert_eq!(config["models"]["providers"]["user-provider"]["must_survive"], true);
+        assert_eq!(config["secrets"]["providers"]["user-secret"]["must_survive"], true);
+        assert_eq!(config["agents"]["defaults"]["models"]["other/model"]["must_survive"], true);
+        assert_eq!(config["user"]["must_survive"], true);
+        assert!(!model_marker_file(&p).exists(), "只移除受管 marker");
+        assert!(!secret.exists(), "只移除受管 file secret");
+        let profile: Value = serde_json::from_slice(&fs::read(profile_file(&p)).unwrap()).unwrap();
+        assert_eq!(profile["config_hash"], json!(crate::installer::sha256_hex_bytes(&fs::read(config_file(&p)).unwrap())));
+        let _ = fs::remove_dir_all(&p.root);
+    }
+
+    #[test]
+    fn clear_device_wallet_model_fault_restores_config_marker_secret_and_profile() {
+        let (p, marker, secret) = wallet_clear_fixture("rollback");
+        let before = [
+            (config_file(&p), snapshot_file(&config_file(&p))),
+            (model_marker_file(&p), snapshot_file(&model_marker_file(&p))),
+            (secret.clone(), snapshot_file(&secret)),
+            (profile_file(&p), snapshot_file(&profile_file(&p))),
+        ];
+        set_model_test_fault(&p, Some("wallet_clear_profile"));
+        let error = clear_device_wallet_model(&p, &marker, "model-wallet-clear.json", &secret).unwrap_err();
+        set_model_test_fault(&p, None);
+        assert!(error.starts_with("validation_failed:"), "{error}");
+        for (path, snapshot) in before {
+            assert_eq!(snapshot_file(&path).bytes, snapshot.bytes, "{path:?} bytes must roll back");
+            assert_eq!(snapshot_file(&path).modified, snapshot.modified, "{path:?} mtime must roll back");
+        }
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[test]
     fn dashboard_opener_returns_no_token_bearing_url() {
