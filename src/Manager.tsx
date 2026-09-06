@@ -9,7 +9,7 @@
  *  - 每行可「测试连通」（让模型真回一句话）
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
@@ -510,6 +510,9 @@ export function Manager({
   const [pingingAll, setPingingAll] = useState(false);
   const [pingProgress, setPingProgress] = useState({ done: 0, total: 0 });
   const [testResult, setTestResult] = useState<Record<string, TestResult>>({});
+  /** 「统一供应商库」网格里每家的测速结果（会话内有效，不落盘）。"testing" = 正在测这一家。 */
+  const [providerLatency, setProviderLatency] = useState<Record<string, TestResult | "testing">>({});
+  const [testingAllProviders, setTestingAllProviders] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // 用户为某 provider 临时填的 key（虾盘云默认用内置）
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
@@ -987,6 +990,49 @@ export function Manager({
       flash(t("测速完成 —— 绿色 <200ms、黄色 <500ms、红色更慢或不通"));
     } finally {
       setPingingAll(false);
+    }
+  }
+
+  /**
+   * 「统一供应商库」卡片网格的测速 —— 跟上面 `pingAll`（工具分配 Tab，真回话、按工具算
+   * 协议）是两件事：这里测的是**这家端点本身**，跟具体挂在哪个工具无关，所以用更轻的
+   * `probe_endpoint`（对齐 CustomProviderModal 的「测试连通」），且允许并发。
+   *
+   * 🔴 延迟是本机到端点的真实往返，只在用户主动点（单卡或「测试速度」）时测 ——
+   * 不自动测：每次进页面就把全部端点打一遍，等于拿用户的 Key 去刷别人家的接口。
+   *
+   * 能测 = 有 openai_base 且拿得到 Key（probe_endpoint 只打 OpenAI 端点，纯 Anthropic
+   * 供应商测不了）；Key 解析口径跟 `resolveKey` 一致（手填 > 虾盘云内置设备 Key > 自带 api_key）。
+   */
+  const canProbeProvider = (p: ProviderPreset) => !!p.openai_base?.trim();
+
+  const probeProviderLatency = useCallback(
+    async (p: ProviderPreset) => {
+      if (!canProbeProvider(p)) return;
+      const key = resolveKey(p);
+      if (!key) return;
+      setProviderLatency((m) => ({ ...m, [p.id]: "testing" }));
+      const r = await invoke<TestResult>("probe_endpoint", {
+        baseUrl: p.openai_base.trim(),
+        apiKey: key,
+        model: p.model.trim(),
+      }).catch((e) => ({ ok: false, api: "openai", latency_ms: 0, reply: null, error: String(e) }) as TestResult);
+      setProviderLatency((m) => ({ ...m, [p.id]: r }));
+    },
+    [resolveKey],
+  );
+
+  async function testAllProviderLatency() {
+    if (testingAllProviders) return;
+    const list = [...providers, ...addable.filter((a) => !providers.some((p) => p.id === a.id))]
+      .filter((p) => p.id !== "official")
+      .filter((p) => canProbeProvider(p) && !!resolveKey(p));
+    if (!list.length) return;
+    setTestingAllProviders(true);
+    try {
+      await Promise.allSettled(list.map((p) => probeProviderLatency(p)));
+    } finally {
+      setTestingAllProviders(false);
     }
   }
 
@@ -2049,12 +2095,24 @@ export function Manager({
                 {t("一处登记，所有 AI 共用，Key 只填一次。改一处，用到它的 AI 全都跟着变。")}
               </p>
             </div>
-            <button
-              onClick={() => openNewCustomProvider()}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 shadow-sm shrink-0"
-            >
-              <Plus size={14} /> {t("添加供应商")}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* 次级按钮 —— 视觉上不抢右边「添加供应商」这颗主按钮。并发探测网格里
+                  「能测」的每一家（见 testAllProviderLatency 上的注释：只在这里点了才测）。 */}
+              <button
+                onClick={() => void testAllProviderLatency()}
+                disabled={testingAllProviders}
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-white/[0.12] text-ink-2 text-[12px] font-medium hover:bg-white/[0.06] disabled:opacity-50 transition-colors"
+              >
+                {testingAllProviders ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                {testingAllProviders ? t("测速中…") : t("测试速度")}
+              </button>
+              <button
+                onClick={() => openNewCustomProvider()}
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 shadow-sm shrink-0"
+              >
+                <Plus size={14} /> {t("添加供应商")}
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -2089,6 +2147,23 @@ export function Manager({
                         </button>
                       )}
                     </div>
+                    {/* 协议标签 —— 对齐 EchoBird「模型中心」：这家端点讲的是哪套协议，一眼看出
+                        「Claude Code 用不了这家」（纯 OpenAI 兼容）这类事，不用等切换时才报错。
+                        中性 ink 色调，跟上面「内置/自定义」那对彩色徽章区分开。 */}
+                    {(p.openai_base?.trim() || p.anthropic_base?.trim()) && (
+                      <div className="mt-1 flex items-center gap-1">
+                        {!!p.openai_base?.trim() && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded border border-white/[0.08] bg-white/[0.04] text-ink-4 shrink-0">
+                            OpenAI
+                          </span>
+                        )}
+                        {!!p.anthropic_base?.trim() && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded border border-white/[0.08] bg-white/[0.04] text-ink-4 shrink-0">
+                            Anthropic
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-2.5 space-y-1 text-[10.5px] text-ink-4">
                       <div className="flex justify-between gap-2">
                         <span>{t("地址")}</span>
@@ -2100,6 +2175,54 @@ export function Manager({
                         <span>{t("默认模型")}</span>
                         <span className="font-mono text-ink-3 truncate">{p.model || "—"}</span>
                       </div>
+                      {(() => {
+                        // 延迟行 —— 本机到端点的真实往返，只在用户点了才测（见 probeProviderLatency
+                        // 上方注释）。三态：未测 / 测速中 / 结果（ok 绿、失败截断错误 + title 全文）。
+                        const canProbe = canProbeProvider(p);
+                        const key = canProbe ? resolveKey(p) : "";
+                        const state = providerLatency[p.id];
+                        let node: ReactNode;
+                        let clickable = false;
+                        if (!canProbe) {
+                          node = <span className="text-ink-5">—</span>;
+                        } else if (!key) {
+                          node = <span className="text-ink-5">{t("没配 Key")}</span>;
+                        } else if (state === "testing") {
+                          node = <span className="text-ink-4">{t("测速中…")}</span>;
+                        } else if (!state) {
+                          node = <span className="text-ink-5">{t("未测试")}</span>;
+                          clickable = true;
+                        } else if (state.ok) {
+                          node = <span className="text-success-400">{state.latency_ms}ms</span>;
+                          clickable = true;
+                        } else {
+                          const full = state.error ?? "";
+                          const short = full.length > 24 ? `${full.slice(0, 24)}…` : full;
+                          node = (
+                            <span className="text-danger-400" title={full}>
+                              {short}
+                            </span>
+                          );
+                          clickable = true;
+                        }
+                        return (
+                          <div className="flex justify-between gap-2 items-center">
+                            <span>{t("延迟")}</span>
+                            {clickable ? (
+                              <button
+                                onClick={() => void probeProviderLatency(p)}
+                                disabled={testingAllProviders || state === "testing"}
+                                title={t("重新测这一家")}
+                                className="font-mono truncate hover:opacity-80 disabled:opacity-50"
+                              >
+                                {node}
+                              </button>
+                            ) : (
+                              <span className="font-mono truncate">{node}</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     {/* 空着不写「没人用」——「当前没有 AI 引用它」和「我们没查出来」在界面上
                         长得一样，而后者会误导人去删掉正在用的东西。有才说，没有就不说。 */}

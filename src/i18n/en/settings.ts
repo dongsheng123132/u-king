@@ -48,6 +48,14 @@ export const settings: Record<string, string> = {
   "正在被 {tools} 使用": "In use by {tools}",
   "已在 {n}/{total} 个工具启用:{tools}": "Enabled in {n}/{total} tools: {tools}",
 
+  // 供应商库卡片：协议标签 + 一键测速（2026-09-06，对标 EchoBird 模型中心）
+  "测试速度": "Test speed",
+  "测速中…": "Testing…",
+  "延迟": "Latency",
+  "未测试": "Not tested",
+  "没配 Key": "No key configured",
+  "重新测这一家": "Retest this one",
+
   // 设备钱包挂到虾盘云供应商卡片上（2026-08-22）——钱包是这家供应商的一部分，不是全局功能
   "设备钱包": "Device wallet",
   "余额 · 充值 · 换一把 Key": "Balance · top up · rotate key",
