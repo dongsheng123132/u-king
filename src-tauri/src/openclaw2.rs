@@ -8,13 +8,14 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
-#[cfg(not(windows))]
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex, OnceLock,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PROFILE: &str = "uking-openclaw2";
@@ -2428,6 +2429,40 @@ struct Capture {
     stderr: String,
 }
 
+const CAPTURE_STREAM_MAX_BYTES: usize = 512 * 1024;
+
+fn drain_capture_pipe<R: Read + Send + 'static>(
+    mut pipe: R,
+    buffer: Arc<Mutex<Vec<u8>>>,
+    complete: Arc<AtomicUsize>,
+) {
+    std::thread::spawn(move || {
+        let mut chunk = [0u8; 8192];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    if let Ok(mut captured) = buffer.lock() {
+                        let remaining = CAPTURE_STREAM_MAX_BYTES.saturating_sub(captured.len());
+                        captured.extend_from_slice(&chunk[..read.min(remaining)]);
+                    }
+                    // Keep reading after the bounded buffer is full.  Draining
+                    // is what prevents a verbose OpenClaw child from blocking
+                    // on a full Windows pipe.
+                }
+            }
+        }
+        complete.fetch_add(1, Ordering::Release);
+    });
+}
+
+fn capture_text(buffer: &Arc<Mutex<Vec<u8>>>) -> String {
+    buffer
+        .lock()
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+        .unwrap_or_default()
+}
+
 fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<Capture, String> {
     let node = node_exe(p);
     let cli = cli_file(p);
@@ -2583,27 +2618,55 @@ fn run_capture(
     let mut child = c
         .spawn()
         .map_err(|e| format!("启动 OpenClaw2 子进程失败: {e}"))?;
+    let pid = child.id();
+    let stdout = Arc::new(Mutex::new(Vec::new()));
+    let stderr = Arc::new(Mutex::new(Vec::new()));
+    let readers_complete = Arc::new(AtomicUsize::new(0));
+    if let Some(pipe) = child.stdout.take() {
+        drain_capture_pipe(pipe, stdout.clone(), readers_complete.clone());
+    } else {
+        readers_complete.fetch_add(1, Ordering::Release);
+    }
+    if let Some(pipe) = child.stderr.take() {
+        drain_capture_pipe(pipe, stderr.clone(), readers_complete.clone());
+    } else {
+        readers_complete.fetch_add(1, Ordering::Release);
+    }
     let begin = Instant::now();
-    loop {
-        if let Some(s) = child.try_wait().map_err(|e| e.to_string())? {
-            let out = child.wait_with_output().map_err(|e| e.to_string())?;
-            return Ok(Capture {
-                status: s.code(),
-                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
-            });
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status.code();
         }
         if begin.elapsed() >= timeout {
+            // A CLI wrapper can leave Node grandchildren holding stdout or
+            // stderr.  Kill the whole tree before returning; never call
+            // wait_with_output here because an inherited pipe can keep it
+            // blocked after the direct child has exited.
+            crate::agent::chat::kill_tree_by_pid(pid);
             let _ = child.kill();
-            let out = child.wait_with_output().map_err(|e| e.to_string())?;
-            return Ok(Capture {
-                status: None,
-                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
-            });
+            let reap_deadline = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < reap_deadline {
+                match child.try_wait() {
+                    Ok(Some(_)) | Err(_) => break,
+                    Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                }
+            }
+            break None;
         }
         std::thread::sleep(Duration::from_millis(100));
+    };
+    // Reader threads may still be draining bytes that were already written
+    // when `try_wait` observed exit.  Give them a short bounded grace period;
+    // do not join forever if a leaked descendant inherited a pipe handle.
+    let drain_deadline = Instant::now() + Duration::from_secs(2);
+    while readers_complete.load(Ordering::Acquire) < 2 && Instant::now() < drain_deadline {
+        std::thread::sleep(Duration::from_millis(10));
     }
+    Ok(Capture {
+        status,
+        stdout: capture_text(&stdout),
+        stderr: capture_text(&stderr),
+    })
 }
 fn run_status(c: &mut Command, timeout: Duration, what: &str) -> Result<(), String> {
     let exe = c.get_program().to_string_lossy().to_string();
@@ -3284,6 +3347,48 @@ mod tests {
         fs::create_dir_all(destination.parent()?).ok()?;
         fs::copy(source, &destination).ok()?;
         Some(destination)
+    }
+    #[cfg(windows)]
+    #[test]
+    fn run_capture_drains_large_pipes_and_times_out_without_waiting_for_eof() {
+        let p = paths_from_root(
+            std::env::temp_dir().join(format!("uking-openclaw2-capture-{}", now_nanos())),
+        );
+        create_layout(&p).unwrap();
+        let node = private_node_for_gateway_test(&p).expect("测试机需要 Node");
+        let flood = p.root.join("flood.mjs");
+        fs::write(
+            &flood,
+            "process.stdout.write('o'.repeat(128 * 1024)); process.stderr.write('e'.repeat(128 * 1024));",
+        )
+        .unwrap();
+        let output = run_capture(
+            &node,
+            &[&flood.to_string_lossy()],
+            &[],
+            &p.workspace,
+            Duration::from_secs(5),
+        )
+        .expect("大输出子进程必须可回收");
+        assert_eq!(output.status, Some(0));
+        assert_eq!(output.stdout.len(), 128 * 1024);
+        assert_eq!(output.stderr.len(), 128 * 1024);
+
+        let began = Instant::now();
+        let timed_out = run_capture(
+            &node,
+            &["-e", "setInterval(() => {}, 1000)"],
+            &[],
+            &p.workspace,
+            Duration::from_millis(300),
+        )
+        .expect("超时子进程必须可回收");
+        assert!(timed_out.status.is_none());
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "超时路径不能等待继承管道的 EOF"
+        );
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[cfg(windows)]
     #[test]
