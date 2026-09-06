@@ -46,7 +46,7 @@ export type RightKind = "terminal" | "browser" | "files";
  *
  * 切到面板时**不卸载任何会话**（Chat 实例照旧 display:none 保活，PTY 不断）。
  */
-export type WorkView = "chat" | "experts" | "automation" | "kanban" | "passports" | "terminal";
+export type WorkView = "chat" | "experts" | "automation" | "kanban" | "passports";
 
 /** 每个会话的三区布局（运行时内存，不落盘）。中=对话恒在；右=可切+收起；下=终端抽屉。 */
 export interface PanelLayout {

@@ -1046,10 +1046,13 @@ export function App() {
         />
         </PanelBoundary>
 
-        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢） */}
+        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢）。
+            「对话工作台」（chat）和「终端工作台」（termwb）是**同一个 UWorkspace 实例**——
+            同一批会话，唯一区别是 paneMode 决定每个会话默认停在对话态还是终端态（见 UWorkspace.tsx）。
+            **绝不能渲染第二个 UWorkspace**：scripts/check-panel-boundary.mjs 要求它在本文件里只出现一次。 */}
         <main
           className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}
-          style={{ display: tab === "chat" ? undefined : "none" }}
+          style={{ display: tab === "chat" || tab === "termwb" ? undefined : "none" }}
         >
           {/* U-Workspace 是唯一 eager 挂载的页（保活），也是崩得最多的页 ——
               工作台里面 U-Chat / U-CLI / 文件 / 浏览器各有自己的边界，
@@ -1058,7 +1061,7 @@ export function App() {
             {/* onGoCreate：「AI 创作」2026-08-23 从工作台右侧面板搬回侧栏独立页（一个能力一个入口）。
                 专家卡上「打开 AI 作图专家」那条 route 必须跟着改道到侧栏那一页，否则它又会变回
                 一句不兑现的承诺 —— Chat.tsx 那段注释记着它以前就是死的。 */}
-            <UWorkspace onToast={flash} pendingExpert={pendingExpert} onConsumed={() => setPendingExpert(null)} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} onGoCreate={(sub) => setTab(sub === "video" ? "video" : "draw")} />
+            <UWorkspace onToast={flash} pendingExpert={pendingExpert} onConsumed={() => setPendingExpert(null)} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} onGoCreate={(sub) => setTab(sub === "video" ? "video" : "draw")} paneMode={tab === "termwb" ? "cli" : "chat"} />
           </PanelBoundary>
         </main>
 
@@ -1119,7 +1122,7 @@ export function App() {
         )}
 
         {/* 非 TUI 页面（manage/codex/myai/setup）：条件渲染，无 PTY 不需保活 */}
-        {tab !== "terminal" && tab !== "chat" && !isTuiAppId(tab) && (
+        {tab !== "terminal" && tab !== "chat" && tab !== "termwb" && !isTuiAppId(tab) && (
         <main className={cn(
           "flex-1 min-w-0",
           selfHeightTab ? "min-h-0 flex flex-col" : "overflow-y-auto",

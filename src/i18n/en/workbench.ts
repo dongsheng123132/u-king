@@ -109,12 +109,6 @@ export const workbench: Record<string, string> = {
   "左侧「新建项目」选个文件夹，开始干活":
     "Click “New project” on the left, pick a folder, and get to work",
 
-  // TerminalWorkbench.tsx / SessionList.tsx NAV — 终端工作台
-  "终端工作台": "Terminal Workbench",
-  "在项目文件夹里直接开终端": "Open a terminal straight into a project folder",
-  "先在左侧列表新建项目（选文件夹）": "Create a project on the left first (pick a folder)",
-  "选择项目": "Select project",
-
   // ToolAppView.tsx — 提示 / toast
   "{name} 已在独立终端窗口打开（显示区域更大）":
     "{name} opened in a separate terminal window (more display space)",

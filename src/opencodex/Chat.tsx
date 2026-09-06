@@ -200,10 +200,13 @@ function saveChatItems(sessionId: string, items: Item[]) {
   void invoke("chat_archive_replace", { sessionId, items: trimmed }).catch(() => {});
 }
 
-export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
+export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert, paneMode = "chat" }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
   /** 点一位专家 → 带着他开一个会话（宿主负责建会话，本组件不自己造）。 */ onSummonExpert?: (e: Expert) => void;
   /** 这一轮跑起来了 / 跑完了 / 跑挂了 —— 宿主拿去染左侧列表那个小圆点。不传也照常能用。 */
-  onStatus?: (s: "running" | "idle" | "error") => void }) {
+  onStatus?: (s: "running" | "idle" | "error") => void;
+  /** 「对话工作台」vs「终端工作台」两个侧栏入口共用同一批会话：cli = 默认停在终端态
+   *  （相当于自动收起 U-Chat 对话列，只见 U-CLI 终端），chat = 默认对话态。 */
+  paneMode?: "chat" | "cli" }) {
   const { t } = useI18n();
   // 矮屏（见 lib/useViewport.ts）：顶栏和「按发送前该知道的两件事」那条在
   // 1366×768 上各自都还占着宽松间距，而对话正文只剩三四行。
@@ -709,6 +712,24 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     setChatCollapsed(false);
     setRightOpen(false);
   }, []);
+
+  /**
+   * 侧栏「终端工作台」入口：把 `paneMode="cli"` 接到既有的对话↔终端主切换上，
+   * 不新建第三种模式（同上面 showCliMode/showChatMode 那条注释的原则）。
+   *
+   * 🔴 只在 `paneMode` 与当前 `cliMode` 不一致时才切换一次 —— 否则用户手动点回「对话」
+   * 后，这个 effect 会在下一次渲染把他推回终端态（paneMode 没变，他的选择就没了）。
+   * 🔴 `!workspace` 时跳过：同一行的「终端」toggle 按钮本身就是 `disabled={!workspace}`
+   *  （见上面顶栏那颗），效果要跟手动点保持同一条准入线，不能替用户做一件按钮都不让做的事。
+   * 🔴 claude-cli / hermes 全屏 TUI 那个分支（engine !== "claude"/"codex"/"uking"）
+   *  本来就已经是终端了 —— 这里对它无害（cliMode 只是多开一份右侧面板里的终端），
+   *  不需要为它特判。
+   */
+  useEffect(() => {
+    if (paneMode === "cli" && !cliMode && workspace) showCliMode();
+    else if (paneMode === "chat" && cliMode) showChatMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneMode, workspace]);
 
   const startDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

@@ -6,7 +6,7 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { SidebarMiniApps } from "./SidebarMiniApps";
@@ -22,6 +22,7 @@ export type TabId =
   | "terminal"
   | "setup"
   | "chat"
+  | "termwb"
   | "create"
   | "experts"
   | "myai"
@@ -80,7 +81,11 @@ const CORE: NavItem[] = [
   //   · **U-Chat** = 工作台里那个 GUI 对话框（`opencodex/Chat.tsx` + `panels/ChatPanel.tsx`）。
   //   · **U-CLI**  = 工作台里那个终端界面（`panels/TermPanel.tsx` + `term/useTermGroup.ts`）。
   // 面向客户的文案保留「对话 / 终端」这类人话，代号只用来**指认是哪一块**。
-  { id: "chat", label: "U-Workspace", sub: "对话 · 终端 · 作图出片，一站干活", icon: MessageSquare },
+  { id: "chat", label: "对话工作台", sub: "U-Chat · 会话 · 看板 · 专家", icon: MessageSquare },
+  // 「终端工作台」（2026-09-06 拆分自 U-Workspace）：跟「对话工作台」是**同一批会话**，
+  // 同一份 SessionList/store —— 唯一区别是每个会话默认停在终端态（相当于自动收起
+  // U-Chat 对话列，只见 U-CLI 终端）。不建第二套会话列表，见 UWorkspace.tsx 的 paneMode。
+  { id: "termwb", label: "终端工作台", sub: "U-CLI · 同一批项目，只见终端", icon: SquareTerminal },
   // 「AI 创作」2026-08-23 **回到核心位**（用户拍板：「客户希望留」）。
   //
   // 它 08-21 被 `6bb9409` 摘掉，理由写的是「它和 U-Chat 是同一件事的两个入口，收进
