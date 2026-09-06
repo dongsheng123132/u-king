@@ -721,12 +721,22 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
    * 后，这个 effect 会在下一次渲染把他推回终端态（paneMode 没变，他的选择就没了）。
    * 🔴 `!workspace` 时跳过：同一行的「终端」toggle 按钮本身就是 `disabled={!workspace}`
    *  （见上面顶栏那颗），效果要跟手动点保持同一条准入线，不能替用户做一件按钮都不让做的事。
-   * 🔴 claude-cli / hermes 全屏 TUI 那个分支（engine !== "claude"/"codex"/"uking"）
-   *  本来就已经是终端了 —— 这里对它无害（cliMode 只是多开一份右侧面板里的终端），
-   *  不需要为它特判。
+   * 🔴 claude-cli / hermes 全屏 TUI 那个分支（判定同 :1091/:1101 的渲染分支：
+   *  `engine !== "uking" && engine !== "claude" && engine !== "codex"`）本身已经是
+   *  全屏终端 —— 「终端工作台」对它无事可做，效果最前面直接 return，cli/chat 两个
+   *  方向都跳过：不跳 chat 方向的话，从终端工作台切回对话工作台时 showChatMode 会去
+   *  动它其实根本没打开过的右侧面板状态（rightOpen/rightKind），无意义地改一遍。
+   *
+   * 🔴 默认态要求「终端工作台」进来时对话列整个收起（chatCollapsed=true），全屏只见终端；
+   *  用户手动点开对话列后不能被这个 effect 推回去 —— 复用上面同一条守则：只在
+   *  `paneMode` 与 `cliMode` 不一致的那一刻切一次，chatCollapsed 不单独进依赖数组，
+   *  用户之后再点开对话列，`paneMode` 没变，这个分支不会重新触发。
+   *  同一个 `!workspace` 守卫覆盖 chatCollapsed：无 workspace 时整个分支跳过，
+   *  不会有「对话列被收起但终端也没开」的中间态。
    */
   useEffect(() => {
-    if (paneMode === "cli" && !cliMode && workspace) showCliMode();
+    if (engine !== "uking" && engine !== "claude" && engine !== "codex") return;
+    if (paneMode === "cli" && !cliMode && workspace) { showCliMode(); setChatCollapsed(true); }
     else if (paneMode === "chat" && cliMode) showChatMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paneMode, workspace]);
