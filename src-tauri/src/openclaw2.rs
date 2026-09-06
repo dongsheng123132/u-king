@@ -11,7 +11,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex, OnceLock,
@@ -2287,6 +2287,14 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut health = json!({"ok":false,"degraded":false,"rpcOk":false});
     while Instant::now() < deadline {
+        match child.try_wait() {
+            Ok(Some(exit)) => {
+                let _ = fs::remove_file(supervisor_file(ps));
+                return Err(gateway_early_exit_error(exit));
+            }
+            Ok(None) => {}
+            Err(_) => return Err("无法检查 OpenClaw2 Gateway 启动进程状态".into()),
+        }
         if port_listening(port) {
             health = gateway_status(ps, port)
                 .unwrap_or_else(|_| json!({"ok":false,"degraded":false,"rpcOk":false}));
@@ -2311,6 +2319,14 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
     Ok(
         json!({"changed":true,"running":port_listening(port),"ready":ready,"pid":child.id(),"port":port,"dashboard_url":format!("http://127.0.0.1:{port}/"),"health":health,"state_version":state_version()}),
     )
+}
+
+fn gateway_early_exit_error(exit: ExitStatus) -> String {
+    let code = exit
+        .code()
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".into());
+    format!("OpenClaw2 Gateway 启动进程提前退出 (exit={code})")
 }
 
 fn write_supervisor_or_kill(
@@ -2461,6 +2477,39 @@ fn capture_text(buffer: &Arc<Mutex<Vec<u8>>>) -> String {
         .lock()
         .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
         .unwrap_or_default()
+}
+
+/// Terminate only the child tree created by this capture. `taskkill` itself is
+/// also external work, so run it hidden with null streams and put a deadline
+/// around it instead of using `Command::status()`.
+fn terminate_capture_tree_bounded(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new(crate::installer::system_tool("taskkill"));
+        command
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(0x0800_0000);
+        if let Ok(mut taskkill) = command.spawn() {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < deadline {
+                match taskkill.try_wait() {
+                    Ok(Some(_)) | Err(_) => return,
+                    Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                }
+            }
+            let _ = taskkill.kill();
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        // Preserve the established Unix tree/group behavior. This path adds
+        // no wait operation; the direct child still has its bounded reap.
+        crate::agent::chat::kill_tree_by_pid(pid);
+    }
 }
 
 fn run_oc(p: &Paths, args: &[&str], timeout: Duration) -> Result<Capture, String> {
@@ -2642,7 +2691,7 @@ fn run_capture(
             // stderr.  Kill the whole tree before returning; never call
             // wait_with_output here because an inherited pipe can keep it
             // blocked after the direct child has exited.
-            crate::agent::chat::kill_tree_by_pid(pid);
+            terminate_capture_tree_bounded(pid);
             let _ = child.kill();
             let reap_deadline = Instant::now() + Duration::from_secs(2);
             while Instant::now() < reap_deadline {
@@ -3375,9 +3424,15 @@ mod tests {
         assert_eq!(output.stderr.len(), 128 * 1024);
 
         let began = Instant::now();
+        let inherited_pipe_child = p.root.join("inherited-pipe-child.mjs");
+        fs::write(
+            &inherited_pipe_child,
+            "import { spawn } from 'node:child_process'; spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit' }); setInterval(() => {}, 1000);",
+        )
+        .unwrap();
         let timed_out = run_capture(
             &node,
-            &["-e", "setInterval(() => {}, 1000)"],
+            &[&inherited_pipe_child.to_string_lossy()],
             &[],
             &p.workspace,
             Duration::from_millis(300),
@@ -3389,6 +3444,18 @@ mod tests {
             "超时路径不能等待继承管道的 EOF"
         );
         let _ = fs::remove_dir_all(&p.root);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn gateway_early_exit_error_reports_only_exit_code() {
+        let status = Command::new("cmd.exe")
+            .args(["/d", "/c", "exit 17"])
+            .status()
+            .unwrap();
+        assert_eq!(
+            gateway_early_exit_error(status),
+            "OpenClaw2 Gateway 启动进程提前退出 (exit=17)"
+        );
     }
     #[cfg(windows)]
     #[test]
