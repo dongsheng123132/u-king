@@ -307,7 +307,10 @@ export function NightShift({ onToast }: { onToast: (msg: string) => void }) {
       )}
 
       {/* ── 规划中的夜班能力（全部暂未开放） ─────────────────────── */}
-      <section className="space-y-3">
+      {/* 2026-09-06 用户裁决「不成熟的功能先隐藏」：这 6 张「暂未开放」占位卡整块收起，
+          页面只剩能用的记录功能。数据定义（PLANNED）与渲染组件（Planned）原样保留，
+          等执行类能力真正开放（见文件头注释的毕业标准）再放开下面这块注释。 */}
+      {/* <section className="space-y-3">
         <div className="flex items-center gap-2 px-1">
           <Moon size={15} className="text-ink-4" />
           <span className="text-[13px] font-medium text-ink-2">{t("夜班能力 · 规划中")}</span>
@@ -318,7 +321,7 @@ export function NightShift({ onToast }: { onToast: (msg: string) => void }) {
             <Planned key={p.key} item={p} onToast={onToast} t={t} />
           ))}
         </div>
-      </section>
+      </section> */}
     </div>
   );
 }
@@ -462,3 +465,8 @@ function Planned({
     </div>
   );
 }
+
+// 2026-09-06：上方渲染入口已注释掉（不成熟先隐藏），但 `PLANNED` 数据与 `Planned` 组件
+// 按要求原样保留，不删。这一行只是让 tsc `noUnusedLocals` 别报「declared but never read」——
+// 恢复渲染时可以删掉这行。
+void PLANNED; void Planned;
