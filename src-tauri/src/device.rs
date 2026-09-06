@@ -44,12 +44,11 @@
 //! 也能拿到 Key）。
 
 use serde::Serialize;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use crate::providers::{
-    self, query_balance, Balance, MigrateOutcome, DEVICE_API_NOT_DEPLOYED,
-};
+use crate::providers::{self, query_balance, Balance, MigrateOutcome, DEVICE_API_NOT_DEPLOYED};
 
 /// device.json 里 `keyKind` 的两个取值。
 const KIND_RANDOM: &str = "random";
@@ -63,7 +62,9 @@ const PENDING_MIGRATE: &str = "migrate";
 static WALLET_OPERATION_LOCK: Mutex<()> = Mutex::new(());
 
 fn wallet_operation_guard() -> MutexGuard<'static, ()> {
-    WALLET_OPERATION_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    WALLET_OPERATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -198,11 +199,14 @@ pub fn adopt_device_key(key: &str) -> Result<String, String> {
         return Err("密钥里混进了空格或换行，请重新复制".into());
     }
 
-    // 唯一的判据：服务端认不认它。认了才落盘。
-    let balance = query_balance(key)
-        .map_err(|e| format!("这把密钥用不了，没有保存：{e}"))?;
+    // 先收尾已知 pending。迁移和轮换的 commit 语义相反，不能把迁移
+    // pending 当作 rotate 去 commit；未知 kind 更不能被 adopt 静默清掉。
+    let previous = settle_pending_before_explicit_wallet_change()?;
 
-    let mut st = load_state();
+    // 唯一的判据：服务端认不认它。认了才落盘。
+    let balance = query_balance(key).map_err(|e| format!("这把密钥用不了，没有保存：{e}"))?;
+
+    let mut st = previous.clone();
     st.key = key.to_string();
     st.kind = KIND_RANDOM.into();
     st.wallet_id = String::new(); // 别人的钱包 id 我们不知道，也不需要知道
@@ -215,7 +219,20 @@ pub fn adopt_device_key(key: &str) -> Result<String, String> {
     save_state_checked(&st)?;
 
     // 导入和轮换一样都会改变本机当前 Key，必须同步真实消费者，不能只改 device.json。
-    apply_wallet_to_consumers(Some(key))?;
+    // 消费者失败时把钱包和已可能部分写入的消费者都恢复到导入前状态，不能留下
+    // “device.json 已变、运行时仍用旧 key” 的半更新。
+    if let Err(apply_error) = apply_wallet_to_consumers(Some(key)) {
+        let disk_rollback = save_state_checked(&previous);
+        let consumer_rollback =
+            apply_wallet_to_consumers((!previous.key.is_empty()).then_some(previous.key.as_str()));
+        return Err(match (disk_rollback, consumer_rollback) {
+            (Ok(()), Ok(())) => format!("启用密钥失败，已恢复原设备钱包：{apply_error}"),
+            (disk, consumer) => format!(
+                "启用密钥失败，恢复原设备钱包也未完全成功：{apply_error}；本地状态={:?}；消费者={:?}",
+                disk.err(), consumer.err()
+            ),
+        });
+    }
 
     Ok(format!("已启用这把密钥，余额 {}", balance.text))
 }
@@ -229,7 +246,7 @@ pub fn rotate_device_key() -> Result<String, String> {
     if std::env::var("UKING_TEST_HOME").is_ok() {
         return Err("沙箱环境不执行密钥轮换".into());
     }
-    let st = load_state();
+    let st = settle_pending_before_explicit_wallet_change()?;
     if st.kind != KIND_RANDOM {
         return Err("这台设备还没升级到新的密钥体系，请先联网启动一次".into());
     }
@@ -267,13 +284,26 @@ pub fn reset_local_device_wallet() -> Result<String, String> {
             PendingPolicy::SettleKnown => {
                 finish_pending(&st, pending);
                 let settled = load_state();
-                if settled.pending_key.as_deref().is_some_and(|key| !key.is_empty()) {
-                    return Err("设备钱包还有一笔未完成的密钥操作，已保留本机钱包；请联网后重试".into());
+                if settled
+                    .pending_key
+                    .as_deref()
+                    .is_some_and(|key| !key.is_empty())
+                {
+                    return Err(
+                        "设备钱包还有一笔未完成的密钥操作，已保留本机钱包；请联网后重试".into(),
+                    );
                 }
                 // 收尾后当前 Key 可能已经变了，第一次确认与备份失效，必须重新展示再确认。
-                return Err("设备钱包刚完成一笔未决操作，当前 Key 已刷新；请确认备份新 Key 后再次删除".into());
+                return Err(
+                    "设备钱包刚完成一笔未决操作，当前 Key 已刷新；请确认备份新 Key 后再次删除"
+                        .into(),
+                );
             }
-            PendingPolicy::RejectUnknown => return Err("检测到无法识别的设备钱包未决操作，已保留全部本机状态；请升级或联系支持".into()),
+            PendingPolicy::RejectUnknown => {
+                return Err(
+                    "检测到无法识别的设备钱包未决操作，已保留全部本机状态；请升级或联系支持".into(),
+                )
+            }
             PendingPolicy::None => unreachable!("pending key 已在外层确认存在"),
         }
     }
@@ -290,9 +320,9 @@ pub fn reset_local_device_wallet() -> Result<String, String> {
         let rollback = apply_wallet_to_consumers(Some(&st.key));
         return Err(match rollback {
             Ok(()) => format!("移除本机钱包失败，已恢复原设备钱包配置：{save_error}"),
-            Err(rollback_error) => format!(
-                "移除本机钱包失败，且恢复原配置也失败：{save_error}；{rollback_error}"
-            ),
+            Err(rollback_error) => {
+                format!("移除本机钱包失败，且恢复原配置也失败：{save_error}；{rollback_error}")
+            }
         });
     }
     Ok("已从本机移除设备钱包；服务端钱包、原 Key 和余额均未删除".into())
@@ -315,14 +345,52 @@ fn classify_pending(st: &DeviceState) -> PendingPolicy {
     }
 }
 
+/// adopt/rotate 是用户主动变更，不能跨过上次崩溃留下的两阶段操作。
+/// 已知类型先按原类型结算；未知类型保留原样并拒绝，避免猜错 commit 接口。
+fn settle_pending_before_explicit_wallet_change() -> Result<DeviceState, String> {
+    let st = load_state();
+    let Some(pending) = st.pending_key.as_deref().filter(|key| !key.is_empty()) else {
+        return Ok(st);
+    };
+    match classify_pending(&st) {
+        PendingPolicy::SettleKnown => {
+            finish_pending(&st, pending);
+            let settled = load_state();
+            if settled
+                .pending_key
+                .as_deref()
+                .is_some_and(|key| !key.is_empty())
+            {
+                Err("设备钱包还有一笔未完成的密钥操作；请联网后重试".into())
+            } else {
+                Ok(settled)
+            }
+        }
+        PendingPolicy::RejectUnknown => {
+            Err("检测到无法识别的设备钱包未决操作，已保留全部本机状态；请升级或联系支持".into())
+        }
+        PendingPolicy::None => Ok(st),
+    }
+}
+
 /// 仅读缓存的 Key 前 12 位（bug 上报去重用，不查网络、不含完整 Key）。
 pub fn get_device_key_cached_prefix() -> String {
-    std::fs::read_to_string(cache_path())
+    let p = cache_path();
+    if crate::portable_context::current().is_some()
+        && crate::portable_context::ensure_owned_path(&p).is_err()
+    {
+        return "unknown".into();
+    }
+    std::fs::read_to_string(p)
         .ok()
         .and_then(|s| {
             serde_json::from_str::<serde_json::Value>(&s)
                 .ok()
-                .and_then(|v| v.get("key").and_then(|k| k.as_str()).map(|k| k.chars().take(12).collect()))
+                .and_then(|v| {
+                    v.get("key")
+                        .and_then(|k| k.as_str())
+                        .map(|k| k.chars().take(12).collect())
+                })
                 .or_else(|| json_string_field(&s, "key").map(|k| k.chars().take(12).collect()))
         })
         .unwrap_or_else(|| "unknown".into())
@@ -351,7 +419,16 @@ struct DeviceState {
 }
 
 fn load_state() -> DeviceState {
-    let raw = match std::fs::read_to_string(cache_path()) {
+    let p = cache_path();
+    // A portable device.json must never be read through a link. On failure we
+    // return an empty state, never a host wallet; later writes use this same
+    // guard and consequently fail closed too.
+    if crate::portable_context::current().is_some()
+        && crate::portable_context::ensure_owned_path(&p).is_err()
+    {
+        return DeviceState::default();
+    }
+    let raw = match std::fs::read_to_string(p) {
         Ok(s) => s,
         Err(_) => return DeviceState::default(),
     };
@@ -392,7 +469,10 @@ fn load_state() -> DeviceState {
             .get("legacyUnrecoverable")
             .and_then(|x| x.as_bool())
             .unwrap_or(false),
-        local_reset: v.get("localReset").and_then(|x| x.as_bool()).unwrap_or(false),
+        local_reset: v
+            .get("localReset")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
     }
 }
 
@@ -405,10 +485,12 @@ fn save_state(st: &DeviceState) {
 }
 
 fn save_state_checked(st: &DeviceState) -> Result<(), String> {
-    if crate::portable_context::current().is_some() {
-        crate::portable_context::ensure_owned_path(&uking_home())?;
+    let home = uking_home();
+    let portable_root = crate::portable_context::current().map(|ctx| ctx.root);
+    if let Some(root) = portable_root.as_deref() {
+        crate::portable_context::ensure_owned_path_from_root(root, &home)?;
     }
-    std::fs::create_dir_all(uking_home()).map_err(|e| format!("创建设备钱包目录失败: {e}"))?;
+    std::fs::create_dir_all(&home).map_err(|e| format!("创建设备钱包目录失败: {e}"))?;
     let body = serde_json::json!({
         "key": st.key,
         "keyKind": st.kind,
@@ -422,10 +504,71 @@ fn save_state_checked(st: &DeviceState) -> Result<(), String> {
                  删除本文件会导致余额无法自动找回，请凭充值订单号联系客服。",
     });
     let p = cache_path();
-    let tmp = p.with_extension("json.tmp");
-    let encoded = serde_json::to_string_pretty(&body).map_err(|e| format!("序列化设备钱包失败: {e}"))?;
-    std::fs::write(&tmp, encoded).map_err(|e| format!("写设备钱包临时文件失败: {e}"))?;
-    std::fs::rename(&tmp, &p).map_err(|e| format!("保存设备钱包失败: {e}"))
+    let encoded =
+        serde_json::to_string_pretty(&body).map_err(|e| format!("序列化设备钱包失败: {e}"))?;
+    write_device_state_atomically(&p, encoded.as_bytes(), portable_root.as_deref())
+}
+
+/// Write a wallet via an exclusively-created sibling and rename it into place.
+/// In portable mode every existing ancestor, final leaf and temporary leaf is
+/// checked through symlink_metadata before it can be followed.
+fn write_device_state_atomically(
+    path: &Path,
+    bytes: &[u8],
+    portable_root: Option<&Path>,
+) -> Result<(), String> {
+    let parent = path.parent().ok_or("设备钱包路径没有父目录")?;
+    // Keep the established desktop path untouched. The stricter protocol is
+    // specifically for marker-selected portable packages.
+    if portable_root.is_none() {
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, bytes).map_err(|e| format!("写设备钱包临时文件失败: {e}"))?;
+        return std::fs::rename(&tmp, path).map_err(|e| format!("保存设备钱包失败: {e}"));
+    }
+    if let Some(root) = portable_root {
+        crate::portable_context::ensure_owned_path_from_root(root, parent)?;
+    }
+    std::fs::create_dir_all(parent).map_err(|e| format!("创建设备钱包目录失败: {e}"))?;
+    if let Some(root) = portable_root {
+        crate::portable_context::ensure_owned_path_from_root(root, parent)?;
+        crate::portable_context::ensure_owned_path_from_root(root, path)?;
+    }
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("device.json");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    for attempt in 0..32_u32 {
+        let tmp = parent.join(format!(".{name}.wallet-tmp.{pid}.{stamp}.{attempt}"));
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(file) => file,
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(format!("创建设备钱包临时文件失败: {err}")),
+        };
+        if let Err(err) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("写设备钱包临时文件失败: {err}"));
+        }
+        drop(file);
+        if let Some(root) = portable_root {
+            crate::portable_context::ensure_owned_path_from_root(root, &tmp)?;
+            crate::portable_context::ensure_owned_path_from_root(root, path)?;
+        }
+        if let Err(err) = std::fs::rename(&tmp, path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("保存设备钱包失败: {err}"));
+        }
+        return Ok(());
+    }
+    Err("无法创建唯一的设备钱包临时文件".into())
 }
 
 /// 当前该拿去用的凭证。
@@ -681,7 +824,12 @@ fn reissue_pending(st: &DeviceState, pending: &str) -> bool {
         _ => return false,
     };
     if fresh.api_key != pending {
-        let _ = save_pending(&fresh.api_key, &st.pending_kind.clone(), &st.pending_from, &fresh.wallet_id);
+        let _ = save_pending(
+            &fresh.api_key,
+            &st.pending_kind.clone(),
+            &st.pending_from,
+            &fresh.wallet_id,
+        );
         return false;
     }
     query_balance(pending).is_ok()
@@ -800,7 +948,12 @@ fn read_reg_guid() -> Option<String> {
     // 解析失败会走兜底指纹 → 同一台机器 Key 漂移、余额身份丢失。
     let out = run_hidden(
         &crate::installer::system_tool("reg"),
-        &["query", r"HKLM\SOFTWARE\Microsoft\Cryptography", "/v", "MachineGuid"],
+        &[
+            "query",
+            r"HKLM\SOFTWARE\Microsoft\Cryptography",
+            "/v",
+            "MachineGuid",
+        ],
     )
     .ok()?;
     out.lines()
@@ -998,7 +1151,11 @@ fn sha256(data: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_pending, sha256_hex, DeviceState, PendingPolicy, PENDING_MIGRATE, PENDING_ROTATE};
+    use super::{
+        classify_pending, sha256_hex, write_device_state_atomically, DeviceState, PendingPolicy,
+        PENDING_MIGRATE, PENDING_ROTATE,
+    };
+    use std::fs;
 
     #[test]
     fn sha256_known_vectors() {
@@ -1011,10 +1168,7 @@ mod tests {
             sha256_hex("abc").unwrap(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
-        assert_eq!(
-            sha256_hex("uking|test-guid").unwrap().len(),
-            64
-        );
+        assert_eq!(sha256_hex("uking|test-guid").unwrap().len(), 64);
     }
 
     #[test]
@@ -1031,6 +1185,55 @@ mod tests {
 
         state.pending_kind = "future-server-operation".into();
         assert_eq!(classify_pending(&state), PendingPolicy::RejectUnknown);
+    }
+
+    #[test]
+    fn explicit_wallet_changes_require_known_pending_to_settle_first() {
+        let mut state = DeviceState {
+            key: "sk-current".into(),
+            pending_key: Some("sk-pending".into()),
+            pending_kind: PENDING_MIGRATE.into(),
+            pending_from: "sk-fingerprint-source".into(),
+            ..DeviceState::default()
+        };
+        assert_eq!(classify_pending(&state), PendingPolicy::SettleKnown);
+        state.pending_kind = "server-operation-we-do-not-understand".into();
+        assert_eq!(classify_pending(&state), PendingPolicy::RejectUnknown);
+        assert_eq!(
+            state.pending_key.as_deref(),
+            Some("sk-pending"),
+            "未知 pending 必须保留，不能被 adopt/rotate 清掉"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn portable_wallet_leaf_link_cannot_overwrite_host_sentinel() {
+        use std::os::windows::fs::symlink_file;
+
+        let root =
+            std::env::temp_dir().join(format!("uking-device-wallet-link-{}", std::process::id()));
+        let outside = std::env::temp_dir().join(format!(
+            "uking-device-wallet-sentinel-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+        let wallet_dir = root.join("U-King/data/uking");
+        fs::create_dir_all(&wallet_dir).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let sentinel = outside.join("host-wallet-sentinel.txt");
+        fs::write(&sentinel, b"do not overwrite host wallet").unwrap();
+        let leaf = wallet_dir.join("device.json");
+        symlink_file(&sentinel, &leaf).unwrap();
+
+        assert!(write_device_state_atomically(&leaf, b"portable wallet", Some(&root)).is_err());
+        assert_eq!(
+            fs::read(&sentinel).unwrap(),
+            b"do not overwrite host wallet"
+        );
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
     }
 }
 
