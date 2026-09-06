@@ -1145,9 +1145,6 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
         ("OPENCLAW_DISABLE_BONJOUR".into(), "1".into()),
         ("NO_COLOR".into(), "1".into()),
     ];
-    if crate::portable_context::current().is_some() {
-        env.push(("UKING_PORTABLE_COMPAT_EXFAT".into(), "1".into()));
-    }
     env
 }
 

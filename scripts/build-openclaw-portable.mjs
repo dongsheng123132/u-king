@@ -45,17 +45,7 @@ if (!io) throw new Error("pinned OpenClaw io.write bundle not found");
 const ioPath = path.join(dist, io);
 const before = await sha(ioPath);
 const after = await sha(ioPath);
-const workspace = (await readdir(dist)).find((name) => /^workspace-fs-.*\.js$/.test(name));
-if (!workspace) throw new Error("pinned OpenClaw workspace writer bundle not found");
-const workspacePath = path.join(dist, workspace);
-const workspaceBefore = await sha(workspacePath);
-if (workspaceBefore !== "ea0436681164e0dce0d1be6ba57e5bc17a262d412b562ecac98e77a648d8712f") throw new Error("unexpected OpenClaw workspace writer hash; refusing unreviewed patch");
-const workspaceSource = await readFile(workspacePath, "utf8");
-if (!workspaceSource.includes('renameIdentity: "strict"')) throw new Error("OpenClaw workspace patch anchor changed");
-await writeFile(workspacePath, workspaceSource.replace('renameIdentity: "strict"', 'renameIdentity: process.env.UKING_PORTABLE_COMPAT_EXFAT === "1" ? "verify-content-with-lock" : "strict"'));
-const workspaceAfter = await sha(workspacePath);
-execFileSync(path.join(oc, "runtime", "node", "node.exe"), ["--check", workspacePath], { stdio: "inherit" });
-await writeFile(path.join(root, "PATCHES.md"), `# OpenClaw portable runtime patch\n\n- upstream: openclaw 2026.8.1, @openclaw/fs-safe 0.5.6\n- file: runtime/app/node_modules/openclaw/dist/${workspace}\n- before SHA-256: ${workspaceBefore}\n- after SHA-256: ${workspaceAfter}\n- effect: only U-King's managed portable process sets UKING_PORTABLE_COMPAT_EXFAT=1 and selects fs-safe verify-content-with-lock; all default callers remain strict.\n`);
+await writeFile(path.join(root, "PATCHES.md"), `# OpenClaw portable runtime\n\nNo runtime source patch is applied. OpenClaw 2026.8.1 and its locked @openclaw/fs-safe 0.5.6 are copied from the verified input archives. The package manifest records the copied config-writer hash.\n`);
 await cp(path.join(oc, "runtime", "app", "node_modules", "openclaw", "LICENSE"), path.join(root, "LICENSES", "OpenClaw-MIT.txt"));
 await writeFile(path.join(root, "LICENSES", "U-King-NOTICE.txt"), "U-King source: https://github.com/dongsheng123132/u-king\nOpenClaw: MIT; see OpenClaw-MIT.txt.\n");
 await writeFile(path.join(root, "启动 OpenClaw.cmd"), "@echo off\r\nsetlocal\r\n\"%~dp0U-King.exe\" action run runtime.openclaw2.launch --json --no-input\r\nendlocal\r\n");
@@ -72,7 +62,7 @@ async function files(dir, base = dir) {
   }
   return result;
 }
-const manifest = { schema_version: 1, version, root_name: path.basename(root), openclaw: { version: "2026.8.1", fs_safe: "0.5.6", config_writer: `dist/${io}`, config_writer_sha256: before, workspace_writer: `dist/${workspace}`, workspace_before_sha256: workspaceBefore, workspace_after_sha256: workspaceAfter, patched: true }, files: (await files(root)).length };
+const manifest = { schema_version: 1, version, root_name: path.basename(root), openclaw: { version: "2026.8.1", fs_safe: "0.5.6", config_writer: `dist/${io}`, sha256: before, patched: false }, files: (await files(root)).length };
 await writeFile(path.join(root, "runtime-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 const entries = await files(root);
 const sums = await Promise.all(entries.filter(([rel]) => rel !== "SHA256SUMS.txt").map(async ([rel, full]) => `${await sha(full)}  ${rel}`));
