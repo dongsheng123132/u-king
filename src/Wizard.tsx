@@ -305,7 +305,8 @@ export function Wizard({
   }
 
   async function pickTools(detect: StackDetect) {
-    // 「一键全安装」：客户点首屏大按钮进来，不再逐个问，直接把所有可装工具排队装上。
+    // 「一键全安装」：客户点首屏大按钮进来，不再逐个问，直接排队装好 Claude Code 和
+    // 必要环境（不是真的把工具市场里所有可装工具都装一遍，见下方 preselect === "all" 的队列）。
     //
     // 顺序定调（0.9.85 改）：**Claude Code 排第一，ClawX 退出默认队列**。
     // 此前（v0.9.7）是反过来的 —— ClawX 当「主力工具」抢在最前面装 261MB。改的理由：

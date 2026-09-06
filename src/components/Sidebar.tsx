@@ -1,7 +1,7 @@
 /**
  * 左侧边栏导航 —— 主流商务风（参考 Linear / cc-switch）。
  * 管家功能区（我的 AI / 装机向导 / Codex 专区 / AI 设置）+ 底部 OpenCodex 工作台入口
- * + 一排「我的 AI」快捷启动图标（Dock）+ 终端抽屉开关。
+ * + 终端抽屉开关。「我的 AI」快捷启动 Dock 已删除（2026-09-06，见下方注释）。
  */
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
@@ -61,14 +61,14 @@ type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
  * 当时据此把「AI 设置」下沉进了「更多」。
  *
  * 🔴 **2026-08-31 用户拍板：AI 设置升回核心第 4 位**（原话：把 AI 设置放在左侧的前面
- * 4 个里边，默认露出在外面，放在我的 AI 下面，这个功能比较主要）。理由：
- * 这页已经不是「配一次就走」的设置页了 —— 它装着一键体检（doctor）/ 一键升级
- * （CLI 全部更到最新 + 本体升级），是**健康维护的常驻入口**，跟「装好就用」是同一频次的事。
+ * 4 个里边，默认露出在外面，放在我的 AI 下面，这个功能比较主要）。
+ * 🔴 **2026-09-04 按动词分家：一键体检/一键升级已搬去「我的 AI」**（见下方 MORE 前那条），
+ * AI 设置现在只剩换模型/余额，核心位置不因此撤回——它仍是「装好就用」之后最高频要回来的维护入口。
  *
  *   ① U-Workspace —— 主交互面（对话 + 终端 + 作图预览），干活入口，必须第一
  *   ② AI 创作     —— 作图/视频/海报，第二高频
- *   ③ 首页·我的AI  —— 装机→一键配好→充值→启动的漏斗 + 启动台
- *   ④ AI 设置     —— 换模型/余额/一键体检/一键升级（维护入口，常驻）
+ *   ③ 首页·我的AI  —— 装机→一键配好→充值→启动的漏斗 + 启动台 + 体检/升级
+ *   ④ AI 设置     —— 换模型/余额（维护入口，常驻）
  *
  * **首页故意留在核心**：首页是小白唯一的装机漏斗，摘掉等于新客户开机即无路可走。
  */
@@ -243,17 +243,6 @@ const LAB: NavItem[] = [
   // 见 MORE 里那条；本组注释里关于它的部分只剩历史意义。
 ];
 
-/** Dock 项分组：desktop=桌面应用（Codex 桌面版/ClawX）、cli=命令行工具（OpenClaw/Claude/Hermes）。 */
-export type DockGroup = "desktop" | "cli";
-
-/** Dock 快捷项：① tui=独立 TUI 应用（claude/codex/openclaw/hermes，切 tabId）
- *  ② launch=纯 GUI 应用（Codex 桌面版/ClawX，外部启动）。
- *  tool=品牌图标 key（claude/codex/openclaw/hermes…）；active=已装/可用（着色，否则灰显）；
- *  group=左侧分桶。 */
-export type DockApp =
-  | { id: string; name: string; kind: "tui"; tabId: TabId; tool: string; active: boolean; group?: DockGroup }
-  | { id: string; name: string; kind: "launch"; tool: string; active: boolean; group?: DockGroup };
-
 export function Sidebar({
   active,
   onSelect,
@@ -315,9 +304,6 @@ export function Sidebar({
    *  按钮却吃 36px，而 1366×768 客户区才 688px）。不矮的机器上标题栏还在，这里就不传，
    *  免得同一个动作在界面上有两个入口。 */
   onHideToTray?: () => void;
-  // dockApps / onLaunchDock 仍由 App 传入但侧栏 Dock 已移除，故此处不再解构（保留可选以免 App 改动）
-  dockApps?: DockApp[];
-  onLaunchDock?: (a: DockApp) => void;
   /** 内嵌终端页入口平时隐藏（易与「打开终端」弹出的独立窗口混淆）；只在内嵌终端页
    *  已经挂了会话（termMounted）时才露出，让用户能切回去，不留「进得去出不来」的幽灵页。
    *  2026-09-06 修：工具启动改走独立窗口后，唯一还会落进内嵌终端页的是快照恢复。 */
@@ -631,57 +617,9 @@ export function Sidebar({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-bg-1 to-bg-1/0" />
       </div>
 
-      {/* 「我的 AI」侧栏 Dock 已移除 —— 这些工具（Codex桌面版/OpenClaw桌面版/Claude CLI/OpenClaw龙虾/
-          Hermes）右侧主区「我装好的 AI 工具」卡片里已经有了，侧栏再列一遍是重复，让小白眼花。
-          连同「终端」一起去掉，侧栏更清爽。dockApps/onLaunchDock 仍由 App 传入（暂留），要恢复
-          解开下面注释即可。 */}
-      {/* <div className="px-2.5 pt-2 pb-1 border-t border-white/[0.06] overflow-y-auto">
-        <div className="text-[10px] text-ink-5 px-1 pb-1.5">我的 AI</div>
-        {(["desktop", "cli"] as const).map((g) => {
-          const items = dockApps.filter((a) => (a.group ?? "cli") === g);
-          if (items.length === 0) return null;
-          return (
-            <div key={g} className="mb-1.5">
-              <div className="text-[10px] text-ink-6 px-1 pb-0.5">
-                {g === "desktop" ? "桌面应用" : "命令行工具"}
-              </div>
-              <div className="space-y-0.5">
-                {items.map((a) => {
-                  const isOpenCodex = a.kind === "workbench";
-                  const isView = a.kind === "workbench" || a.kind === "tui";
-                  const on =
-                    (a.kind === "workbench" && active === "workbench") ||
-                    (a.kind === "tui" && active === a.tabId);
-                  return (
-                    <button
-                      key={a.id}
-                      onClick={() => onLaunchDock(a)}
-                      title={isView ? `打开 ${a.name}` : `启动 ${a.name}`}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-card text-left transition-colors border-l-2",
-                        on
-                          ? "bg-accent/[0.14] border-accent text-ink-0"
-                          : "border-transparent text-ink-2 hover:bg-white/[0.04]",
-                      )}
-                    >
-                      {isOpenCodex ? (
-                        <span className="w-6 h-6 rounded-md bg-accent/[0.18] flex items-center justify-center shrink-0">
-                          <LayoutGrid size={14} className="text-accent-400" />
-                        </span>
-                      ) : (
-                        <ToolIcon tool={a.tool} size={22} active={a.active} className="w-6 h-6" />
-                      )}
-                      <span className={cn("text-[13px] truncate", isView ? "font-semibold" : "font-medium")}>
-                        {a.name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div> */}
+      {/* 「我的 AI」侧栏 Dock 已删除（2026-09-06 第一性原理审查评审⑤）—— 这些工具
+          （Codex桌面版/OpenClaw桌面版/Claude CLI/OpenClaw龙虾/Hermes）右侧主区
+          「我装好的 AI 工具」卡片里已经有了，侧栏再列一遍是重复。历史实现看 git。 */}
 
       {/* 终端页入口平时隐藏 —— 工具启动已改走独立系统终端窗口，内嵌终端整页只在
           「快照恢复」这一条路径还会用到（见 App.tsx onRestoreTermSnapshot）。

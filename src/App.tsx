@@ -39,9 +39,9 @@ import {
 import { Wizard } from "./Wizard";
 import { UWorkspace } from "./opencodex/UWorkspace";
 import type { Expert } from "./opencodex/experts";
-import { Sidebar, type TabId, type DockApp } from "./components/Sidebar";
+import { Sidebar, type TabId } from "./components/Sidebar";
 import { ToolIcon } from "./components/ToolIcon";
-import { TUI_APPS, VISIBLE_TUI_APPS, isTuiAppId } from "./opencodex/apps";
+import { TUI_APPS, isTuiAppId } from "./opencodex/apps";
 import type { Engine } from "./opencodex/types";
 import { ProviderManager } from "./components/ProviderManager";
 import { ApplyScopeDialog } from "./components/ApplyScopeDialog";
@@ -154,9 +154,6 @@ export function App() {
   const { t: tr } = useI18n();
   const [env, setEnv] = useState<AppEnv | null>(null);
   const [tools, setTools] = useState<ToolInfo[]>([]);
-  // openclaw CLI 是否已装 —— 它在 tools.rs 里 hidden=true 会被下面 `!x.hidden` 过滤掉，
-  // 但「OpenClaw 网页版」Dock 图标要据此着色，故单独从未过滤的原始列表里取一次。
-  const [openclawInstalled, setOpenclawInstalled] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // ClawX 首次启动「允许访问网络」引导浮层：ClawX 是 Electron，第一次开会弹 Windows
@@ -340,12 +337,11 @@ export function App() {
     // 光 hermes 就 2.3s），串行等于开机先白等三个探测之和 —— 首屏落点还卡在最后一个后面。
     const [e, raw, d] = await Promise.all([
       invoke<AppEnv>("get_env").catch(() => null),
-      // 原始列表（含 hidden）—— openclaw 着色判据从这里取；展示用的 tools 再过滤掉 hidden。
+      // 原始列表（含 hidden）—— 展示用的 tools 再过滤掉 hidden。
       invoke<ToolInfo[]>("list_tools").catch(() => [] as ToolInfo[]),
       invoke<DriverStatus>("get_driver_status").catch(() => null),
     ]);
     setEnv(e);
-    setOpenclawInstalled(raw.some((x) => x.id === "openclaw" && x.installed));
     // 过滤掉后端标记 hidden 的工具（Codex CLI / OpenClaw CLI）—— 全应用统一只见可见工具
     const t = raw.filter((x) => !x.hidden);
     setTools(t);
@@ -373,7 +369,6 @@ export function App() {
       }
     }
     // 返回原始（含 hidden）列表，让点击处理器能据「确认后的状态」决策（避免读到旧 state）。
-    // 含 hidden 才能让 onLaunchDock 对 openclaw 这类隐藏工具做「装没装」再校验。
     return raw;
   }, []);
 
@@ -837,67 +832,16 @@ export function App() {
     }
   };
 
-  // 底部 Dock：全部 TUI 应用（已装彩色 / 未装灰显）+ 纯 GUI 应用（外部启动）
   // 注：旧 OpenCodex 工作台外壳已于 2026-09-06 删除（评审③④）——U-Workspace 复用同一套
   // store/SessionList/ChatPanel/PTY，外壳本身自隐藏起从未有入口。历史实现看 git。
-  const tuiToolIds = new Set(TUI_APPS.map((a) => a.toolId));
-  const dockApps: DockApp[] = [
-    // 纯 GUI 应用（仅 launch_app，非 TUI）→ 外部启动，归「桌面应用」组。已装的都列；
-    // ClawX 即使没装也列（灰显），点了跳官方下载（给客户更多选择 + 一键入口）。
-    ...tools
-      .filter(
-        (t) => t.launch_app && !tuiToolIds.has(t.id) && (t.installed || t.id === "clawx"),
-      )
-      .map((t): DockApp => ({
-        id: t.id,
-        name: t.name,
-        kind: "launch",
-        tool: t.id,
-        active: t.installed,
-        group: "desktop",
-      })),
-    // 可见 TUI 应用（隐藏掉 codex-cli）→「命令行工具」组；installed → 彩色，否则灰显
-    ...VISIBLE_TUI_APPS.map((a): DockApp => ({
-      id: a.id,
-      name: a.name,
-      kind: "tui",
-      tabId: a.id,
-      tool: a.tool,
-      // openclaw 的 ToolInfo 被 hidden 过滤出 tools，故单独用 openclawInstalled 判着色。
-      // ⚠️ 2026-08-05 起 apps.ts 里 openclaw 也 hidden 了，VISIBLE_TUI_APPS 不再产出它，
-      // 于是这个分支**当前命中不到**。保留不删：复活时把两处 hidden 一起去掉就能直接工作，
-      // 现在删了将来还得重写一遍（且容易漏掉「它不在 tools 里」这个前提）。
-      active:
-        a.toolId === "openclaw"
-          ? openclawInstalled
-          : tools.some((t) => t.id === a.toolId && t.installed),
-      group: a.group ?? "cli",
-    })),
-  ];
-  const onLaunchDock = async (a: DockApp) => {
-    if (a.kind === "tui") {
-      // 未装的灰色图标 → 先「检测一次」：可能是装好了但 state 还旧（如 Hermes 装完没刷新到）。
-      // 真没装才进装机向导；已检测到就直接开 TUI 页，别再让用户白装一遍。
-      if (!a.active) {
-        const app = TUI_APPS.find((x) => x.id === a.tabId);
-        const fresh = await refresh().catch(() => null);
-        const ok = !!app && (fresh ?? tools).some((t) => t.id === app.toolId && t.installed);
-        if (ok) return setTab(a.tabId);
-        setTab("setup");
-        setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: app?.toolId ?? null }));
-        return;
-      }
-      return setTab(a.tabId);
-    }
-    // launch：纯 GUI 应用。已装 → 启动；没装（如 ClawX 灰显）→ 走 openTool（url 跳下载）
-    const t = tools.find((x) => x.id === a.id);
-    if (!t) return;
-    if (t.installed) launchTool(t);
-    else openTool(t);
-  };
+  // 注：侧栏 Dock（底部快捷启动图标）已于 2026-09-06 第一性原理审查裁定整条删除
+  // （评审⑤：Sidebar 早已不解构/不消费 Dock props，App 这边构建列表 + 回调纯粹是死链）。
+  // 真正的工具启动函数 `launchTool`/`openTool` 仍保留，供其它入口（我的 AI 页等）调用。
+  // 历史实现（dockApps / onLaunchDock / DockApp 类型）看 git。
 
   const startWizard = () => setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: null }));
-  // 一键全安装：进装机向导，预选 "all" —— Wizard 自动排队装全部工具 + 自动接虾盘云 + 弹 ClawX 下载
+  // 一键全安装：进装机向导，预选 "all" —— Wizard 自动排队装好 Claude Code 和必要环境
+  // + 自动接虾盘云 + 弹 ClawX 下载（不是把工具市场里所有可装工具都装一遍）
   const startInstallAll = () => {
     setTab("setup");
     setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: "all" }));
@@ -1081,8 +1025,6 @@ export function App() {
                         openUrl(u).catch(() => {});
                       })();
                     }}
-          dockApps={dockApps}
-          onLaunchDock={onLaunchDock}
           // 侧栏常驻升级入口：升级横幅只在管家页 StatusLine 露出，长期待在 U-Workspace 的用户
           // 看不到升级（客户实锤）。侧栏在所有页都在，保证随时点得到。不受 updateDismissed 影响
           //（那只收起大横幅；这个小入口有新版就一直在）。
@@ -2221,8 +2163,7 @@ function MyAI({
       </section>
 
       {/* 「快速打开」小图标网格已移除 —— 它把工具又列了一遍，与下方「我装好的 AI 工具」
-          + 「还能装这些」完全重复（同一批工具三处展示）。安装器只留「已装 / 可装」两段更清爽。
-          dockApps/onLaunchDock 仍由 App 传入（其它页仍用），此处不再渲染。 */}
+          + 「还能装这些」完全重复（同一批工具三处展示）。安装器只留「已装 / 可装」两段更清爽。 */}
 
       {/* XiapanGuide（充值引导）已搬到本函数上方「DoctorCard / 终端快照条」之后、
           「AI 设置」常驻入口卡之前 —— 2026-09-06 用户拍板「虾盘云充值放前面」，理由见搬去
@@ -2260,7 +2201,7 @@ function MyAI({
               <Wand2 size={26} className="text-accent" />
             </span>
             <p className="text-[15px] font-medium text-ink-0 mb-1">{tr("还没装任何 AI 工具")}</p>
-            <p className="text-[12px] text-ink-3 mb-5">{tr("点「一键全安装」自动装好全部工具 + 接好虾盘云，开箱即用")}</p>
+            <p className="text-[12px] text-ink-3 mb-5">{tr("点「一键全安装」自动装好 Claude Code 和必要环境 + 接好虾盘云，开箱即用")}</p>
             <div className="flex items-center justify-center gap-2">
               <button
                 onClick={onInstallAll}

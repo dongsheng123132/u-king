@@ -2287,13 +2287,14 @@ export function Manager({
         };
         // A6：免费额度置顶组（2026-09-06，09-06 主会话裁决改回复用已有模板）——
         // 跟下面「首屏」快速添加同一批数据、同一个 openAddTemplate，只是单独摘出来提前展示，
-        // 不新增机制。智谱/硅基流动**故意不新开模板**，直接指向已有的「智谱 GLM」/
-        // 「SiliconFlow（硅基流动）」——CustomProviderModal 按 openai_base 逐字匹配
-        // activeTpl，同一个 base URL 开两个模板会让弹窗匹配错模板（见 providerTemplates.ts
-        // 顶部注释）。默认预填仍是这两家的付费旗舰模型，免费档模型 id 靠
-        // free-registry.json 对应条目的说明文案提示手动改，不在这里另开分支。
+        // 不新增机制。
+        // 🔴 2026-09-06 第一性原理审查裁定：智谱 GLM / SiliconFlow（硅基流动）两条**撤出本组**——
+        // 它们预填的是付费旗舰模型，「免费」要用户自己另看说明手改模型 id，标着「免费」按钮却给
+        // 付费默认值，对小白是误导。iFlow 心流 / 魔搭 ModelScope 保留：这两家模板本身预填的
+        // 就是免费档，点了直接能用。智谱/硅基流动真正免费的路线在下方「免费算力」分区里，
+        // 那边是人工核验的第三方清单，带着领 Key→选模型→验证的完整上下文，不是这里的裸模板。
         // 找不到模板（改名/下线）就整组不渲染，不留死胡同。
-        const freeTemplateNames = ["iFlow 心流", "魔搭 ModelScope", "智谱 GLM", "SiliconFlow（硅基流动）"];
+        const freeTemplateNames = ["iFlow 心流", "魔搭 ModelScope"];
         const freeTemplates = freeTemplateNames
           .map((n) => templates.find((tp) => tp.name === n))
           .filter((x): x is ProviderTemplate => !!x);
@@ -2306,6 +2307,12 @@ export function Manager({
                 <div className="mt-1.5 space-y-1.5">
                   {freeTemplates.map((tpl) => renderQuickAddRow(tpl, true))}
                 </div>
+                <button
+                  onClick={() => setSettingsTab("free")}
+                  className="mt-1.5 text-[12px] text-ink-3 hover:text-accent hover:underline"
+                >
+                  {t("更多免费路线（智谱/硅基流动等）→ 免费算力")}
+                </button>
               </div>
             )}
             <div>

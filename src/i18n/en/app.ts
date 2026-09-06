@@ -180,8 +180,8 @@ export const app: Record<string, string> = {
   "在桌面创建 U-King 快捷方式": "Create a U-King shortcut on the desktop",
   "固定到桌面": "Pin to desktop",
   "还没装任何 AI 工具": "No AI tools installed yet",
-  "点「一键全安装」自动装好全部工具 + 接好虾盘云，开箱即用":
-    "Click \"Install everything\" to auto-install all tools and connect Xiapan Cloud — ready out of the box",
+  "点「一键全安装」自动装好 Claude Code 和必要环境 + 接好虾盘云，开箱即用":
+    "Click \"Install everything\" to auto-install Claude Code and the required environment, then connect Xiapan Cloud — ready out of the box",
   "已安装": "Installed",
   "还没配模型": "No model configured yet",
   "打开应用": "Open app",

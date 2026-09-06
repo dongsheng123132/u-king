@@ -27,6 +27,7 @@ export const settings: Record<string, string> = {
   "免费模型 · 不花钱先跑通": "Free models — get running without spending a cent",
   "国产直连免费额度，手机号注册就能领": "Free quota from domestic providers with direct access — sign up with a phone number",
   "需科学上网": "Needs a VPN",
+  "更多免费路线（智谱/硅基流动等）→ 免费算力": "More free routes (Zhipu / SiliconFlow, etc.) → Free compute",
 
   // ---- 一键配好（ToolFixButton，从 ToolCheckup 收拢，2026-09-06）----
   "已自行配置": "Self-managed",
