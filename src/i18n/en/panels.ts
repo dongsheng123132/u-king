@@ -174,4 +174,14 @@ export const panels: Record<string, string> = {
   // ChatPanel.tsx —— Codex 专用模型清单（同上，label 走变量）
   "DeepSeek V4 Flash · 最快最省（默认）": "DeepSeek V4 Flash · fastest & cheapest (default)",
   "GPT-5.3 Codex · 更强（约 6 倍价）": "GPT-5.3 Codex · stronger (~6× the price)",
+
+  // ChatPanel.tsx —— A1 轮次尾注 / A2 工具行状态 / A3 本轮文件（2026-09-06 Astra UI 规格）
+  "本轮估算 {c}": "This turn ≈{c}",
+  "用量详情": "Usage details",
+  "输入 {n} tokens": "Input {n} tokens",
+  "输出 {n} tokens": "Output {n} tokens",
+  "缓存读 {n} tokens": "Cache read {n} tokens",
+  "缓存写 {n} tokens": "Cache write {n} tokens",
+  "本轮文件（{n}）": "Files this turn ({n})",
+  "执行中": "Running",
 };

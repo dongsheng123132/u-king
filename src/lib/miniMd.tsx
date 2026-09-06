@@ -200,11 +200,17 @@ export function MiniMd({
   text,
   className = "",
   onRunInTerminal,
+  resultTable = false,
 }: {
   text: string;
   className?: string;
   /** 传了才给代码块出「贴到终端」。没有终端的地方（AutomationPanel）不传 —— 按钮不该指向不存在的东西。 */
   onRunInTerminal?: (cmd: string) => void;
+  /** 表格排成「结果表」样式（2026-09-06 Astra UI 规格 A4）：外框 + 表头/正文分色 + 行分隔线。
+   *  **只由聊天区域传 true**（ChatPanel.tsx 的 Bubble）—— 其余调用方（AutomationPanel、
+   *  Chat.tsx 轻助手、redline-host-tauri 的 md 预览）不传，维持原来的朴素表格，
+   *  免得同一份渲染器一改全站表格样式都变（宪法：样式限定作用域，别外溢）。 */
+  resultTable?: boolean;
 }) {
   const lines = (text ?? "").split(/\r?\n/);
   const blocks: ReactNode[] = [];
@@ -315,29 +321,54 @@ export function MiniMd({
         }
         eaten.until = j - 1;
         const at = (a: Align) => (a === "center" ? "text-center" : a === "right" ? "text-right" : "text-left");
+        /* 「结果表」样式（A4）：外框 1px ink-5/30 圆角 6px，表头 bg-2、正文 bg-1，
+         * 表头 13px 半粗 ink-0，单元格 13px/20px ink-1，内边距 10px 12px，行分隔线 ink-5/20，
+         * 不加斑马纹；宽内容仍走外层 overflow-x-auto 横向滚，路径类长内容允许单元格内换行
+         * （break-words，不再 whitespace-nowrap 顶宽整页）。非聊天区域调用方不传 resultTable，
+         * 走原来的朴素样式，不受影响。 */
         blocks.push(
           // 外层 overflow-x-auto：列多时表格自己横向滚，不把整个对话区撑破
           // （客户反馈的「排版很糟糕」有一半是宽内容顶破布局）。
-          <div key={`tb${k}`} className="my-2 overflow-x-auto">
-            <table className="min-w-full border-collapse text-[0.95em]">
-              <thead>
-                <tr className="border-b border-white/[0.14]">
+          <div
+            key={`tb${k}`}
+            className={
+              "my-2 overflow-x-auto" +
+              (resultTable ? " rounded-md border border-ink-5/30" : "")
+            }
+          >
+            <table className={"min-w-full border-collapse " + (resultTable ? "text-[13px]" : "text-[0.95em]")}>
+              <thead className={resultTable ? "bg-bg-2" : undefined}>
+                <tr className={resultTable ? undefined : "border-b border-white/[0.14]"}>
                   {cols.map((c, ci) => (
                     <th
                       key={ci}
-                      className={"px-2.5 py-1.5 font-semibold text-ink-0 whitespace-nowrap " + at(aligns[ci])}
+                      className={
+                        resultTable
+                          ? "px-3 py-2.5 font-semibold text-ink-0 break-words " + at(aligns[ci])
+                          : "px-2.5 py-1.5 font-semibold text-ink-0 whitespace-nowrap " + at(aligns[ci])
+                      }
                     >
                       {inline(c, `${k}-h${ci}`)}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={resultTable ? "bg-bg-1" : undefined}>
                 {body.map((row, ri) => (
-                  <tr key={ri} className="border-b border-white/[0.06] last:border-0">
+                  <tr
+                    key={ri}
+                    className={resultTable ? "border-t border-ink-5/20" : "border-b border-white/[0.06] last:border-0"}
+                  >
                     {/* 按表头列数补齐/截断：模型经常少写一格，缺的画空格总比整行错位强 */}
                     {cols.map((_, ci) => (
-                      <td key={ci} className={"px-2.5 py-1.5 align-top " + at(aligns[ci])}>
+                      <td
+                        key={ci}
+                        className={
+                          resultTable
+                            ? "px-3 py-2.5 align-top leading-[20px] text-ink-1 break-words " + at(aligns[ci])
+                            : "px-2.5 py-1.5 align-top " + at(aligns[ci])
+                        }
+                      >
                         {inline(row[ci] ?? "", `${k}-r${ri}-${ci}`)}
                       </td>
                     ))}
