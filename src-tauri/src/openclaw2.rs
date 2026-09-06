@@ -1613,20 +1613,26 @@ fn configure_model_at_with_probe(
         )?;
         let candidate_bytes = model_candidate_config(&p, &route, &provider_key, &secret)?;
         atomic_write(&candidate, &candidate_bytes, &p)?;
-        for (args, phase) in [
-            (
-                ["config", "validate", "--json"].as_slice(),
-                "private CLI config-validate capability check",
-            ),
-            (
-                ["infer", "model", "run", "--help"].as_slice(),
-                "private CLI infer capability check",
-            ),
-        ] {
-            let out =
-                run_oc_transaction(&p, &candidate, &txn_state, args, Duration::from_secs(20))?;
-            if out.status != Some(0) {
-                return Err(config_diagnostic(phase, &out));
+        // A no-probe setup deliberately makes no inference request: a newly
+        // issued wallet may have no balance yet.  It only needs the real JSON
+        // config validation below.  The infer command capability is relevant
+        // only when this flow will actually run the explicit paid probe.
+        if run_model_probe {
+            for (args, phase) in [
+                (
+                    ["config", "validate", "--json"].as_slice(),
+                    "private CLI config-validate capability check",
+                ),
+                (
+                    ["infer", "model", "run", "--help"].as_slice(),
+                    "private CLI infer capability check",
+                ),
+            ] {
+                let out =
+                    run_oc_transaction(&p, &candidate, &txn_state, args, Duration::from_secs(20))?;
+                if out.status != Some(0) {
+                    return Err(config_diagnostic(phase, &out));
+                }
             }
         }
         let validation = run_oc_transaction(
@@ -3222,6 +3228,50 @@ mod tests {
             .step_by(131)
             .find(|base| reserve_port_family(*base).is_ok())
             .expect("应能找到完整可用的 OpenClaw2 端口族")
+    }
+    #[cfg(windows)]
+    #[test]
+    fn configure_model_without_probe_never_checks_or_runs_infer() {
+        let p = paths_from_root(
+            std::env::temp_dir().join(format!("uking-openclaw2-no-probe-{}", now_nanos())),
+        );
+        create_layout(&p).unwrap();
+        private_node_for_gateway_test(&p).expect("测试机需要 Node");
+        fs::create_dir_all(cli_file(&p).parent().unwrap()).unwrap();
+        fs::write(
+            cli_file(&p),
+            r#"const args = process.argv.slice(2);
+if (args.includes('infer')) { console.error('infer must not run'); process.exit(41); }
+if (args.includes('config') && args.includes('validate') && args.includes('--json')) {
+  console.log(JSON.stringify({ok:true})); process.exit(0);
+}
+process.exit(2);
+"#,
+        )
+        .unwrap();
+        fs::write(
+            config_file(&p),
+            serde_json::to_vec(&json!({"gateway":{"auth":{"token":"gateway-sentinel"}}}))
+                .unwrap(),
+        )
+        .unwrap();
+        let result = configure_model_at_with_probe(
+            &p,
+            ModelRoute {
+                source_id: "demo".into(),
+                source_name: "Demo".into(),
+                base: "https://example.com/v1".into(),
+                model: "demo-chat".into(),
+                key: "no-probe-secret".into(),
+                key_source: "explicit".into(),
+            },
+            false,
+            false,
+        )
+        .expect("no-probe 配置不能调用 infer 能力检查");
+        assert_eq!(result["probe"]["ran"], false);
+        assert_eq!(result["validation"]["ok"], true);
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[cfg(windows)]
     #[test]
