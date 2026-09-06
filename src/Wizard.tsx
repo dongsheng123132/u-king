@@ -93,6 +93,17 @@ type Diagnosis = { diagnosis: string; commands: string[] };
 
 const short = (k: string) => (k.length > 16 ? `${k.slice(0, 10)}…${k.slice(-4)}` : k);
 
+/** 把原始错误串按关键词归因成一句人话（返回值是中文，经调用方 t() 翻译，跟其它文案同口径）。
+ *  原始 err 不丢 —— 调用方仍要把完整 err 拼在归因句之后，这里只是加一句「大概是啥」。 */
+function humanizeErr(err: string): string {
+  const s = err.toLowerCase();
+  if (/etimedout|econnrefused|econnreset|network|fetch failed/.test(s)) return "网络不通或被防火墙拦了";
+  if (/eacces|eperm|access denied|权限/.test(s)) return "权限不够，试试用管理员身份重开 U-King";
+  if (/ebusy|locked|being used/.test(s)) return "文件被占用，关掉相关程序再试";
+  if (/enospc/.test(s)) return "磁盘满了";
+  return "安装源或环境出了点问题";
+}
+
 /* ---------------- 消息模型 ---------------- */
 
 type Choice = { label: string; value: string; tone?: "gold" | "plain" };
@@ -286,12 +297,23 @@ export function Wizard({
       role: "uking",
       text: t("你好，我是 U-King AI 管家 👋 我来帮你把 AI 编程工具装到这台电脑，并接上国内可用的大模型驱动。先给电脑做个体检…"),
     });
-    setBusy(true);
-    const detect = await invoke<StackDetect>("detect_stack").catch(() => null);
-    setBusy(false);
-    if (!detect) {
-      push({ role: "uking", text: t("体检失败了，请重开窗口再试。") });
-      return;
+    let detect: StackDetect | null = null;
+    while (!detect) {
+      setBusy(true);
+      detect = await invoke<StackDetect>("detect_stack").catch(() => null);
+      setBusy(false);
+      if (detect) break;
+      push({ role: "uking", text: t("体检失败了。") });
+      const v = await ask([
+        { label: t("重试体检"), value: "retry", tone: "gold" },
+        { label: t("算了，先逛逛"), value: "giveup", tone: "plain" },
+      ]);
+      if (v === "giveup") {
+        pushUser(t("算了，先逛逛"));
+        push({ role: "uking", text: t("好，随时可以从「我的 AI」页重新开始。") });
+        return;
+      }
+      pushUser(t("重试体检"));
     }
     ctx.current.detect = detect;
     push({ role: "uking", detect });
@@ -725,7 +747,15 @@ export function Wizard({
             });
           }
         } else {
-          push({ role: "uking", text: t("❌ {tool} 没装上：{err}", { tool: t(TOOL_NAMES[tool]), err: r.error ?? t("未知错误") }) });
+          const installErr = r.error ?? t("未知错误");
+          push({
+            role: "uking",
+            text: t("❌ {tool} 没装上 —— 看起来是：{reason}。\n{err}", {
+              tool: t(TOOL_NAMES[tool]),
+              reason: t(humanizeErr(installErr)),
+              err: installErr,
+            }),
+          });
           const opts: Choice[] = [];
           // Codex 桌面版（商店/MSIX 渠道）失败时，「自己去下载」往往比 AI 修复更靠谱
           // （winget 缺失 / 旁加载被禁 / 杀软拦 MSIX，自动装绕不过去），所以排在最前并置顶推荐。
@@ -1110,8 +1140,8 @@ export function Wizard({
     push({
       role: "uking",
       text: hasXiapan
-        ? t("现在选底层驱动（大模型 API）。推荐虾盘云：U-King 内置，国内直连、充值即用；也可以用你自己的 DeepSeek / GLM / Kimi Key。")
-        : t("现在选底层驱动（大模型 API）。用你自己的 Key 即可；想用内置的虾盘云，可以到「AI 设置」把它加回列表。"),
+        ? t("现在给 AI 接上大脑 —— 也就是选一家大模型服务。推荐虾盘云：U-King 内置，国内直连、充值即用；也可以用你自己的 DeepSeek / GLM / Kimi Key。")
+        : t("现在给 AI 接上大脑 —— 也就是选一家大模型服务。用你自己的 Key 即可；想用内置的虾盘云，可以到「AI 设置」把它加回列表。"),
     });
     const opts: Choice[] = ps
       .filter((p) => p.id !== "official")
@@ -1137,7 +1167,10 @@ export function Wizard({
         .catch((e) => String(e));
       setBusy(false);
       if (err) {
-        push({ role: "uking", text: t("写配置失败：{err}", { err }) });
+        push({
+          role: "uking",
+          text: t("❌ 写配置失败 —— 看起来是：{reason}。\n{err}", { reason: t(humanizeErr(err)), err }),
+        });
         invoke("report_bug", {
           kind: "driver_apply_failed",
           summary: `还原官方直连失败: ${err}`.slice(0, 200),
@@ -1182,6 +1215,7 @@ export function Wizard({
               { label: t("去充值（打开充值页，已带 Key）"), value: "open", tone: "gold" },
               { label: t("我已充值，查余额"), value: "check" },
               { label: t("用我自己的 Key"), value: "own", tone: "plain" },
+              { label: t("先跳过，回头再充"), value: "skiprecharge", tone: "plain" },
             ]);
             if (v === "own") {
               pushUser(t("用自己的 Key"));
@@ -1192,6 +1226,19 @@ export function Wizard({
               pushUser(t("去充值"));
               await openRecharge(dk.recharge_url);
               continue;
+            }
+            if (v === "skiprecharge") {
+              // 「先跳过」不是死路 —— 走跟「已充值、直接用内置 Key」完全相同的写配置分支，
+              // 只是余额为 0；别新造一条路（否则又是一份要维护两遍的配置逻辑）。
+              pushUser(t("先跳过，回头再充"));
+              push({
+                role: "uking",
+                text: t(
+                  "好，先把配置接好。余额为 0 时模型不回话，想用了到「首页 · 我的 AI」或侧栏「虾盘云 · 充值」补上就行。",
+                ),
+              });
+              ctx.current.apiKey = dk.key;
+              return applyAndTest();
             }
             pushUser(t("查余额"));
             setBusy(true);
@@ -1270,7 +1317,11 @@ export function Wizard({
       // 传过滤后的 targets：已经告诉用户跳过了，就别再让后端去试一次
       targets: willWrite,
     }).catch((e) => {
-      push({ role: "uking", text: t("写配置失败：{err}", { err: String(e) }) });
+      const applyErr = String(e);
+      push({
+        role: "uking",
+        text: t("❌ 写配置失败 —— 看起来是：{reason}。\n{err}", { reason: t(humanizeErr(applyErr)), err: applyErr }),
+      });
       // 必须上报：这一步是首装主路径的最后一米，挂在这里等于「装了用不了」。
       // 教训（0.9.70~0.9.72）—— 核心校验把 `model: null` 判成类型错，全量客户首装
       // 100% 卡在这句话上，而 bug 仓库里一条记录都没有：只在气泡里显示的错，

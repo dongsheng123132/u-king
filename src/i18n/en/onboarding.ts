@@ -107,7 +107,10 @@ export const onboarding: Record<string, string> = {
   // runFlow
   "你好，我是 U-King AI 管家 👋 我来帮你把 AI 编程工具装到这台电脑，并接上国内可用的大模型驱动。先给电脑做个体检…":
     "Hi, I’m the U-King AI butler 👋 I’ll help you install AI coding tools on this computer and hook up a large-model provider that works in China. Let me run a check first…",
-  "体检失败了，请重开窗口再试。": "The check failed. Please reopen the window and try again.",
+  "体检失败了。": "The check failed.",
+  "重试体检": "Retry the check",
+  "算了，先逛逛": "Never mind, I'll just look around",
+  "好，随时可以从「我的 AI」页重新开始。": "OK. You can restart anytime from the “My AI” page.",
 
   // pickTools — one-click full install
   "好嘞，开始一键全安装 👇 ": "Alright, starting the one-click full install 👇 ",
@@ -195,8 +198,13 @@ export const onboarding: Record<string, string> = {
   "✅ {tool} 安装成功（{detail}）。": "✅ {tool} installed successfully ({detail}).",
   "提示：Codex 桌面版默认英文。在它的 Settings → Language 选「简体中文」可切中文，但该功能受 OpenAI 灰度控制，部分账号暂时只能英文（这是 OpenAI 侧的问题，非装机失败）。":
     "Tip: Codex Desktop defaults to English. You can switch to Chinese in its Settings → Language by choosing “简体中文”, but this feature is gated by OpenAI’s rollout, so some accounts are English-only for now (that’s an OpenAI-side issue, not an install failure).",
-  "❌ {tool} 没装上：{err}": "❌ {tool} didn’t install: {err}",
+  "❌ {tool} 没装上 —— 看起来是：{reason}。\n{err}": "❌ {tool} didn’t install — looks like: {reason}.\n{err}",
   "未知错误": "Unknown error",
+  "网络不通或被防火墙拦了": "the network is down or blocked by a firewall",
+  "权限不够，试试用管理员身份重开 U-King": "insufficient permissions — try reopening U-King as administrator",
+  "文件被占用，关掉相关程序再试": "a file is in use — close the related program and try again",
+  "磁盘满了": "the disk is full",
+  "安装源或环境出了点问题": "something's off with the install source or environment",
   "我自己去下载装 ⭐": "I’ll download and install it myself ⭐",
   "照教程手动装 ⭐": "Install manually per the guide ⭐",
   "看手动安装教程 ⭐": "View manual install guide ⭐",
@@ -277,8 +285,10 @@ export const onboarding: Record<string, string> = {
     "A repair command failed (stopped), but I’ll still reinstall and verify once…",
 
   // pickDriver
-  "现在选底层驱动（大模型 API）。推荐虾盘云：U-King 内置，国内直连、充值即用；也可以用你自己的 DeepSeek / GLM / Kimi Key。":
-    "Now choose the underlying provider (large-model API). I recommend Xiapan Cloud: built into U-King, direct connection in China, ready once topped up; you can also use your own DeepSeek / GLM / Kimi key.",
+  "现在给 AI 接上大脑 —— 也就是选一家大模型服务。推荐虾盘云：U-King 内置，国内直连、充值即用；也可以用你自己的 DeepSeek / GLM / Kimi Key。":
+    "Now let's give the AI a brain — that means picking a large-model provider. I recommend Xiapan Cloud: built into U-King, direct connection in China, ready once topped up; you can also use your own DeepSeek / GLM / Kimi key.",
+  "现在给 AI 接上大脑 —— 也就是选一家大模型服务。用你自己的 Key 即可；想用内置的虾盘云，可以到「AI 设置」把它加回列表。":
+    "Now let's give the AI a brain — that means picking a large-model provider. Just use your own key; if you want the built-in Xiapan Cloud, you can add it back from “AI Settings”.",
   "还原官方直连": "Restore official direct connection",
   "已清除 U-King 写入的驱动配置，Claude Code / Codex 还原为官方登录。":
     "Cleared the provider config U-King wrote; Claude Code / Codex are restored to official login.",
@@ -292,6 +302,9 @@ export const onboarding: Record<string, string> = {
     "U-King has generated a dedicated Xiapan Cloud key for this computer: {key} (hardware fingerprint, no registration needed, saved locally at ~/.uking/device.json — back it up before reinstalling the OS). The default balance is 0; top up to activate — from ¥20, ¥1 = 500,000 tokens, powered by the full DeepSeek-V4 Pro.",
   "去充值（打开充值页，已带 Key）": "Top up (open top-up page, key included)",
   "用我自己的 Key": "Use my own key",
+  "先跳过，回头再充": "Skip for now, top up later",
+  "好，先把配置接好。余额为 0 时模型不回话，想用了到「首页 · 我的 AI」或侧栏「虾盘云 · 充值」补上就行。":
+    "OK, let's get the config wired up first. With a 0 balance the model won't reply — when you're ready, top up from “Home · My AI” or the sidebar's “Xiapan Cloud · Top up”.",
   "到账！余额 {bal}。用内置 Key 继续。": "Received! Balance {bal}. Continuing with the built-in key.",
   "还没查到余额（到账一般几秒到几分钟），充值完稍等再点「查余额」。":
     "No balance found yet (it usually arrives in seconds to minutes); after topping up, wait a moment and click “Check balance”.",
@@ -301,7 +314,7 @@ export const onboarding: Record<string, string> = {
 
   // applyAndTest
   "写入底层配置（{list}）…": "Writing underlying config ({list})…",
-  "写配置失败：{err}": "Failed to write config: {err}",
+  "❌ 写配置失败 —— 看起来是：{reason}。\n{err}": "❌ Failed to write config — looks like: {reason}.\n{err}",
   "配置已写入。现在实测连通 —— 让模型真实回一句话…":
     "Config written. Now running a connectivity test — having the model actually reply…",
   "Claude Code 链路（Anthropic 格式）": "Claude Code channel (Anthropic format)",

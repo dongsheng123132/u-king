@@ -202,19 +202,23 @@ export const misc: Record<string, string> = {
   "几步开始用 AI · 完全不用懂电脑": "Start using AI in a few steps · no computer skills needed",
   "U-King 是一个「AI 管家」。它已经帮你把全球最强的 AI 都装好、配好了，你只要照下面几步点一点，就能像微信聊天一样跟 AI 对话——让它写文章、写代码、做表格、查资料、画图，都行。":
     "U-King is an “AI butler”. It has already installed and configured the world's best AI for you — just follow the steps below and click a few times, and you can chat with AI like on WeChat: writing articles, code, spreadsheets, research, drawing, all of it.",
-  "装好主力工具 ClawX（图形版 AI 助手）": "Install the main tool ClawX (GUI AI assistant)",
+  "用装机向导一键装好 Claude Code（最强编程 agent）+ 终端环境":
+    "Use the setup wizard to install Claude Code (the strongest coding agent) + a terminal environment, in one click",
   "新手首选 ": "The top pick for beginners is ",
-  "——图形界面，像微信一样点点就能用，最好上手。在「我的 AI」里点 ClawX，U-King 会帮你":
-    " — a graphical interface you use with clicks, just like WeChat, easiest to get started. Click ClawX in “My AI” and U-King will ",
+  "——全球公认最强的编程 AI，在「我的 AI」里点一键安装，U-King 会帮你":
+    " — the coding AI widely regarded as the strongest in the world. Click one-click install in “My AI” and U-King will ",
   "自动下载、安装、配好 AI": "automatically download, install, and set up the AI",
-  "，你只要等它装完。": " for you — just wait for it to finish.",
+  "，你只要等它装完。想要图形界面（像微信一样点点就能用）也可以额外装":
+    " for you — just wait for it to finish. If you'd also like a GUI (click-based, just like WeChat), you can additionally install ",
   "去「我的 AI」": "Go to “My AI”",
-  "打开 ClawX，记得点「允许访问网络」": "Open ClawX, and be sure to click “Allow network access”",
-  "装好后点「打开 ClawX」。第一次打开时 Windows 可能弹一个「是否允许访问网络」的窗口，":
-    "After installing, click “Open ClawX”. On first launch, Windows may pop up an “Allow network access?” dialog — ",
+  "，在「进阶 / App 版」页可装，非必须。": " — available on the “Advanced / App version” page, not required.",
+  "打开工作台，跟 AI 说话": "Open the workspace and talk to the AI",
+  "装好后点「进 U-Workspace 开始干活」。想要最全能力，在工作台右上角点「终端」，输入 ":
+    "After installing, click “Enter U-Workspace to start working”. For full capability, click “Terminal” at the top-right of the workspace and type ",
+  " 回车即可；不想碰终端，直接在对话框里说人话就行，底下跑的是同一个 Claude Code、同一个 Key。若额外装了 ClawX，第一次打开 Windows 可能弹「是否允许访问网络」，":
+    " and press Enter; if you'd rather not touch the terminal, just type in plain language in the chat box — it runs the same Claude Code with the same key underneath. If you also installed ClawX, Windows may pop up an “Allow network access?” dialog on first launch — ",
   "一定要点【允许访问】": "you must click [Allow access]",
   "，不然 AI 连不上。": ", otherwise the AI can't connect.",
-  "（U-King 多数情况已帮你提前放行，不一定会弹。）": "(U-King usually clears this in advance, so it may not pop up.)",
   "第一次用，先充值开通（¥20 起，够聊很久）": "First time: top up to activate (from ¥20, enough for a long time)",
   "AI 是按量计费的，": "AI is billed by usage; ",
   "第一次使用前需要先充值开通": "you need to top up to activate before first use",
@@ -224,7 +228,7 @@ export const misc: Record<string, string> = {
   "¥20 起充，¥1 = 50 万 token": "From ¥20, ¥1 = 500,000 tokens",
   "，到账即时、余额永久有效、不用不扣。": " — credited instantly, balance never expires, no charge when unused.",
   "像聊天一样打字，回车发送": "Type like chatting, press Enter to send",
-  "ClawX 打开后，在输入框直接打字，比如「": "Once ClawX is open, just type in the box, e.g. “",
+  "在 U-Workspace 的对话框或终端里直接打字，比如「": "Type directly in U-Workspace's chat box or terminal, e.g. “",
   "帮我写一封请假邮件": "Write me a leave-request email",
   "」，按回车，AI 就会回你。想让它做啥就直说，说中文就行。":
     "”, press Enter, and the AI replies. Just say what you want — Chinese is fine.",
@@ -258,12 +262,12 @@ export const misc: Record<string, string> = {
   "¥20 起充": "From ¥20",
   "，到账即时、余额永久有效、不用不扣，¥20 通常够聊很久。":
     " — credited instantly, balance never expires, no charge when unused; ¥20 usually lasts a long time.",
-  "ClawX 图标是灰色的、点不动？": "The ClawX icon is grey and won't click?",
-  "那是 ClawX 还没装。点一下灰色图标，U-King 会自动帮你下载安装（约 210MB，会显示进度），等它装完就变彩色、能打开了。":
-    "That means ClawX isn't installed yet. Click the grey icon and U-King will download and install it automatically (about 210MB, with progress shown); once done it turns colored and opens.",
-  "ClawX 一直转圈、连不上 AI？": "ClawX keeps spinning and can't connect to the AI?",
-  "八成是第一次打开时那个「是否允许访问网络」的窗口被点了「取消」。解决：关掉 ClawX，回 U-King 重新点「打开 ClawX」，这次弹窗点【允许访问】即可。详见盘内《第一次打开 ClawX 必看》。":
-    "Most likely the “Allow network access?” dialog on first launch was clicked “Cancel”. Fix: close ClawX, go back to U-King and click “Open ClawX” again, and this time click [Allow access] on the popup. See “Read Me First When Opening ClawX” on the drive.",
+  "Claude Code 图标是灰色的、点不动？": "The Claude Code icon is grey and won't click?",
+  "那是还没装好。点一下装机向导，U-King 会自动帮你下载安装（会显示进度），等它装完就能在工作台里用了。":
+    "That means it isn't installed yet. Click the setup wizard and U-King will download and install it automatically (with progress shown); once done you can use it in the workspace.",
+  "装了 ClawX 但一直转圈、连不上 AI？": "Installed ClawX but it keeps spinning and can't connect to the AI?",
+  "八成是第一次打开时那个「是否允许访问网络」的窗口被点了「取消」。解决：关掉 ClawX，回 U-King 重新点「打开 ClawX」，这次弹窗点【允许访问】即可。详见盘内《第一次打开 ClawX 必看》。ClawX 是可选的图形界面，不装它同样能用 Claude Code。":
+    "Most likely the “Allow network access?” dialog on first launch was clicked “Cancel”. Fix: close ClawX, go back to U-King and click “Open ClawX” again, and this time click [Allow access] on the popup. See “Read Me First When Opening ClawX” on the drive. ClawX is an optional GUI — you can use Claude Code just fine without it.",
   "充了钱但还是说余额不足 / 连不上？": "Paid but it still says insufficient balance / can't connect?",
   "回到「AI 设置」点一下「测试连通 / 查询余额」刷新一下。还不行就看盘内《常见故障排查手册》，或按《远程协助看这里》联系我们远程帮你弄。":
     "Go back to “AI Settings” and click “Test connection / Check balance” to refresh. If it still fails, see “Troubleshooting Handbook” on the drive, or follow “Remote Help Here” to contact us for remote assistance.",

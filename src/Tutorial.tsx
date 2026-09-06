@@ -77,8 +77,8 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
 
       {/* 三步走 */}
       <section className="rounded-card border border-white/[0.06] bg-bg-2/70 px-5 py-5">
-        <Step n={1} icon={MousePointerClick} title={t("装好主力工具 ClawX（图形版 AI 助手）")}>
-          {t("新手首选 ")}<b className="text-ink-1">🦞 ClawX</b>{t("——图形界面，像微信一样点点就能用，最好上手。在「我的 AI」里点 ClawX，U-King 会帮你")}<b className="text-ink-1">{t("自动下载、安装、配好 AI")}</b>{t("，你只要等它装完。")}
+        <Step n={1} icon={MousePointerClick} title={t("用装机向导一键装好 Claude Code（最强编程 agent）+ 终端环境")}>
+          {t("新手首选 ")}<b className="text-ink-1">Claude Code</b>{t("——全球公认最强的编程 AI，在「我的 AI」里点一键安装，U-King 会帮你")}<b className="text-ink-1">{t("自动下载、安装、配好 AI")}</b>{t("，你只要等它装完。想要图形界面（像微信一样点点就能用）也可以额外装")}<b className="text-ink-1">🦞 ClawX</b>{t("，在「进阶 / App 版」页可装，非必须。")}
           <button
             onClick={onGoMyAI}
             className="ml-1 inline-flex items-center gap-1 text-accent hover:text-ink-0 underline underline-offset-2"
@@ -86,17 +86,16 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
             {t("去「我的 AI」")}
           </button>
         </Step>
-        <Step n={2} icon={Play} title={t("打开 ClawX，记得点「允许访问网络」")}>
-          {t("装好后点「打开 ClawX」。第一次打开时 Windows 可能弹一个「是否允许访问网络」的窗口，")}
+        <Step n={2} icon={Play} title={t("打开工作台，跟 AI 说话")}>
+          {t("装好后点「进 U-Workspace 开始干活」。想要最全能力，在工作台右上角点「终端」，输入 ")}<b className="text-ink-1">claude</b>{t(" 回车即可；不想碰终端，直接在对话框里说人话就行，底下跑的是同一个 Claude Code、同一个 Key。若额外装了 ClawX，第一次打开 Windows 可能弹「是否允许访问网络」，")}
           <b className="text-ink-1">{t("一定要点【允许访问】")}</b>{t("，不然 AI 连不上。")}
-          <span className="text-ink-4">{t("（U-King 多数情况已帮你提前放行，不一定会弹。）")}</span>
         </Step>
         <Step n={3} icon={Wallet} title={t("第一次用，先充值开通（¥20 起，够聊很久）")}>
           {t("AI 是按量计费的，")}<b className="text-ink-1">{t("第一次使用前需要先充值开通")}</b>{t("。在「我的 AI」或「接入指南」页右上角点")}<b className="text-ink-1">{t("「充值」")}</b>{t("，会自动填好你这台电脑的专属 Key，微信扫码即可，")}
           <b className="text-accent-400">{t("¥20 起充，¥1 = 50 万 token")}</b>{t("，到账即时、余额永久有效、不用不扣。")}
         </Step>
         <Step n={4} icon={MessageSquare} title={t("像聊天一样打字，回车发送")}>
-          {t("ClawX 打开后，在输入框直接打字，比如「")}<i className="text-ink-1">{t("帮我写一封请假邮件")}</i>{t("」，按回车，AI 就会回你。想让它做啥就直说，说中文就行。")}
+          {t("在 U-Workspace 的对话框或终端里直接打字，比如「")}<i className="text-ink-1">{t("帮我写一封请假邮件")}</i>{t("」，按回车，AI 就会回你。想让它做啥就直说，说中文就行。")}
         </Step>
         <div className="flex gap-3.5">
           <div className="flex flex-col items-center shrink-0">
@@ -152,10 +151,10 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
             </>
           }
         />
-        <Faq q={t("ClawX 图标是灰色的、点不动？")} a={t("那是 ClawX 还没装。点一下灰色图标，U-King 会自动帮你下载安装（约 210MB，会显示进度），等它装完就变彩色、能打开了。")} />
+        <Faq q={t("Claude Code 图标是灰色的、点不动？")} a={t("那是还没装好。点一下装机向导，U-King 会自动帮你下载安装（会显示进度），等它装完就能在工作台里用了。")} />
         <Faq
-          q={t("ClawX 一直转圈、连不上 AI？")}
-          a={t("八成是第一次打开时那个「是否允许访问网络」的窗口被点了「取消」。解决：关掉 ClawX，回 U-King 重新点「打开 ClawX」，这次弹窗点【允许访问】即可。详见盘内《第一次打开 ClawX 必看》。")}
+          q={t("装了 ClawX 但一直转圈、连不上 AI？")}
+          a={t("八成是第一次打开时那个「是否允许访问网络」的窗口被点了「取消」。解决：关掉 ClawX，回 U-King 重新点「打开 ClawX」，这次弹窗点【允许访问】即可。详见盘内《第一次打开 ClawX 必看》。ClawX 是可选的图形界面，不装它同样能用 Claude Code。")}
         />
         <Faq
           q={t("充了钱但还是说余额不足 / 连不上？")}
