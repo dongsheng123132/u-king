@@ -59,15 +59,7 @@ export function PortableApp() {
   };
 
   const openRecharge = async () => {
-    setBusy("充值");
-    try {
-      await invoke("open_recharge", { url: wallet?.recharge_url || "https://u-claw.org.cn/recharge" });
-      setNotice("已在系统浏览器打开充值页面；支付在浏览器中完成。");
-    } catch (error) {
-      setNotice(`打开充值页失败：${String(error)}`);
-    } finally {
-      setBusy(null);
-    }
+    await run("充值", "runtime.device.wallet.recharge", { url: wallet?.recharge_url || "https://u-claw.org.cn/recharge" });
   };
 
   const installed = runtime?.installed === true;
@@ -91,7 +83,7 @@ export function PortableApp() {
         <div className="mt-6 rounded-2xl bg-slate-800/80 p-5">
           <div className="flex items-center justify-between gap-3">
             <div><p className="font-medium">设备钱包</p><p className="mt-1 text-sm text-slate-300">{wallet?.balance?.text || "余额暂不可用"}</p></div>
-            <button className="rounded-lg border border-emerald-300/60 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50" disabled={disabled} onClick={() => void openRecharge()} data-action-id="portable.recharge">一键充值</button>
+            <button className="rounded-lg border border-emerald-300/60 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50" disabled={disabled} onClick={() => void openRecharge()} data-action-id="runtime.device.wallet.recharge">一键充值</button>
           </div>
         </div>
 

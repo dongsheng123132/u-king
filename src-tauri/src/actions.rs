@@ -311,6 +311,7 @@ pub const OPENCLAW2_CONFIGURE_MODEL: &str = "runtime.openclaw2.configure_model";
 pub const OPENCLAW2_CONFIGURE_MODEL_NO_PROBE: &str = "runtime.openclaw2.configure_model_no_probe";
 pub const OPENCLAW2_STOP: &str = "runtime.openclaw2.stop";
 pub const OPENCLAW2_OPEN_DASHBOARD: &str = "runtime.openclaw2.open_dashboard";
+pub const DEVICE_WALLET_RECHARGE: &str = "runtime.device.wallet.recharge";
 pub const USB_GENIE_INSPECT: &str = "runtime.usb_genie.inspect";
 pub const USB_GENIE_DEPLOY: &str = "runtime.usb_genie.deploy";
 pub const USB_GENIE_VERIFY: &str = "runtime.usb_genie.verify";

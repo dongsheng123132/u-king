@@ -96,6 +96,14 @@ mod testsandbox;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
+use std::sync::OnceLock;
+
+fn action_opener() -> &'static OnceLock<AppHandle> {
+    static OPENER: OnceLock<AppHandle> = OnceLock::new();
+    &OPENER
+}
+
+fn set_action_opener(app: AppHandle) { let _ = action_opener().set(app); }
 
 /// 启动时探测到的环境信息（前端 hero 区展示）。
 #[derive(Debug, Clone, Serialize)]
@@ -2061,6 +2069,18 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &["changed", "opened", "state_version"],
             openclaw2::action_open_dashboard,
             Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::DEVICE_WALLET_RECHARGE,
+            "Open the device-wallet recharge page",
+            "Open the approved recharge page in the system browser. It never submits or pays an order.",
+            10_000,
+            "required",
+            serde_json::json!({"url":{"type":"string","minLength":1,"writeOnly":true}}),
+            &["url"],
+            &["changed", "opened"],
+            action_open_recharge,
+            None,
         ),
         actions::readonly(
             actions::USB_GENIE_INSPECT,
@@ -6426,6 +6446,15 @@ async fn open_recharge(app: AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+fn action_open_recharge(_: &str, input: serde_json::Value, _: &actions::ProgressSink) -> Result<serde_json::Value, String> {
+    let url = input.get("url").and_then(serde_json::Value::as_str).ok_or("invalid_input: url 必填")?;
+    const ALLOWED: [&str; 2] = ["https://u-claw.org.cn/", "https://cloud.u-claw.org/"];
+    if !ALLOWED.iter().any(|p| url.starts_with(p)) { return Err("非法充值地址".into()); }
+    let app = action_opener().get().ok_or("充值 opener 尚未初始化")?;
+    app.opener().open_url(url, None::<String>).map_err(|e| format!("打开充值页失败: {e}"))?;
+    Ok(serde_json::json!({"changed":false,"opened":true}))
+}
+
 /// 本机某个端口上有没有服务在听（给「预览网页」用；测试报告 #015）。
 ///
 /// 为什么需要它：`open_browser` **成功只代表窗口建出来了，不代表页面加载成功**。
@@ -9954,6 +9983,7 @@ pub fn run() {
             // invoke exactly one checked path. Keep the token-bearing URL
             // inside the process and pass only this capability handle.
             openclaw2::set_dashboard_opener(app.handle().clone());
+            set_action_opener(app.handle().clone());
             create_main_window(app)?;
             // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
             // 真的让**外部页面**导航了。整个过程窗口 `visible(false)`，屏幕上什么都不出现，

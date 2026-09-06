@@ -114,9 +114,14 @@ async function files(dir, base = dir) {
 const manifest = { schema_version: 1, version, root_name: path.basename(root), openclaw: { version: pinned.openclaw_version, fs_safe: "0.5.6", config_writer: `dist/${io}`, sha256: configWriterHash, workspace_writer: `dist/${workspace}`, workspace_before_sha256: createHash("sha256").update(workspaceBefore).digest("hex"), workspace_after_sha256: workspaceHash, patched: true }, fs_safe_compat: { version: "0.8.2", source_revision: "524e2a2dd50c390f924a0360c6c71ddf74f70f42", tree_sha256: compatTreeHash, root_impl_sha256: compatRootImplHash, native_mode: "off" }, files: (await files(root)).length };
 await writeFile(path.join(root, "runtime-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 const entries = await files(root);
-const sums = await Promise.all(entries.filter(([rel]) => rel !== "SHA256SUMS.txt").map(async ([rel, full]) => `${await sha(full)}  ${rel}`));
+// Runtime dependencies contain tens of thousands of files. Hash sequentially
+// so Windows never exhausts the process file-handle table (EMFILE).
+const sums = [];
+for (const [rel, full] of entries.filter(([rel]) => rel !== "SHA256SUMS.txt")) {
+  sums.push(`${await sha(full)}  ${rel}`);
+}
 await writeFile(path.join(root, "SHA256SUMS.txt"), `${sums.sort().join("\n")}\n`);
 const zip = `${root}.zip`;
 try { await stat(zip); throw new Error(`refusing to overwrite existing release ZIP: ${zip}`); } catch (error) { if (error?.code !== "ENOENT") throw error; }
-execFileSync("C:\\Windows\\System32\\tar.exe", ["-a", "-c", "-f", zip, path.basename(root)], { cwd: out, stdio: "inherit" });
+execFileSync("C:\\Windows\\System32\\tar.exe", ["-a", "-c", "-f", zip, path.basename(root)], { cwd: out, stdio: "inherit", timeout: 300_000 });
 console.log(JSON.stringify({ ok: true, root, zip, sha256: await sha(zip) }));

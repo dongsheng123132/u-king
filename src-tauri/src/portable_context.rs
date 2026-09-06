@@ -106,6 +106,7 @@ pub fn action_allowed(id: &str) -> bool {
             | "runtime.openclaw2.configure_model_no_probe"
             | "runtime.openclaw2.configure_model"
             | "runtime.openclaw2.stop"
+            | "runtime.device.wallet.recharge"
     )
 }
 
