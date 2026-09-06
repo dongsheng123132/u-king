@@ -257,4 +257,32 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     key_hint: "需绑定阿里云账号并完成实名认证后才能创建 Access Token",
     website: "https://modelscope.cn",
   },
+  // 2026-09-06：海外中转站专项（用户点名要上）。🔴 这两家都是**第三方中转**，不是
+  // 模型官方——查证裁决后只上 B.ai 和 APIMart（WorldRouter / CC Vibe 不上）。
+  // anthropic_base 照本文件惯例：只给到域名+路径前缀，不带 /v1/messages（Claude Code
+  // 自己会拼那段，抄一遍会拼出双重 /v1，同「智谱 GLM」「阿里百炼」等条目的写法）。
+  {
+    // TRON 系资本背景的新平台，2026 上线，对标官方定价。2026-09-06 无 Key 探测
+    // openai_base 返回 401（端点存在、鉴权生效），未做进一步可用性/数据合规验证。
+    // model 留空：引导用「拉取模型」按钮选，不写死一个可能变动的 id。
+    // 🔴 第三方服务，非官方直连：建议小额充值试用，别一次性大额储值。
+    name: "B.ai",
+    openai_base: "https://api.b.ai/v1",
+    anthropic_base: "https://api.b.ai",
+    key_url: "https://b.ai/",
+    key_hint: "第三方中转站（TRON 系新平台，2026 上线），建议小额充值试用，别一次性大额储值",
+    website: "https://b.ai/",
+  },
+  {
+    // 第三方折扣中转，官网自称比各家官方价省 30%–70%。来源纯度未经我们验证。
+    // 2026-09-06 无 Key 探测 openai_base 返回 401（端点存在、鉴权生效），未做进一步
+    // 可用性/数据合规验证。model 留空，同上理由。
+    // 🔴 第三方服务，非官方直连：折扣中转来源不可控，勿大额充值、勿传敏感数据。
+    name: "APIMart",
+    openai_base: "https://api.apimart.ai/v1",
+    anthropic_base: "https://api.apimart.ai",
+    key_url: "https://apimart.ai/",
+    key_hint: "第三方折扣中转（自称省 30%–70%），来源纯度未经验证，勿大额充值、勿传敏感数据",
+    website: "https://apimart.ai/",
+  },
 ];

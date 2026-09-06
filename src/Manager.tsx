@@ -2223,12 +2223,15 @@ export function Manager({
         // A4：快速添加三组数据——首屏三家（按名字匹配，匹配不到就退回模板原顺序前三）、
         // 「更多来源」收纳剩下的模板、「加回工具」复用原「工具分配」画廊那份 hidden 列表 +
         // restoreProvider（同一个函数，只是挪了个地方渲染）。
-        const firstScreenNames = ["OpenAI 官方", "OpenRouter", "OpenCode Zen"];
+        // B.ai 是用户点名要放首屏的海外中转（2026-09-06）；APIMart 留在「更多来源」即可。
+        const firstScreenNames = ["OpenAI 官方", "OpenRouter", "OpenCode Zen", "B.ai"];
         const matchedFirst = firstScreenNames
           .map((n) => templates.find((tp) => tp.name === n))
           .filter((x): x is ProviderTemplate => !!x);
         const firstScreenTemplates = matchedFirst.length > 0 ? matchedFirst : templates.slice(0, 3);
         const moreTemplates = templates.filter((tp) => !firstScreenTemplates.includes(tp));
+        // 海外中转/网关一律标「需科学上网」（12px ink-3，2026-09-06）——国产免费组不标。
+        const OVERSEAS_TEMPLATE_NAMES = new Set(["B.ai", "APIMart", "OpenRouter", "OpenCode Zen"]);
         const renderQuickAddRow = (tpl: ProviderTemplate, free?: boolean) => {
           const existing = providers.find((p) => p.openai_base === tpl.openai_base);
           return (
@@ -2261,6 +2264,9 @@ export function Manager({
                     <span className="shrink-0 inline-flex items-center px-1.5 h-[15px] rounded-full text-[12px] leading-none font-semibold bg-success-500/12 text-success-400 border border-success-500/25">
                       {t("免费")}
                     </span>
+                  )}
+                  {OVERSEAS_TEMPLATE_NAMES.has(tpl.name) && (
+                    <span className="shrink-0 text-[12px] leading-none text-ink-3">{t("需科学上网")}</span>
                   )}
                 </div>
                 <div className="text-[12px] text-ink-3 truncate">

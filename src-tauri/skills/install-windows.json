@@ -859,6 +859,22 @@
       "key_url": "https://modelscope.cn/my/myaccesstoken",
       "key_hint": "需绑定阿里云账号并完成实名认证后才能创建 Access Token",
       "website": "https://modelscope.cn"
+    },
+    {
+      "name": "B.ai",
+      "openai_base": "https://api.b.ai/v1",
+      "anthropic_base": "https://api.b.ai",
+      "key_url": "https://b.ai/",
+      "key_hint": "第三方中转站（TRON 系新平台，2026 上线），建议小额充值试用，别一次性大额储值",
+      "website": "https://b.ai/"
+    },
+    {
+      "name": "APIMart",
+      "openai_base": "https://api.apimart.ai/v1",
+      "anthropic_base": "https://api.apimart.ai",
+      "key_url": "https://apimart.ai/",
+      "key_hint": "第三方折扣中转（自称省 30%–70%），来源纯度未经验证，勿大额充值、勿传敏感数据",
+      "website": "https://apimart.ai/"
     }
   ]
 }
