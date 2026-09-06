@@ -123,6 +123,19 @@ for (const [raw, cwd, want, why] of RESOLVE) {
   const got = resolvePath(raw, cwd);
   if (got !== want) fails.push(`${why}：resolvePath(${JSON.stringify(raw)}, ${JSON.stringify(cwd)}) = ${JSON.stringify(got)}，应为 ${JSON.stringify(want)}`);
 }
+// —— `~` 展开：TUI（pi/claude 等）爱用的家目录缩写，Windows 上 shell 不展开它，
+//    原样出现在输出里就该按 home 展开，不该被当成普通相对路径拼到终端 cwd 上 ——
+const RESOLVE_HOME = [
+  ["~\\.pi\\agent\\skills\\SKILL.md", "D:\\proj", "C:\\Users\\ZhuanZ", "C:\\Users\\ZhuanZ\\.pi\\agent\\skills\\SKILL.md", "Windows ~ 展开"],
+  ["~/x/y.txt", "/d/proj", "C:/Users/ZhuanZ", "C:/Users/ZhuanZ/x/y.txt", "Mac 风格 ~ 展开"],
+  ["~/x/y.txt", "/d/proj", undefined, undefined, "不传 home 时行为不变（照旧拼 cwd）"],
+  ["~abc/x", "D:\\proj", "C:\\Users\\ZhuanZ", undefined, "~ 后不是分隔符 = 用户名形式，不许展开"],
+];
+for (const [raw, cwd, home, want, why] of RESOLVE_HOME) {
+  const got = resolvePath(raw, cwd, home);
+  const expect = want === undefined ? resolvePath(raw, cwd) : want;
+  if (got !== expect) fails.push(`${why}：resolvePath(${JSON.stringify(raw)}, ${JSON.stringify(cwd)}, ${JSON.stringify(home)}) = ${JSON.stringify(got)}，应为 ${JSON.stringify(expect)}`);
+}
 // —— 目录线索 + 候选路径：治「终端那行只有文件名、目录写在上面另一行」——
 // 客户 2026-08-16 实锤：右键那个 zip，六项菜单全废，其中「复制路径」还**不声不响复制了错路径**。
 {

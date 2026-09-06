@@ -21,6 +21,14 @@ export const settings: Record<string, string> = {
   "没有你想要的那家？「供应商库」里有 20 家模板，或者自己手填地址也行。":
     "Don't see the one you want? There are 20 templates under Providers, or just type the endpoint in yourself.",
 
+  // ---- 免费额度导流（2026-09-06：右栏快速添加置顶组 + 我的 AI 首页导流卡）----
+  "国内直连，手机号注册就能领": "Direct in mainland China — just sign up with a phone number",
+  "免费": "Free",
+  "免费模型 · 不花钱先跑通": "Free models — get running without spending a cent",
+  "国产直连免费额度，手机号注册就能领": "Free quota from domestic providers with direct access — sign up with a phone number",
+  "需科学上网": "Needs a VPN",
+  "更多免费路线（智谱/硅基流动等）→ 免费算力": "More free routes (Zhipu / SiliconFlow, etc.) → Free compute",
+
   // ---- 一键配好（ToolFixButton，从 ToolCheckup 收拢，2026-09-06）----
   "已自行配置": "Self-managed",
   "配好了，去终端试试": "Configured — try it in Terminal",
@@ -47,6 +55,14 @@ export const settings: Record<string, string> = {
   "地址": "Endpoint",
   "正在被 {tools} 使用": "In use by {tools}",
   "已在 {n}/{total} 个工具启用:{tools}": "Enabled in {n}/{total} tools: {tools}",
+
+  // 供应商库卡片：协议标签 + 一键测速（2026-09-06，对标 EchoBird 模型中心）
+  "测试速度": "Test speed",
+  "测速中…": "Testing…",
+  "延迟": "Latency",
+  "未测试": "Not tested",
+  "没配 Key": "No key configured",
+  "重新测这一家": "Retest this one",
 
   // 设备钱包挂到虾盘云供应商卡片上（2026-08-22）——钱包是这家供应商的一部分，不是全局功能
   "设备钱包": "Device wallet",
@@ -502,4 +518,57 @@ export const settings: Record<string, string> = {
   "在「供应商库」添加自定义供应商填这个地址即可把任何 OpenAI 兼容工具接上来（仅本机可访问）":
     "Add a custom provider in the Provider library with this address to connect any OpenAI-compatible tool (localhost only)",
   "版本": "ver",
+
+  // ── CustomProviderModal 弹窗升级（astra-ui-design-2.md B 节，2026-09-06）──
+  "从模板选择": "Choose from a template",
+  "添加 {name}": "Add {name}",
+  "OpenAI 地址": "OpenAI endpoint",
+  "Anthropic 地址（可选）": "Anthropic endpoint (optional)",
+  "按供应商提供的信息填写，至少填写一种地址。": "Fill in what your provider gave you — at least one endpoint is required.",
+  "请使用 Ctrl+V 粘贴": "Please paste with Ctrl+V",
+  "粘贴": "Paste",
+  "隐藏密钥": "Hide key",
+  "显示密钥": "Show key",
+  "验证中…": "Verifying…",
+  "仅保存": "Save only",
+  "验证并保存": "Verify and save",
+  "验证并保存修改": "Verify and save changes",
+  "当前不支持此协议测试": "Testing isn't supported for this protocol yet",
+  "连接失败，请查看详情": "Connection failed — see details",
+  "查看详情": "View details",
+  "连接信息": "Connection info",
+  "查看/修改连接信息": "View / edit connection info",
+  "收起": "Collapse",
+  "＋ 高级（小模型 / Codex 专用模型，可不填）": "＋ Advanced (small model / Codex-only model, optional)",
+
+  // ── 官方渠道置顶模块 + 供应商库卡片/快速添加改版（astra-ui-design-2.md A 节，2026-09-06）──
+  "U-King 官方渠道": "U-King official channel",
+  "免填密钥，充值后在工具分配中启用": "No key needed — top up, then enable it under Tools",
+  "余额读取中": "Loading balance…",
+  "暂未取得余额 · 重试": "Couldn't load balance · Retry",
+  "钱包管理": "Wallet",
+  "加回": "Add back",
+  "待填密钥": "Key not set",
+  "暂不支持此协议测速": "Latency test isn't supported for this protocol",
+  "查看原因": "Why",
+  "{ms} ms · 重测": "{ms} ms · Retest",
+  "测试失败 · 重测": "Test failed · Retest",
+  "保存后，到工具分配中选择使用": "After saving, pick it under Tools",
+  "快速添加": "Quick add",
+  "选一家，自动填好地址": "Pick one — we'll fill in the endpoint",
+  "加回 {tool}": "Add {tool} back",
+  "添加其他来源": "Add another source",
+
+  // ── 右栏两 tab + 紧凑品牌行改版（ui-spec-astra-3-provider-myai-2026-09-06.md ①②③⑥⑧⑩）──
+  "编辑：{name}": "Edit: {name}",
+  "添加：{name}，预填地址/模型，进弹窗只需补 Key": "Add: {name} — endpoint/model prefilled, just fill in your key in the dialog",
+  "申请 Key：{name}": "Apply for key: {name}",
+  "免费算力 →": "Free compute →",
+  "模型厂商 {n}": "Vendors {n}",
+  "模型平台 {n}": "Platforms {n}",
+  "供应商来源分组": "Provider source group",
+  "展开其余 {n} 家": "Show {n} more",
+  "其他来源": "Other sources",
+  "加回工具": "Restore a tool",
+  "用于：{tools}": "Used by: {tools}",
 };

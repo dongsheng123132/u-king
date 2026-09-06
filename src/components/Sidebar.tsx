@@ -1,12 +1,12 @@
 /**
  * 左侧边栏导航 —— 主流商务风（参考 Linear / cc-switch）。
  * 管家功能区（我的 AI / 装机向导 / Codex 专区 / AI 设置）+ 底部 OpenCodex 工作台入口
- * + 一排「我的 AI」快捷启动图标（Dock）+ 终端抽屉开关。
+ * + 终端抽屉开关。「我的 AI」快捷启动 Dock 已删除（2026-09-06，见下方注释）。
  */
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, Hammer, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { SidebarMiniApps } from "./SidebarMiniApps";
@@ -22,6 +22,7 @@ export type TabId =
   | "terminal"
   | "setup"
   | "chat"
+  | "termwb"
   | "create"
   | "experts"
   | "myai"
@@ -47,8 +48,6 @@ export type TabId =
   | "nightshift"
   | "localllm"
   | "rtk"
-  | "teamspace"
-  | "runcenter"
   | "usbgenie";
 
 type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
@@ -61,14 +60,14 @@ type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
  * 当时据此把「AI 设置」下沉进了「更多」。
  *
  * 🔴 **2026-08-31 用户拍板：AI 设置升回核心第 4 位**（原话：把 AI 设置放在左侧的前面
- * 4 个里边，默认露出在外面，放在我的 AI 下面，这个功能比较主要）。理由：
- * 这页已经不是「配一次就走」的设置页了 —— 它装着一键体检（doctor）/ 一键升级
- * （CLI 全部更到最新 + 本体升级），是**健康维护的常驻入口**，跟「装好就用」是同一频次的事。
+ * 4 个里边，默认露出在外面，放在我的 AI 下面，这个功能比较主要）。
+ * 🔴 **2026-09-04 按动词分家：一键体检/一键升级已搬去「我的 AI」**（见下方 MORE 前那条），
+ * AI 设置现在只剩换模型/余额，核心位置不因此撤回——它仍是「装好就用」之后最高频要回来的维护入口。
  *
  *   ① U-Workspace —— 主交互面（对话 + 终端 + 作图预览），干活入口，必须第一
  *   ② AI 创作     —— 作图/视频/海报，第二高频
- *   ③ 首页·我的AI  —— 装机→一键配好→充值→启动的漏斗 + 启动台
- *   ④ AI 设置     —— 换模型/余额/一键体检/一键升级（维护入口，常驻）
+ *   ③ 首页·我的AI  —— 装机→一键配好→充值→启动的漏斗 + 启动台 + 体检/升级
+ *   ④ AI 设置     —— 换模型/余额（维护入口，常驻）
  *
  * **首页故意留在核心**：首页是小白唯一的装机漏斗，摘掉等于新客户开机即无路可走。
  */
@@ -82,7 +81,11 @@ const CORE: NavItem[] = [
   //   · **U-Chat** = 工作台里那个 GUI 对话框（`opencodex/Chat.tsx` + `panels/ChatPanel.tsx`）。
   //   · **U-CLI**  = 工作台里那个终端界面（`panels/TermPanel.tsx` + `term/useTermGroup.ts`）。
   // 面向客户的文案保留「对话 / 终端」这类人话，代号只用来**指认是哪一块**。
-  { id: "chat", label: "U-Workspace", sub: "对话 · 终端 · 作图出片，一站干活", icon: MessageSquare },
+  { id: "chat", label: "对话工作台", sub: "U-Chat · 会话 · 看板 · 专家", icon: MessageSquare },
+  // 「终端工作台」（2026-09-06 拆分自 U-Workspace）：跟「对话工作台」是**同一批会话**，
+  // 同一份 SessionList/store —— 唯一区别是每个会话默认停在终端态（相当于自动收起
+  // U-Chat 对话列，只见 U-CLI 终端）。不建第二套会话列表，见 UWorkspace.tsx 的 paneMode。
+  { id: "termwb", label: "终端工作台", sub: "U-CLI · 同一批项目，只见终端", icon: SquareTerminal },
   // 「AI 创作」2026-08-23 **回到核心位**（用户拍板：「客户希望留」）。
   //
   // 它 08-21 被 `6bb9409` 摘掉，理由写的是「它和 U-Chat 是同一件事的两个入口，收进
@@ -108,6 +111,11 @@ const CORE: NavItem[] = [
 /** 「更多」—— 进阶/工具页，默认折叠，不让小白眼花。
  *  排序：使用向（虾盘云/教程/专家/Codex）在前，维护向（优化/备份/进阶）在后。 */
 const MORE: NavItem[] = [
+  // 「装机向导」（2026-09-06 生手引导审计定案）：装机向导页（setup）此前在侧栏没有任何入口，
+  // 生手离开这页想回来，只能靠「我的 AI」页按钮或 StatusLine 横幅——补一条常驻可达的入口。
+  // 放本组靠前（生手要用的东西别垫底），但仍归「更多」不进核心——它是「装一次」的漏斗页，
+  // 真正天天用的落脚点是「我的 AI」（核心②），这条只负责「回得去」。
+  { id: "setup", label: "装机向导", sub: "装 AI 工具 · 配驱动 · 修安装", icon: Hammer },
   // 便携 AI 只有这一处管理入口。PicoClaw 先接入；OpenClaw / ClawX 必须各自通过
   // 便携落盘与真盘验收，不能因为共用 UI 就提前宣称可用。
   { id: "usbgenie", label: "U盘工具盘", sub: "随身 AI · 检查 · 启动", icon: HardDrive },
@@ -181,7 +189,9 @@ const MORE: NavItem[] = [
   //
   // 退出条件：90 天内付费下单为 0，则按 da7c565 的原理由再删一次 —— 且下次要连
   // `skills/experts/geo-optimizer/` 专家包一起删干净，别再留「专家在、工具不在」的半截。
-  { id: "geo", label: "网站GEO体检", sub: "各家 AI 认不认识你 · 免费自查", icon: Globe },
+  // 2026-09-06 用户裁决「不成熟的功能先隐藏」：提前收起侧栏入口（原恢复条件不变，
+  // 见上面这段自述——90 天内付费下单为 0 则按 da7c565 原理由再删；两个硬缺口未修前不建议放出）。
+  // { id: "geo", label: "网站GEO体检", sub: "各家 AI 认不认识你 · 免费自查", icon: Globe },
   { id: "backup", label: "备份/同步", sub: "对话设置存 U 盘 · 多电脑切换", icon: HardDrive },
   // 「本地大模型」2026-08-25 从「AI 设置 → 高级」的入口卡**升回侧栏**（用户拍板：
   // 「本地大模型还是要调出来到左侧」）。页面/路由/动作原样 —— 它当初进 AI 设置的理由
@@ -208,10 +218,8 @@ const MORE: NavItem[] = [
  * 页面和路由全部保留，只是不再和成熟功能混在一起。
  */
 const LAB: NavItem[] = [
-  // 两页是可点击的本机原型，不是已交付的协作/观测服务：团队空间只有 localStorage
-  // 演示数据，运行中心只读开发 collector 文件。归实验室并如实标注，避免客户把空页当故障。
-  { id: "teamspace", label: "团队空间（原型）", sub: "本机演示 · 尚未多设备协作", icon: Layers },
-  { id: "runcenter", label: "运行中心（原型）", sub: "仅开发 Trace · 打包版暂不可用", icon: Gauge },
+  // 团队空间/运行中心已移交「本源AI计算机」项目（2026-09-06 裁决），原型代码已删；
+  // 任务可视化的正主是 U-Chat 任务看板（opencodex/TaskBoard.tsx）。
   // 泊舟 AI 小程序（独立应用、自带更新）的入口就在这一页顶部 —— 写进 sub 里，
   // 否则客户根本猜不到「泊舟」藏在「小程序」底下。它按实验室标准归这儿：
   // 是独立发版的外部应用，不在「一键装好你的全部 AI」主线上。
@@ -235,17 +243,6 @@ const LAB: NavItem[] = [
   // ⚠️ 2026-08-25 更新：localllm 已从「AI 设置 → 高级」升回侧栏「更多」（用户拍板），
   // 见 MORE 里那条；本组注释里关于它的部分只剩历史意义。
 ];
-
-/** Dock 项分组：desktop=桌面应用（Codex 桌面版/ClawX）、cli=命令行工具（OpenClaw/Claude/Hermes）。 */
-export type DockGroup = "desktop" | "cli";
-
-/** Dock 快捷项：① tui=独立 TUI 应用（claude/codex/openclaw/hermes，切 tabId）
- *  ② launch=纯 GUI 应用（Codex 桌面版/ClawX，外部启动）。
- *  tool=品牌图标 key（claude/codex/openclaw/hermes…）；active=已装/可用（着色，否则灰显）；
- *  group=左侧分桶。 */
-export type DockApp =
-  | { id: string; name: string; kind: "tui"; tabId: TabId; tool: string; active: boolean; group?: DockGroup }
-  | { id: string; name: string; kind: "launch"; tool: string; active: boolean; group?: DockGroup };
 
 export function Sidebar({
   active,
@@ -308,9 +305,6 @@ export function Sidebar({
    *  按钮却吃 36px，而 1366×768 客户区才 688px）。不矮的机器上标题栏还在，这里就不传，
    *  免得同一个动作在界面上有两个入口。 */
   onHideToTray?: () => void;
-  // dockApps / onLaunchDock 仍由 App 传入但侧栏 Dock 已移除，故此处不再解构（保留可选以免 App 改动）
-  dockApps?: DockApp[];
-  onLaunchDock?: (a: DockApp) => void;
   /** 内嵌终端页入口平时隐藏（易与「打开终端」弹出的独立窗口混淆）；只在内嵌终端页
    *  已经挂了会话（termMounted）时才露出，让用户能切回去，不留「进得去出不来」的幽灵页。
    *  2026-09-06 修：工具启动改走独立窗口后，唯一还会落进内嵌终端页的是快照恢复。 */
@@ -372,6 +366,10 @@ export function Sidebar({
   // 核心 ①②③ funnel 仍带说明（小白引导刚需）……**但矮屏例外**：1366×768 上带说明的
   // 四个核心项 + 展开的「更多」根本装不下，侧栏自己长出滚动条（客户截图实证）。
   // 说明文字不是丢掉而是挪进 tooltip —— 空间不够时宁可少显示，不能少了那句话。
+  // 2026-09-06 Astra UI 规格 B3：只调现有导航行/分组标签/底部控件的样式，不搬入口——
+  // 主导航 13px/ink-2，副标题统一 12px/ink-3，双行项目最小高 48px、紧凑单行最小高 36px，
+  // 图标统一 16px；选中态本来就是 bg-accent/12 + 左侧 2px accent 线 + ink-0 半粗名称 +
+  // accent 图标，这次没改；普通悬停统一 bg-2。
   const NavButton = (n: NavItem, compact = false) => {
     const on = active === n.id;
     const Icon = n.icon;
@@ -383,16 +381,17 @@ export function Sidebar({
         title={compact ? `${t(n.label)} · ${t(n.sub)}` : undefined}
         className={cn(
           "w-full flex items-center gap-3 px-3 rounded-card text-left transition-all border-l-2",
+          compact ? "min-h-[36px]" : "min-h-[48px]",
           compact ? (short ? "py-1.5" : "py-2") : "py-2.5",
           on
             ? "bg-accent/[0.12] border-accent text-ink-0"
-            : "border-transparent text-ink-3 hover:bg-white/[0.035] hover:text-ink-1",
+            : "border-transparent text-ink-2 hover:bg-bg-2 hover:text-ink-1",
         )}
       >
         <Icon size={16} className={on ? "text-accent" : "text-ink-4"} />
         <div className="min-w-0">
           <div className={cn("text-[13px]", on ? "font-semibold" : "font-medium")}>{t(n.label)}</div>
-          {!compact && <div className="text-[10px] text-ink-4 truncate">{t(n.sub)}</div>}
+          {!compact && <div className="text-[12px] text-ink-3 truncate">{t(n.sub)}</div>}
         </div>
       </button>
     );
@@ -459,6 +458,9 @@ export function Sidebar({
               }
               className={cn(
                 "relative w-10 h-10 grid place-items-center rounded-card transition-colors disabled:opacity-60",
+                // 2026-09-06 B3：键盘焦点统一 accent 描边（收起态底部图标按钮点击区已是 40×40px，
+                // 早于本次就满足「至少 32×32」）。
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none",
                 hasUpdate
                   ? updateFailed > 0
                     ? "text-amber-500 hover:bg-amber-500/[0.12]"
@@ -474,7 +476,7 @@ export function Sidebar({
             onClick={onRecheck}
             disabled={checking}
             title={checking ? t("检查中…") : t("检查更新")}
-            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 disabled:opacity-60"
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <RefreshCw size={16} className={checking ? "animate-spin" : ""} />
           </button>
@@ -482,7 +484,7 @@ export function Sidebar({
             onClick={() => onSelect("feedback")}
             title={t("技术支持 · 报告问题 · 加微信找我们")}
             className={cn(
-              "w-10 h-10 grid place-items-center rounded-card transition-colors",
+              "w-10 h-10 grid place-items-center rounded-card transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none",
               active === "feedback"
                 ? "bg-accent/[0.14] text-accent"
                 : "text-ink-4 hover:bg-white/[0.04] hover:text-ink-1",
@@ -493,14 +495,14 @@ export function Sidebar({
           <button
             onClick={() => setLang(lang === "en" ? "zh" : "en")}
             title={`${t("语言")}: ${lang === "en" ? "English" : "中文"}`}
-            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <span className="text-[10px] font-semibold">{lang === "en" ? "EN" : "中"}</span>
           </button>
           <button
             onClick={onToggleTheme}
             title={theme === "dark" ? t("浅色模式") : t("深色模式")}
-            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -510,7 +512,7 @@ export function Sidebar({
             <button
               onClick={onHideToTray}
               title={t("隐藏到右下角托盘")}
-              className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
+              className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
             >
               <PanelTopClose size={16} />
             </button>
@@ -556,7 +558,7 @@ export function Sidebar({
           className={cn(
             "w-full flex items-center gap-3 px-3 rounded-card text-left transition-colors",
             short ? "py-1.5" : "py-2",
-            showMore ? "bg-white/[0.03] text-ink-1" : "text-ink-3 hover:bg-white/[0.03] hover:text-ink-1",
+            showMore ? "bg-bg-2 text-ink-1" : "text-ink-3 hover:bg-bg-2 hover:text-ink-1",
           )}
         >
           <MoreHorizontal size={16} className={showMore ? "text-accent" : "text-ink-4"} />
@@ -576,7 +578,7 @@ export function Sidebar({
           className={cn(
             "w-full flex items-center gap-3 px-3 rounded-card text-left transition-colors",
             short ? "py-1.5" : "py-2",
-            showLab ? "bg-white/[0.03] text-ink-1" : "text-ink-3 hover:bg-white/[0.03] hover:text-ink-1",
+            showLab ? "bg-bg-2 text-ink-1" : "text-ink-3 hover:bg-bg-2 hover:text-ink-1",
           )}
         >
           <FlaskConical size={16} className={showLab ? "text-amber-400" : "text-ink-4"} />
@@ -616,57 +618,9 @@ export function Sidebar({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-bg-1 to-bg-1/0" />
       </div>
 
-      {/* 「我的 AI」侧栏 Dock 已移除 —— 这些工具（Codex桌面版/OpenClaw桌面版/Claude CLI/OpenClaw龙虾/
-          Hermes）右侧主区「我装好的 AI 工具」卡片里已经有了，侧栏再列一遍是重复，让小白眼花。
-          连同「终端」一起去掉，侧栏更清爽。dockApps/onLaunchDock 仍由 App 传入（暂留），要恢复
-          解开下面注释即可。 */}
-      {/* <div className="px-2.5 pt-2 pb-1 border-t border-white/[0.06] overflow-y-auto">
-        <div className="text-[10px] text-ink-5 px-1 pb-1.5">我的 AI</div>
-        {(["desktop", "cli"] as const).map((g) => {
-          const items = dockApps.filter((a) => (a.group ?? "cli") === g);
-          if (items.length === 0) return null;
-          return (
-            <div key={g} className="mb-1.5">
-              <div className="text-[10px] text-ink-6 px-1 pb-0.5">
-                {g === "desktop" ? "桌面应用" : "命令行工具"}
-              </div>
-              <div className="space-y-0.5">
-                {items.map((a) => {
-                  const isOpenCodex = a.kind === "workbench";
-                  const isView = a.kind === "workbench" || a.kind === "tui";
-                  const on =
-                    (a.kind === "workbench" && active === "workbench") ||
-                    (a.kind === "tui" && active === a.tabId);
-                  return (
-                    <button
-                      key={a.id}
-                      onClick={() => onLaunchDock(a)}
-                      title={isView ? `打开 ${a.name}` : `启动 ${a.name}`}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-card text-left transition-colors border-l-2",
-                        on
-                          ? "bg-accent/[0.14] border-accent text-ink-0"
-                          : "border-transparent text-ink-2 hover:bg-white/[0.04]",
-                      )}
-                    >
-                      {isOpenCodex ? (
-                        <span className="w-6 h-6 rounded-md bg-accent/[0.18] flex items-center justify-center shrink-0">
-                          <LayoutGrid size={14} className="text-accent-400" />
-                        </span>
-                      ) : (
-                        <ToolIcon tool={a.tool} size={22} active={a.active} className="w-6 h-6" />
-                      )}
-                      <span className={cn("text-[13px] truncate", isView ? "font-semibold" : "font-medium")}>
-                        {a.name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div> */}
+      {/* 「我的 AI」侧栏 Dock 已删除（2026-09-06 第一性原理审查评审⑤）—— 这些工具
+          （Codex桌面版/OpenClaw桌面版/Claude CLI/OpenClaw龙虾/Hermes）右侧主区
+          「我装好的 AI 工具」卡片里已经有了，侧栏再列一遍是重复。历史实现看 git。 */}
 
       {/* 终端页入口平时隐藏 —— 工具启动已改走独立系统终端窗口，内嵌终端整页只在
           「快照恢复」这一条路径还会用到（见 App.tsx onRestoreTermSnapshot）。
@@ -786,7 +740,7 @@ export function Sidebar({
         <button
           onClick={onToggleTheme}
           title={theme === "dark" ? t("浅色模式") : t("深色模式")}
-          className="flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors"
+          className="flex items-center gap-1.5 shrink-0 min-h-[32px] px-2.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
         >
           {theme === "dark" ? (
             <Moon size={15} className="text-ink-4" />
@@ -799,7 +753,9 @@ export function Sidebar({
           onClick={onRecheck}
           disabled={checking}
           title={checking ? t("检查中…") : t("检查更新")}
-          className="flex items-center shrink-0 px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors disabled:opacity-60"
+          // 2026-09-06 B3：底部图标按钮点击区至少 32×32px + 键盘焦点 accent 描边
+          // （原来 px-2 py-1.5 实测算下来矮于 32px）。
+          className="flex items-center justify-center shrink-0 min-w-[32px] min-h-[32px] px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
         >
           <RefreshCw size={15} className={checking ? "animate-spin" : ""} />
         </button>
@@ -810,7 +766,7 @@ export function Sidebar({
           <button
             onClick={onHideToTray}
             title={t("隐藏到右下角托盘")}
-            className="flex items-center shrink-0 px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors"
+            className="flex items-center justify-center shrink-0 min-w-[32px] min-h-[32px] px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <PanelTopClose size={15} />
           </button>

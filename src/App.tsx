@@ -24,7 +24,9 @@ import {
   Download,
   FlaskConical,
   FolderTree,
+  Gift,
   LifeBuoy,
+  MoreHorizontal,
   PanelTopClose,
   PlugZap,
   RefreshCw,
@@ -37,15 +39,16 @@ import {
 import { Wizard } from "./Wizard";
 import { UWorkspace } from "./opencodex/UWorkspace";
 import type { Expert } from "./opencodex/experts";
-import { Sidebar, type TabId, type DockApp } from "./components/Sidebar";
+import { Sidebar, type TabId } from "./components/Sidebar";
 import { ToolIcon } from "./components/ToolIcon";
-import { TUI_APPS, VISIBLE_TUI_APPS, isTuiAppId } from "./opencodex/apps";
+import { TUI_APPS, isTuiAppId } from "./opencodex/apps";
 import type { Engine } from "./opencodex/types";
 import { ProviderManager } from "./components/ProviderManager";
 import { ApplyScopeDialog } from "./components/ApplyScopeDialog";
 import { PanelBoundary } from "./components/PanelBoundary";
 import type { LaunchPlan } from "./components/LaunchBlocked";
 import { DoctorCard } from "./components/DoctorCard";
+import { AnchoredMenu } from "./components/AnchoredMenu";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 
 // 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
@@ -83,8 +86,6 @@ const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const DshPlugins = lazy(() => import("./DshPlugins").then((m) => ({ default: m.DshPlugins })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
-const TeamSpace = lazy(() => import("./TeamSpace").then((m) => ({ default: m.TeamSpace })));
-const RunCenter = lazy(() => import("./RunCenter").then((m) => ({ default: m.RunCenter })));
 const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
@@ -151,9 +152,6 @@ export function App() {
   const { t: tr } = useI18n();
   const [env, setEnv] = useState<AppEnv | null>(null);
   const [tools, setTools] = useState<ToolInfo[]>([]);
-  // openclaw CLI 是否已装 —— 它在 tools.rs 里 hidden=true 会被下面 `!x.hidden` 过滤掉，
-  // 但「OpenClaw 网页版」Dock 图标要据此着色，故单独从未过滤的原始列表里取一次。
-  const [openclawInstalled, setOpenclawInstalled] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // ClawX 首次启动「允许访问网络」引导浮层：ClawX 是 Electron，第一次开会弹 Windows
@@ -174,6 +172,12 @@ export function App() {
   const [wizard, setWizard] = useState<{ runId: number; preselect: string | null } | null>(null);
   // 左侧边栏：setup=装机向导 / myai=我的 AI（已装快捷启动）/ manage=AI 设置（切驱动+余额+用量）。
   const [tab, setTab] = useState<TabId>("setup");
+  // 「我的 AI」首页免费模型导流卡 → 跳「AI 设置」时要落到哪个分区（2026-09-06）。
+  // 默认 "tools"（原行为不变）；点导流卡时置成 "free" 再切 tab，Manager 只在挂载时读一次
+  // （它外层有 key={tab} 边界，每次进页都是全新挂载）。
+  const [manageInitialTab, setManageInitialTab] = useState<
+    "tools" | "providers" | "free" | "usage" | "advanced"
+  >("tools");
   /**
    * 「自己管高度」的页面（测试报告 #005：AI 创作区出现两条滚动条）。
    *
@@ -331,12 +335,11 @@ export function App() {
     // 光 hermes 就 2.3s），串行等于开机先白等三个探测之和 —— 首屏落点还卡在最后一个后面。
     const [e, raw, d] = await Promise.all([
       invoke<AppEnv>("get_env").catch(() => null),
-      // 原始列表（含 hidden）—— openclaw 着色判据从这里取；展示用的 tools 再过滤掉 hidden。
+      // 原始列表（含 hidden）—— 展示用的 tools 再过滤掉 hidden。
       invoke<ToolInfo[]>("list_tools").catch(() => [] as ToolInfo[]),
       invoke<DriverStatus>("get_driver_status").catch(() => null),
     ]);
     setEnv(e);
-    setOpenclawInstalled(raw.some((x) => x.id === "openclaw" && x.installed));
     // 过滤掉后端标记 hidden 的工具（Codex CLI / OpenClaw CLI）—— 全应用统一只见可见工具
     const t = raw.filter((x) => !x.hidden);
     setTools(t);
@@ -364,7 +367,6 @@ export function App() {
       }
     }
     // 返回原始（含 hidden）列表，让点击处理器能据「确认后的状态」决策（避免读到旧 state）。
-    // 含 hidden 才能让 onLaunchDock 对 openclaw 这类隐藏工具做「装没装」再校验。
     return raw;
   }, []);
 
@@ -828,67 +830,16 @@ export function App() {
     }
   };
 
-  // 底部 Dock：全部 TUI 应用（已装彩色 / 未装灰显）+ 纯 GUI 应用（外部启动）
   // 注：旧 OpenCodex 工作台外壳已于 2026-09-06 删除（评审③④）——U-Workspace 复用同一套
   // store/SessionList/ChatPanel/PTY，外壳本身自隐藏起从未有入口。历史实现看 git。
-  const tuiToolIds = new Set(TUI_APPS.map((a) => a.toolId));
-  const dockApps: DockApp[] = [
-    // 纯 GUI 应用（仅 launch_app，非 TUI）→ 外部启动，归「桌面应用」组。已装的都列；
-    // ClawX 即使没装也列（灰显），点了跳官方下载（给客户更多选择 + 一键入口）。
-    ...tools
-      .filter(
-        (t) => t.launch_app && !tuiToolIds.has(t.id) && (t.installed || t.id === "clawx"),
-      )
-      .map((t): DockApp => ({
-        id: t.id,
-        name: t.name,
-        kind: "launch",
-        tool: t.id,
-        active: t.installed,
-        group: "desktop",
-      })),
-    // 可见 TUI 应用（隐藏掉 codex-cli）→「命令行工具」组；installed → 彩色，否则灰显
-    ...VISIBLE_TUI_APPS.map((a): DockApp => ({
-      id: a.id,
-      name: a.name,
-      kind: "tui",
-      tabId: a.id,
-      tool: a.tool,
-      // openclaw 的 ToolInfo 被 hidden 过滤出 tools，故单独用 openclawInstalled 判着色。
-      // ⚠️ 2026-08-05 起 apps.ts 里 openclaw 也 hidden 了，VISIBLE_TUI_APPS 不再产出它，
-      // 于是这个分支**当前命中不到**。保留不删：复活时把两处 hidden 一起去掉就能直接工作，
-      // 现在删了将来还得重写一遍（且容易漏掉「它不在 tools 里」这个前提）。
-      active:
-        a.toolId === "openclaw"
-          ? openclawInstalled
-          : tools.some((t) => t.id === a.toolId && t.installed),
-      group: a.group ?? "cli",
-    })),
-  ];
-  const onLaunchDock = async (a: DockApp) => {
-    if (a.kind === "tui") {
-      // 未装的灰色图标 → 先「检测一次」：可能是装好了但 state 还旧（如 Hermes 装完没刷新到）。
-      // 真没装才进装机向导；已检测到就直接开 TUI 页，别再让用户白装一遍。
-      if (!a.active) {
-        const app = TUI_APPS.find((x) => x.id === a.tabId);
-        const fresh = await refresh().catch(() => null);
-        const ok = !!app && (fresh ?? tools).some((t) => t.id === app.toolId && t.installed);
-        if (ok) return setTab(a.tabId);
-        setTab("setup");
-        setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: app?.toolId ?? null }));
-        return;
-      }
-      return setTab(a.tabId);
-    }
-    // launch：纯 GUI 应用。已装 → 启动；没装（如 ClawX 灰显）→ 走 openTool（url 跳下载）
-    const t = tools.find((x) => x.id === a.id);
-    if (!t) return;
-    if (t.installed) launchTool(t);
-    else openTool(t);
-  };
+  // 注：侧栏 Dock（底部快捷启动图标）已于 2026-09-06 第一性原理审查裁定整条删除
+  // （评审⑤：Sidebar 早已不解构/不消费 Dock props，App 这边构建列表 + 回调纯粹是死链）。
+  // 真正的工具启动函数 `launchTool`/`openTool` 仍保留，供其它入口（我的 AI 页等）调用。
+  // 历史实现（dockApps / onLaunchDock / DockApp 类型）看 git。
 
   const startWizard = () => setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: null }));
-  // 一键全安装：进装机向导，预选 "all" —— Wizard 自动排队装全部工具 + 自动接虾盘云 + 弹 ClawX 下载
+  // 一键全安装：进装机向导，预选 "all" —— Wizard 自动排队装好 Claude Code 和必要环境
+  // + 自动接虾盘云 + 弹 ClawX 下载（不是把工具市场里所有可装工具都装一遍）
   const startInstallAll = () => {
     setTab("setup");
     setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: "all" }));
@@ -971,6 +922,24 @@ export function App() {
   // 用户在用自己的 AI（官方登录 / 自备 Key，非虾盘云）→ 前端不推虾盘云、不弹接管条、
   // 接入改成显式可还原入口。铁律（CLAUDE.md 第 10 条）：绝不抢、不挤占用户自己的 Key。
   const usingOwnKey = !!(driver?.claude_own_key || driver?.codex_own_key);
+
+  // 装机向导页（tab==="setup"）此前进页面不会自动开始向导，要再点一次「一键全安装/
+  // 逐个选装」按钮才出向导（生手引导审计定案窟窿②）。这里补一个「进页面自动拉起」：
+  // 仅当**一个 AI 工具都没装**（复用 setupState.next_step === "install_tool"——onStatusAction
+  // 上面那条已经在用同一个信号判断「该不该去装」，是现成、可靠、后端权威计算好的检测，
+  // 不再自己另发明一套判断）时才自动拉起，且走「逐个选装」（startWizard，preselect: null）
+  // 而不是「一键全装」——自动触发不该替用户选激进路径。
+  // 🔴 防重复拉起：setup 页的向导没有关闭按钮，用户手动关不掉；因此这里 effect 依赖只放
+  // `tab`，只在「每次进入 setup 页」判一次——wizard 一旦从 null 变非 null（不论是这里自动
+  // 拉起的，还是用户手动点按钮拉起的），guard `if (wizard) return` 就会挡住后续任何重复
+  // 触发，不会出现「向导刚被用户操作又被这条 effect 重置」的情况。
+  useEffect(() => {
+    if (tab !== "setup") return;
+    if (wizard) return;
+    if (setupState?.next_step !== "install_tool") return;
+    startWizard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const onStatusAction = () => {
     if (!setupState) return;
@@ -1072,8 +1041,6 @@ export function App() {
                         openUrl(u).catch(() => {});
                       })();
                     }}
-          dockApps={dockApps}
-          onLaunchDock={onLaunchDock}
           // 侧栏常驻升级入口：升级横幅只在管家页 StatusLine 露出，长期待在 U-Workspace 的用户
           // 看不到升级（客户实锤）。侧栏在所有页都在，保证随时点得到。不受 updateDismissed 影响
           //（那只收起大横幅；这个小入口有新版就一直在）。
@@ -1097,10 +1064,13 @@ export function App() {
         />
         </PanelBoundary>
 
-        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢） */}
+        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢）。
+            「对话工作台」（chat）和「终端工作台」（termwb）是**同一个 UWorkspace 实例**——
+            同一批会话，唯一区别是 paneMode 决定每个会话默认停在对话态还是终端态（见 UWorkspace.tsx）。
+            **绝不能渲染第二个 UWorkspace**：scripts/check-panel-boundary.mjs 要求它在本文件里只出现一次。 */}
         <main
           className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}
-          style={{ display: tab === "chat" ? undefined : "none" }}
+          style={{ display: tab === "chat" || tab === "termwb" ? undefined : "none" }}
         >
           {/* U-Workspace 是唯一 eager 挂载的页（保活），也是崩得最多的页 ——
               工作台里面 U-Chat / U-CLI / 文件 / 浏览器各有自己的边界，
@@ -1109,7 +1079,7 @@ export function App() {
             {/* onGoCreate：「AI 创作」2026-08-23 从工作台右侧面板搬回侧栏独立页（一个能力一个入口）。
                 专家卡上「打开 AI 作图专家」那条 route 必须跟着改道到侧栏那一页，否则它又会变回
                 一句不兑现的承诺 —— Chat.tsx 那段注释记着它以前就是死的。 */}
-            <UWorkspace onToast={flash} pendingExpert={pendingExpert} onConsumed={() => setPendingExpert(null)} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} onGoCreate={(sub) => setTab(sub === "video" ? "video" : "draw")} />
+            <UWorkspace onToast={flash} pendingExpert={pendingExpert} onConsumed={() => setPendingExpert(null)} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} onGoCreate={(sub) => setTab(sub === "video" ? "video" : "draw")} paneMode={tab === "termwb" ? "cli" : "chat"} />
           </PanelBoundary>
         </main>
 
@@ -1170,7 +1140,7 @@ export function App() {
         )}
 
         {/* 非 TUI 页面（manage/codex/myai/setup）：条件渲染，无 PTY 不需保活 */}
-        {tab !== "terminal" && tab !== "chat" && !isTuiAppId(tab) && (
+        {tab !== "terminal" && tab !== "chat" && tab !== "termwb" && !isTuiAppId(tab) && (
         <main className={cn(
           "flex-1 min-w-0",
           selfHeightTab ? "min-h-0 flex flex-col" : "overflow-y-auto",
@@ -1179,8 +1149,10 @@ export function App() {
           {/* 主体宽度 max-w-4xl(896px) → max-w-5xl(1024px)（测试报告 #012：「大块留白」）。
               1920 宽屏上 896px 的正文两侧各空 400 多像素，而侧栏才 208px ——
               客户看到的就是「导航占一条、内容挤中间、其余全是空」。
-              不敢一步放到 6xl：这些页面的卡片是按窄栏排的，太宽会让每行字长到读不下去。 */}
-          <div className={selfHeightTab ? "flex-1 min-h-0 flex flex-col" : "max-w-5xl mx-auto space-y-6"}>
+              不敢一步放到 6xl：这些页面的卡片是按窄栏排的，太宽会让每行字长到读不下去。
+              例外：AI 设置页（manage）供应商卡改按 minmax(280px) 自适应列数，需要更宽的外壳
+              才能在宽屏下排够三列，所以单独放宽到 max-w-6xl（见方案文档第⑦步）。 */}
+          <div className={selfHeightTab ? "flex-1 min-h-0 flex flex-col" : tab === "manage" ? "max-w-6xl mx-auto space-y-6" : "max-w-5xl mx-auto space-y-6"}>
             {/* 🔴 状态条也在边界外过：它渲染升级状态 / 装机引导 / 充值提醒，全是后端数据驱动，
                 而它在每一页顶部常驻 —— 崩一次就是整屏。它跟下面的页边界必须分开：
                 合在一起的话，状态条炸会把当前页一起吃掉，等于半径没压。 */}
@@ -1191,7 +1163,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "backup" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift" || tab === "teamspace" || tab === "runcenter"
+                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "backup" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1241,11 +1213,7 @@ export function App() {
                 某页崩了切走再回来自动重置，不用重启整个 U-King。 */}
             <PanelBoundary key={tab} name={tab}>
             <Suspense fallback={<PageFallback />}>
-            {tab === "teamspace" ? (
-              <TeamSpace />
-            ) : tab === "runcenter" ? (
-              <RunCenter />
-            ) : tab === "manage" ? (
+            {tab === "manage" ? (
               <Manager
                 onGoCodex={() => setTab("codex")}
                 onGoAdvanced={() => setTab("advanced")}
@@ -1257,6 +1225,9 @@ export function App() {
                 // 装 / 启动 / 卸载 2026-09-04 搬去了「我的 AI」页，本页不再传 onInstallTool/
                 // onLaunchTool（那两条唯一实现 openTool/launchTool 仍在下面 MyAI 那处调用）。
                 tools={tools}
+                // 「我的 AI」首页免费模型导流卡跳过来时指定打开「免费算力」分区，其余入口
+                // 仍走默认 "tools"（manageInitialTab 初值不变）。
+                initialSettingsTab={manageInitialTab}
               />
             ) : tab === "create" ? (
               <Create deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
@@ -1355,6 +1326,10 @@ export function App() {
                 onGoInstall={() => setTab("setup")}
                 onInstallAll={startInstallAll}
                 onGoManage={() => setTab("manage")}
+                onGoManageFree={() => {
+                  setManageInitialTab("free");
+                  setTab("manage");
+                }}
                 onApplyXiapan={applyXiapan}
                 onImportXiapan={importToUuswitch}
                 onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
@@ -1849,9 +1824,12 @@ function XiapanGuide({
   const nextIdx = steps.findIndex((s) => !s.done);
   const next = nextIdx >= 0 ? steps[nextIdx] : null;
 
+  // 2026-09-06 Astra UI 规格 B1：扁平化视觉重排——取消渐变和内层三张卡框，改成
+  // 平底 bg-1 + accent/25 描边；三步收成一条横向状态行，只留外层一颗当前步按钮。
+  // 护栏（usingOwnKey → null、全就绪 → null）在上面，本次一个字没动。
   return (
-    <section className="rounded-card border border-accent/30 bg-gradient-to-br from-accent/[0.12] to-transparent px-5 py-5 shadow-card">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section className="rounded-card border border-accent/25 bg-bg-1 px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent/[0.18] shrink-0">
@@ -1866,49 +1844,36 @@ function XiapanGuide({
         {next?.action && (
           <button
             onClick={next.action.fn}
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-[12.5px] font-semibold text-white hover:bg-accent-600 shadow-sm transition-colors"
+            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-5 text-[13px] font-semibold text-white hover:bg-accent-600 transition-colors"
           >
             {next.action.text}
           </button>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="mt-4 flex flex-col min-[560px]:flex-row min-[560px]:items-center gap-4">
         {steps.map((s, i) => (
-          <div
-            key={i}
-            className={cn(
-              "rounded-xl border px-4 py-3.5 flex flex-col gap-2",
-              s.done
-                ? "border-success-500/25 bg-success-500/[0.06]"
-                : i === nextIdx
-                ? "border-accent/40 bg-accent/[0.08]"
-                : "border-white/[0.06] bg-white/[0.02] opacity-70",
-            )}
-          >
-            <div className="flex items-center gap-2.5">
-              <span
-                className={cn(
-                  "grid place-items-center w-6 h-6 rounded-full text-[11px] font-bold shrink-0",
-                  s.done ? "bg-success-500 text-white" : i === nextIdx ? "bg-accent text-white" : "bg-accent/20 text-accent-400",
-                )}
-              >
-                {s.done ? <CheckCircle2 size={13} /> : i + 1}
-              </span>
-              <span className="text-[13px] font-semibold text-ink-0">{s.label}</span>
-            </div>
-            <div className="text-[11px] text-ink-3 leading-snug min-h-[28px]">{s.desc}</div>
-            {s.action ? (
-              <button
-                onClick={s.action.fn}
-                className="mt-auto inline-flex items-center justify-center h-9 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 transition-colors"
-              >
-                {s.action.text}
-              </button>
-            ) : (
-              <div className="mt-auto h-9 inline-flex items-center text-[11px] text-ink-4">
-                {s.done ? t("已完成") : t("上一步完成后解锁")}
-              </div>
-            )}
+          <div key={i} className="flex items-center gap-2">
+            <span
+              className={cn(
+                "grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0",
+                s.done
+                  ? "bg-success-500 text-white"
+                  : i === nextIdx
+                  ? "bg-accent text-white"
+                  : "bg-ink-5/20 text-ink-3",
+              )}
+            >
+              {s.done ? <CheckCircle2 size={11} /> : i + 1}
+            </span>
+            <span
+              className={cn(
+                "text-[12px]",
+                s.done ? "text-success-400" : i === nextIdx ? "text-accent font-semibold" : "text-ink-3",
+              )}
+            >
+              {s.label}
+            </span>
+            {i < steps.length - 1 && <span className="hidden min-[560px]:inline text-ink-5/40 mx-1">›</span>}
           </div>
         ))}
       </div>
@@ -1943,10 +1908,12 @@ function toolTargets(id: string): string[] {
  *   · open365  自家电脑管家，品类是安全卫士替代品，不是 AI 工具；而且它 `installed` 恒 true
  *              （按需下载的设计），于是永远霸占「我装好的 AI 工具」区最显眼的位置
  *   · obsidian / uu-remote  纯第三方，action:url 点了只是跳官网，我们既不装也不管
+ *   · doubao / qwenwork / workbuddy  同 obsidian/uu-remote：闭源消费级 AI 应用，
+ *              action:url 跳官网下载页，用自家模型不接 U-King 配置，2026-09-06 上架
  *
  * 纯展示分组：后端的检测 / 启动 / 卸载能力一个没动，存量已装用户照常使用。
  */
-const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote"]);
+const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy"]);
 
 /** 支持「一键卸载」的工具 id —— 镜像后端 cleanup::uninstall_ai_tool 的 match（改一处同步另一处）。
  *  url 型第三方工具（Obsidian / UU远程）不由我们装，不给卸载入口。 */
@@ -1971,6 +1938,46 @@ const UNINSTALLABLE = new Set([
   "open365",
 ]);
 
+/**
+ * 「更多」菜单——2026-09-06 Astra UI 规格 B2：已装卡片只留一个主动作（打开/打开终端），
+ * 换模型和卸载收进这个菜单；卸载仍走原来的二次确认（onClick 直接调用外部传入的
+ * onUninstall，破坏性弹窗逻辑一个字没动，只是触发按钮的位置搬进了这里）。
+ *
+ * 用 `AnchoredMenu`（`fixed` 定位）而不是自己写 `absolute` 下拉：已装卡片容器本身带
+ * `overflow-hidden`（裁 hover 边框用），`absolute` 菜单会被这层裁掉，见该组件顶部注释里
+ * 2026-08-17 的同类事故。
+ */
+function ToolMoreMenu({
+  children,
+}: {
+  /** 渲染函数：拿到 `close()` 自己决定何时关菜单（一般是点完某一项后）。
+   *  render-prop 而不是 `items` 数组，是为了让调用方能在 JSX 里直接写字面量属性值的
+   *  action 绑定属性（`action bindings` 靠纯文本扫源码找这个属性，经变量转一手就扫不到了，
+   *  绑定会假红——本函数这句说明文字里都不能出现那个属性的字面量写法，扫描器连注释都认）。 */
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        title={t("更多")}
+        className="grid place-items-center w-8 h-8 rounded-lg text-ink-4 hover:bg-white/[0.06] hover:text-ink-1 transition-colors shrink-0"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <AnchoredMenu anchorRef={btnRef} onClose={() => setOpen(false)} minWidth={220}>
+          {children(() => setOpen(false))}
+        </AnchoredMenu>
+      )}
+    </>
+  );
+}
+
 function MyAI({
   tools,
   driver,
@@ -1983,6 +1990,7 @@ function MyAI({
   onGoInstall,
   onInstallAll,
   onGoManage,
+  onGoManageFree,
   onApplyXiapan,
   onImportXiapan,
   onRecharge,
@@ -2007,6 +2015,8 @@ function MyAI({
   onGoInstall: () => void;
   onInstallAll: () => void;
   onGoManage: () => void;
+  /** 免费模型导流卡专用：跳「AI 设置」并直接落在「免费算力」分区（见 App 里 manageInitialTab）。 */
+  onGoManageFree?: () => void;
   onApplyXiapan: () => void;
   onImportXiapan: () => void;
   onRecharge: () => void;
@@ -2085,6 +2095,20 @@ function MyAI({
           </button>
         </section>
       )}
+      {/* 🔴 充值引导上移到这（2026-09-06 用户拍板：「虾盘云充值放前面」）—— 充值是从
+          装好到能用的最后一步、也是唯一收费的一步，压在两张安装大卡下面等于把漏斗
+          出口藏在页脚。组件内部自带两条护栏，前移不影响老用户：usingOwnKey → 组件
+          返回 null，不抢用户自带的 Key；全就绪（已有工具 + 已配好）→ 同样返回 null，
+          不占位。原位置（主推两件套 section 之后）留一行注释指路。 */}
+      <XiapanGuide
+        setupState={setupState}
+        deviceKey={deviceKey}
+        hasTool={installed.length > 0}
+        usingOwnKey={usingOwnKey}
+        onApplyXiapan={onApplyXiapan}
+        onRecharge={onRecharge}
+        onGoInstall={onGoInstall}
+      />
       {/* 🔴 「AI 设置」常驻入口（2026-08-25 用户拍板：「AI 设置放到我的 AI，就不隐藏了」）。
           侧栏里它仍收在「更多」折叠组（0.9.83 的下沉决定不变），但装机主流程的页面上
           必须有一张一眼看得见的卡 —— 换模型/余额/免费额度是配好能用的最后一公里，
@@ -2104,6 +2128,28 @@ function MyAI({
         </span>
         <ChevronRight size={16} className="text-ink-4 shrink-0" />
       </button>
+      {/* 免费模型导流卡（2026-09-06）—— 竞品主打免费入口（实测是 OpenRouter :free 聚合，
+          国内要梯子且 50 次/天），我们调研后决定主推国产直连免费。轻量一条，紧跟在「AI 设置」
+          常驻卡之后：不抢虾盘云充值引导（XiapanGuide，位置在本卡之前）的位置，只是给
+          「不想花钱先跑通」的用户多一条路。点击跳「AI 设置 → 免费算力」分区，同一套
+          onGoManage 深链机制（见 onGoManageFree），不新建跳转通道。 */}
+      {onGoManageFree && (
+        <button
+          onClick={onGoManageFree}
+          className="w-full flex items-center gap-3 rounded-card border border-success-500/25 bg-success-500/[0.06] px-4 py-3.5 text-left shadow-card hover:border-success-500/40 hover:bg-success-500/[0.09] transition-colors"
+        >
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-success-500/[0.14] shrink-0">
+            <Gift size={20} className="text-success-400" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[14px] font-semibold text-ink-0">{tr("免费模型 · 不花钱先跑通")}</span>
+            <span className="block text-[11.5px] text-ink-3 truncate">
+              {tr("国产直连免费额度，手机号注册就能领")}
+            </span>
+          </span>
+          <ChevronRight size={16} className="text-ink-4 shrink-0" />
+        </button>
+      )}
             {/* ★ 主推三件套（2026-08-03 定，替换掉原「ClawX 图形版 + Hermes 终端」双入口）。
           数据驱动渲染而不是三段复制粘贴的 JSX：加/减一个只改 CORE_TRIO 数组。 */}
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2134,18 +2180,11 @@ function MyAI({
       </section>
 
       {/* 「快速打开」小图标网格已移除 —— 它把工具又列了一遍，与下方「我装好的 AI 工具」
-          + 「还能装这些」完全重复（同一批工具三处展示）。安装器只留「已装 / 可装」两段更清爽。
-          dockApps/onLaunchDock 仍由 App 传入（其它页仍用），此处不再渲染。 */}
+          + 「还能装这些」完全重复（同一批工具三处展示）。安装器只留「已装 / 可装」两段更清爽。 */}
 
-      <XiapanGuide
-        setupState={setupState}
-        deviceKey={deviceKey}
-        hasTool={installed.length > 0}
-        usingOwnKey={usingOwnKey}
-        onApplyXiapan={onApplyXiapan}
-        onRecharge={onRecharge}
-        onGoInstall={onGoInstall}
-      />
+      {/* XiapanGuide（充值引导）已搬到本函数上方「DoctorCard / 终端快照条」之后、
+          「AI 设置」常驻入口卡之前 —— 2026-09-06 用户拍板「虾盘云充值放前面」，理由见搬去
+          那处的注释。此处不再渲染。 */}
       {/* 设备钱包不在这儿了 —— 2026-08-22 F6：钱包是**虾盘云这个 provider 的一部分**，
           不是 U-King 的全局功能。删掉虾盘云它就该跟着走，否则留成一块没有归属的死砖。
           唯一实现是 `components/WalletCard.tsx`，挂在「AI 设置 → 供应商库 → 虾盘云卡片」
@@ -2179,7 +2218,7 @@ function MyAI({
               <Wand2 size={26} className="text-accent" />
             </span>
             <p className="text-[15px] font-medium text-ink-0 mb-1">{tr("还没装任何 AI 工具")}</p>
-            <p className="text-[12px] text-ink-3 mb-5">{tr("点「一键全安装」自动装好全部工具 + 接好虾盘云，开箱即用")}</p>
+            <p className="text-[12px] text-ink-3 mb-5">{tr("点「一键全安装」自动装好 Claude Code 和必要环境 + 接好虾盘云，开箱即用")}</p>
             <div className="flex items-center justify-center gap-2">
               <button
                 onClick={onInstallAll}
@@ -2222,42 +2261,43 @@ function MyAI({
               return (
                 <div
                   key={t.id}
-                  className="rounded-card border border-white/[0.08] bg-bg-1/70 hover:border-white/[0.14] hover:bg-bg-1 transition-colors overflow-hidden flex flex-col shadow-sm"
+                  // 2026-09-06 Astra UI 规格 B2：bg-1 平底 + 1px ink-5/30 描边，去掉阴影；
+                  // 图标容器 48→36px（下面 w-9 h-9，图标 24px）。
+                  // 2026-09-06 方案「⑨工具卡压缩」：卡头改三列 grid，目标整卡高 96-108px，不写死高度。
+                  className="rounded-card border border-ink-5/30 bg-bg-1 hover:border-white/[0.14] transition-colors overflow-hidden flex flex-col"
                 >
-                  {/* 卡头：图标 + 名 + 打开按钮 */}
-                  <div className="flex items-center gap-3 px-4 py-4">
-                    <span className="grid place-items-center w-12 h-12 rounded-xl bg-bg-3 shrink-0">
-                      <ToolIcon tool={t.id} size={30} active />
+                  {/* 卡头：图标 + 名/状态/路径 + 操作列（打开按钮 + 更多菜单 + 修复入口） */}
+                  <div className="grid grid-cols-[36px_minmax(0,1fr)_auto] gap-3 p-3">
+                    <span className="grid place-items-center w-9 h-9 rounded-xl bg-bg-3 shrink-0">
+                      <ToolIcon tool={t.id} size={24} active />
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[14px] font-semibold text-ink-0 truncate">{t.name}</span>
-                        {/* 徽章跟着首屏两卡的说法走，别一个页面上两套定位。 */}
-                        {(t.id === "claude-code" || t.id === "hermes") && (
-                          <span className="shrink-0 inline-flex items-center rounded-full bg-accent px-1.5 py-0.5 text-[9.5px] font-semibold text-white">
-                            {tr(t.id === "hermes" ? "越用越懂你" : "干活最强")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-success-400 inline-flex items-center gap-1">
-                        <CheckCircle2 size={11} /> {tr("已安装")}
-                      </div>
-                      {/* 🔴 当前配的模型 —— 「枪 + 子弹」摆在同一行。
-                          这张卡以前只写「已安装」：客户看得见**装了什么**，看不见**它现在用哪个模型**，
-                          而后者才是「能不能干活」的那一半。换模型的入口还藏在卡底部的折叠项里，
-                          于是「配好没有」这件事在首页上完全不可见（用户 2026-08-18：「我的 ai 安装配置…很乱」）。
-                          参考 EchoBird 的模型中心：它的卡上直接写着 模型/来源/延迟，一眼知道通不通。
-                          数据是现成的 —— `DriverStatus` 里每个工具的 *_model 一直都有，只是没人显示。 */}
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-semibold text-ink-0 truncate">{t.name}</div>
+                      {/* 🔴 安装状态与当前配的模型合为一行，字号统一 12px —— 以前分两行、
+                          且模型行只在有值时才出现，「配好没有」不够显眼。换模型的入口还在下面
+                          「更多」菜单里；「还没配模型」继续显式警示（用户 2026-08-18：「我的 ai
+                          安装配置…很乱」）。数据是现成的 —— `DriverStatus` 里每个工具的 *_model
+                          一直都有，只是没人显示。 */}
                       {currentModel ? (
-                        <div className="text-[11px] text-ink-3 flex items-center gap-1 mt-0.5" title={currentModel}>
+                        <div className="text-[12px] text-ink-3 flex items-center gap-1 mt-0.5 min-w-0" title={currentModel}>
+                          <CheckCircle2 size={11} className="text-success-400 shrink-0" />
+                          <span className="shrink-0">{tr("已安装")}</span>
+                          <span className="shrink-0 text-ink-5">·</span>
                           <Cpu size={11} className="text-accent/70 shrink-0" />
-                          <span className="truncate max-w-[200px]">{currentModel}</span>
+                          <span className="truncate">{currentModel}</span>
                         </div>
                       ) : targets.length > 0 ? (
-                        <div className="text-[11px] text-warning-600 dark:text-warning-400 flex items-center gap-1 mt-0.5">
+                        <div className="text-[12px] text-warning-600 dark:text-warning-400 flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 size={11} className="shrink-0" />
+                          <span>{tr("已安装")}</span>
+                          <span className="text-ink-5">·</span>
                           <Cpu size={11} className="shrink-0" /> {tr("还没配模型")}
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="text-[12px] text-success-400 flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 size={11} className="shrink-0" /> {tr("已安装")}
+                        </div>
+                      )}
                       {/* 装在哪 —— 同名工具可能本机一份、U 盘一份，客户得知道点「打开」启动的
                           是哪一份。machine 是默认情况不打扰；只有 portable（绿色版/U 盘/
                           usb_genie）才值得一个显著徽章。path 一直露出（tooltip 里也有全路径），
@@ -2277,77 +2317,101 @@ function MyAI({
                         </div>
                       )}
                     </div>
-                    {t.launch_app ? (
-                      <button
-                        onClick={() => onLaunch(t)}
-                        data-action-id="runtime.tool.launch"
-                        className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 shadow-sm transition-colors"
-                      >
-                        <Sparkles size={14} /> {tr("打开应用")}
-                      </button>
-                    ) : t.launch_cmd ? (
-                      <button
-                        onClick={() => onLaunch(t)}
-                        data-action-id="runtime.tool.launch"
-                        className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 shadow-sm transition-colors"
-                      >
-                        {/* Hermes 已改主推终端版（2026-07-07）：点了进 app 页起 TUI 而非网页版，统一「打开终端」。 */}
-                        <TerminalIcon size={14} /> {tr("打开终端")}
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-ink-4 shrink-0 text-right">{tr("从开始菜单打开")}</span>
-                    )}
+                    {/* 2026-09-06 修锯齿：右列改两行两列网格，打开按钮/更多菜单/升级修复各自成列，
+                        右缘对成一条线。第一列宽 104px 按「打开终端」按钮实测渲染宽度定（不含
+                        阴影的 padding+图标+文字总宽约在此区间），没有更多菜单的卡在第二列留一个
+                        同尺寸空位占位，不能省略——省了第一列又会跟着漂。 */}
+                    <div className="grid grid-cols-[104px_32px] gap-1 shrink-0">
+                      {t.launch_app ? (
+                        <button
+                          onClick={() => onLaunch(t)}
+                          data-action-id="runtime.tool.launch"
+                          className="col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-1.5 px-2 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shadow-sm transition-colors"
+                        >
+                          <Sparkles size={14} /> {tr("打开应用")}
+                        </button>
+                      ) : t.launch_cmd ? (
+                        <button
+                          onClick={() => onLaunch(t)}
+                          data-action-id="runtime.tool.launch"
+                          className="col-start-1 row-start-1 w-full inline-flex items-center justify-center gap-1.5 px-2 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shadow-sm transition-colors"
+                        >
+                          {/* Hermes 已改主推终端版（2026-07-07）：点了进 app 页起 TUI 而非网页版，统一「打开终端」。 */}
+                          <TerminalIcon size={14} /> {tr("打开终端")}
+                        </button>
+                      ) : (
+                        <span className="col-start-1 row-start-1 self-center text-[11px] text-ink-4 text-right">{tr("从开始菜单打开")}</span>
+                      )}
+                      {/* 2026-09-06 Astra UI 规格 B2：换模型 + 卸载从卡底整行入口收进这个
+                          「更多」菜单，卡片只留「打开」一个主动作。卸载的二次确认流程和
+                          red-on-hover 破坏性视觉、卸载动作绑定（下方按钮上的 data-action-id）
+                          原样保留，只是换了触发位置。 */}
+                      {(targets.length > 0 || UNINSTALLABLE.has(t.id)) ? (
+                      <ToolMoreMenu>
+                        {(close) => (
+                          <>
+                            {targets.length > 0 && (
+                              <button
+                                onClick={() => {
+                                  close();
+                                  onGoManage();
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-2 hover:bg-white/[0.05] hover:text-ink-0 transition-colors"
+                              >
+                                <Cpu size={13} />
+                                {tr("单独给这个工具换模型（高级）")}
+                              </button>
+                            )}
+                            {/* 卸载：彻底删本体 + 残留清理（修「删了还检测到、重装又冒出来」）。二次确认在 onUninstall。 */}
+                            {UNINSTALLABLE.has(t.id) && (
+                              <button
+                                data-action-id="runtime.aitool.uninstall"
+                                onClick={() => {
+                                  close();
+                                  onUninstall(t);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06] transition-colors"
+                                title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
+                              >
+                                <Trash2 size={13} />
+                                {tr("卸载")}
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </ToolMoreMenu>
+                      ) : (
+                        <span className="col-start-2 row-start-1 w-8 h-8" aria-hidden="true" />
+                      )}
+                      {/* 重新安装 / 修复：已装的卡片原来只有「打开」，一旦「已装」判错，
+                          客户就被彻底困住 —— 卸载了还显示已装、点了只能打开、没有任何路子重装
+                          （线上 issue #237）。检测再准也不该成为唯一出路：这里永远留一条重装口，
+                          且必须始终可见，不藏进「更多」菜单。
+                          2026-09-06 方案「⑨工具卡压缩」：从卡底整宽横条挪到右列按钮下方的
+                          h-8 紧凑入口，调用同一个 onOpen(t)，第一列 w-full 与打开按钮同宽对齐。 */}
+                      {t.action === "install" && (
+                        <button
+                          onClick={() => onOpen(t)}
+                          className="col-start-1 row-start-2 w-full inline-flex items-center justify-center gap-1 px-2.5 h-8 rounded-lg border border-white/[0.10] text-[12px] text-ink-2 hover:text-accent hover:bg-bg-2 transition-colors"
+                          title={tr("重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里")}
+                        >
+                          <Download size={12} />
+                          {tr("升级 / 修复")}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* 卡身：给这个工具单独换模型 = 高级用法，跳到「AI 设置」高级层统一管，
-                      不在卡片里就地内嵌（避免和 AI 设置页的「每工具单独配」重复成两套入口）。
-                      小白走顶部「一键配好全部」即可，不用看这里。 */}
-                  {targets.length > 0 && (
-                    <button
-                      onClick={onGoManage}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 py-2.5 text-[11.5px] text-ink-4 hover:text-ink-2 hover:bg-bg-1/80 transition-colors"
-                    >
-                      <Cpu size={12} />
-                      {tr("单独给这个工具换模型（高级）")}
-                      <ChevronRight size={12} className="ml-auto" />
-                    </button>
-                  )}
-                  {/* uu-switch 专属：一键把「虾盘云(Claude+Codex) + 你在用的工具配置」写进它的驱动列表。 */}
+                  {/* uu-switch 专属：一键把「虾盘云(Claude+Codex) + 你在用的工具配置」写进它的驱动列表。
+                      B2 规格未涉及这个入口，原样保留在卡底；行高压到 h-8（原 py-2.5）。 */}
                   {t.id === "uu-switch" && (
                     <button
                       onClick={onImportXiapan}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 py-2.5 text-[11.5px] text-accent hover:text-accent-600 hover:bg-bg-1/80 transition-colors"
+                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 h-8 text-[11.5px] text-accent hover:text-accent-600 hover:bg-bg-1/80 transition-colors"
                     >
                       <Download size={12} />
                       {tr("一键导入到 uu-switch（虾盘云 + 在用配置）")}
                       <ChevronRight size={12} className="ml-auto" />
-                    </button>
-                  )}
-                  {/* 重新安装 / 修复：已装的卡片原来只有「打开」，一旦「已装」判错，
-                      客户就被彻底困住 —— 卸载了还显示已装、点了只能打开、没有任何路子重装
-                      （线上 issue #237）。检测再准也不该成为唯一出路：这里永远留一条重装口。 */}
-                  {t.action === "install" && (
-                    <button
-                      onClick={() => onOpen(t)}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 py-2.5 text-[11.5px] text-ink-4 hover:text-accent hover:bg-bg-1/80 transition-colors"
-                      title={tr("重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里")}
-                    >
-                      <Download size={12} />
-                      {tr("升级 / 修复（重装到最新版）")}
-                      <ChevronRight size={12} className="ml-auto" />
-                    </button>
-                  )}
-                  {/* 卸载：彻底删本体 + 残留清理（修「删了还检测到、重装又冒出来」）。二次确认在 onUninstall。
-                      放卡底、默认灰、hover 才变红——是低频且破坏性操作，不该抢主操作的视觉。 */}
-                  {UNINSTALLABLE.has(t.id) && (
-                    <button
-                      data-action-id="runtime.aitool.uninstall"
-                      onClick={() => onUninstall(t)}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2.5 text-[11.5px] text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06] transition-colors"
-                      title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
-                    >
-                      <Trash2 size={12} />
-                      {tr("卸载")}
                     </button>
                   )}
                 </div>

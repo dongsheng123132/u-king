@@ -9,7 +9,7 @@
  *  - 每行可「测试连通」（让模型真回一句话）
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
@@ -45,6 +45,8 @@ import {
 } from "lucide-react";
 import { cn } from "./lib/cn";
 import { ToolIcon } from "./components/ToolIcon";
+import { ProviderLogo } from "./components/ProviderLogo";
+import { resolveProviderPresentation } from "./lib/providerPresentation";
 import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult, type FreeRouteContext } from "./components/CustomProviderModal";
 import type { ProviderPreset } from "./Wizard";
 import { XIAPAN_MODELS, priceyModelHint, codexProtocolHint } from "./lib/models";
@@ -426,6 +428,7 @@ export function Manager({
   onRecharge,
   tools,
   onAskAI,
+  initialSettingsTab,
 }: {
   onGoCodex?: () => void;
   onGoAdvanced?: () => void;
@@ -446,6 +449,10 @@ export function Manager({
   tools?: { id: string; installed: boolean }[];
   /** 将已脱敏的供应商故障交给 U-Chat；页面本身不读取或转交 API Key。 */
   onAskAI?: (prompt: string) => void;
+  /** 从「我的 AI」首页的免费模型导流卡深链进来时指定要打开的分区（如 "free"）；
+   *  不传就照旧默认 "tools"。本组件外层有 `key={tab}` 边界，每次进页都是全新挂载，
+   *  用 useState 初值接这个 prop 足够，不需要额外的 effect 同步。 */
+  initialSettingsTab?: "tools" | "providers" | "free" | "usage" | "advanced";
 }) {
   const { t } = useI18n();
   /**
@@ -458,7 +465,17 @@ export function Manager({
    * 改成分区后每次只呈现一件事。**不动任何一段的内部实现** —— 只是把它们分到 4 个 tab，
    * 所以这不是重写，是把已有的东西摆正（用户：「不要大改原来的」）。
    */
-  const [settingsTab, setSettingsTab] = useState<"tools" | "providers" | "free" | "usage" | "advanced">("tools");
+  const [settingsTab, setSettingsTab] = useState<"tools" | "providers" | "free" | "usage" | "advanced">(
+    initialSettingsTab ?? "tools",
+  );
+  /** 「供应商库」右栏快速添加：两 tab（模型厂商／模型平台）当前选中哪个 + 各自是否已展开
+   *  全部（超过 8 家才有「展开」）。状态放在 Manager 顶层，不能在下面按 tab 条件渲染的
+   *  IIFE 里加 Hook（宪法：Hook 必须无条件调用同一顺序）。 */
+  const [quickAddGroup, setQuickAddGroup] = useState<"vendor" | "platform">("vendor");
+  const [quickAddExpanded, setQuickAddExpanded] = useState<Record<"vendor" | "platform", boolean>>({
+    vendor: false,
+    platform: false,
+  });
   const initialSnapshot = managerSnapshots.get("claude");
   const [providers, setProviders] = useState<ProviderPreset[]>(() => initialSnapshot?.providers ?? []);
   /** 被用户移出列表的内置驱动 id（决定底部「添加虾盘云」出不出现）。 */
@@ -495,6 +512,8 @@ export function Manager({
   const freeGuide = remoteGuide ?? FREE_GUIDE;
   const [driver, setDriver] = useState<DriverStatus | null>(() => initialSnapshot?.driver ?? null);
   const [deviceKey, setDeviceKey] = useState<DeviceKey | null>(null);
+  /** A2：区分「还没查到」和「查过但失败」——不知道就不许显示成 0 或空白，两种状态要长得不一样。 */
+  const [deviceKeyFailed, setDeviceKeyFailed] = useState(false);
   /** 供应商库里哪张卡展开了设备钱包。钱包是虾盘云这家供应商的一部分（余额/Key 都是它的），
    *  所以它长在卡片上、跟着卡片一起消失 —— 不做全屏 modal：那会让它看着又像个全局功能。 */
   const [walletOpen, setWalletOpen] = useState(false);
@@ -510,7 +529,13 @@ export function Manager({
   const [pingingAll, setPingingAll] = useState(false);
   const [pingProgress, setPingProgress] = useState({ done: 0, total: 0 });
   const [testResult, setTestResult] = useState<Record<string, TestResult>>({});
-  const [toast, setToast] = useState<string | null>(null);
+  /** 「统一供应商库」网格里每家的测速结果（会话内有效，不落盘）。"testing" = 正在测这一家。 */
+  const [providerLatency, setProviderLatency] = useState<Record<string, TestResult | "testing">>({});
+  const [testingAllProviders, setTestingAllProviders] = useState(false);
+  /** A3：测速失败时「查看原因」按供应商 id 各自展开/收起，不占额外全局状态。 */
+  const [latencyErrOpen, setLatencyErrOpen] = useState<Record<string, boolean>>({});
+  /** D3：toast 按语义配色/配图标 —— 不再固定绿色成功图标（失败也套绿勾会误导）。 */
+  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" | "info" } | null>(null);
   // 用户为某 provider 临时填的 key（虾盘云默认用内置）
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   // 虾盘云卡片选中的模型（未动过则跟随当前生效/预设默认）
@@ -546,8 +571,8 @@ export function Manager({
   /** 磁盘上那笔记录已经吃进输入框了 —— 只吃一次，理由见 refreshDrawRoute。 */
   const drawAdoptedRef = useRef(false);
 
-  const flash = (m: string) => {
-    setToast(m);
+  const flash = (m: string, kind: "success" | "error" | "info" = "success") => {
+    setToast({ msg: m, kind });
     window.setTimeout(() => setToast(null), 3000);
   };
 
@@ -600,7 +625,7 @@ export function Manager({
       await navigator.clipboard.writeText(text);
       flash(t("已复制。粘给任意 AI 即可，它会看到完整用量表"));
     } catch {
-      flash(t("复制失败，请手动选中复制"));
+      flash(t("复制失败，请手动选中复制"), "error");
     }
   };
 
@@ -624,7 +649,7 @@ export function Manager({
     const key = resolveKey(p);
     if (!key && p.id !== "ollama") {
       setSelected(p.id);
-      flash(t("请先填入 Key，再拉取模型清单"));
+      flash(t("请先填入 Key，再拉取模型清单"), "info");
       return;
     }
     setFetchingModels(p.id);
@@ -633,7 +658,7 @@ export function Manager({
       setRemoteModels((m) => ({ ...m, [p.id]: ids }));
       flash(t("已拉取 {n} 个可用模型 —— 下拉里选，或直接手填", { n: ids.length }));
     } catch (e) {
-      flash(t("拉取失败：{e} —— 可直接手填模型 id", { e: String(e) }));
+      flash(t("拉取失败：{e} —— 可直接手填模型 id", { e: String(e) }), "error");
     } finally {
       setFetchingModels(null);
     }
@@ -752,7 +777,7 @@ export function Manager({
           : t("AI 作图已改走 {name} —— 用它自己的 Key 计费", { name: r.provider_name }),
       );
     } catch (e) {
-      flash(t("保存失败：{e}", { e: String(e) }));
+      flash(t("保存失败：{e}", { e: String(e) }), "error");
     } finally {
       setDrawBusy(false);
     }
@@ -762,13 +787,31 @@ export function Manager({
     invoke<DeviceKey>("get_device_key")
       .then((dk) => {
         setDeviceKey(dk);
+        setDeviceKeyFailed(false);
         onDeviceKeyChange?.(dk);
         // 查完余额后刷新趋势（record 已落盘）
         invoke<UsageTrend>("get_usage_trend", { days: 14 }).then(setTrend).catch(() => {});
         fetchBreakdown();
       })
-      .catch(() => {});
+      .catch(() => setDeviceKeyFailed(true));
   }, [refresh, fetchBreakdown]);
+
+  /** A2 顶部「刷新」按钮 —— 抽出来给顶部模块和别处共用，失败时如实标「暂未取得余额」，不留旧值冒充成功。 */
+  const reloadDeviceKey = useCallback(() => {
+    invoke<DeviceKey>("get_device_key")
+      .then((dk) => {
+        setDeviceKey(dk);
+        setDeviceKeyFailed(false);
+        onDeviceKeyChange?.(dk);
+        fetchBreakdown();
+        flash(t("已刷新余额"));
+      })
+      .catch(() => {
+        setDeviceKeyFailed(true);
+        flash(t("暂未取得余额 · 重试"), "error");
+      });
+    invoke<UsageTrend>("get_usage_trend", { days: 14 }).then(setTrend).catch(() => {});
+  }, [onDeviceKeyChange, fetchBreakdown]);
 
   /**
    * 回验：切完之后**回读工具自己的配置**，看它真会跑什么。
@@ -829,7 +872,7 @@ export function Manager({
         await refresh();
         return true;
       } catch (e) {
-        flash(t("关闭失败：{e}", { e: String(e) }));
+        flash(t("关闭失败：{e}", { e: String(e) }), "error");
         return false;
       } finally {
         setBusy(null);
@@ -839,7 +882,7 @@ export function Manager({
     if (viaBridge) {
       const key = resolveKey(p);
       if (!key) {
-        flash(t("请先填入 {name} 的 API Key", { name: p.name }));
+        flash(t("请先填入 {name} 的 API Key", { name: p.name }), "info");
         return false;
       }
       setBusy(`${target}:${providerId}`);
@@ -850,7 +893,7 @@ export function Manager({
         await refresh();
         return true;
       } catch (e) {
-        flash(t("桥接失败：{e}", { e: String(e) }));
+        flash(t("桥接失败：{e}", { e: String(e) }), "error");
         return false;
       } finally {
         setBusy(null);
@@ -862,7 +905,7 @@ export function Manager({
     let key = resolveKey(p);
     if (providerId === "official") key = "-";
     if (!key && providerId !== "official" && providerId !== "ollama") {
-      flash(t("请先填入 {name} 的 API Key", { name: p.name }));
+      flash(t("请先填入 {name} 的 API Key", { name: p.name }), "info");
       return false;
     }
     setBusy(`${target}:${providerId}`);
@@ -904,7 +947,7 @@ export function Manager({
       await refreshEffective(target);
       return true;
     } catch (e) {
-      flash(t("切换失败：{e}", { e: String(e) }));
+      flash(t("切换失败：{e}", { e: String(e) }), "error");
       return false;
     } finally {
       setBusy(null);
@@ -916,7 +959,7 @@ export function Manager({
     const key = resolveKey(p);
     if (!key && p.id !== "ollama") {
       setSelected(p.id);
-      flash(t("请先填入 Key 再测试"));
+      flash(t("请先填入 Key 再测试"), "info");
       return;
     }
     setBusy(p.id);
@@ -932,9 +975,12 @@ export function Manager({
       const model = modelSel[`${activeTab}:${p.id}`]?.trim() || null;
       const r = await invoke<TestResult>("test_provider", { providerId: p.id, apiKey: key, model, api });
       setTestResult((m) => ({ ...m, [p.id]: r }));
-      flash(r.ok ? t("{name} 连通 ✓ {ms}ms", { name: p.name, ms: r.latency_ms }) : t("{name} 测试失败", { name: p.name }));
+      flash(
+        r.ok ? t("{name} 连通 ✓ {ms}ms", { name: p.name, ms: r.latency_ms }) : t("{name} 测试失败", { name: p.name }),
+        r.ok ? "success" : "error",
+      );
     } catch (e) {
-      flash(t("测试异常：{e}", { e: String(e) }));
+      flash(t("测试异常：{e}", { e: String(e) }), "error");
     } finally {
       setBusy(null);
     }
@@ -957,7 +1003,7 @@ export function Manager({
       (p) => !HIDDEN_PRESETS.has(p.id) && p.id !== "official" && (!!resolveKey(p) || p.id === "ollama"),
     );
     if (!list.length) {
-      flash(t("没有可测的供应商 —— 先填一个 Key"));
+      flash(t("没有可测的供应商 —— 先填一个 Key"), "info");
       return;
     }
     setPingingAll(true);
@@ -989,6 +1035,120 @@ export function Manager({
       setPingingAll(false);
     }
   }
+
+  /**
+   * 「统一供应商库」卡片网格的测速 —— 跟上面 `pingAll`（工具分配 Tab，真回话、按工具算
+   * 协议）是两件事：这里测的是**这家端点本身**，跟具体挂在哪个工具无关，所以用更轻的
+   * `probe_endpoint`（对齐 CustomProviderModal 的「测试连通」），且允许并发。
+   *
+   * 🔴 延迟是本机到端点的真实往返，只在用户主动点（单卡或「测试速度」）时测 ——
+   * 不自动测：每次进页面就把全部端点打一遍，等于拿用户的 Key 去刷别人家的接口。
+   *
+   * 能测 = 有 openai_base 且拿得到 Key（probe_endpoint 只打 OpenAI 端点，纯 Anthropic
+   * 供应商测不了）；Key 解析口径跟 `resolveKey` 一致（手填 > 虾盘云内置设备 Key > 自带 api_key）。
+   */
+  const canProbeProvider = (p: ProviderPreset) => !!p.openai_base?.trim();
+
+  const probeProviderLatency = useCallback(
+    async (p: ProviderPreset) => {
+      if (!canProbeProvider(p)) return;
+      const key = resolveKey(p);
+      if (!key) return;
+      setProviderLatency((m) => ({ ...m, [p.id]: "testing" }));
+      const r = await invoke<TestResult>("probe_endpoint", {
+        baseUrl: p.openai_base.trim(),
+        apiKey: key,
+        model: p.model.trim(),
+      }).catch((e) => ({ ok: false, api: "openai", latency_ms: 0, reply: null, error: String(e) }) as TestResult);
+      setProviderLatency((m) => ({ ...m, [p.id]: r }));
+    },
+    [resolveKey],
+  );
+
+  async function testAllProviderLatency() {
+    if (testingAllProviders) return;
+    const list = [...providers, ...addable.filter((a) => !providers.some((p) => p.id === a.id))]
+      .filter((p) => p.id !== "official")
+      .filter((p) => canProbeProvider(p) && !!resolveKey(p));
+    if (!list.length) return;
+    setTestingAllProviders(true);
+    try {
+      await Promise.allSettled(list.map((p) => probeProviderLatency(p)));
+    } finally {
+      setTestingAllProviders(false);
+    }
+  }
+
+  /**
+   * A3：延迟单元格的 6 态渲染，「统一供应商库」网格卡和顶部官方渠道模块共用同一份，
+   * 不重复写两遍状态机。态：未测试 / 测速中… / 成功「{ms} ms · 重测」/
+   * 失败「测试失败 · 重测」+ 可展开原因 / 没 Key「待填密钥」/ 纯 Anthropic「暂不支持此协议测速」。
+   */
+  const renderLatencyCell = (p: ProviderPreset): ReactNode => {
+    const anthropicOnly = !p.openai_base?.trim() && !!p.anthropic_base?.trim();
+    if (anthropicOnly) {
+      return <span className="text-ink-3">{t("暂不支持此协议测速")}</span>;
+    }
+    const canProbe = canProbeProvider(p);
+    if (!canProbe) {
+      return <span className="text-ink-5">—</span>;
+    }
+    const key = resolveKey(p);
+    if (!key) {
+      return <span className="text-ink-3">{t("待填密钥")}</span>;
+    }
+    const state = providerLatency[p.id];
+    if (state === "testing") {
+      return <span className="text-ink-4">{t("测速中…")}</span>;
+    }
+    if (!state) {
+      return (
+        <button
+          onClick={() => void probeProviderLatency(p)}
+          disabled={testingAllProviders}
+          className="text-ink-3 hover:text-accent underline decoration-dotted underline-offset-2 disabled:opacity-50"
+        >
+          {t("未测试")}
+        </button>
+      );
+    }
+    if (state.ok) {
+      return (
+        <button
+          onClick={() => void probeProviderLatency(p)}
+          disabled={testingAllProviders}
+          className="font-mono text-success-400 hover:opacity-80 disabled:opacity-50"
+        >
+          {t("{ms} ms · 重测", { ms: state.latency_ms })}
+        </button>
+      );
+    }
+    const open = !!latencyErrOpen[p.id];
+    return (
+      <span className="inline-flex flex-col items-end gap-0.5">
+        <span className="inline-flex items-center gap-1.5">
+          <button
+            onClick={() => void probeProviderLatency(p)}
+            disabled={testingAllProviders}
+            className="text-danger-400 hover:opacity-80 disabled:opacity-50"
+          >
+            {t("测试失败 · 重测")}
+          </button>
+          {!!state.error && (
+            <button
+              onClick={() => setLatencyErrOpen((m) => ({ ...m, [p.id]: !m[p.id] }))}
+              className="text-ink-5 hover:text-ink-2 underline underline-offset-2"
+            >
+              {t("查看原因")}
+            </button>
+          )}
+        </span>
+        {open && !!state.error && (
+          <span className="text-[10px] text-ink-5 max-w-[220px] text-right break-words">{state.error}</span>
+        )}
+      </span>
+    );
+  };
 
   /** 保存自定义 provider（新增/编辑 upsert），成功后刷新列表。 */
   async function saveCustom(p: ProviderPreset): Promise<ProviderPreset | null> {
@@ -1041,7 +1201,7 @@ export function Manager({
       await refresh();
       return saved;
     } catch (e) {
-      flash(t("保存失败：{e}", { e: String(e) }));
+      flash(t("保存失败：{e}", { e: String(e) }), "error");
       return null;
     }
   }
@@ -1079,7 +1239,7 @@ export function Manager({
       flash(t("已从 {tool} 的列表移除「{name}」（其它 AI 保留）", { tool: here, name: p.name }));
       await refresh();
     } catch (e) {
-      flash(t("移除失败：{e}", { e: String(e) }));
+      flash(t("移除失败：{e}", { e: String(e) }), "error");
     }
   }
 
@@ -1104,7 +1264,7 @@ export function Manager({
       flash(t("已彻底删除「{name}」", { name: p.name }));
       await refresh();
     } catch (e) {
-      flash(t("删除失败：{e}", { e: String(e) }));
+      flash(t("删除失败：{e}", { e: String(e) }), "error");
     }
   }
 
@@ -1116,7 +1276,7 @@ export function Manager({
       flash(t("已把「{name}」加回 {tool} 的列表", { name: label, tool: here }));
       await refresh();
     } catch (e) {
-      flash(t("添加失败：{e}", { e: String(e) }));
+      flash(t("添加失败：{e}", { e: String(e) }), "error");
     }
   }
 
@@ -1194,7 +1354,7 @@ export function Manager({
     setFreeEnabling(true);
     try {
       const r = await invoke<TestResult>("test_provider", { providerId: ctx.savedId, apiKey: p.api_key ?? "", model: p.model || null, api: "openai" });
-      if (!r.ok) { flash(t("验证失败，尚未启用到任何 AI；不会扣虾盘余额")); return; }
+      if (!r.ok) { flash(t("验证失败，尚未启用到任何 AI；不会扣虾盘余额"), "error"); return; }
       const applied = await switchOneTool(ctx.target, ctx.savedId, p.model || null, false, p);
       if (!applied) return;
       flash(t("已启用到 {tool}；真实请求验证成功，不使用虾盘钱包", { tool: TOOL_LABELS[ctx.target] ?? ctx.target }));
@@ -1240,63 +1400,155 @@ export function Manager({
     return { managed: true, sub: model ? `${name} · ${model}` : name };
   };
 
+  /**
+   * A2：官方渠道（虾盘云）顶置模块要用到的三个派生量 —— 全部只读，不改任何 invoke/余额逻辑：
+   *  - xiapanProvider：这家供应商的完整定义（可能在 providers 里，也可能被移除了只留在 addable 里）；
+   *  - xiapanInList：是不是**当前工具**的列表里还留着它（决定显示「钱包管理」还是「加回」）；
+   *  - xiapanUsedBy：反查 driver.active，跟网格卡原来那行「已在 N 个工具启用」同一个算法。
+   */
+  const xiapanProvider = providers.find((p) => p.builtin_recharge) ?? addable.find((p) => p.builtin_recharge) ?? null;
+  const xiapanInList = providers.some((p) => p.builtin_recharge);
+  const xiapanUsedBy = xiapanProvider
+    ? Object.entries(driver?.active ?? {})
+        .filter(([, id]) => id === xiapanProvider.id)
+        .map(([tool]) => TOOL_LABELS[tool] ?? tool)
+    : [];
+
   return (
     <div className="space-y-6 pb-2">
-      {/* 1) 余额紧凑条 —— 从整张大卡压成一行：余额 + 今日/近7天 + 补充/刷新。把第一屏让给「换模型」。 */}
-      <section className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-white/[0.08] bg-bg-1/90 px-4 py-3 shadow-card">
-        <span className="grid place-items-center w-7 h-7 rounded-md bg-accent/[0.12] shrink-0">
-          <Wallet size={14} className="text-accent" />
-        </span>
-        <div className="min-w-0">
-          <div className="text-[10px] text-ink-4 leading-none mb-1">{t("虾盘云余额")}</div>
-          <div className={cn("text-[19px] font-semibold leading-none font-mono tracking-tight", lowBalance || (deviceKey && !deviceKey.charged) ? "text-red-300" : "text-ink-0")}>
-            {deviceKey?.balance ? deviceKey.balance.text : deviceKey ? t("待充值") : "…"}
+      {/* A2：官方渠道置顶模块 —— 原「余额紧凑条」+ 网格里 builtin_recharge 那张官方卡合并成一个，
+          网格不再重复渲染这张卡（见下面「统一供应商库」的 filter）。纯重排/重样式，
+          不碰 invoke、不碰余额/测速/充值逻辑。 */}
+      <section className="rounded-card border border-accent/30 bg-bg-1 p-4 shadow-card space-y-3">
+        {/* 第一行：身份 + 余额 + 充值/刷新 */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent/[0.12] shrink-0">
+            <Wallet size={16} className="text-accent" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[14px] font-semibold text-ink-0">{t("虾盘云")}</span>
+              <span className="text-[12px] px-1.5 py-0.5 rounded bg-accent/[0.16] text-accent shrink-0">
+                {t("U-King 官方渠道")}
+              </span>
+            </div>
+            <div className={cn("mt-0.5 text-[11px]", lowBalance || (deviceKey && !deviceKey.charged) ? "text-red-300" : "text-ink-4")}>
+              {lowBalance
+                ? t("余额偏低，Codex 大模型可能不够一次请求")
+                : deviceKey?.charged
+                  ? t("AI 按量扣费，不用不扣")
+                  : t("免填密钥，充值后在工具分配中启用")}
+            </div>
+          </div>
+          <div className="ml-auto text-right">
+            <div className="text-[10px] text-ink-4 leading-none mb-1">{t("余额")}</div>
+            <div className={cn("text-[20px] font-semibold leading-none font-mono tracking-tight", lowBalance || (deviceKey && !deviceKey.charged) ? "text-red-300" : "text-ink-0")}>
+              {deviceKeyFailed
+                ? t("暂未取得余额 · 重试")
+                : deviceKey?.balance
+                  ? deviceKey.balance.text
+                  : deviceKey
+                    ? t("待充值")
+                    : t("余额读取中")}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => (onRecharge ? onRecharge(deviceKey?.recharge_url) : openRecharge(deviceKey?.recharge_url))}
+              className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600"
+            >
+              <Zap size={13} /> {deviceKey?.charged ? t("补充余额") : t("充值开通")}
+            </button>
+            <button
+              onClick={reloadDeviceKey}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/[0.08] bg-bg-1 text-ink-3 hover:text-ink-1 hover:bg-white/[0.04]"
+              title={t("刷新")}
+            >
+              <RefreshCw size={13} />
+            </button>
           </div>
         </div>
-        <div className={cn("text-[11px] min-w-0 hidden md:block", lowBalance || (deviceKey && !deviceKey.charged) ? "text-red-300" : "text-ink-4")}>
-          {lowBalance
-            ? t("余额偏低，Codex 大模型可能不够一次请求")
-            : deviceKey?.charged
-              ? t("AI 按量扣费，不用不扣")
-              : t("余额不足，请充值后使用 AI")}
-          <span className="ml-2 font-mono text-ink-5" title={deviceKey?.key}>
-            {deviceKey ? `${deviceKey.key.slice(0, 8)}…${deviceKey.key.slice(-4)}` : ""}
-          </span>
-        </div>
-        {/* 今日/近 7 天 迷你数字（明细在下方「用量账单」折叠面板） */}
-        <div className="ml-auto flex items-center gap-2 text-[11px] font-mono">
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
-            {t("今日")} <span className="text-accent font-semibold">{fmtTok(trend?.today_tokens ?? 0, t("万"))}</span>
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
-            {t("近 7 天")} <span className="text-success-400 font-semibold">{fmtTok(trend?.week_tokens ?? 0, t("万"))}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => (onRecharge ? onRecharge(deviceKey?.recharge_url) : openRecharge(deviceKey?.recharge_url))}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600"
-          >
-            <Zap size={13} /> {deviceKey?.charged ? t("补充余额") : t("充值开通")}
-          </button>
-          <button
-            onClick={() => {
-              invoke<DeviceKey>("get_device_key")
-                .then((dk) => {
-                  setDeviceKey(dk);
-                  onDeviceKeyChange?.(dk);
-                  fetchBreakdown();
-                })
-                .catch(() => {});
-              invoke<UsageTrend>("get_usage_trend", { days: 14 }).then(setTrend).catch(() => {});
-              flash(t("已刷新余额"));
-            }}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-white/[0.08] bg-bg-1 text-ink-3 hover:text-ink-1 hover:bg-white/[0.04]"
-            title={t("刷新")}
-          >
-            <RefreshCw size={13} />
-          </button>
-        </div>
+
+        {/* 第二行：默认模型 / 协议标签 / 延迟 / 引用情况 —— 原网格官方卡搬进来，原样迁移，
+            只有它还在当前工具的列表里（或至少在 addable 里查得到）才有东西可画。 */}
+        {xiapanProvider && (
+          <div className="pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-ink-4">
+            <span>
+              {t("默认模型")} <span className="font-mono text-ink-3">{xiapanProvider.model || "—"}</span>
+            </span>
+            {(xiapanProvider.openai_base?.trim() || xiapanProvider.anthropic_base?.trim()) && (
+              <span className="inline-flex items-center gap-1.5">
+                {!!xiapanProvider.openai_base?.trim() && (
+                  <span className="inline-flex items-center h-[22px] px-2 rounded bg-bg-2 text-ink-2 text-[12px]">OpenAI</span>
+                )}
+                {!!xiapanProvider.anthropic_base?.trim() && (
+                  <span className="inline-flex items-center h-[22px] px-2 rounded bg-bg-2 text-ink-2 text-[12px]">Anthropic</span>
+                )}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              {t("延迟")} {renderLatencyCell(xiapanProvider)}
+            </span>
+            {xiapanUsedBy.length > 0 && (
+              <span className="text-success-400">
+                {t("已在 {n}/{total} 个工具启用:{tools}", {
+                  n: xiapanUsedBy.length,
+                  total: TOOL_TABS.length,
+                  tools: xiapanUsedBy.join(" · "),
+                })}
+              </span>
+            )}
+            {!xiapanInList && (
+              <button
+                onClick={() => restoreProvider(xiapanProvider.id, xiapanProvider.name)}
+                className="ml-auto inline-flex items-center gap-1 text-accent hover:underline"
+              >
+                <Plus size={12} /> {t("加回")}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 钱包管理 —— 折叠入口，收纳原来常驻的今日/近7天迷你数字 + WalletCard（充值/换Key/用量）。
+            只有虾盘云还在当前工具列表里才有钱包可管；被移除时上面那行「加回」已经是唯一动作。 */}
+        {xiapanInList && (
+          <div className="pt-3 border-t border-white/[0.06]">
+            <button
+              onClick={() => setWalletOpen((v) => !v)}
+              className="flex items-center gap-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
+            >
+              <Wallet size={12} className="text-accent" />
+              {t("钱包管理")}
+              {walletOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {walletOpen && (
+              <div className="mt-2 space-y-2">
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
+                    {t("今日")} <span className="text-accent font-semibold">{fmtTok(trend?.today_tokens ?? 0, t("万"))}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
+                    {t("近 7 天")} <span className="text-success-400 font-semibold">{fmtTok(trend?.week_tokens ?? 0, t("万"))}</span>
+                  </span>
+                  <span className="ml-auto font-mono text-ink-5 text-[10px]">
+                    {deviceKey ? `${deviceKey.key.slice(0, 8)}…${deviceKey.key.slice(-4)}` : ""}
+                  </span>
+                </div>
+                <WalletCard
+                  deviceKey={deviceKey}
+                  onDeviceKeyChange={(dk) => {
+                    setDeviceKey(dk);
+                    onDeviceKeyChange?.(dk);
+                  }}
+                  onRecharge={() =>
+                    onRecharge ? onRecharge(deviceKey?.recharge_url) : openRecharge(deviceKey?.recharge_url)
+                  }
+                  onToast={flash}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* 分区切换 —— 每次只呈现一件事。
@@ -1849,87 +2101,24 @@ export function Manager({
           onSwitch={switchOneTool}
           onTest={testProvider}
           onAskAI={onAskAI}
-          onAskAIToast={() => flash(t("已把故障交给 AI，正在打开工作台"))}
+          onAskAIToast={() => flash(t("已把故障交给 AI，正在打开工作台"), "info")}
           onOpenKeyUrl={(u) => openUrl(u).catch(() => {})}
           onEdit={(p) => setEditing(p)}
           onDelete={removeProvider}
           onMove={moveProvider}
         />
 
-        {/* 引用供应商有两条严格隔离的路：内置项只加回当前 AI 的列表；模板只预填表单，
-            要由用户自填 Key 后保存。免费活动只在「免费算力」页的专用抽屉，绝不出现在这里。 */}
+        {/* A4：原「引用供应商」平铺画廊（内置一键加回 + 模板预填两组）已收进「供应商库」Tab
+            右侧「快速添加」面板（同一批数据、同一个 restoreProvider / openAddTemplate），
+            这里只留一个入口，不重复画一遍。 */}
         <div className="mt-4 pt-4 border-t border-white/[0.06]">
-          <div className="text-[11.5px] font-medium text-ink-3 mb-2">
-            {t("引用供应商")}
-          </div>
-          {hidden.length > 0 && <>
-            <div className="mb-1 text-[10.5px] font-medium text-ink-4">{t("U-King 内置 · 一键加回当前 AI")}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {[...hidden]
-              .sort((a, b) => (a === "xiapan" ? -1 : b === "xiapan" ? 1 : 0))
-              .map((id) => {
-                const label = addable.find((a) => a.id === id)?.name ?? BUILTIN_LABELS[id] ?? id;
-                return (
-                  <button
-                    key={`builtin:${id}`}
-                    onClick={() => restoreProvider(id, label)}
-                    className="flex items-center gap-2 px-3 h-11 rounded-xl border border-white/[0.08] bg-bg-1/60 text-left hover:border-accent/40 hover:bg-accent/[0.06] transition-colors"
-                  >
-                    <span className="inline-flex items-center px-1.5 h-[16px] rounded-full text-[9px] font-semibold bg-accent/[0.14] text-accent shrink-0">
-                      {t("内置")}
-                    </span>
-                    <span className="text-[12px] font-medium text-ink-1 truncate flex-1">{label}</span>
-                    <Plus size={13} className="shrink-0 text-ink-4" />
-                  </button>
-                );
-              })}
-            </div>
-          </>}
-          <div className={cn(hidden.length > 0 && "mt-3")}>
-            <div className="mb-1 text-[10.5px] font-medium text-ink-4">{t("预设供应商 · 预填接口，Key 由你自己填写")}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {templates.filter((tpl) => !providers.some((p) => p.openai_base === tpl.openai_base)).map(
-              (tpl) => (
-                <div
-                  key={`tpl:${tpl.name}`}
-                  className="flex items-center gap-2 px-3 h-11 rounded-xl border border-white/[0.08] bg-bg-1/60 hover:border-white/[0.16] transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12px] font-medium text-ink-1 truncate">{tpl.name}</div>
-                    <div className="text-[9.5px] font-mono text-ink-5 truncate" title={tpl.openai_base}>
-                      {tpl.openai_base.replace(/^https?:\/\//, "")}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => openAddTemplate(tpl)}
-                    title={t("添加：预填地址/模型，进弹窗只需补 Key")}
-                    className="shrink-0 grid place-items-center w-8 h-8 rounded-lg border border-white/[0.10] text-ink-2 hover:text-accent hover:bg-white/[0.04]"
-                  >
-                    <Plus size={13} />
-                  </button>
-                  {tpl.key_url && (
-                    <button
-                      onClick={() => openUrl(tpl.key_url!).catch(() => {})}
-                      title={t("申请 Key")}
-                      className="shrink-0 grid place-items-center w-8 h-8 rounded-lg border border-white/[0.10] text-ink-3 hover:text-ink-1 hover:bg-white/[0.04]"
-                    >
-                      <KeyRound size={12} />
-                    </button>
-                  )}
-                  {tpl.website && (
-                    <button
-                      onClick={() => openUrl(tpl.website!).catch(() => {})}
-                      title={t("官网介绍")}
-                      className="shrink-0 grid place-items-center w-8 h-8 rounded-lg border border-white/[0.10] text-ink-3 hover:text-ink-1 hover:bg-white/[0.04]"
-                    >
-                      <ExternalLink size={12} />
-                    </button>
-                  )}
-                </div>
-              ),
-            )}
-            </div>
-          </div>
+          <button
+            onClick={() => setSettingsTab("providers")}
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
+          >
+            <Plus size={13} />
+            {t("添加其他来源")}
+          </button>
         </div>
 
             {/* 装 / 启动 / 卸载已搬去「我的 AI」页（2026-09-04 按动词分家：本页只配，
@@ -2040,118 +2229,341 @@ export function Manager({
           `save_provider` 存的是 `~/.uking/providers.json`，本来就是全局的 ——
           界面把一件全局的事画成了局部的事，这正是「容易弄错」的来源之一。
           这里只做**呈现**：增删改仍走 CustomProviderModal / delete_provider 那份唯一实现。 */}
-      {settingsTab === "providers" && (
+      {settingsTab === "providers" && (() => {
+        // ②③⑥⑩（2026-09-06 astra-3 设计评审）：右栏改两 tab「模型厂商／模型平台」，按解析
+        // 后的接口主机名分组（resolveProviderPresentation），不再靠「首屏四家 + 更多来源」这种
+        // 手工挑选。iFlow/魔搭本身就只在 templates 数组里各出现一次、且都落在 platform 组，
+        // 天然去重——不需要再手工排除。「免费」标记只加在展示层，不新开一份数据。
+        const GROUP_PAGE_SIZE = 8;
+        const presented = templates.map((tpl) => ({ tpl, presentation: resolveProviderPresentation(tpl) }));
+        const vendorTemplates = presented.filter((x) => x.presentation.group === "vendor").map((x) => x.tpl);
+        const platformTemplates = presented.filter((x) => x.presentation.group === "platform").map((x) => x.tpl);
+        // 未识别主机名的远程新模板：保留在有明确标题的「其他来源」折叠区，不擅自归为官方，也不丢弃。
+        const otherTemplates = presented.filter((x) => x.presentation.group === "unknown").map((x) => x.tpl);
+        // 海外中转/网关一律标「需科学上网」（12px ink-3，2026-09-06）——国产免费组不标。
+        const OVERSEAS_TEMPLATE_NAMES = new Set(["B.ai", "APIMart", "OpenRouter", "OpenCode Zen"]);
+        // 这两家模板本身预填的就是免费档，点了直接能用——沿用原「免费」绿标，只是不再单独摘出一组。
+        const FREE_TEMPLATE_NAMES = new Set(["iFlow 心流", "魔搭 ModelScope"]);
+
+        const renderQuickAddRow = (tpl: ProviderTemplate) => {
+          const existing = providers.find((p) => p.openai_base === tpl.openai_base);
+          const presentation = resolveProviderPresentation(tpl);
+          let displayHost = tpl.openai_base.replace(/^https?:\/\//, "");
+          try {
+            displayHost = new URL(tpl.openai_base).host;
+          } catch {
+            /* 极少数模板地址不是标准 URL（不会发生，但别让展示层崩掉） */
+          }
+          const actionLabel = existing
+            ? t("编辑：{name}", { name: tpl.name })
+            : t("添加：{name}，预填地址/模型，进弹窗只需补 Key", { name: tpl.name });
+          return (
+            <li key={`qa:${tpl.name}`} className="flex items-center gap-0 rounded-lg hover:bg-bg-3 focus-within:bg-bg-3">
+              <button
+                type="button"
+                onClick={() => (existing ? setEditing(existing) : openAddTemplate(tpl))}
+                aria-label={actionLabel}
+                className="grid min-h-[52px] min-w-0 flex-1 grid-cols-[20px_24px_minmax(0,1fr)] items-center gap-2 rounded-lg pl-1.5 pr-0 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <span aria-hidden="true" className="grid place-items-center text-ink-3">
+                  {existing ? <Pencil size={14} /> : <Plus size={16} />}
+                </span>
+                <ProviderLogo logo={presentation.logo} label={tpl.name} size={24} />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 truncate text-[13px] font-semibold leading-[18px] text-ink-1">
+                    <span className="truncate">{tpl.name}</span>
+                    {FREE_TEMPLATE_NAMES.has(tpl.name) && (
+                      <span className="shrink-0 inline-flex items-center px-1.5 h-[15px] rounded-full text-[12px] leading-none font-semibold bg-success-500/12 text-success-400 border border-success-500/25">
+                        {t("免费")}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-1.5 truncate text-[12px] leading-4 text-ink-3">
+                    <span className="truncate">{displayHost}</span>
+                    {OVERSEAS_TEMPLATE_NAMES.has(tpl.name) && (
+                      <span tabIndex={0} title={t("需科学上网")} className="shrink-0 text-ink-4 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent">
+                        {t("需科学上网")}
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </button>
+              {tpl.key_url && (
+                <button
+                  type="button"
+                  onClick={() => openUrl(tpl.key_url!).catch(() => {})}
+                  aria-label={t("申请 Key：{name}", { name: tpl.name })}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-3 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <ExternalLink size={14} />
+                </button>
+              )}
+            </li>
+          );
+        };
+
+        /** tab 左右方向键 + Home/End；桌面/窄屏两份 DOM 各有自己的 id 前缀，焦点各管各的。 */
+        const handleGroupTabKeyDown = (e: KeyboardEvent, idPrefix: string) => {
+          const order: Array<"vendor" | "platform"> = ["vendor", "platform"];
+          const idx = order.indexOf(quickAddGroup);
+          let nextIdx = idx;
+          if (e.key === "ArrowRight") nextIdx = (idx + 1) % order.length;
+          else if (e.key === "ArrowLeft") nextIdx = (idx - 1 + order.length) % order.length;
+          else if (e.key === "Home") nextIdx = 0;
+          else if (e.key === "End") nextIdx = order.length - 1;
+          else return;
+          e.preventDefault();
+          const next = order[nextIdx];
+          setQuickAddGroup(next);
+          document.getElementById(`${idPrefix}-qa-tab-${next}`)?.focus();
+        };
+
+        const renderQuickAdd = (idPrefix: string) => {
+          const list = quickAddGroup === "vendor" ? vendorTemplates : platformTemplates;
+          const expanded = quickAddExpanded[quickAddGroup];
+          const shown = expanded ? list : list.slice(0, GROUP_PAGE_SIZE);
+          const restCount = list.length - shown.length;
+          return (
+            <div className="space-y-3">
+              <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-2 gap-y-0.5">
+                <div className="text-[13px] font-semibold text-ink-1">{t("快速添加")}</div>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("free")}
+                  className="shrink-0 text-[12px] text-ink-3 hover:text-accent hover:underline"
+                >
+                  {t("免费算力 →")}
+                </button>
+                <div className="col-span-2 text-[11px] text-ink-4">{t("选一家，自动填好地址")}</div>
+              </div>
+
+              <div role="tablist" aria-label={t("供应商来源分组")} className="grid grid-cols-2 gap-1 rounded-lg bg-bg-0 p-1">
+                {(
+                  [
+                    ["vendor", t("模型厂商 {n}", { n: vendorTemplates.length })],
+                    ["platform", t("模型平台 {n}", { n: platformTemplates.length })],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    id={`${idPrefix}-qa-tab-${id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={quickAddGroup === id}
+                    aria-controls={`${idPrefix}-qa-panel`}
+                    tabIndex={quickAddGroup === id ? 0 : -1}
+                    onClick={() => setQuickAddGroup(id)}
+                    onKeyDown={(e) => handleGroupTabKeyDown(e, idPrefix)}
+                    className={cn(
+                      "h-8 rounded-md text-[12px] font-semibold transition-colors",
+                      quickAddGroup === id
+                        ? "bg-accent/10 text-accent ring-1 ring-inset ring-accent/30"
+                        : "text-ink-3 hover:text-ink-1",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <ul
+                id={`${idPrefix}-qa-panel`}
+                role="tabpanel"
+                aria-labelledby={`${idPrefix}-qa-tab-${quickAddGroup}`}
+                className="space-y-1"
+              >
+                {shown.map((tpl) => renderQuickAddRow(tpl))}
+              </ul>
+              {restCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setQuickAddExpanded((s) => ({ ...s, [quickAddGroup]: true }))}
+                  className="w-full text-left px-2 py-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
+                >
+                  {t("展开其余 {n} 家", { n: restCount })}
+                </button>
+              )}
+              {expanded && list.length > GROUP_PAGE_SIZE && (
+                <button
+                  type="button"
+                  onClick={() => setQuickAddExpanded((s) => ({ ...s, [quickAddGroup]: false }))}
+                  className="w-full text-left px-2 py-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
+                >
+                  {t("收起")}
+                </button>
+              )}
+
+              {otherTemplates.length > 0 && (
+                <details className="group/other">
+                  <summary className="cursor-pointer select-none list-none inline-flex items-center gap-1 text-[11.5px] text-ink-3 hover:text-ink-1">
+                    <ChevronRight size={12} className="transition-transform group-open/other:rotate-90" />
+                    {t("其他来源")}
+                  </summary>
+                  <ul className="mt-1.5 space-y-1">{otherTemplates.map((tpl) => renderQuickAddRow(tpl))}</ul>
+                </details>
+              )}
+
+              {/* ⑩ 加回工具：独立折叠，文案用当前工具（TOOL_LABELS[activeTab]），不是驱动自己的名字——
+                  之前这里把 `{ tool: label }` 填成了供应商名，「加回 DeepSeek」读起来像加回一个工具。 */}
+              {hidden.length > 0 && (
+                <details className="group/restore rounded-lg border border-white/[0.06]">
+                  <summary className="cursor-pointer select-none list-none flex items-center gap-1.5 px-2 py-1.5 text-[11.5px] text-ink-3 hover:text-ink-1">
+                    <ChevronRight size={12} className="transition-transform group-open/restore:rotate-90" />
+                    {t("加回工具")}
+                  </summary>
+                  <div className="mt-1 space-y-1.5 px-1 pb-1">
+                    {[...hidden]
+                      .sort((a, b) => (a === "xiapan" ? -1 : b === "xiapan" ? 1 : 0))
+                      .map((id) => {
+                        const label = addable.find((a) => a.id === id)?.name ?? BUILTIN_LABELS[id] ?? id;
+                        const toolLabel = TOOL_LABELS[activeTab] ?? activeTab;
+                        return (
+                          <button
+                            key={`builtin:${id}`}
+                            onClick={() => restoreProvider(id, label)}
+                            className="flex items-center gap-2 w-full px-3 min-h-[52px] rounded-lg bg-bg-1 hover:bg-bg-3 text-left transition-colors"
+                          >
+                            <span className="shrink-0 grid place-items-center w-8 h-8 rounded-lg border border-white/[0.10] text-ink-2">
+                              <Plus size={14} />
+                            </span>
+                            <ToolIcon tool={id} size={22} className="shrink-0" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-semibold text-ink-1 truncate">{label}</span>
+                              <span className="block text-[12px] text-ink-3 truncate">
+                                {t("加回 {tool}", { tool: toolLabel })}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </details>
+              )}
+            </div>
+          );
+        };
+        const hasOtherProviders = providers.some((p) => p.id !== "official" && !p.builtin_recharge);
+
+        return (
         <section className="space-y-3">
           <div className="flex items-end justify-between gap-4 flex-wrap">
             <div>
-              <h3 className="text-[14px] font-semibold text-ink-0">{t("统一供应商库")}</h3>
-              <p className="mt-1 text-[11px] text-ink-4">
-                {t("一处登记，所有 AI 共用，Key 只填一次。改一处，用到它的 AI 全都跟着变。")}
+              <h3 className="text-[16px] font-semibold text-ink-0">{t("我的供应商")}</h3>
+              <p className="mt-1 text-[12px] text-ink-3">
+                {t("保存后，到工具分配中选择使用")}
               </p>
             </div>
-            <button
-              onClick={() => openNewCustomProvider()}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 shadow-sm shrink-0"
-            >
-              <Plus size={14} /> {t("添加供应商")}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* 次级按钮 —— 视觉上不抢右边「添加供应商」这颗主按钮。并发探测网格里
+                  「能测」的每一家（见 testAllProviderLatency 上的注释：只在这里点了才测）。 */}
+              <button
+                onClick={() => void testAllProviderLatency()}
+                disabled={testingAllProviders}
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-white/[0.12] text-ink-2 text-[12px] font-medium hover:bg-white/[0.06] disabled:opacity-50 transition-colors"
+              >
+                {testingAllProviders ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                {testingAllProviders ? t("测速中…") : t("测试速度")}
+              </button>
+              <button
+                onClick={() => openNewCustomProvider()}
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 shadow-sm shrink-0"
+              >
+                <Plus size={14} /> {t("添加供应商")}
+              </button>
+            </div>
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {[...providers, ...addable.filter((a) => !providers.some((p) => p.id === a.id))]
-              .filter((p) => p.id !== "official")
-              .map((p) => {
-                // 「哪几个 AI 正在用它」—— 从 driver.active 反查。这是客户最想知道、
-                // 而原来整页都答不上来的一件事：改这家之前，先看清会影响到谁。
-                const usedBy = Object.entries(driver?.active ?? {})
-                  .filter(([, id]) => id === p.id)
-                  .map(([tool]) => TOOL_LABELS[tool] ?? tool);
-                return (
-                  <div
-                    key={p.id}
-                    className="rounded-card border border-white/[0.08] bg-bg-1/70 p-3.5 hover:border-white/[0.16] transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12.5px] font-semibold text-ink-0 truncate">{t(p.name)}</span>
-                      {p.builtin_recharge && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/[0.16] text-accent shrink-0">{t("内置")}</span>
-                      )}
-                      {!p.builtin && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-ink-4 shrink-0">{t("自定义")}</span>
-                      )}
-                      {!p.builtin && (
-                        <button
-                          onClick={() => setEditing(p)}
-                          title={t("编辑")}
-                          className="ml-auto grid place-items-center w-7 h-7 rounded-md text-ink-4 hover:text-ink-1 hover:bg-white/[0.06] shrink-0"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="mt-2.5 space-y-1 text-[10.5px] text-ink-4">
-                      <div className="flex justify-between gap-2">
-                        <span>{t("地址")}</span>
-                        <span className="font-mono text-ink-3 truncate" title={p.openai_base || p.anthropic_base || ""}>
-                          {(p.openai_base || p.anthropic_base || "—").replace(/^https?:\/\//, "")}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <span>{t("默认模型")}</span>
-                        <span className="font-mono text-ink-3 truncate">{p.model || "—"}</span>
-                      </div>
-                    </div>
-                    {/* 空着不写「没人用」——「当前没有 AI 引用它」和「我们没查出来」在界面上
-                        长得一样，而后者会误导人去删掉正在用的东西。有才说，没有就不说。 */}
-                    {usedBy.length > 0 && (
-                      <div className="mt-2.5 pt-2.5 border-t border-white/[0.06] text-[10px] text-success-400">
-                        {t("已在 {n}/{total} 个工具启用:{tools}", {
-                          n: usedBy.length,
-                          total: TOOL_TABS.length,
-                          tools: usedBy.join(" · "),
-                        })}
-                      </div>
-                    )}
-                    {/* 设备钱包只挂在虾盘云（builtin_recharge）这张卡上：余额和内置 Key 是**这家**
-                        供应商的东西，不是 U-King 的全局功能。客户把虾盘云删掉，这块跟着不见；
-                        从「添加供应商」把它加回来，钱包也跟着回来（Key 在后端，不会因此丢）。 */}
-                    {p.builtin_recharge && providers.some((x) => x.id === p.id) && (
-                      <div className="mt-2.5 pt-2.5 border-t border-white/[0.06]">
-                        <button
-                          onClick={() => setWalletOpen((v) => !v)}
-                          className="flex w-full items-center gap-1.5 text-[11px] text-ink-3 hover:text-ink-1"
-                        >
-                          <Wallet size={12} className="text-accent" />
-                          {t("设备钱包")}
-                          <span className="text-[10px] text-ink-5">{t("余额 · 充值 · 换一把 Key")}</span>
-                          {walletOpen ? (
-                            <ChevronUp size={13} className="ml-auto" />
-                          ) : (
-                            <ChevronDown size={13} className="ml-auto" />
+          {/* ⑦ 主区列数改按实际可用宽度决定（auto-fill, minmax(min(100%,280px), 1fr)），
+              不再按窗口断点强制列数——外壳宽度上限在 App.tsx 由并行任务调整，这里只管网格本身。
+              右栏仍固定 272px；<lg 收进头部下方可折叠「快速添加」，内部复用同一份 tab + 目录。 */}
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
+            <div className="flex-1 min-w-0 flex flex-col gap-3">
+              <details open={!hasOtherProviders} className="lg:hidden group/qa rounded-card border border-white/[0.08] bg-bg-1/70 p-3.5">
+                <summary className="cursor-pointer select-none list-none flex items-center gap-1.5 text-[13px] font-semibold text-ink-1">
+                  <ChevronRight size={13} className="transition-transform group-open/qa:rotate-90" />
+                  {t("快速添加")}
+                </summary>
+                <div className="mt-3">{renderQuickAdd("narrow")}</div>
+              </details>
+
+              <div className="grid gap-2.5 grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]">
+                {[...providers, ...addable.filter((a) => !providers.some((p) => p.id === a.id))]
+                  .filter((p) => p.id !== "official" && !p.builtin_recharge)
+                  .map((p) => {
+                    // 「哪几个 AI 正在用它」—— 从 driver.active 反查。这是客户最想知道、
+                    // 而原来整页都答不上来的一件事：改这家之前，先看清会影响到谁。
+                    const usedBy = Object.entries(driver?.active ?? {})
+                      .filter(([, id]) => id === p.id)
+                      .map(([tool]) => TOOL_LABELS[tool] ?? tool);
+                    const cardPresentation = resolveProviderPresentation(p);
+                    return (
+                      <div
+                        key={p.id}
+                        className="rounded-card border border-white/[0.08] bg-bg-1/70 p-3 hover:border-white/[0.16] transition-colors"
+                      >
+                        {/* ① logo + 名称 + 编辑（内置/自定义不再彩色徽章区分——能不能点「编辑」本身就是那条界线）
+                            h-8 固定卡头高度：有无编辑按钮都占同样高度，名称基线不因铅笔按钮撑高而错层。 */}
+                        <div className="flex h-8 items-center gap-2">
+                          <ProviderLogo logo={cardPresentation.logo} label={p.name} size={20} />
+                          <span className="text-[14px] font-semibold text-ink-0 truncate flex-1">{t(p.name)}</span>
+                          {!p.builtin && (
+                            <button
+                              onClick={() => setEditing(p)}
+                              title={t("编辑")}
+                              className="grid place-items-center w-8 h-8 rounded-md text-ink-4 hover:text-ink-1 hover:bg-white/[0.06] shrink-0"
+                            >
+                              <Pencil size={13} />
+                            </button>
                           )}
-                        </button>
-                        {walletOpen && (
-                          <WalletCard
-                            className="mt-2"
-                            deviceKey={deviceKey}
-                            onDeviceKeyChange={(dk) => {
-                              setDeviceKey(dk);
-                              onDeviceKeyChange?.(dk);
-                            }}
-                            onRecharge={() =>
-                              onRecharge ? onRecharge(deviceKey?.recharge_url) : openRecharge(deviceKey?.recharge_url)
-                            }
-                            onToast={flash}
-                          />
+                        </div>
+                        {/* ② 来源域名 */}
+                        <div
+                          className="mt-1 text-[12px] text-ink-3 truncate"
+                          title={p.openai_base || p.anthropic_base || ""}
+                        >
+                          {(p.openai_base || p.anthropic_base || "—").replace(/^https?:\/\//, "")}
+                        </div>
+                        {/* ③ 默认模型 */}
+                        <div className="mt-1 text-[12px] font-mono text-ink-3 truncate">{p.model || "—"}</div>
+                        {/* ④ 协议标签 */}
+                        {(p.openai_base?.trim() || p.anthropic_base?.trim()) && (
+                          <div className="mt-2 flex items-center gap-1.5">
+                            {!!p.openai_base?.trim() && (
+                              <span className="inline-flex items-center h-5 px-2 rounded bg-bg-2 text-ink-2 text-[12px]">
+                                OpenAI
+                              </span>
+                            )}
+                            {!!p.anthropic_base?.trim() && (
+                              <span className="inline-flex items-center h-5 px-2 rounded bg-bg-2 text-ink-2 text-[12px]">
+                                Anthropic
+                              </span>
+                            )}
+                          </div>
                         )}
+                        {/* ⑤ 测速——去掉孤立的「延迟」标签，让结果/重测/原因紧靠在一起；
+                            空间不足时允许换行，不强行挤成一行。 */}
+                        <div className="mt-2.5 min-h-[32px] flex flex-wrap items-center gap-2 text-[11px] text-ink-4">
+                          {renderLatencyCell(p)}
+                        </div>
+                        {/* ⑥ 引用行——空着不写「没人用」：「当前没有 AI 引用它」和「我们没查出来」
+                            在界面上长得一样，而后者会误导人去删掉正在用的东西。有才说，没有就不说。
+                            容器始终渲染占位（空位≠文案），避免可选行导致卡片排间高度不齐。 */}
+                        <div className="mt-1 min-h-[18px] leading-[18px] text-[12px] text-ink-2">
+                          {usedBy.length > 0 ? t("用于：{tools}", { tools: usedBy.join(" · ") }) : null}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="hidden lg:block w-[272px] shrink-0 rounded-card border border-white/[0.08] bg-bg-1/70 p-3.5">
+              {renderQuickAdd("desktop")}
+            </div>
           </div>
         </section>
-      )}
+        );
+      })()}
 
       {/* 高级 —— 桌面 App 状态 / Codex 专区，都是低频。「用自己的 Key」那块网格
           已在 P3a 合并进「工具分配」Tab 的画廊（见上面 2026-08-22 删的注释），
@@ -2326,8 +2738,14 @@ export function Manager({
       {toast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
           <div className="flex items-center gap-2 rounded-full border border-white/[0.10] bg-bg-3/95 backdrop-blur px-4 py-2 text-[13px] text-ink-1 shadow-card">
-            <CheckCircle2 size={14} className="text-success-400" />
-            {toast}
+            {toast.kind === "error" ? (
+              <XCircle size={14} className="text-danger-400" />
+            ) : toast.kind === "info" ? (
+              <Lightbulb size={14} className="text-ink-2" />
+            ) : (
+              <CheckCircle2 size={14} className="text-success-400" />
+            )}
+            {toast.msg}
           </div>
         </div>
       )}

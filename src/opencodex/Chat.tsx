@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { invoke, Channel, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Bot, Check, ChevronRight, Copy, Eye, FileText, Film, FolderOpen, FolderTree, Globe, Image as ImageIcon, Loader2, Maximize2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, RotateCcw, ShieldCheck, Terminal, User, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Bot, Check, ChevronRight, Copy, Eye, FileText, Film, FolderOpen, FolderTree, Globe, Image as ImageIcon, Loader2, Maximize2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, RotateCcw, ShieldCheck, Terminal, X, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "../lib/cn";
 import { trimHistoryForPayload } from "./historyTrim";
 import { useViewport } from "../lib/useViewport";
@@ -200,10 +200,13 @@ function saveChatItems(sessionId: string, items: Item[]) {
   void invoke("chat_archive_replace", { sessionId, items: trimmed }).catch(() => {});
 }
 
-export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
+export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert, paneMode = "chat" }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
   /** 点一位专家 → 带着他开一个会话（宿主负责建会话，本组件不自己造）。 */ onSummonExpert?: (e: Expert) => void;
   /** 这一轮跑起来了 / 跑完了 / 跑挂了 —— 宿主拿去染左侧列表那个小圆点。不传也照常能用。 */
-  onStatus?: (s: "running" | "idle" | "error") => void }) {
+  onStatus?: (s: "running" | "idle" | "error") => void;
+  /** 「对话工作台」vs「终端工作台」两个侧栏入口共用同一批会话：cli = 默认停在终端态
+   *  （相当于自动收起 U-Chat 对话列，只见 U-CLI 终端），chat = 默认对话态。 */
+  paneMode?: "chat" | "cli" }) {
   const { t } = useI18n();
   // 矮屏（见 lib/useViewport.ts）：顶栏和「按发送前该知道的两件事」那条在
   // 1366×768 上各自都还占着宽松间距，而对话正文只剩三四行。
@@ -710,6 +713,34 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     setRightOpen(false);
   }, []);
 
+  /**
+   * 侧栏「终端工作台」入口：把 `paneMode="cli"` 接到既有的对话↔终端主切换上，
+   * 不新建第三种模式（同上面 showCliMode/showChatMode 那条注释的原则）。
+   *
+   * 🔴 只在 `paneMode` 与当前 `cliMode` 不一致时才切换一次 —— 否则用户手动点回「对话」
+   * 后，这个 effect 会在下一次渲染把他推回终端态（paneMode 没变，他的选择就没了）。
+   * 🔴 `!workspace` 时跳过：同一行的「终端」toggle 按钮本身就是 `disabled={!workspace}`
+   *  （见上面顶栏那颗），效果要跟手动点保持同一条准入线，不能替用户做一件按钮都不让做的事。
+   * 🔴 claude-cli / hermes 全屏 TUI 那个分支（判定同 :1091/:1101 的渲染分支：
+   *  `engine !== "uking" && engine !== "claude" && engine !== "codex"`）本身已经是
+   *  全屏终端 —— 「终端工作台」对它无事可做，效果最前面直接 return，cli/chat 两个
+   *  方向都跳过：不跳 chat 方向的话，从终端工作台切回对话工作台时 showChatMode 会去
+   *  动它其实根本没打开过的右侧面板状态（rightOpen/rightKind），无意义地改一遍。
+   *
+   * 🔴 默认态要求「终端工作台」进来时对话列整个收起（chatCollapsed=true），全屏只见终端；
+   *  用户手动点开对话列后不能被这个 effect 推回去 —— 复用上面同一条守则：只在
+   *  `paneMode` 与 `cliMode` 不一致的那一刻切一次，chatCollapsed 不单独进依赖数组，
+   *  用户之后再点开对话列，`paneMode` 没变，这个分支不会重新触发。
+   *  同一个 `!workspace` 守卫覆盖 chatCollapsed：无 workspace 时整个分支跳过，
+   *  不会有「对话列被收起但终端也没开」的中间态。
+   */
+  useEffect(() => {
+    if (engine !== "uking" && engine !== "claude" && engine !== "codex") return;
+    if (paneMode === "cli" && !cliMode && workspace) { showCliMode(); setChatCollapsed(true); }
+    else if (paneMode === "chat" && cliMode) showChatMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneMode, workspace]);
+
   const startDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const el = rowRef.current;
@@ -1110,52 +1141,22 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
           {/* 正文字号跟着 chatFont 走（测试报告 #007：「字体大小固定」）。
               长文档/长回复在 13px 下读起来很吃力，而这是「阅览」场景的主要用途。
               只放大**正文**，工具卡片那些次要信息保持原尺寸 —— 全放大等于什么都没突出。 */}
-          <div className="flex-1 overflow-y-auto space-y-3 py-2 select-text" style={{ fontSize: chatFont }}>
-            {items.length === 0 && (
-              /* 视觉规格跟 Claude/Codex 那侧的空态**保持一致**（图标徽章 + 17px 问句 + 说明），
-                 两个大脑来回切时不该像换了个软件。 */
+          {/* 2026-09-06 Astra UI 规格 C 节：两条聊天链路切引擎不该像换了个软件 ——
+              消息容器对齐 ChatPanel 的文档流形制（max-w-2xl 居中单列），气泡样式同步对齐
+              （见下方文本消息渲染处）。空态：专家场景保留原有专家名片（红线要求专家信息全保留）；
+              普通场景只留品牌两行，交给下方 composer 区域连同起手词组成「整块居中」，
+              不在消息区再摆第二套空态说明（原来的图标/问句/按钮跟下方品牌两行是两套并存的空态区，
+              和 ChatPanel 只有一套的形制不一致）。 */}
+          <div className="flex-1 overflow-y-auto py-2 select-text" style={{ fontSize: chatFont }}>
+            <div className="max-w-2xl mx-auto space-y-4">
+            {items.length === 0 && expert && (
               <div className="h-full grid place-items-center text-center px-4"><div className="flex flex-col items-center gap-3">
-                {expert ? (
-                  <>
-                    <div className="grid place-items-center w-14 h-14 rounded-2xl bg-accent/[0.10] border border-accent/20 text-[28px]">{expert.emoji}</div>
-                    <div>
-                      <div className="text-[17px] font-semibold text-ink-0">{t("{name} 已就位", { name: expert.name })}</div>
-                      <div className="text-[12.5px] text-ink-2 mt-1 max-w-sm leading-relaxed">{expert.tagline}</div>
-                    </div>
-                    <div className="text-[11.5px] text-ink-3">{t("下面点一个「试试这样问我」，或直接说你的需求")}</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="grid place-items-center w-14 h-14 rounded-2xl bg-accent/[0.10] border border-accent/20">
-                      <Bot size={24} className="text-accent" />
-                    </div>
-                    <div className="min-w-0 max-w-full">
-                      {/* 有工作文件夹就点它的名 —— 同 Codex 那句「要在 X 内开发什么」：
-                          打字前真正要确认的是这句话会落在哪儿。没选文件夹时不硬凑，照实问。 */}
-                      <div className="text-[17px] font-semibold text-ink-0">
-                        {workspace ? t("要在「{dir}」里做点什么？", { dir: workspace.split(/[\\/]/).filter(Boolean).pop() || workspace }) : t("有什么可以帮你的？")}
-                      </div>
-                      {/* ink-4 不是 ink-5 —— 见 ChatPanel 同一处的注释：浅色主题下 ink-5 约 1.4:1，读不出来 */}
-                      {workspace && <div className="mt-1 text-[11px] font-mono text-ink-3 truncate" title={workspace}>{workspace}</div>}
-                    </div>
-                    {/* 🔴 2026-08-16 减字：这里原本堆了 4 段文字（说明 + 按钮 + 又一段说明），
-                        客户原话「太多字、复杂、一堆字」。空态是**第一屏**，它的任务只有一件：
-                        让人知道现在该往输入框里打字。所以只留一句十个字以内的，
-                        和那个「开终端跑 Claude Code」的按钮（那是另一条路的入口，不是解释）。
-                        被删掉的两段解释（轻助手和 Claude Code 差在哪）不是错的，只是**不该在这一屏**
-                        —— 谁真想知道，顶栏的大脑选择器点开就有。 */}
-                    <div className="text-[12.5px] text-ink-2">
-                      {workspace ? t("说人话就行，它会自己动手") : t("先选个工作文件夹，它才能读写文件")}
-                    </div>
-                    <button
-                      onClick={() => pasteToTerminal("claude")}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/[0.10] px-2.5 py-1.5 text-[11.5px] text-ink-1 hover:bg-accent/[0.18]"
-                    >
-                      <Terminal size={12} className="text-accent/80" />
-                      {t("开终端跑 Claude Code")}
-                    </button>
-                  </>
-                )}
+                <div className="grid place-items-center w-14 h-14 rounded-2xl bg-accent/[0.10] border border-accent/20 text-[28px]">{expert.emoji}</div>
+                <div>
+                  <div className="text-[17px] font-semibold text-ink-0">{t("{name} 已就位", { name: expert.name })}</div>
+                  <div className="text-[12.5px] text-ink-2 mt-1 max-w-sm leading-relaxed">{expert.tagline}</div>
+                </div>
+                <div className="text-[11.5px] text-ink-3">{t("下面点一个「试试这样问我」，或直接说你的需求")}</div>
               </div></div>
             )}
             {items.map((it, i) => {
@@ -1269,25 +1270,29 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                 );
               }
               return (
-                <div key={i} className={cn("group flex gap-2.5 items-end", it.role === "user" ? "justify-end" : "justify-start")}>
-                  {it.role === "assistant" && (<span className="shrink-0 grid place-items-center w-7 h-7 rounded-full bg-accent text-white mt-0.5"><Bot size={14} /></span>)}
+                // 2026-09-06 Astra UI 规格 C 节：不再左右对齐 + 头像气泡，改成 ChatPanel 那套
+                // 文档流单列（用户左侧细线标识，助手无气泡纯正文）。
+                <div key={i} className={cn("group relative", it.role === "user" ? "border-l-2 border-accent/60 pl-3 pr-12 py-0.5" : "pr-12")}>
+                  {it.role === "user" && (<div className="text-[10px] text-ink-5 mb-0.5 uppercase tracking-wide">{t("你")}</div>)}
                   {/* AI 回复走 markdown 渲染（测试报告 #009）；用户自己敲的字原样回显 ——
                       替他解析星号是擅自改他的话。`whitespace-pre-wrap` 只留给用户那一侧，
                       AI 侧交给 MiniMd 自己排版（它会处理换行/列表/代码块）。 */}
                   {/* 不再写死 text-[13px]：字号由外层容器的 chatFont 决定（#007 可调） */}
-                  <div className={cn("select-text max-w-[78%] rounded-2xl px-4 py-2.5 leading-relaxed break-words", it.role === "user" ? "rounded-br-md bg-accent/15 border border-white/[0.10] text-ink-0 whitespace-pre-wrap" : "rounded-tl-md bg-bg-1/90 border border-white/[0.06] text-ink-1")}>
+                  {/* 2026-09-06 Astra UI 规格 C 节：气泡样式对齐 ChatPanel 的 Bubble —— 助手正文
+                      无气泡底（纯文档正文），用户输入用左侧细线标识，不再用左右对齐 + 78% 宽气泡。 */}
+                  <div className={cn("select-text leading-relaxed break-words", it.role === "user" ? "text-ink-0 whitespace-pre-wrap" : "text-ink-1")}>
                     {it.content
                       ? (it.role === "assistant" ? <MiniMd text={it.content} onRunInTerminal={pasteToTerminal} /> : it.content)
                       : (busy && i === items.length - 1 ? <Loader2 size={13} className="animate-spin text-accent" /> : "")}
                   </div>
                   {it.content && (
-                    <button onClick={() => copyText(it.content)} title={t("复制这段")} className="shrink-0 opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-6 h-6 rounded-md text-ink-4 hover:text-ink-1 hover:bg-white/[0.06] mb-0.5"><Copy size={12} /></button>
+                    <button onClick={() => copyText(it.content)} title={t("复制这段")} className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-6 h-6 rounded-md bg-bg-2/85 border border-white/[0.08] text-ink-4 hover:text-ink-1"><Copy size={12} /></button>
                   )}
-                  {it.role === "user" && (<span className="shrink-0 grid place-items-center w-7 h-7 rounded-full bg-white/[0.08] text-ink-2 mt-0.5"><User size={14} /></span>)}
                 </div>
               );
             })}
             <div ref={bottomRef} />
+            </div>
           </div>
 
           <div className="pt-2 mt-1 border-t border-white/[0.06]">

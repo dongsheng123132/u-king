@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke, convertFileSrc, Channel } from "@tauri-apps/api/core";
-import { FileEdit, Terminal as TermIcon, Eye, Globe, Wrench, RotateCcw, AlertTriangle, Copy, Check, X, ChevronDown, ChevronRight, Info, Play, Loader2, FolderOpen, Cpu } from "lucide-react";
+import { FileEdit, Terminal as TermIcon, Eye, Globe, Wrench, RotateCcw, AlertTriangle, Copy, Check, X, ChevronDown, ChevronRight, Info, Play, Loader2, FolderOpen, Cpu, File as FileIcon } from "lucide-react";
 import { DiffView } from "./DiffView";
 import { copyToClipboard } from "../../lib/clipboard";
 import { useDropZone, pathsToText } from "../../lib/fileDrop";
@@ -773,9 +773,17 @@ export function ChatPanel({
               </div>
             </div>
           )}
-          {items.map((it, i) => (
-            <Bubble key={i} item={it} onDismiss={() => removeItem(i)} onPreview={onPreview} onRunInTerminal={onRunInTerminal} />
-          ))}
+          {items.map((it, i) =>
+            /* A3：本轮文件汇总放在消耗尾注上方，只在 usage 节点前插一次（2026-09-06 Astra UI 规格） */
+            it.kind === "usage" ? (
+              <div key={i}>
+                <TurnFiles files={collectTurnFiles(items, i)} onPreview={onPreview} />
+                <Bubble item={it} onDismiss={() => removeItem(i)} onPreview={onPreview} onRunInTerminal={onRunInTerminal} />
+              </div>
+            ) : (
+              <Bubble key={i} item={it} onDismiss={() => removeItem(i)} onPreview={onPreview} onRunInTerminal={onRunInTerminal} />
+            ),
+          )}
         </div>
       </div>
 
@@ -832,8 +840,9 @@ export function ChatPanel({
             slogan 该有一个完整、够大的位置 —— 那个位置在上面，不是这儿。 */}
         {/* 本会话累计花费：只在真花过钱之后才出现，一行、极轻。
             客户原话「10 元很快就用完了」—— 他缺的不是省钱手段，是**看得见自己花到哪儿了**。 */}
+        {/* 2026-09-06 Astra UI 规格 A1：12px / ink-3，保留原位置（右对齐、输入框正上方） */}
         {spentCny > 0 && (
-          <div className="max-w-2xl mx-auto mb-1 text-right text-[10.5px] text-ink-5 font-mono">
+          <div className="max-w-2xl mx-auto mb-1 text-right text-[12px] text-ink-3 font-mono">
             {t("本会话累计 ≈¥{v}", { v: spentCny < 0.01 ? spentCny.toFixed(4) : spentCny.toFixed(2) })}
           </div>
         )}
@@ -1120,26 +1129,106 @@ function Bubble({ item, onDismiss, onPreview, onRunInTerminal }: { item: Item; o
     // **只渲染 AI 的**：用户自己敲的字要一字不差地回显，替他解析星号是擅自改他的话。
     return (
       <div className="group relative pr-12 text-[13.5px] leading-relaxed text-ink-1">
-        <MiniMd text={item.text} onRunInTerminal={onRunInTerminal} />
+        {/* resultTable：2026-09-06 Astra UI 规格 A4，只在聊天区域把表格排成结果表样式 */}
+        <MiniMd text={item.text} onRunInTerminal={onRunInTerminal} resultTable />
         <MsgActions text={item.text} onDismiss={onDismiss} />
       </div>
     );
   }
   if (item.kind === "usage") {
-    // 🔴 只显示**我们自己算的 ¥**，不显示上游的 $：客户走虾盘云时那个 $ 跟真实扣费无关
-    //（拿 Anthropic 价目表算 deepseek），而一个对不上的数字会让他连带不信别的数。
-    // 缓存读单列出来 —— 「为什么输入这么多」十有八九答案在这儿，藏起来他只会觉得我们乱扣。
-    const cost = item.cny > 0 ? ` · ≈¥${item.cny < 0.01 ? item.cny.toFixed(4) : item.cny.toFixed(2)}` : "";
-    const cache = item.cacheRead > 0 ? ` · 缓存读 ${item.cacheRead}` : "";
-    const sec = item.ms > 0 ? ` · ${(item.ms / 1000).toFixed(1)}s` : "";
-    return (
-      <div className="text-center text-[10.5px] text-ink-5 font-mono py-1">
-        ↑{item.inTok} ↓{item.outTok} tokens{cache}{cost}{sec}
-      </div>
-    );
+    return <UsageFooter item={item} />;
   }
   // tool 卡片
   return <ToolBubble item={item} onPreview={onPreview} />;
+}
+
+/**
+ * 轮次尾注（2026-09-06 Astra UI 规格 A1）：以前是一行 10.5px/ink-5 的裸 token 数字，
+ * 客户很难扫读。默认只留一句「本轮估算 ≈¥x · N 秒 · 用量详情」，费用 ink-2、耗时和
+ * 详情入口 ink-3；点「用量详情」才展开输入/输出/缓存读写的等宽明细。
+ * 模型徽章那段规格标了「需拍板」，本轮不做 —— 这里只整理既有的消耗行。
+ */
+function UsageFooter({ item }: { item: Extract<Item, { kind: "usage" }> }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  // 沿用现有精度规则：低于 1 分钱显示 4 位小数，否则 2 位。费用未知（<=0）就不显示 ¥0。
+  const costText = item.cny > 0 ? `≈¥${item.cny < 0.01 ? item.cny.toFixed(4) : item.cny.toFixed(2)}` : "";
+  const secText = item.ms > 0 ? fmtDur(Math.round(item.ms / 1000)) : "";
+  return (
+    <div className="mt-2 mb-4 text-[12px] leading-[20px]">
+      <div className="flex items-center gap-1 flex-wrap">
+        {costText && <span className="text-ink-2">{t("本轮估算 {c}", { c: costText })}</span>}
+        {secText && <span className="text-ink-3">· {secText}</span>}
+        <button type="button" onClick={() => setOpen((v) => !v)} className="text-ink-3 hover:text-ink-1">
+          · {t("用量详情")}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-1 font-mono text-[12px] text-ink-3 space-y-0.5">
+          <div>{t("输入 {n} tokens", { n: item.inTok })}</div>
+          <div>{t("输出 {n} tokens", { n: item.outTok })}</div>
+          {item.cacheRead > 0 && <div>{t("缓存读 {n} tokens", { n: item.cacheRead })}</div>}
+          {item.cacheWrite > 0 && <div>{t("缓存写 {n} tokens", { n: item.cacheWrite })}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A3｜本轮文件汇总（2026-09-06 Astra UI 规格）：只汇总**这一轮**（上一个 usage 节点之后、
+ * 当前 usage 节点之前）工具节点已经识别到的路径，按完整路径去重 —— 判据跟 `ToolBubble`
+ * 里挂「看得见的产出」用的是同一套（`deliverableExt` / `producedFiles`），不再造第二份识别逻辑。
+ * 首批叫「本轮文件」不叫「所有产物」：路径识别本身有限，不能保证完整发现（规格原文）。
+ */
+function collectTurnFiles(items: Item[], usageIdx: number): string[] {
+  let start = 0;
+  for (let i = usageIdx - 1; i >= 0; i--) {
+    if (items[i].kind === "usage") {
+      start = i + 1;
+      break;
+    }
+  }
+  const hits: string[] = [];
+  for (let i = start; i < usageIdx; i++) {
+    const it = items[i];
+    if (it.kind !== "tool" || !it.done || it.isError) continue;
+    const input = it.input as any;
+    const fromPath = input?.file_path || input?.path || "";
+    const targets = deliverableExt(fromPath) ? [fromPath] : producedFiles(it.output);
+    for (const p of targets) if (!hits.includes(p)) hits.push(p);
+  }
+  return hits;
+}
+
+/**
+ * 折叠入口「本轮文件（N）›」+ 展开列表。**没有文件整行隐藏**（规格数据规则）。
+ * 展开内容直接复用 `ProducedFile`（同一份检查 + 操作，不新开抽屉、不建第二份文件卡）。
+ */
+function TurnFiles({ files, onPreview }: { files: string[]; onPreview?: (p: string) => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  if (!files.length) return null;
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="h-7 flex items-center gap-1.5 px-1 -mx-1 rounded-md text-[12px] text-ink-2 hover:text-accent hover:bg-bg-2"
+      >
+        <FileIcon size={14} className="shrink-0" />
+        {t("本轮文件（{n}）", { n: files.length })}
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+      {open && (
+        <div className="mt-1 rounded-md border border-ink-5/30 bg-bg-1 p-3 space-y-2">
+          {files.map((p) => (
+            <ProducedFile key={p} path={p} onPreview={onPreview} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -1170,38 +1259,45 @@ export function ToolBubble({ item, onPreview }: { item: Extract<Item, { kind: "t
   const showOut = canToggle && open;
   const hint = toolHint(item.name, input);
   const [dir, base] = hintIsPath(item.name) ? splitPath(hint) : ["", ""];
+  /* 状态：图标 + 文字，不能只靠圆点颜色（2026-09-06 Astra UI 规格 A2）。
+   * 执行中 = accent、完成 = success-400、失败 = danger-400；仅失败节点保留边框 —— 其余
+   * 轻行默认透明底、无独立外框，悬停才有 bg-2（见下方容器 className）。 */
+  const StatusIcon = !item.done ? Loader2 : item.isError ? AlertTriangle : Check;
+  const statusLabel = !item.done ? t("执行中") : item.isError ? t("失败") : t("完成");
+  const statusTone = !item.done ? "text-accent" : item.isError ? "text-danger-400" : "text-success-400";
   return (
-    <div className="rounded-card border border-white/[0.08] bg-bg-1 overflow-hidden">
+    <div className={"overflow-hidden rounded-card " + (item.isError ? "border border-danger-500/25" : "")}>
       {/* 🔴 头部行**自己就是折叠开关**（抄 AI Elements 的 Tool 组件）。
           以前每张卡在头部之下另起一行「查看输出（N 行）」——一屏七八张卡就是七八行同样的灰字，
-          而那行字承载的信息只有一个数字。并进头部后：少一半行数，点击热区反而变大了一整行。 */}
+          而那行字承载的信息只有一个数字。并进头部后：少一半行数，点击热区反而变大了一整行。
+          A2：普通节点改轻行 —— 最小高 32px、水平内边距 12px，默认透明底无外框，悬停 bg-2。 */}
       <button
         type="button"
         disabled={!canToggle}
         onClick={canToggle ? () => setOpen((v) => !v) : undefined}
         className={
-          "w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left" +
-          (canToggle ? " hover:bg-white/[0.03] cursor-pointer" : " cursor-default")
+          "w-full flex items-center gap-2 min-h-[32px] px-3 text-[12px] text-left rounded-card" +
+          (canToggle ? " hover:bg-bg-2 cursor-pointer" : "")
         }
       >
-        <Icon size={13} className={"shrink-0 " + (item.isError ? "text-danger-400" : toolTone(item.name))} />
+        <Icon size={14} className={"shrink-0 " + (item.isError ? "text-danger-400" : toolTone(item.name))} />
         {/* 🔴 `shrink-0 whitespace-nowrap` 不是样式偏好，是防「运 行 命 令」竖排。
             flex 子项默认 `min-width:auto` —— 右边那条长命令**拒绝收缩到内容宽度以下**，
             于是压力全转嫁给左边这个没设 nowrap 的中文标签，被挤成一列一个字。
             中文没有词边界，任何两字之间都是合法断点，所以中文标签是这套布局里最先塌的一环，
             而英文 `Run command` 有空格、塌得没那么难看 —— 开发机切英文界面看不出来。
             右边的 `min-w-0` 是让 `truncate` 真的生效（没有它 truncate 是装饰）。 */}
-        <span className="font-medium text-ink-1 shrink-0 whitespace-nowrap">
+        <span className="text-ink-2 shrink-0 whitespace-nowrap">
           {item.name ? (TOOL_LABELS[item.name] ? t(TOOL_LABELS[item.name]) : item.name) : t("工具")}
         </span>
         {/* 路径：目录那截随便砍，文件名那截 shrink-0 永不收缩（见 splitPath 头注） */}
         {hintIsPath(item.name) && base ? (
-          <span className="flex items-baseline min-w-0 flex-1 font-mono text-[11px]">
-            <span className="truncate text-ink-5">{dir}</span>
+          <span className="flex items-baseline min-w-0 flex-1 font-mono text-[12px]">
+            <span className="truncate text-ink-3">{dir}</span>
             <span className="shrink-0 text-ink-3">{base}</span>
           </span>
         ) : (
-          <span className="text-ink-4 truncate font-mono text-[11px] min-w-0 flex-1">{hint}</span>
+          <span className="text-ink-3 truncate font-mono text-[12px] min-w-0 flex-1">{hint}</span>
         )}
         {canToggle && (
           <span className="shrink-0 flex items-center gap-0.5 text-[10.5px] text-ink-5">
@@ -1209,9 +1305,12 @@ export function ToolBubble({ item, onPreview }: { item: Extract<Item, { kind: "t
             {t("{n} 行", { n: lines })}
           </span>
         )}
-        <span className={"shrink-0 dot " + (item.done ? (item.isError ? "dot-warn" : "dot-on") : "dot-off")} />
+        <span className={"shrink-0 flex items-center gap-1 text-[11px] " + statusTone}>
+          <StatusIcon size={12} className={!item.done ? "animate-spin" : ""} />
+          {statusLabel}
+        </span>
       </button>
-      {/* Edit/Write → 内联 diff */}
+      {/* Edit/Write → 内联 diff。例外条款：diff 保留原有可见性，不藏进普通过程行。 */}
       {isEdit && input && (
         <DiffView
           path={input.file_path || input.path || ""}
@@ -1220,15 +1319,17 @@ export function ToolBubble({ item, onPreview }: { item: Extract<Item, { kind: "t
         />
       )}
       {/* 「看得见的产出」：干完活产出的文件，给一条真能拿到手的路。
-          文件类工具看路径，Bash 看输出里认得出的产出文件（认不出就不给按钮）。 */}
+          文件类工具看路径，Bash 看输出里认得出的产出文件（认不出就不给按钮）。
+          例外条款：产物卡保留原有可见性，不藏进普通过程行。 */}
       {item.done && !item.isError && (() => {
         const fromPath = input?.file_path || input?.path || "";
         const targets = deliverableExt(fromPath) ? [fromPath] : producedFiles(item.output);
         return targets.map((p) => <ProducedFile key={p} path={p} onPreview={onPreview} />);
       })()}
-      {/* 输出本体。开关已并进头部行 —— 这里不再单独占一行（见头部那段注释） */}
+      {/* 输出本体。开关已并进头部行 —— 这里不再单独占一行（见头部那段注释）。
+          A2：展开区 bg-1、12px 等宽、行高 18px、最大高 192px，保留原截断提示。 */}
       {showOut && item.output && (
-        <pre className="px-3 pb-2 text-[11px] leading-relaxed text-ink-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border-t border-white/[0.05] pt-2">
+        <pre className="px-3 pb-2 pt-2 text-[12px] leading-[18px] text-ink-3 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border-t border-white/[0.05] bg-bg-1">
           {item.output.length > 2000 ? item.output.slice(0, 2000) + t("\n…（已截断）") : item.output}
         </pre>
       )}

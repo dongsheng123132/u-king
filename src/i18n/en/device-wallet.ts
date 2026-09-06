@@ -65,4 +65,12 @@ export const deviceWallet: Record<string, string> = {
   "随盘凭据可用下方按钮随时移除": "The portable credential can be removed anytime with the button below",
   "首次制作会先下载并校验固定 runtime，再写入此盘的受管目录；不会格式化或扫描其它文件。P1 界面不提供更新入口（固定单一 runtime 版本）；随盘凭据是否写入由上方选项决定，写入后可随时用“移除此盘凭据”撤回。":
     "The first build downloads and verifies the pinned runtime, then writes it to this drive's managed directory; it never formats or scans unrelated files. The P1 UI has no update entry (a single pinned runtime version); whether the portable credential is written is decided by the option above, and once written it can be withdrawn anytime with \"Remove this drive's credential\".",
+  // 2026-09-06：已装盘的「AI 账号」格与底部提示需要区分「带凭据」/「不带凭据」两种事实，
+  // 以及未装盘的说明文字新增了一行「只会写这一把 key」。
+  "已带本机设备钱包 Key（官方算力）· 可随时移除": "Carries this machine's Device Wallet key (official compute) · removable anytime",
+  "未带凭据（此盘不含任何 Key）": "No credential (this drive holds no key)",
+  "只会写入这一把：本机设备钱包的官方算力 Key。AI 设置里其他供应商的 key 一律不会写入 U 盘。":
+    "Only this one key is ever written: this machine's Device Wallet official compute key. Any other provider keys in AI Settings are never written to the USB drive.",
+  "此盘已制作完成，制作选项只在未制作的盘上出现；随盘凭据状态见上方「AI 账号」，可随时移除。":
+    "This drive has already been built; build options only appear on drives that haven't been built yet. See the \"AI Account\" field above for the portable credential status — it can be removed anytime.",
 };

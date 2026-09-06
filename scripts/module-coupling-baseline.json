@@ -1,5 +1,5 @@
 {
-  "pairs": 49,
+  "pairs": 46,
   "why": "1a12a4b 的 tools/toolprobe 收敛重构引入的双向引用（TOOL_SPECS 单一真相源 + 探测标记），09-05 基线更新随 rm -rf 事故丢失，重新登记",
   "list": [
     "agent → device",
@@ -7,9 +7,6 @@
     "agent → origin",
     "agent → providers",
     "agent → video",
-    "arena → device",
-    "arena → providers",
-    "arena → toolprobe",
     "bundled_apps → miniapp",
     "claude_proxy → codex_proxy",
     "clawx → tools",

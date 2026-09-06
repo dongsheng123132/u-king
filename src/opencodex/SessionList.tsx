@@ -149,13 +149,6 @@ const NAV: { id: Exclude<WorkView, "chat">; label: string; hint: string; icon: t
   // 「护照」答**事情做到哪**（跨 AI 接力的状态），「看板」答**谁在跑**（会话生命周期）。
   { id: "passports", label: "护照", hint: "任务护照：一件事做到哪了，交给 Claude / DeepSeek / Codex 接着干", icon: ClipboardList },
   { id: "kanban", label: "看板", hint: "这台电脑上所有 AI 的会话「谁在跑 / 谁跑完 / 谁挂了」+ 定时任务", icon: LayoutDashboard },
-  // 「竞技场」2026-08-11 从工作台导航摘掉（**按误点代价，不是按好不好用**）：
-  // 点一次 = 六个 CLI 跑同一个任务 = **六倍 token**，而且非幂等（`arena.rs` 自己写着
-  // 「一跑就烧 token 且非幂等 → 不进动作表」）。它是横向评测玩具，不是日常干活的东西 ——
-  // 摆在天天要用的工作台第二格，是把全场最贵的按钮放在最顺手的位置。
-  // 代码全留着（Arena.tsx + arena.rs + `arena` 视图 + --arena-test），从导航摘掉即不可达；
-  // 要放回来把下面这行解开、并把 `Swords` 加回顶部 lucide-react 的 import。
-  // { id: "arena", label: "竞技场", hint: "六个 CLI 同任务横向比，系统只出可观测量、质量由人打星", icon: Swords },
   { id: "experts", label: "AI 专家", hint: "挑个专家，当场在这里开会话干活", icon: Users },
   { id: "automation", label: "自动化", hint: "定时任务：到点了让 AI 自己把活干了", icon: Zap },
 ];
