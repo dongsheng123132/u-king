@@ -1837,6 +1837,56 @@ fn managed_env(p: &Paths) -> Vec<(String, String)> {
     env
 }
 
+/// The portable gateway is an appliance.  Inheriting a host shell's provider
+/// credentials lets OpenClaw discover plugins that were never configured in
+/// this package (and can make their consent check reject a fresh profile).
+/// Keep only the Windows process basics and opt-in proxy routing; all
+/// OpenClaw, Node and model-provider settings come from `managed_env` below.
+fn configure_managed_openclaw_child(
+    command: &mut Command,
+    env: &[(String, String)],
+    portable: bool,
+) {
+    if portable {
+        command.env_clear();
+        for key in [
+            "SystemRoot",
+            "WINDIR",
+            "COMSPEC",
+            "PATH",
+            "PATHEXT",
+            "SYSTEMDRIVE",
+            "OS",
+            "PROCESSOR_ARCHITECTURE",
+            "PROCESSOR_ARCHITEW6432",
+            "NUMBER_OF_PROCESSORS",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "no_proxy",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+    } else {
+        // Desktop OpenClaw intentionally retains its historical host
+        // environment and profile behavior.
+        command.env_remove("OPENCLAW_HOME");
+    }
+    for (key, value) in env {
+        command.env(key, value);
+    }
+}
+
+fn is_managed_openclaw_env(env: &[(&str, &str)]) -> bool {
+    env.iter().any(|(key, _)| *key == "OPENCLAW_PROFILE")
+}
+
 fn gateway_argv(p: &Paths, port: u16) -> Vec<String> {
     vec![
         cli_file(p).to_string_lossy().to_string(),
@@ -2194,11 +2244,12 @@ fn launch_private_gateway(ps: &Paths, port: u16) -> Result<Value, String> {
         .current_dir(&ps.workspace)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .env_remove("OPENCLAW_HOME");
-    for (key, value) in managed_env(ps) {
-        cmd.env(key, value);
-    }
+        .stderr(Stdio::null());
+    configure_managed_openclaw_child(
+        &mut cmd,
+        &managed_env(ps),
+        crate::portable_context::current().is_some(),
+    );
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -2507,10 +2558,22 @@ fn run_capture(
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env_remove("OPENCLAW_HOME");
-    for (k, v) in env {
-        c.env(k, v);
+        .stderr(Stdio::piped());
+    if is_managed_openclaw_env(env) {
+        let owned: Vec<(String, String)> = env
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect();
+        configure_managed_openclaw_child(
+            &mut c,
+            &owned,
+            crate::portable_context::current().is_some(),
+        );
+    } else {
+        c.env_remove("OPENCLAW_HOME");
+        for (k, v) in env {
+            c.env(k, v);
+        }
     }
     #[cfg(windows)]
     {
@@ -3221,6 +3284,81 @@ mod tests {
         fs::create_dir_all(destination.parent()?).ok()?;
         fs::copy(source, &destination).ok()?;
         Some(destination)
+    }
+    #[cfg(windows)]
+    #[test]
+    fn portable_child_environment_excludes_host_model_and_node_injection() {
+        let p = paths_from_root(
+            std::env::temp_dir().join(format!("uking-openclaw2-env-{}", now_nanos())),
+        );
+        create_layout(&p).unwrap();
+        let node = private_node_for_gateway_test(&p).expect("测试机需要 Node");
+        let script = p.root.join("env-probe.mjs");
+        fs::write(
+            &script,
+            r#"const names=['DASHSCOPE_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','NODE_OPTIONS','NODE_PATH','OPENCLAW_HOME','OPENCLAW_CONFIG_PATH','OPENCLAW_PROFILE','SystemRoot','WINDIR','COMSPEC','PATH','PATHEXT'];
+console.log(JSON.stringify(Object.fromEntries(names.map((name) => [name, process.env[name] ?? null]))));"#,
+        )
+        .unwrap();
+        let inherited = [
+            ("DASHSCOPE_API_KEY", "host-dashscope-key"),
+            ("OPENAI_API_KEY", "host-openai-key"),
+            ("ANTHROPIC_API_KEY", "host-anthropic-key"),
+            ("NODE_OPTIONS", "--require host-injection"),
+            ("NODE_PATH", "C:\\host-node-path"),
+            ("OPENCLAW_HOME", "C:\\host-openclaw-home"),
+        ];
+        let previous: Vec<(&str, Option<std::ffi::OsString>)> = inherited
+            .iter()
+            .map(|(key, _)| (*key, std::env::var_os(key)))
+            .collect();
+        for (key, value) in inherited {
+            std::env::set_var(key, value);
+        }
+        let owned = vec![
+            ("OPENCLAW_PROFILE".into(), PROFILE.into()),
+            ("OPENCLAW_HOME".into(), p.root.to_string_lossy().to_string()),
+            (
+                "OPENCLAW_CONFIG_PATH".into(),
+                config_file(&p).to_string_lossy().to_string(),
+            ),
+        ];
+        let output = {
+            let mut command = Command::new(node);
+            command.arg(script).stdout(Stdio::piped()).stderr(Stdio::piped());
+            configure_managed_openclaw_child(&mut command, &owned, true);
+            command.output().expect("受管环境子进程必须可运行")
+        };
+        for (key, value) in previous {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let observed: Value = serde_json::from_slice(&output.stdout).unwrap();
+        for key in [
+            "DASHSCOPE_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+        ] {
+            assert!(observed[key].is_null(), "{key} 不能进入便携 OpenClaw 子进程");
+        }
+        assert_eq!(observed["OPENCLAW_HOME"], p.root.to_string_lossy().as_ref());
+        assert_eq!(
+            observed["OPENCLAW_CONFIG_PATH"],
+            config_file(&p).to_string_lossy().as_ref()
+        );
+        assert_eq!(observed["OPENCLAW_PROFILE"], PROFILE);
+        assert!(observed["PATH"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(
+            observed["SystemRoot"].as_str().is_some_and(|value| !value.is_empty())
+                || observed["WINDIR"].as_str().is_some_and(|value| !value.is_empty())
+        );
+        let _ = fs::remove_dir_all(&p.root);
     }
     #[cfg(windows)]
     fn unused_gateway_port_base() -> u16 {
