@@ -5,6 +5,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
+import { PortableApp } from "./PortableApp";
 import { TerminalWindow } from "./TerminalWindow";
 import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -90,7 +91,7 @@ window.addEventListener(
 // 重建之后，上一轮遗留的孤儿会话没有任何人认领，却会被这条全局心跳一起刷活、永远回收不掉。
 // 带上归属后，孤儿自然老化到 HEARTBEAT_TIMEOUT 被收走 —— 后端那条按「会话总数」乱杀的
 // MAX_SESSIONS 兜底也就不需要了（它会误杀用户正开着的终端，见 term.rs::reap_stale）。
-setInterval(() => {
+const startTermHeartbeat = () => setInterval(() => {
   void invoke("term_ping", { alive: ownedSessions() }).catch(() => {});
 }, 20_000);
 
@@ -104,10 +105,16 @@ setInterval(() => {
  */
 const isTerminalWindow = new URLSearchParams(location.search).get("pane") === "terminal";
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <I18nProvider>{isTerminalWindow ? <TerminalWindow /> : <App />}</I18nProvider>
-    </ErrorBoundary>
-  </React.StrictMode>,
-);
+async function mount() {
+  const portable = !isTerminalWindow && (await invoke<{ portable?: boolean }>("portable_context_status").catch(() => ({ portable: false }))).portable === true;
+  if (!portable) startTermHeartbeat();
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <I18nProvider>{isTerminalWindow ? <TerminalWindow /> : portable ? <PortableApp /> : <App />}</I18nProvider>
+      </ErrorBoundary>
+    </React.StrictMode>,
+  );
+}
+
+void mount();

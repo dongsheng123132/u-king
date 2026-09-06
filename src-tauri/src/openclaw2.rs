@@ -1198,6 +1198,35 @@ pub fn stop() -> Result<Value, String> {
     Ok(json!({"changed":true,"stopped":true,"state_version":state_version()}))
 }
 
+/// Verify the owned gateway and construct its private dashboard URL. The URL
+/// itself never crosses an Action boundary: it contains the gateway token and
+/// is handed only to Tauri's opener by the small desktop transport shell.
+pub fn dashboard_target() -> Result<String, String> {
+    let ps = paths();
+    let (port, _pid, owned) = supervisor_status(&ps)?;
+    let port = port.ok_or("OpenClaw2 尚未启动")?;
+    if !owned || !port_listening(port) {
+        return Err("OpenClaw2 Gateway 未由此便携包运行，拒绝打开面板".into());
+    }
+    let config: Value = serde_json::from_slice(
+        &fs::read(config_file(&ps)).map_err(|_| "OpenClaw2 私有配置不可读")?,
+    )
+    .map_err(|_| "OpenClaw2 私有配置已损坏")?;
+    let token = config
+        .pointer("/gateway/auth/token")
+        .and_then(Value::as_str)
+        .filter(|token| !token.is_empty())
+        .ok_or("OpenClaw2 私有 gateway token 不存在")?;
+    Ok(format!("http://127.0.0.1:{port}/#token={token}"))
+}
+
+/// Action Core counterpart to the desktop opener. It proves ownership and
+/// readiness but deliberately returns no token-bearing URL.
+pub fn open_dashboard() -> Result<Value, String> {
+    let _ = dashboard_target()?;
+    Ok(json!({"changed":false,"opened":true,"state_version":state_version()}))
+}
+
 /// Start only the private command line. The public Action performs install
 /// and profile validation first; keeping the spawn/ownership path separate
 /// makes its race-handling testable against a real private child process.
@@ -1606,6 +1635,7 @@ pub fn action_launch(_: &str, _: Value, _: &crate::actions::ProgressSink) -> Res
     launch()
 }
 pub fn action_stop(_: &str, _: Value, _: &crate::actions::ProgressSink) -> Result<Value, String> { stop() }
+pub fn action_open_dashboard(_: &str, _: Value, _: &crate::actions::ProgressSink) -> Result<Value, String> { open_dashboard() }
 
 #[cfg(test)]
 mod tests {

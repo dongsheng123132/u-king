@@ -2047,6 +2047,18 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             openclaw2::action_stop,
             Some(openclaw2::state_version),
         ),
+        actions::write(
+            actions::OPENCLAW2_OPEN_DASHBOARD,
+            "Open the isolated OpenClaw 2 dashboard",
+            "Verify that only this package owns the running gateway before the desktop transport opens its local dashboard. The Action output never contains the gateway token.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["changed", "opened", "state_version"],
+            openclaw2::action_open_dashboard,
+            Some(openclaw2::state_version),
+        ),
         actions::readonly(
             actions::USB_GENIE_INSPECT,
             "Inspect removable USB AI Genie targets",
@@ -6327,6 +6339,43 @@ async fn get_driver_status() -> serde_json::Value {
     run_action_blocking(actions::DRIVER_INSPECT).await
 }
 
+/// The frontend must decide which application to mount before any desktop
+/// effects run.  Expose only the marker state and package-local data root;
+/// callers never need an OS home directory to render the portable shell.
+#[tauri::command]
+fn portable_context_status() -> serde_json::Value {
+    match portable_context::current() {
+        Some(context) => serde_json::json!({
+            "portable": true,
+            "data_root": context.uking_home(),
+            "openclaw_root": context.openclaw_root(),
+        }),
+        None => serde_json::json!({"portable": false}),
+    }
+}
+
+/// Desktop transport for the token-bearing local URL. The Action Core checks
+/// ownership first and returns a redacted result; only this process passes the
+/// private URL to the operating system's opener.
+#[tauri::command]
+async fn open_portable_openclaw_dashboard(app: AppHandle) -> Result<(), String> {
+    if portable_context::current().is_none() {
+        return Err("当前不是 OpenClaw 便携预览包".into());
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        actions::run(
+            actions::OPENCLAW2_OPEN_DASHBOARD,
+            serde_json::json!({"confirm": true}),
+        )
+    })
+    .await
+    .map_err(|e| format!("动作执行任务异常: {e}"))??;
+    let target = openclaw2::dashboard_target()?;
+    app.opener()
+        .open_url(target, None::<String>)
+        .map_err(|e| format!("打开 OpenClaw 面板失败: {e}"))
+}
+
 /// 每日消耗趋势（最近 N 天）。
 #[tauri::command]
 fn get_usage_trend(days: Option<usize>) -> usage::UsageTrend {
@@ -10377,6 +10426,8 @@ pub fn run() {
             usage_sources,
             set_usage_sources,
             get_driver_status,
+            portable_context_status,
+            open_portable_openclaw_dashboard,
             get_device_key,
             save_health_report,
             ai_diagnose,
@@ -10485,12 +10536,33 @@ pub fn run() {
                 ]);
             move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
                 let label = invoke.message.webview().label().to_string();
+                let cmd = invoke.message.command().to_string();
                 if label.starts_with("miniapp-") {
-                    let cmd = invoke.message.command().to_string();
                     eprintln!("[miniapp] 拒绝宿主命令调用: {label} → {cmd}");
                     invoke
                         .resolver
                         .reject("forbidden: 小程序不得直接调用宿主命令，请走 uking:// 桥");
+                    return true;
+                }
+                // A portable bundle is deliberately a narrow appliance. The
+                // full desktop command table remains compiled for the normal
+                // product, but cannot be reached from a portable WebView (or
+                // its devtools) to write a host configuration.
+                if portable_context::current().is_some()
+                    && !matches!(
+                        cmd.as_str(),
+                        "portable_context_status"
+                            | "get_device_key"
+                            | "open_recharge"
+                            | "open_portable_openclaw_dashboard"
+                            | "action_run"
+                            | "action_parity_call"
+                    )
+                {
+                    eprintln!("[portable] 拒绝宿主命令调用: {label} → {cmd}");
+                    invoke
+                        .resolver
+                        .reject("forbidden: OpenClaw 便携预览只允许受管动作");
                     return true;
                 }
                 inner(invoke)

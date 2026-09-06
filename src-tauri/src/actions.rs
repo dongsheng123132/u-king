@@ -310,6 +310,7 @@ pub const OPENCLAW2_LAUNCH: &str = "runtime.openclaw2.launch";
 pub const OPENCLAW2_CONFIGURE_MODEL: &str = "runtime.openclaw2.configure_model";
 pub const OPENCLAW2_CONFIGURE_MODEL_NO_PROBE: &str = "runtime.openclaw2.configure_model_no_probe";
 pub const OPENCLAW2_STOP: &str = "runtime.openclaw2.stop";
+pub const OPENCLAW2_OPEN_DASHBOARD: &str = "runtime.openclaw2.open_dashboard";
 pub const USB_GENIE_INSPECT: &str = "runtime.usb_genie.inspect";
 pub const USB_GENIE_DEPLOY: &str = "runtime.usb_genie.deploy";
 pub const USB_GENIE_VERIFY: &str = "runtime.usb_genie.verify";
@@ -1155,6 +1156,9 @@ pub fn run_with_execution_id(
 }
 
 fn run_inner(id: &str, input: Value, progress: &ProgressSink) -> Result<Value, String> {
+    if crate::portable_context::current().is_some() && !crate::portable_context::action_allowed(id) {
+        return Err(format!("forbidden: 便携 OpenClaw 预览不允许动作 `{id}`"));
+    }
     let action = table()
         .into_iter()
         .find(|a| a.spec.id == id)

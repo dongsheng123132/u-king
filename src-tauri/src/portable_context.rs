@@ -69,6 +69,24 @@ pub fn validate_current_executable() -> Result<(), String> {
 pub fn uking_home() -> Option<PathBuf> { current().map(|ctx| ctx.uking_home()) }
 pub fn openclaw_root() -> Option<PathBuf> { current().map(|ctx| ctx.openclaw_root()) }
 
+/// The preview is an appliance, not a second route into the desktop product.
+/// Keep this list next to the marker contract so CLI, MCP and WebView callers
+/// all receive the same fail-closed answer before an unrelated Action can
+/// inspect or alter host state.
+pub fn action_allowed(id: &str) -> bool {
+    matches!(
+        id,
+        "runtime.openclaw2.inspect"
+            | "runtime.openclaw2.prepare"
+            | "runtime.openclaw2.preflight"
+            | "runtime.openclaw2.launch"
+            | "runtime.openclaw2.open_dashboard"
+            | "runtime.openclaw2.configure_model_no_probe"
+            | "runtime.openclaw2.configure_model"
+            | "runtime.openclaw2.stop"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
