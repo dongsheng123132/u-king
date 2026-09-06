@@ -2882,9 +2882,22 @@ fn terminate_capture_tree_bounded(pid: u32) {
     }
     #[cfg(not(windows))]
     {
-        // Preserve the established Unix tree/group behavior. This path adds
-        // no wait operation; the direct child still has its bounded reap.
-        crate::agent::chat::kill_tree_by_pid(pid);
+        // Kill the group first, then the direct child. Both are spawned and
+        // deliberately not waited on: timeout cleanup itself must stay
+        // bounded even when a platform command misbehaves.
+        let group = format!("-{pid}");
+        let _ = Command::new("kill")
+            .args(["-TERM", group.as_str()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        let _ = Command::new("kill")
+            .arg(pid.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
     }
 }
 
