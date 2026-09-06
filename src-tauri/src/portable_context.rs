@@ -143,6 +143,8 @@ pub fn action_allowed(id: &str) -> bool {
             | "runtime.openclaw2.configure_model"
             | "runtime.openclaw2.stop"
             | "runtime.device.wallet.recharge"
+            | "runtime.device.wallet.status"
+            | "runtime.device.wallet.copy_backup"
             | "runtime.device.key_adopt"
             | "runtime.device.key_rotate"
             | "runtime.device.wallet_reset_local"
@@ -221,6 +223,21 @@ mod tests {
         .unwrap();
         assert!(from_root(root.clone()).is_err());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn wallet_actions_are_limited_to_the_managed_wallet_contract() {
+        for id in [
+            "runtime.device.wallet.recharge",
+            "runtime.device.wallet.status",
+            "runtime.device.wallet.copy_backup",
+            "runtime.device.key_adopt",
+            "runtime.device.key_rotate",
+            "runtime.device.wallet_reset_local",
+        ] {
+            assert!(action_allowed(id), "便携钱包动作必须经过同一个白名单: {id}");
+        }
+        assert!(!action_allowed("runtime.device.wallet.delete_server_wallet"));
     }
 
     #[cfg(windows)]
