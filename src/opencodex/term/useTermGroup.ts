@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -23,6 +24,15 @@ import { createTermInputQueue, type TermInputQueue } from "./inputQueue";
 import { createPaintRepair, type PaintRepair } from "./paintRepair";
 // 右键菜单是原生 DOM 建的，够不到 React context —— 用非 hook 版翻译
 import { translate } from "../../i18n";
+
+// `~`（TUI 爱用的家目录缩写，见 fileLinks.ts）要展开成绝对路径得知道家目录在哪；
+// 模块级只取一次即可 —— 同一台机器上它不会变。取失败就静默，行为退回展开前的现状。
+let cachedHome: string | undefined;
+void homeDir()
+  .then((h) => {
+    cachedHome = h;
+  })
+  .catch(() => {});
 
 /**
  * 终端配色主题 —— 三套预设 + 完整 16 色 ANSI 调色板。
@@ -866,6 +876,7 @@ export function useTermGroup(opts: {
     // AI 干完活最后那句「已生成 D:\xx\报告.docx」原本是死字，客户只能自己去资源管理器翻。
     s.unlink = registerFileLinks(term, el, {
       cwd: () => s.cwd ?? undefined,
+      home: () => cachedHome,
       // 🔴 候选路径要**逐个问过磁盘**再往下传。终端里那行常常只有文件名，
       // 目录写在上面另一行 —— 只按「终端当前目录」拼就会拼到一个不存在的地方，
       // 于是预览 404、默认程序打开报错、而「复制路径」还会不声不响地复制一条错路径。

@@ -236,6 +236,8 @@ export function candidatePaths(
   dirHints: string[],
   /** 这个链接**前面**那截原文（同一行）。用来救「文件名里有空格」—— 见下。 */
   linePrefix = "",
+  /** 终端进程的家目录，给 `~` 展开用（见 resolvePath）。 */
+  home?: string,
 ): string[] {
   const out: string[] = [];
   const push = (p: string) => {
@@ -250,7 +252,7 @@ export function candidatePaths(
   if (m && !/[\\/]/.test(text)) names.push(`${m[1]} ${text}`);
 
   for (const n of names) {
-    push(resolvePath(n, cwd));
+    push(resolvePath(n, cwd, home));
     if (!/[\\/]/.test(n)) {
       for (const d of dirHints) push(d + (d.includes("\\") ? "\\" : "/") + n);
     }
@@ -258,8 +260,18 @@ export function candidatePaths(
   return out;
 }
 
-/** 相对路径拼到 cwd 上；绝对路径原样返回。**不碰文件系统**，纯字符串。 */
-export function resolvePath(raw: string, cwd?: string): string {
+/** `~`（后面接分隔符或到此为止）—— TUI（pi/claude 等）爱用的家目录缩写。
+ *  Windows 上普通 shell 不展开它，所以它会原样出现在输出里；不认出来就会被当成
+ *  相对路径拼到终端 cwd 上，点开必 404（`~abc` 这种是用户名形式，不算，故意排除）。 */
+const HOME_PREFIX = /^~(?=[\\/]|$)/;
+
+/** 相对路径拼到 cwd 上；绝对路径原样返回。**不碰文件系统**，纯字符串。
+ *  `home` 缺失时保持现状（`~` 当普通相对路径拼 cwd，不抛错）。 */
+export function resolvePath(raw: string, cwd?: string, home?: string): string {
+  if (home && HOME_PREFIX.test(raw)) {
+    const rest = raw.slice(1);
+    return rest ? home.replace(/[\\/]$/, "") + rest : home;
+  }
   const isAbs = /^([A-Za-z]:[\\/]|\\\\|\/)/.test(raw);
   if (isAbs || !cwd) return raw;
   const sep = cwd.includes("\\") ? "\\" : "/";
@@ -294,6 +306,8 @@ type LinkableTerm = {
 export type FileLinkHooks = {
   /** 终端的工作目录，用于把相对路径拼成绝对路径。 */
   cwd?: () => string | undefined;
+  /** 终端进程的家目录，用于把 `~` 展开成绝对路径（见 resolvePath）。 */
+  home?: () => string | undefined;
   /** 左键点了一个**文件路径**。`candidates` 按可信度排序，第一项就是 `absPath`；
    *  调用方应逐个问后端「在不在」，取第一个存在的（见 `candidatePaths`）。 */
   onOpen: (absPath: string, candidates: string[]) => void;
@@ -352,7 +366,7 @@ export function registerFileLinks(term: LinkableTerm, el: HTMLElement, hooks: Fi
       const needHints = hits.some((h) => h.kind === "path" && !/[\\/]/.test(h.text));
       const hints = needHints ? dirHintsAbove(first + 1) : [];
       const candsOf = (text: string, at: number) =>
-        candidatePaths(text, hooks.cwd?.(), hints, line.slice(0, at));
+        candidatePaths(text, hooks.cwd?.(), hints, line.slice(0, at), hooks.home?.());
 
       /** 逻辑行里的字符下标 → xterm 的 (列, 行)。列是**格**不是字符（全角占两格）。 */
       const posOf = (idx: number, inclusive: boolean) => {
