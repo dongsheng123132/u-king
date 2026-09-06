@@ -4,12 +4,14 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const arg = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? null : process.argv[i + 1] ?? null;
 };
 const out = arg("--out"), exe = arg("--exe"), cache = arg("--runtime-cache"), compat = arg("--fs-safe-compat"), compatLicense = arg("--fs-safe-license"), version = arg("--version");
+const requestedCommit = arg("--source-commit"), productionBuildCommand = arg("--production-build-command") ?? "pnpm tauri build --no-bundle";
 if (!out || !exe || !cache || !compat || !compatLicense || !version) {
   throw new Error("usage: node scripts/build-openclaw-portable.mjs --out <dir> --exe <U-King.exe> --runtime-cache <verified runtime> --fs-safe-compat <audited fs-safe 0.8.2 dist> --fs-safe-license <MIT license file> --version <version>");
 }
@@ -18,6 +20,9 @@ const root = path.resolve(out, `U-King-OpenClaw-Portable-${version}-win-x64`);
 if (path.dirname(root) !== path.resolve(out)) throw new Error("portable output escapes requested directory");
 const oc = path.join(root, "U-King", "OpenClaw");
 const sha = async (file) => createHash("sha256").update(await readFile(file)).digest("hex");
+const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+if (execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim()) throw new Error("refusing to package a dirty source tree");
+if (requestedCommit && requestedCommit !== sourceCommit) throw new Error("--source-commit does not match the clean source HEAD");
 const compatRoot = path.resolve(compat);
 if ((await stat(compatRoot)).isDirectory() === false) throw new Error("fs-safe compatibility input must be a directory");
 const pinned = JSON.parse(await readFile(new URL("../src-tauri/resources/openclaw2-runtime.json", import.meta.url), "utf8"));
@@ -35,6 +40,10 @@ const digestTree = async (dir) => {
   return createHash("sha256").update(rows.sort().join("")).digest("hex");
 };
 const installed = JSON.parse(await readFile(path.join(cache, "installed.json"), "utf8"));
+const runtimeTree = await digestTree(cache);
+if (runtimeTree !== "bf78dbf27a3bae3155e53aae49edf548d59e2615b5660ceef260011d4af78003") {
+  throw new Error("clean runtime tree hash mismatch");
+}
 const nodeArchive = path.join(cache, "node-v24.15.0-win-x64.zip");
 const ocArchive = path.join(cache, "openclaw-2026.8.1.tgz");
 if (await sha(nodeArchive) !== pinned.node.windows_x64_sha256 || installed.node_sha256 !== pinned.node.windows_x64_sha256) throw new Error("runtime cache Node archive does not match the source-pinned runtime manifest");
@@ -94,11 +103,12 @@ const workspaceAfter = [
 await writeFile(workspacePath, workspaceAfter);
 const workspaceHash = await sha(workspacePath);
 await writeFile(path.join(root, "PATCHES.md"), `# OpenClaw portable runtime\n\nOpenClaw 2026.8.1 and its locked @openclaw/fs-safe 0.5.6 are copied from the verified input archives. Only its workspace writer is patched at build time: on Windows with the explicit package-owned \`UKING_PORTABLE_COMPAT_EXFAT=1\` switch it imports the bundled fs-safe 0.8.2 sidecar and requests \`verify-content-with-lock\`; every other path retains upstream strict behavior. The sidecar is source revision 524e2a2dd50c390f924a0360c6c71ddf74f70f42 plus patches/fs-safe08-windows-compat.patch.\n`);
+await cp(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "LICENSE"), path.join(root, "LICENSES", "U-King-Apache-2.0.txt"));
 await cp(path.join(oc, "runtime", "app", "node_modules", "openclaw", "LICENSE"), path.join(root, "LICENSES", "OpenClaw-MIT.txt"));
 await cp(compatLicense, path.join(root, "LICENSES", "fs-safe-MIT.txt"));
 await writeFile(path.join(root, "LICENSES", "U-King-NOTICE.txt"), "U-King source: https://github.com/dongsheng123132/u-king\nOpenClaw: MIT; see OpenClaw-MIT.txt.\nfs-safe compatibility sidecar: MIT; see fs-safe-MIT.txt.\n");
-await writeFile(path.join(root, "启动 OpenClaw.cmd"), "@echo off\r\nsetlocal\r\n\"%~dp0U-King.exe\" action run runtime.openclaw2.launch --yes --json --no-input\r\nendlocal\r\n");
-await writeFile(path.join(root, "README.txt"), "U-King OpenClaw 绿色预览包。双击 U-King.exe 后，使用专用页面完成一键配置、充值、启动和进入。充值只在系统浏览器打开页面，不会自动支付。首次包不含账户、密钥或历史数据。\r\n");
+await writeFile(path.join(root, "启动 OpenClaw.cmd"), "@echo off\r\nstart \"\" \"%~dp0U-King.exe\"\r\n");
+await writeFile(path.join(root, "README.txt"), "U-King OpenClaw 绿色预览包。双击 U-King.exe（或 启动 OpenClaw.cmd）后，在专用页面依次一键配置、启动、进入。需要 Windows WebView2；包内已包含 Node 和 OpenClaw。充值只在系统浏览器打开页面，不会自动支付。首次包不含账户、密钥或历史数据。\r\n");
 
 async function files(dir, base = dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -111,7 +121,7 @@ async function files(dir, base = dir) {
   }
   return result;
 }
-const manifest = { schema_version: 1, version, root_name: path.basename(root), openclaw: { version: pinned.openclaw_version, fs_safe: "0.5.6", config_writer: `dist/${io}`, sha256: configWriterHash, workspace_writer: `dist/${workspace}`, workspace_before_sha256: createHash("sha256").update(workspaceBefore).digest("hex"), workspace_after_sha256: workspaceHash, patched: true }, fs_safe_compat: { version: "0.8.2", source_revision: "524e2a2dd50c390f924a0360c6c71ddf74f70f42", tree_sha256: compatTreeHash, root_impl_sha256: compatRootImplHash, native_mode: "off" }, files: (await files(root)).length };
+const manifest = { schema_version: 1, version, root_name: path.basename(root), source_commit: sourceCommit, exe_sha256: await sha(exe), production_build_command: productionBuildCommand, runtime_input: { tree_sha256: runtimeTree, files: 37786 }, openclaw: { version: pinned.openclaw_version, fs_safe: "0.5.6", config_writer: `dist/${io}`, sha256: configWriterHash, workspace_writer: `dist/${workspace}`, workspace_before_sha256: createHash("sha256").update(workspaceBefore).digest("hex"), workspace_after_sha256: workspaceHash, patched: true }, fs_safe_compat: { version: "0.8.2", source_revision: "524e2a2dd50c390f924a0360c6c71ddf74f70f42", tree_sha256: compatTreeHash, root_impl_sha256: compatRootImplHash, native_mode: "off" }, files: (await files(root)).length };
 await writeFile(path.join(root, "runtime-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 const entries = await files(root);
 // Runtime dependencies contain tens of thousands of files. Hash sequentially

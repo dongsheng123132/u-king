@@ -5,8 +5,12 @@ import path from "node:path";
 const root = process.argv[2];
 if (!root) throw new Error("usage: node scripts/verify-openclaw-portable.mjs <unpacked-root>");
 const sum = await readFile(path.join(root, "SHA256SUMS.txt"), "utf8");
+const listed = new Set();
 for (const line of sum.trim().split(/\r?\n/)) {
   const [expected, rel] = line.split(/  /, 2);
+  if (!/^[a-f0-9]{64}$/.test(expected) || !rel || rel.includes("\\") || rel.split("/").some((part) => !part || part === "." || part === "..")) throw new Error(`unsafe hash entry: ${line}`);
+  if (listed.has(rel)) throw new Error(`duplicate hash entry: ${rel}`);
+  listed.add(rel);
   const full = path.join(root, ...rel.split("/"));
   if (!(await stat(full)).isFile()) throw new Error(`missing package file: ${rel}`);
   const actual = createHash("sha256").update(await readFile(full)).digest("hex");
@@ -14,7 +18,7 @@ for (const line of sum.trim().split(/\r?\n/)) {
 }
 const marker = JSON.parse(await readFile(path.join(root, "portable.json"), "utf8"));
 if (marker.owner !== "u-king-openclaw-portable" || marker.runtime_id !== "openclaw2") throw new Error("unsafe portable marker");
-for (const rel of ["U-King/OpenClaw/state", "U-King/OpenClaw/workspace", "U-King/OpenClaw/run", "U-King/data/uking"]) {
+for (const rel of ["U-King/OpenClaw/state", "U-King/OpenClaw/workspace", "U-King/OpenClaw/run", "U-King/OpenClaw/logs", "U-King/data/uking"]) {
   const children = await readdir(path.join(root, rel));
   if (children.length) throw new Error(`initial mutable directory is not empty: ${rel}`);
 }
@@ -28,6 +32,10 @@ async function walk(dir) {
   }
   return out;
 }
+const actual = new Set((await walk(root)).map((file) => path.relative(root, file).replaceAll("\\", "/")));
+actual.delete("SHA256SUMS.txt");
+for (const rel of actual) if (!listed.has(rel)) throw new Error(`package file missing from SHA256SUMS: ${rel}`);
+for (const rel of listed) if (!actual.has(rel)) throw new Error(`SHA256SUMS entry missing from package: ${rel}`);
 // Initial packages must not carry a real device/API token. Deliberately scan
 // values, rather than just filenames; source examples such as `sk-example`
 // are below the minimum credential length and do not mask this check.
