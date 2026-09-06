@@ -166,7 +166,8 @@ export const app: Record<string, string> = {
   "一键安装 ClawX": "One-click install ClawX",
   "我装好的 AI 工具": "My installed AI tools",
   // 「重新安装 / 修复」改名（2026-08-20）：它一直**同时就是升级**，只是没人猜得到
-  "升级 / 修复（重装到最新版）": "Upgrade / repair (reinstall latest)",
+  // 2026-09-06 方案「⑨工具卡压缩」：从卡底整宽横条挪到右列 h-8 紧凑入口，文案缩短。
+  "升级 / 修复": "Upgrade / repair",
   "重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里":
     "Runs the install again. Nothing in the install manifest is version-pinned except DSH, so this doubles as **upgrading to the latest**; also use it when a tool is broken, unusable, or still shows as “installed” after you removed it.",
   "复制内置 Key": "Copy built-in key",
