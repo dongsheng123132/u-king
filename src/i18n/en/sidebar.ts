@@ -42,6 +42,8 @@ export const sidebar: Record<string, string> = {
 
   // 更多 MORE
   "更多": "More",
+  "装机向导": "Setup Wizard",
+  "装 AI 工具 · 配驱动 · 修安装": "Install AI tools · Configure drivers · Repair install",
 
   // 实验室 LAB（2026-07-27 做减法：没毕业的功能收进这里）
   "实验室": "Labs",

@@ -6,7 +6,7 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, Hammer, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { SidebarMiniApps } from "./SidebarMiniApps";
@@ -111,6 +111,11 @@ const CORE: NavItem[] = [
 /** 「更多」—— 进阶/工具页，默认折叠，不让小白眼花。
  *  排序：使用向（虾盘云/教程/专家/Codex）在前，维护向（优化/备份/进阶）在后。 */
 const MORE: NavItem[] = [
+  // 「装机向导」（2026-09-06 生手引导审计定案）：装机向导页（setup）此前在侧栏没有任何入口，
+  // 生手离开这页想回来，只能靠「我的 AI」页按钮或 StatusLine 横幅——补一条常驻可达的入口。
+  // 放本组靠前（生手要用的东西别垫底），但仍归「更多」不进核心——它是「装一次」的漏斗页，
+  // 真正天天用的落脚点是「我的 AI」（核心②），这条只负责「回得去」。
+  { id: "setup", label: "装机向导", sub: "装 AI 工具 · 配驱动 · 修安装", icon: Hammer },
   // 便携 AI 只有这一处管理入口。PicoClaw 先接入；OpenClaw / ClawX 必须各自通过
   // 便携落盘与真盘验收，不能因为共用 UI 就提前宣称可用。
   { id: "usbgenie", label: "U盘工具盘", sub: "随身 AI · 检查 · 启动", icon: HardDrive },

@@ -923,6 +923,24 @@ export function App() {
   // 接入改成显式可还原入口。铁律（CLAUDE.md 第 10 条）：绝不抢、不挤占用户自己的 Key。
   const usingOwnKey = !!(driver?.claude_own_key || driver?.codex_own_key);
 
+  // 装机向导页（tab==="setup"）此前进页面不会自动开始向导，要再点一次「一键全安装/
+  // 逐个选装」按钮才出向导（生手引导审计定案窟窿②）。这里补一个「进页面自动拉起」：
+  // 仅当**一个 AI 工具都没装**（复用 setupState.next_step === "install_tool"——onStatusAction
+  // 上面那条已经在用同一个信号判断「该不该去装」，是现成、可靠、后端权威计算好的检测，
+  // 不再自己另发明一套判断）时才自动拉起，且走「逐个选装」（startWizard，preselect: null）
+  // 而不是「一键全装」——自动触发不该替用户选激进路径。
+  // 🔴 防重复拉起：setup 页的向导没有关闭按钮，用户手动关不掉；因此这里 effect 依赖只放
+  // `tab`，只在「每次进入 setup 页」判一次——wizard 一旦从 null 变非 null（不论是这里自动
+  // 拉起的，还是用户手动点按钮拉起的），guard `if (wizard) return` 就会挡住后续任何重复
+  // 触发，不会出现「向导刚被用户操作又被这条 effect 重置」的情况。
+  useEffect(() => {
+    if (tab !== "setup") return;
+    if (wizard) return;
+    if (setupState?.next_step !== "install_tool") return;
+    startWizard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   const onStatusAction = () => {
     if (!setupState) return;
     if (setupState.next_step === "recharge") {
