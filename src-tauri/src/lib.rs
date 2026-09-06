@@ -11,7 +11,6 @@
 mod agent;
 mod airuntime;
 mod aitasks;
-mod arena;
 mod artifacts;
 mod backup;
 mod browser;
@@ -5304,51 +5303,6 @@ async fn rtk_uninstall() -> Result<String, String> {
     Ok(action_field(v, "message", serde_json::Value::Null).as_str().unwrap_or("").to_string())
 }
 
-/// 竞技场：六个 CLI 同任务横向比（claude / codex / hermes / pi / qwen / crush）。
-///
-/// 一跑就烧 token 且非幂等，**不进影核动作表**（跟「立即运行一次」同类）—— 前端点
-/// 「开赛」就是显式确认。每个参赛者在 `workspace/arena/<tool>/` 独立副本里跑，互不干扰。
-/// 返回**可观测量**（耗时/退出码/有没有产出），质量由前端让人打星。
-#[tauri::command]
-async fn arena_run(
-    app: AppHandle,
-    task: String,
-    workspace: String,
-    only: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let task2 = task.clone();
-    let ws = workspace.clone();
-    let o = only.clone();
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        // 🔴 **空 / "." 不许当工作目录用。**
-        // 前端在没有活动任务时会传 "."，那是 app 的 CWD —— 对已安装的版本就是
-        // `%LOCALAPPDATA%\u-king\`。六个 CLI 在那儿真跑真写文件，客户根本找不到产出，
-        // 表现就是「点了开赛，好像什么也没发生」。落到一个**可预期、找得到**的地方。
-        let trimmed = ws.trim();
-        let ws_path = if trimmed.is_empty() || trimmed == "." {
-            crate::installer::user_home_dir().join(".uking").join("arena")
-        } else {
-            std::path::PathBuf::from(trimmed)
-        };
-        let _ = std::fs::create_dir_all(&ws_path);
-        // 把真正用的目录回给前端 ——「跑在哪」必须说出来，否则用户找不到产出
-        // 只会以为功能坏了（同一条：不许静默）。
-        let _ = app2.emit(
-            "uking:arena_progress",
-            format!("工作副本根目录：{}", ws_path.display()),
-        );
-        let results = arena::run_arena(&task2, &ws_path, o.as_deref(), &|m| {
-            let _ = app2.emit("uking:arena_progress", m.to_string());
-        });
-        let json = serde_json::to_value(&results).unwrap_or_else(|_| serde_json::json!([]));
-        let _ = app.emit("uking:arena_done", json.clone());
-        json
-    })
-    .await
-    .map_err(|e| format!("竞技场调度失败: {e}"))
-}
-
 /// 厨具工具箱：全部能力工具 + 已装状态（ffmpeg / Chrome / PowerShell 7 / Python …）。
 /// 薄壳，真身是影核动作 `runtime.toolbox.inspect`。
 #[tauri::command]
@@ -8872,57 +8826,6 @@ pub fn run() {
         std::process::exit(if broken.is_empty() { 0 } else { 1 });
     }
 
-    // 竞技场无头跑道：U-King.exe --arena-test
-    //
-    // 竞技场一跑就烧 token（六个 CLI 同任务真跑），**测试不能点火**。这条跑道传一个
-    // 不在参赛名单里的工具名，验证 run_arena 骨架但不真调模型：
-    //   ① 工作副本隔离（每个参赛者一个独立子目录 `arena/<tool>/`，不共享工作区）
-    //   ② 结果形状（对每个工具都有一条 ArenaResult；名单外工具如实报「未安装」不是坏）
-    //   ③ 临时目录用完全自删，不污染真实机器
-    // 真 spawn/超时/杀树那半边由 toolprobe 的 --toolstack-probe 验过（arena 复用它，
-    // 不重复烧钱）；命令形态由 arena.rs 单测盖住。真六 CLI 同跑留给用户在前端点「开赛」。
-    if args.iter().any(|a| a == "--arena-test") {
-        let root = std::env::temp_dir().join(format!("uking-arena-test-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&root);
-        // ★ `--real <tool>`：真跑**一个**参赛者（会烧那一个工具的 token）。
-        //
-        // 加它的直接起因：原来这条跑道只用一个不存在的工具名验骨架，注释写着
-        // 「真六 CLI 同跑留给用户在前端点开赛」—— 于是**真跑那一半从来没被机器验证过**，
-        // 用户点开赛发现不好使，我们手上一条证据都没有。烧六个工具的钱不合理，
-        // 但烧一个是合理的，所以做成显式开关（同 `--origin-test --live` 的规矩）。
-        let real = args.iter().position(|a| a == "--real").and_then(|i| args.get(i + 1)).cloned();
-        if let Some(tool) = real {
-            let task = args
-                .iter()
-                .position(|a| a == "--task")
-                .and_then(|i| args.get(i + 1).cloned())
-                .unwrap_or_else(|| "在当前目录新建 hello.txt，内容写 hi，然后结束。".into());
-            println!("[arena-real] 工具={tool}  工作副本={}", root.display());
-            let rs = arena::run_arena(&task, &root, Some(&tool), &|m| println!("  {m}"));
-            let mut bad = 0;
-            for r in &rs {
-                println!(
-                    "  {} installed={} ran={} timeout={} exit={:?} {}ms produced={} note={}",
-                    r.tool, r.installed, r.ran, r.timed_out, r.exit_code, r.ms, r.produced, r.note
-                );
-                if !r.installed { println!("    → 没装，这条不算失败"); }
-                else if !r.ran || r.timed_out { bad += 1; }
-            }
-            let _ = std::fs::remove_dir_all(&root);
-            println!("{}", if bad == 0 { "[OK] 真跑那一半通了" } else { "[FAIL] 真跑挂了" });
-            std::process::exit(if bad == 0 { 0 } else { 1 });
-        }
-        // 一个不存在的工具名 → run_arena 走「未安装」分支，零烧 token
-        let results = arena::run_arena("只读任务", &root, Some("__nonexistent__"), &|_| {});
-        let mut ok = results.len() == 1 && results[0].tool == "__nonexistent__" && !results[0].installed && !results[0].ran;
-        // 工作副本目录应该被建出来（arena/<tool>/ 的骨架），结果形状要能序列化
-        let arena_dir = root.join("arena");
-        ok &= arena_dir.is_dir();
-        let _ = std::fs::remove_dir_all(&root);
-        println!("{}", if ok { "[OK] 竞技场链路可用（工作副本隔离 + 未安装如实报 + 零烧 token）" } else { "[FAIL] 竞技场链路异常" });
-        std::process::exit(if ok { 0 } else { 1 });
-    }
-
     // 终端无头验证：U-King.exe --term-test "<cmd>"（验证 PTY + PATH 注入，不依赖 GUI）
     if let Some(i) = args.iter().position(|a| a == "--term-test") {
         let cmd = args.get(i + 1).cloned().unwrap_or_else(|| "node --version".into());
@@ -10377,7 +10280,6 @@ pub fn run() {
             rtk_set_enabled,
             rtk_uninstall,
             list_capability_tools,
-            arena_run,
             install_capability_tool,
             load_skill,
             load_free_registry,

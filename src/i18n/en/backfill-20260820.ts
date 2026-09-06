@@ -32,38 +32,6 @@ export const backfill20260820: Record<string, string> = {
     "Import Xiapan Cloud (Claude + Codex) and your active tool configurations into uu-switch",
   "一键导入": "Import all",
 
-  "选工作副本根目录": "Choose workspace-copy root",
-  "竞技场跑完，看结果打星": "Arena finished — review and rate the results",
-  "竞技场失败": "Arena failed",
-  "竞技场": "Arena",
-  "六个 CLI 同任务横向比 —— 系统只出可观测量（耗时 / 退出码 / 有没有产出），质量由你打星":
-    "Run the same task across six CLIs. The system reports only observable facts (time, exit code, and output); you rate the quality.",
-  "参赛选手": "Participants",
-  "同一个任务": "Same task",
-  "给所有参赛者的同一个任务，例如：把这个目录的 README 翻译成英文":
-    "Give every participant the same task, for example: translate this folder’s README into English",
-  "工作副本根目录": "Workspace-copy root",
-  "每个参赛者一个独立子目录，互不踩文件":
-    "Each participant gets a separate subfolder so their files never conflict",
-  "选目录": "Choose folder",
-  "留空用当前工作目录。每个参赛者各开一个子目录，不直接共享。":
-    "Leave blank to use the current working folder. Each participant gets a separate subfolder; nothing is shared directly.",
-  "开赛中…": "Starting…",
-  "开赛（会烧 token）": "Start arena (uses tokens)",
-  "打星口径：跑得快不等于干得好。先看有没有真产出、退出码是否干净，再自己核对 stdout，最后打星。":
-    "Rating guide: fast is not the same as good. Check for real output and a clean exit code, inspect stdout yourself, then rate the result.",
-  "勾选参赛者，塞同一个任务，点开赛": "Select participants, enter one task, then start the arena",
-  "比的是同一个任务谁干活利索 —— 结果只列可观测量，质量靠人打星":
-    "See who handles the same task best. Results show observable facts only; quality is rated by you.",
-  "选手": "Participant",
-  "耗时": "Time",
-  "退出码": "Exit code",
-  "产出": "Output",
-  "stdout 尾部": "stdout tail",
-  "打星": "Rating",
-  "超时": "Timed out",
-  "有": "Yes",
-
   "读不到自动化列表：{e}": "Could not load automations: {e}",
   "已保存": "Saved",
   "删掉「{name}」？已经跑出来的结果留在磁盘上，不会删。":

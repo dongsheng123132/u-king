@@ -22,7 +22,6 @@ import { ExpertGallery } from "./ExpertGallery";
 import { AutomationPanel } from "./AutomationPanel";
 import { TaskBoard } from "./TaskBoard";
 import { PassportBoard } from "./PassportBoard";
-import { Arena } from "./Arena";
 import { queueHandoff, type Handoff } from "./handoff";
 import { queueTermCmd } from "./termInbox";
 import { findExpert, type Expert } from "./experts";
@@ -223,13 +222,6 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
                     setView("chat");
                   });
                 }}
-              />
-            </div>
-          ) : view === "arena" ? (
-            <div className="absolute inset-0 bg-bg-2">
-              <Arena
-                workspace={state.tasks.find((t) => t.id === state.activeId)?.dir}
-                onToast={onToast}
               />
             </div>
           ) : (
