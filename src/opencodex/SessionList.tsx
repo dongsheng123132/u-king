@@ -11,7 +11,7 @@
  * 点任意会话就回到 chat 视图。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ClipboardList, FolderPlus, GitBranch, GripVertical, LayoutDashboard, MessageSquarePlus, Plus, Trash2, Users, X, Zap } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ClipboardList, FolderPlus, GitBranch, GripVertical, LayoutDashboard, MessageSquarePlus, Plus, SquareTerminal, Trash2, Users, X, Zap } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Task, WorkView } from "./types";
@@ -144,6 +144,10 @@ function useBackendChatted(taskIds: string[]): Set<string> | null {
 
 /** 左栏功能入口（会话之外的三块）。一份数据驱动展开态和折叠 rail 两处渲染。 */
 const NAV: { id: Exclude<WorkView, "chat">; label: string; hint: string; icon: typeof Users }[] = [
+  // 「终端工作台」：不经过对话会话，直接按项目文件夹开终端。以前纯终端只能藏在会话的
+  // 引擎下拉（claude-cli/hermes 全屏 TermPanel）或右面板里，想「就是开个终端」的人
+  // 得先建一个 AI 会话才摸得到。放在 NAV 头部 —— 这是「干活」而不是「配置/回顾」类入口。
+  { id: "terminal", label: "终端工作台", hint: "在项目文件夹里直接开终端", icon: SquareTerminal },
   // 🔴 这两条以前是**一条**：id=kanban 却叫「护照」，点进去是会话看板、护照缩在页眉一条横条里。
   // 一名两物 —— 客户点「护照」找不到护照，只能看见一块五列的会话板。现在各自一等：
   // 「护照」答**事情做到哪**（跨 AI 接力的状态），「看板」答**谁在跑**（会话生命周期）。

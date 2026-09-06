@@ -29,6 +29,7 @@ export const sidebar: Record<string, string> = {
   "③ 用 AI": "③ Use AI",
   "技能市场 · 上手教程": "Skill market · Getting-started guide",
   "对话 + 终端 + 作图，一站干活": "Chat + terminal + image gen, all in one",
+  "对话 · 终端 · 作图出片，一站干活": "Chat · Terminal · Create, all in one place",
   "U-Chat 对话 · U-CLI 终端 · 作图，一站干活": "U-Chat · U-CLI terminal · image gen, all in one",
   "AI 专家": "AI Experts",
   "挑个专家帮你干活 · 更多去 skillhub": "Pick an expert to work for you · more on skillhub",

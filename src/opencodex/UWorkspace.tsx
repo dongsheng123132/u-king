@@ -22,6 +22,7 @@ import { ExpertGallery } from "./ExpertGallery";
 import { AutomationPanel } from "./AutomationPanel";
 import { TaskBoard } from "./TaskBoard";
 import { PassportBoard } from "./PassportBoard";
+import { TerminalWorkbench } from "./TerminalWorkbench";
 import { queueHandoff, type Handoff } from "./handoff";
 import { queueTermCmd } from "./termInbox";
 import { findExpert, type Expert } from "./experts";
@@ -193,7 +194,12 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
 
         {/* 功能面板：盖在会话之上（会话没被卸载，只是不显示）。滚动条各自独立。 */}
         {view !== "chat" && (
-          view === "passports" ? (
+          view === "terminal" ? (
+            // 终端工作台自带顶栏和终端主体，不再套外层 px/py（同看板/护照）。
+            <div className="absolute inset-0 bg-bg-2">
+              <TerminalWorkbench active={view === "terminal"} onToast={(m) => onToast?.(m)} />
+            </div>
+          ) : view === "passports" ? (
             // 护照页自带内边距和滚动（同看板），不再套外层 px/py。
             <div className="absolute inset-0 bg-bg-2">
               <PassportBoard
