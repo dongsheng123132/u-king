@@ -6351,6 +6351,7 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
         .visible(false);
     if let Some(context) = portable_context::current() {
         let webview = context.root.join("U-King").join("data").join("webview");
+        portable_context::ensure_owned_path(&webview)?;
         std::fs::create_dir_all(&webview)?;
         // This is evaluated before WebView2 is constructed. A config-relative
         // data directory is insufficient because Tauri otherwise resolves it
@@ -6409,12 +6410,18 @@ async fn open_recharge(app: AppHandle, url: String) -> Result<(), String> {
         return Ok(());
     }
     let parsed = url.parse().map_err(|_| "充值地址解析失败".to_string())?;
-    WebviewWindowBuilder::new(&app, "recharge", WebviewUrl::External(parsed))
+    let mut recharge = WebviewWindowBuilder::new(&app, "recharge", WebviewUrl::External(parsed))
         .title("U-King · 充值")
         .inner_size(560.0, 760.0)
         .center()
-        .resizable(true)
-        .build()
+        .resizable(true);
+    if let Some(context) = portable_context::current() {
+        let webview = context.root.join("U-King").join("data").join("webview");
+        portable_context::ensure_owned_path(&webview)?;
+        std::fs::create_dir_all(&webview).map_err(|e| format!("创建便携 WebView 目录失败: {e}"))?;
+        recharge = recharge.data_directory(webview);
+    }
+    recharge.build()
         .map_err(|e| format!("打开充值窗口失败: {e}"))?;
     Ok(())
 }

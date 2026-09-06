@@ -177,6 +177,9 @@ fn openclaw_archive_file(p: &Paths, m: &RuntimeManifest) -> PathBuf {
 }
 
 fn ensure_private_path(path: &Path, p: &Paths) -> Result<(), String> {
+    if crate::portable_context::current().is_some() {
+        crate::portable_context::ensure_owned_path(path)?;
+    }
     // Never let a lexical descendant hide behind an existing symlink. Before
     // the root exists there cannot yet be such a descendant; once it exists,
     // both the root and the nearest existing ancestor must canonicalize under

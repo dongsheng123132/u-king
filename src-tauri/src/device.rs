@@ -405,6 +405,9 @@ fn save_state(st: &DeviceState) {
 }
 
 fn save_state_checked(st: &DeviceState) -> Result<(), String> {
+    if crate::portable_context::current().is_some() {
+        crate::portable_context::ensure_owned_path(&uking_home())?;
+    }
     std::fs::create_dir_all(uking_home()).map_err(|e| format!("创建设备钱包目录失败: {e}"))?;
     let body = serde_json::json!({
         "key": st.key,

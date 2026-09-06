@@ -38,6 +38,18 @@ fn is_safe_root(root: &Path) -> bool {
         && fs::symlink_metadata(root).map(|m| !m.file_type().is_symlink()).unwrap_or(false)
 }
 
+fn is_reparse(path: &Path) -> bool {
+    let Ok(meta) = fs::symlink_metadata(path) else { return false; };
+    if meta.file_type().is_symlink() { return true; }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        return meta.file_attributes() & 0x0400 != 0;
+    }
+    #[cfg(not(windows))]
+    false
+}
+
 pub fn from_root(root: PathBuf) -> Result<PortableContext, String> {
     if !is_safe_root(&root) { return Err("便携包根目录不存在或是重解析点".into()); }
     let marker_path = root.join(MARKER);
@@ -95,6 +107,23 @@ pub fn action_allowed(id: &str) -> bool {
             | "runtime.openclaw2.configure_model"
             | "runtime.openclaw2.stop"
     )
+}
+
+/// Check every existing component beneath the marker root before a portable
+/// writer creates or follows it. Windows junctions are reparse points too;
+/// accepting one would redirect package state into a host directory.
+pub fn ensure_owned_path(path: &Path) -> Result<(), String> {
+    let context = current().ok_or("当前不是受管便携包")?;
+    if !path.starts_with(&context.root) { return Err("便携路径越出包根目录".into()); }
+    let mut cursor = Some(path);
+    while let Some(candidate) = cursor {
+        if candidate.exists() && is_reparse(candidate) {
+            return Err("便携包受管路径包含重解析点".into());
+        }
+        if candidate == context.root { return Ok(()); }
+        cursor = candidate.parent();
+    }
+    Err("便携路径没有受管包根目录".into())
 }
 
 #[cfg(test)]
