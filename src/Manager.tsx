@@ -1106,7 +1106,7 @@ export function Manager({
         <button
           onClick={() => void probeProviderLatency(p)}
           disabled={testingAllProviders}
-          className="text-ink-5 hover:opacity-80 disabled:opacity-50"
+          className="text-ink-3 hover:text-accent underline decoration-dotted underline-offset-2 disabled:opacity-50"
         >
           {t("未测试")}
         </button>
@@ -2258,13 +2258,16 @@ export function Manager({
             ? t("编辑：{name}", { name: tpl.name })
             : t("添加：{name}，预填地址/模型，进弹窗只需补 Key", { name: tpl.name });
           return (
-            <li key={`qa:${tpl.name}`} className="flex items-center gap-1 rounded-lg hover:bg-bg-3 focus-within:bg-bg-3">
+            <li key={`qa:${tpl.name}`} className="flex items-center gap-0 rounded-lg hover:bg-bg-3 focus-within:bg-bg-3">
               <button
                 type="button"
                 onClick={() => (existing ? setEditing(existing) : openAddTemplate(tpl))}
                 aria-label={actionLabel}
-                className="grid min-h-[52px] min-w-0 flex-1 grid-cols-[24px_minmax(0,1fr)_32px] items-center gap-2 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className="grid min-h-[52px] min-w-0 flex-1 grid-cols-[20px_24px_minmax(0,1fr)] items-center gap-2 rounded-lg pl-1.5 pr-0 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
+                <span aria-hidden="true" className="grid place-items-center text-ink-3">
+                  {existing ? <Pencil size={14} /> : <Plus size={16} />}
+                </span>
                 <ProviderLogo logo={presentation.logo} label={tpl.name} size={24} />
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 truncate text-[13px] font-semibold leading-[18px] text-ink-1">
@@ -2283,9 +2286,6 @@ export function Manager({
                       </span>
                     )}
                   </span>
-                </span>
-                <span aria-hidden="true" className="grid h-8 w-8 place-items-center text-ink-3">
-                  {existing ? <Pencil size={14} /> : <Plus size={16} />}
                 </span>
               </button>
               {tpl.key_url && (
@@ -2325,11 +2325,8 @@ export function Manager({
           const restCount = list.length - shown.length;
           return (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-[13px] font-semibold text-ink-1">{t("快速添加")}</div>
-                  <div className="mt-0.5 text-[11px] text-ink-4">{t("选一家，自动填好地址")}</div>
-                </div>
+              <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-2 gap-y-0.5">
+                <div className="text-[13px] font-semibold text-ink-1">{t("快速添加")}</div>
                 <button
                   type="button"
                   onClick={() => setSettingsTab("free")}
@@ -2337,9 +2334,10 @@ export function Manager({
                 >
                   {t("免费算力 →")}
                 </button>
+                <div className="col-span-2 text-[11px] text-ink-4">{t("选一家，自动填好地址")}</div>
               </div>
 
-              <div role="tablist" aria-label={t("供应商来源分组")} className="grid grid-cols-2 gap-1 rounded-lg bg-bg-2 p-1">
+              <div role="tablist" aria-label={t("供应商来源分组")} className="grid grid-cols-2 gap-1 rounded-lg bg-bg-0 p-1">
                 {(
                   [
                     ["vendor", t("模型厂商 {n}", { n: vendorTemplates.length })],
@@ -2358,7 +2356,9 @@ export function Manager({
                     onKeyDown={(e) => handleGroupTabKeyDown(e, idPrefix)}
                     className={cn(
                       "h-8 rounded-md text-[12px] font-semibold transition-colors",
-                      quickAddGroup === id ? "bg-bg-1 text-accent" : "text-ink-3 hover:text-ink-1",
+                      quickAddGroup === id
+                        ? "bg-accent/10 text-accent ring-1 ring-inset ring-accent/30"
+                        : "text-ink-3 hover:text-ink-1",
                     )}
                   >
                     {label}
@@ -2477,7 +2477,7 @@ export function Manager({
               不再按窗口断点强制列数——外壳宽度上限在 App.tsx 由并行任务调整，这里只管网格本身。
               右栏仍固定 272px；<lg 收进头部下方可折叠「快速添加」，内部复用同一份 tab + 目录。 */}
           <div className="flex flex-col lg:flex-row gap-4 items-start">
-            <div className="flex-1 min-w-0 space-y-3">
+            <div className="flex-1 min-w-0 flex flex-col gap-3">
               <details open={!hasOtherProviders} className="lg:hidden group/qa rounded-card border border-white/[0.08] bg-bg-1/70 p-3.5">
                 <summary className="cursor-pointer select-none list-none flex items-center gap-1.5 text-[13px] font-semibold text-ink-1">
                   <ChevronRight size={13} className="transition-transform group-open/qa:rotate-90" />
@@ -2501,8 +2501,9 @@ export function Manager({
                         key={p.id}
                         className="rounded-card border border-white/[0.08] bg-bg-1/70 p-3 hover:border-white/[0.16] transition-colors"
                       >
-                        {/* ① logo + 名称 + 编辑（内置/自定义不再彩色徽章区分——能不能点「编辑」本身就是那条界线） */}
-                        <div className="flex items-center gap-2">
+                        {/* ① logo + 名称 + 编辑（内置/自定义不再彩色徽章区分——能不能点「编辑」本身就是那条界线）
+                            h-8 固定卡头高度：有无编辑按钮都占同样高度，名称基线不因铅笔按钮撑高而错层。 */}
+                        <div className="flex h-8 items-center gap-2">
                           <ProviderLogo logo={cardPresentation.logo} label={p.name} size={20} />
                           <span className="text-[14px] font-semibold text-ink-0 truncate flex-1">{t(p.name)}</span>
                           {!p.builtin && (
@@ -2545,12 +2546,11 @@ export function Manager({
                           {renderLatencyCell(p)}
                         </div>
                         {/* ⑥ 引用行——空着不写「没人用」：「当前没有 AI 引用它」和「我们没查出来」
-                            在界面上长得一样，而后者会误导人去删掉正在用的东西。有才说，没有就不说。 */}
-                        {usedBy.length > 0 && (
-                          <div className="mt-1 text-[12px] text-ink-2">
-                            {t("用于：{tools}", { tools: usedBy.join(" · ") })}
-                          </div>
-                        )}
+                            在界面上长得一样，而后者会误导人去删掉正在用的东西。有才说，没有就不说。
+                            容器始终渲染占位（空位≠文案），避免可选行导致卡片排间高度不齐。 */}
+                        <div className="mt-1 min-h-[18px] leading-[18px] text-[12px] text-ink-2">
+                          {usedBy.length > 0 ? t("用于：{tools}", { tools: usedBy.join(" · ") }) : null}
+                        </div>
                       </div>
                     );
                   })}
