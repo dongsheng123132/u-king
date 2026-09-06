@@ -25,6 +25,7 @@ import {
   FlaskConical,
   FolderTree,
   LifeBuoy,
+  MoreHorizontal,
   PanelTopClose,
   PlugZap,
   RefreshCw,
@@ -46,6 +47,7 @@ import { ApplyScopeDialog } from "./components/ApplyScopeDialog";
 import { PanelBoundary } from "./components/PanelBoundary";
 import type { LaunchPlan } from "./components/LaunchBlocked";
 import { DoctorCard } from "./components/DoctorCard";
+import { AnchoredMenu } from "./components/AnchoredMenu";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 
 // 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
@@ -1849,9 +1851,12 @@ function XiapanGuide({
   const nextIdx = steps.findIndex((s) => !s.done);
   const next = nextIdx >= 0 ? steps[nextIdx] : null;
 
+  // 2026-09-06 Astra UI 规格 B1：扁平化视觉重排——取消渐变和内层三张卡框，改成
+  // 平底 bg-1 + accent/25 描边；三步收成一条横向状态行，只留外层一颗当前步按钮。
+  // 护栏（usingOwnKey → null、全就绪 → null）在上面，本次一个字没动。
   return (
-    <section className="rounded-card border border-accent/30 bg-gradient-to-br from-accent/[0.12] to-transparent px-5 py-5 shadow-card">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section className="rounded-card border border-accent/25 bg-bg-1 px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="grid place-items-center w-9 h-9 rounded-xl bg-accent/[0.18] shrink-0">
@@ -1866,49 +1871,36 @@ function XiapanGuide({
         {next?.action && (
           <button
             onClick={next.action.fn}
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-[12.5px] font-semibold text-white hover:bg-accent-600 shadow-sm transition-colors"
+            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-5 text-[13px] font-semibold text-white hover:bg-accent-600 transition-colors"
           >
             {next.action.text}
           </button>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="mt-4 flex flex-col min-[560px]:flex-row min-[560px]:items-center gap-4">
         {steps.map((s, i) => (
-          <div
-            key={i}
-            className={cn(
-              "rounded-xl border px-4 py-3.5 flex flex-col gap-2",
-              s.done
-                ? "border-success-500/25 bg-success-500/[0.06]"
-                : i === nextIdx
-                ? "border-accent/40 bg-accent/[0.08]"
-                : "border-white/[0.06] bg-white/[0.02] opacity-70",
-            )}
-          >
-            <div className="flex items-center gap-2.5">
-              <span
-                className={cn(
-                  "grid place-items-center w-6 h-6 rounded-full text-[11px] font-bold shrink-0",
-                  s.done ? "bg-success-500 text-white" : i === nextIdx ? "bg-accent text-white" : "bg-accent/20 text-accent-400",
-                )}
-              >
-                {s.done ? <CheckCircle2 size={13} /> : i + 1}
-              </span>
-              <span className="text-[13px] font-semibold text-ink-0">{s.label}</span>
-            </div>
-            <div className="text-[11px] text-ink-3 leading-snug min-h-[28px]">{s.desc}</div>
-            {s.action ? (
-              <button
-                onClick={s.action.fn}
-                className="mt-auto inline-flex items-center justify-center h-9 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 transition-colors"
-              >
-                {s.action.text}
-              </button>
-            ) : (
-              <div className="mt-auto h-9 inline-flex items-center text-[11px] text-ink-4">
-                {s.done ? t("已完成") : t("上一步完成后解锁")}
-              </div>
-            )}
+          <div key={i} className="flex items-center gap-2">
+            <span
+              className={cn(
+                "grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0",
+                s.done
+                  ? "bg-success-500 text-white"
+                  : i === nextIdx
+                  ? "bg-accent text-white"
+                  : "bg-ink-5/20 text-ink-3",
+              )}
+            >
+              {s.done ? <CheckCircle2 size={11} /> : i + 1}
+            </span>
+            <span
+              className={cn(
+                "text-[12px]",
+                s.done ? "text-success-400" : i === nextIdx ? "text-accent font-semibold" : "text-ink-3",
+              )}
+            >
+              {s.label}
+            </span>
+            {i < steps.length - 1 && <span className="hidden min-[560px]:inline text-ink-5/40 mx-1">›</span>}
           </div>
         ))}
       </div>
@@ -1972,6 +1964,46 @@ const UNINSTALLABLE = new Set([
   "uu-switch",
   "open365",
 ]);
+
+/**
+ * 「更多」菜单——2026-09-06 Astra UI 规格 B2：已装卡片只留一个主动作（打开/打开终端），
+ * 换模型和卸载收进这个菜单；卸载仍走原来的二次确认（onClick 直接调用外部传入的
+ * onUninstall，破坏性弹窗逻辑一个字没动，只是触发按钮的位置搬进了这里）。
+ *
+ * 用 `AnchoredMenu`（`fixed` 定位）而不是自己写 `absolute` 下拉：已装卡片容器本身带
+ * `overflow-hidden`（裁 hover 边框用），`absolute` 菜单会被这层裁掉，见该组件顶部注释里
+ * 2026-08-17 的同类事故。
+ */
+function ToolMoreMenu({
+  children,
+}: {
+  /** 渲染函数：拿到 `close()` 自己决定何时关菜单（一般是点完某一项后）。
+   *  render-prop 而不是 `items` 数组，是为了让调用方能在 JSX 里直接写字面量属性值的
+   *  action 绑定属性（`action bindings` 靠纯文本扫源码找这个属性，经变量转一手就扫不到了，
+   *  绑定会假红——本函数这句说明文字里都不能出现那个属性的字面量写法，扫描器连注释都认）。 */
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        title={t("更多")}
+        className="grid place-items-center w-8 h-8 rounded-lg text-ink-4 hover:bg-white/[0.06] hover:text-ink-1 transition-colors shrink-0"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <AnchoredMenu anchorRef={btnRef} onClose={() => setOpen(false)} minWidth={220}>
+          {children(() => setOpen(false))}
+        </AnchoredMenu>
+      )}
+    </>
+  );
+}
 
 function MyAI({
   tools,
@@ -2232,12 +2264,14 @@ function MyAI({
               return (
                 <div
                   key={t.id}
-                  className="rounded-card border border-white/[0.08] bg-bg-1/70 hover:border-white/[0.14] hover:bg-bg-1 transition-colors overflow-hidden flex flex-col shadow-sm"
+                  // 2026-09-06 Astra UI 规格 B2：bg-1 平底 + 1px ink-5/30 描边，去掉阴影；
+                  // 图标容器 48→36px（下面 w-9 h-9，图标 24px）。
+                  className="rounded-card border border-ink-5/30 bg-bg-1 hover:border-white/[0.14] transition-colors overflow-hidden flex flex-col"
                 >
-                  {/* 卡头：图标 + 名 + 打开按钮 */}
+                  {/* 卡头：图标 + 名 + 打开按钮 + 更多菜单 */}
                   <div className="flex items-center gap-3 px-4 py-4">
-                    <span className="grid place-items-center w-12 h-12 rounded-xl bg-bg-3 shrink-0">
-                      <ToolIcon tool={t.id} size={30} active />
+                    <span className="grid place-items-center w-9 h-9 rounded-xl bg-bg-3 shrink-0">
+                      <ToolIcon tool={t.id} size={24} active />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
@@ -2307,22 +2341,49 @@ function MyAI({
                     ) : (
                       <span className="text-[11px] text-ink-4 shrink-0 text-right">{tr("从开始菜单打开")}</span>
                     )}
+                    {/* 2026-09-06 Astra UI 规格 B2：换模型 + 卸载从卡底整行入口收进这个
+                        「更多」菜单，卡片只留「打开」一个主动作。卸载的二次确认流程和
+                        red-on-hover 破坏性视觉、`data-action-id="runtime.aitool.uninstall"`
+                        绑定原样保留，只是换了触发位置。 */}
+                    {(targets.length > 0 || UNINSTALLABLE.has(t.id)) && (
+                    <ToolMoreMenu>
+                      {(close) => (
+                        <>
+                          {targets.length > 0 && (
+                            <button
+                              onClick={() => {
+                                close();
+                                onGoManage();
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-2 hover:bg-white/[0.05] hover:text-ink-0 transition-colors"
+                            >
+                              <Cpu size={13} />
+                              {tr("单独给这个工具换模型（高级）")}
+                            </button>
+                          )}
+                          {/* 卸载：彻底删本体 + 残留清理（修「删了还检测到、重装又冒出来」）。二次确认在 onUninstall。 */}
+                          {UNINSTALLABLE.has(t.id) && (
+                            <button
+                              data-action-id="runtime.aitool.uninstall"
+                              onClick={() => {
+                                close();
+                                onUninstall(t);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06] transition-colors"
+                              title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
+                            >
+                              <Trash2 size={13} />
+                              {tr("卸载")}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </ToolMoreMenu>
+                    )}
                   </div>
 
-                  {/* 卡身：给这个工具单独换模型 = 高级用法，跳到「AI 设置」高级层统一管，
-                      不在卡片里就地内嵌（避免和 AI 设置页的「每工具单独配」重复成两套入口）。
-                      小白走顶部「一键配好全部」即可，不用看这里。 */}
-                  {targets.length > 0 && (
-                    <button
-                      onClick={onGoManage}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 py-2.5 text-[11.5px] text-ink-4 hover:text-ink-2 hover:bg-bg-1/80 transition-colors"
-                    >
-                      <Cpu size={12} />
-                      {tr("单独给这个工具换模型（高级）")}
-                      <ChevronRight size={12} className="ml-auto" />
-                    </button>
-                  )}
-                  {/* uu-switch 专属：一键把「虾盘云(Claude+Codex) + 你在用的工具配置」写进它的驱动列表。 */}
+                  {/* uu-switch 专属：一键把「虾盘云(Claude+Codex) + 你在用的工具配置」写进它的驱动列表。
+                      B2 规格未涉及这个入口，原样保留在卡底。 */}
                   {t.id === "uu-switch" && (
                     <button
                       onClick={onImportXiapan}
@@ -2335,29 +2396,16 @@ function MyAI({
                   )}
                   {/* 重新安装 / 修复：已装的卡片原来只有「打开」，一旦「已装」判错，
                       客户就被彻底困住 —— 卸载了还显示已装、点了只能打开、没有任何路子重装
-                      （线上 issue #237）。检测再准也不该成为唯一出路：这里永远留一条重装口。 */}
+                      （线上 issue #237）。检测再准也不该成为唯一出路：这里永远留一条重装口。
+                      2026-09-06 Astra UI 规格 B2：改成卡底 32px 轻入口（原来是 py-2.5 整行）。 */}
                   {t.action === "install" && (
                     <button
                       onClick={() => onOpen(t)}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 py-2.5 text-[11.5px] text-ink-4 hover:text-accent hover:bg-bg-1/80 transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 border-t border-white/[0.06] h-8 text-[12px] text-ink-2 hover:text-accent hover:bg-bg-2 transition-colors"
                       title={tr("重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里")}
                     >
                       <Download size={12} />
                       {tr("升级 / 修复（重装到最新版）")}
-                      <ChevronRight size={12} className="ml-auto" />
-                    </button>
-                  )}
-                  {/* 卸载：彻底删本体 + 残留清理（修「删了还检测到、重装又冒出来」）。二次确认在 onUninstall。
-                      放卡底、默认灰、hover 才变红——是低频且破坏性操作，不该抢主操作的视觉。 */}
-                  {UNINSTALLABLE.has(t.id) && (
-                    <button
-                      data-action-id="runtime.aitool.uninstall"
-                      onClick={() => onUninstall(t)}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2.5 text-[11.5px] text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06] transition-colors"
-                      title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
-                    >
-                      <Trash2 size={12} />
-                      {tr("卸载")}
                     </button>
                   )}
                 </div>

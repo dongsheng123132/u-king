@@ -372,6 +372,10 @@ export function Sidebar({
   // 核心 ①②③ funnel 仍带说明（小白引导刚需）……**但矮屏例外**：1366×768 上带说明的
   // 四个核心项 + 展开的「更多」根本装不下，侧栏自己长出滚动条（客户截图实证）。
   // 说明文字不是丢掉而是挪进 tooltip —— 空间不够时宁可少显示，不能少了那句话。
+  // 2026-09-06 Astra UI 规格 B3：只调现有导航行/分组标签/底部控件的样式，不搬入口——
+  // 主导航 13px/ink-2，副标题统一 12px/ink-3，双行项目最小高 48px、紧凑单行最小高 36px，
+  // 图标统一 16px；选中态本来就是 bg-accent/12 + 左侧 2px accent 线 + ink-0 半粗名称 +
+  // accent 图标，这次没改；普通悬停统一 bg-2。
   const NavButton = (n: NavItem, compact = false) => {
     const on = active === n.id;
     const Icon = n.icon;
@@ -383,16 +387,17 @@ export function Sidebar({
         title={compact ? `${t(n.label)} · ${t(n.sub)}` : undefined}
         className={cn(
           "w-full flex items-center gap-3 px-3 rounded-card text-left transition-all border-l-2",
+          compact ? "min-h-[36px]" : "min-h-[48px]",
           compact ? (short ? "py-1.5" : "py-2") : "py-2.5",
           on
             ? "bg-accent/[0.12] border-accent text-ink-0"
-            : "border-transparent text-ink-3 hover:bg-white/[0.035] hover:text-ink-1",
+            : "border-transparent text-ink-2 hover:bg-bg-2 hover:text-ink-1",
         )}
       >
         <Icon size={16} className={on ? "text-accent" : "text-ink-4"} />
         <div className="min-w-0">
           <div className={cn("text-[13px]", on ? "font-semibold" : "font-medium")}>{t(n.label)}</div>
-          {!compact && <div className="text-[10px] text-ink-4 truncate">{t(n.sub)}</div>}
+          {!compact && <div className="text-[12px] text-ink-3 truncate">{t(n.sub)}</div>}
         </div>
       </button>
     );
@@ -459,6 +464,9 @@ export function Sidebar({
               }
               className={cn(
                 "relative w-10 h-10 grid place-items-center rounded-card transition-colors disabled:opacity-60",
+                // 2026-09-06 B3：键盘焦点统一 accent 描边（收起态底部图标按钮点击区已是 40×40px，
+                // 早于本次就满足「至少 32×32」）。
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none",
                 hasUpdate
                   ? updateFailed > 0
                     ? "text-amber-500 hover:bg-amber-500/[0.12]"
@@ -474,7 +482,7 @@ export function Sidebar({
             onClick={onRecheck}
             disabled={checking}
             title={checking ? t("检查中…") : t("检查更新")}
-            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 disabled:opacity-60"
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <RefreshCw size={16} className={checking ? "animate-spin" : ""} />
           </button>
@@ -482,7 +490,7 @@ export function Sidebar({
             onClick={() => onSelect("feedback")}
             title={t("技术支持 · 报告问题 · 加微信找我们")}
             className={cn(
-              "w-10 h-10 grid place-items-center rounded-card transition-colors",
+              "w-10 h-10 grid place-items-center rounded-card transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none",
               active === "feedback"
                 ? "bg-accent/[0.14] text-accent"
                 : "text-ink-4 hover:bg-white/[0.04] hover:text-ink-1",
@@ -493,14 +501,14 @@ export function Sidebar({
           <button
             onClick={() => setLang(lang === "en" ? "zh" : "en")}
             title={`${t("语言")}: ${lang === "en" ? "English" : "中文"}`}
-            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <span className="text-[10px] font-semibold">{lang === "en" ? "EN" : "中"}</span>
           </button>
           <button
             onClick={onToggleTheme}
             title={theme === "dark" ? t("浅色模式") : t("深色模式")}
-            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
+            className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -510,7 +518,7 @@ export function Sidebar({
             <button
               onClick={onHideToTray}
               title={t("隐藏到右下角托盘")}
-              className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
+              className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
             >
               <PanelTopClose size={16} />
             </button>
@@ -556,7 +564,7 @@ export function Sidebar({
           className={cn(
             "w-full flex items-center gap-3 px-3 rounded-card text-left transition-colors",
             short ? "py-1.5" : "py-2",
-            showMore ? "bg-white/[0.03] text-ink-1" : "text-ink-3 hover:bg-white/[0.03] hover:text-ink-1",
+            showMore ? "bg-bg-2 text-ink-1" : "text-ink-3 hover:bg-bg-2 hover:text-ink-1",
           )}
         >
           <MoreHorizontal size={16} className={showMore ? "text-accent" : "text-ink-4"} />
@@ -576,7 +584,7 @@ export function Sidebar({
           className={cn(
             "w-full flex items-center gap-3 px-3 rounded-card text-left transition-colors",
             short ? "py-1.5" : "py-2",
-            showLab ? "bg-white/[0.03] text-ink-1" : "text-ink-3 hover:bg-white/[0.03] hover:text-ink-1",
+            showLab ? "bg-bg-2 text-ink-1" : "text-ink-3 hover:bg-bg-2 hover:text-ink-1",
           )}
         >
           <FlaskConical size={16} className={showLab ? "text-amber-400" : "text-ink-4"} />
@@ -786,7 +794,7 @@ export function Sidebar({
         <button
           onClick={onToggleTheme}
           title={theme === "dark" ? t("浅色模式") : t("深色模式")}
-          className="flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors"
+          className="flex items-center gap-1.5 shrink-0 min-h-[32px] px-2.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
         >
           {theme === "dark" ? (
             <Moon size={15} className="text-ink-4" />
@@ -799,7 +807,9 @@ export function Sidebar({
           onClick={onRecheck}
           disabled={checking}
           title={checking ? t("检查中…") : t("检查更新")}
-          className="flex items-center shrink-0 px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors disabled:opacity-60"
+          // 2026-09-06 B3：底部图标按钮点击区至少 32×32px + 键盘焦点 accent 描边
+          // （原来 px-2 py-1.5 实测算下来矮于 32px）。
+          className="flex items-center justify-center shrink-0 min-w-[32px] min-h-[32px] px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
         >
           <RefreshCw size={15} className={checking ? "animate-spin" : ""} />
         </button>
@@ -810,7 +820,7 @@ export function Sidebar({
           <button
             onClick={onHideToTray}
             title={t("隐藏到右下角托盘")}
-            className="flex items-center shrink-0 px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors"
+            className="flex items-center justify-center shrink-0 min-w-[32px] min-h-[32px] px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <PanelTopClose size={15} />
           </button>
