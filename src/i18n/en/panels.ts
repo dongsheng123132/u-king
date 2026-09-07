@@ -58,6 +58,10 @@ export const panels: Record<string, string> = {
   "先看看这台电脑能不能上网；开了代理/VPN 的话先关掉再试。":
     "Check this machine's internet access; if a proxy/VPN is on, turn it off and retry.",
   "这个模型现在用不了": "This model isn't available right now",
+  // thinking-400（2026-09-07）：上一轮的思考记录和当前通道没对上，不是驱动问题。
+  "上一轮的思考记录和当前通道没对上": "The previous turn's thinking trace doesn't match the current channel",
+  "不用重装，这个跟驱动没关系。先点输入框旁边的「清空对话」，再把刚才那句话重发一次；如果刚换过模型，换回去能接上文。还出现就用「技术支持」把下面这段原文发给我们。":
+    "No need to reinstall — this has nothing to do with the provider setup. Hit “New chat” next to the input box, then resend what you just asked; if you just switched models, switch back to continue the thread. If it still happens, send us the original text below via Feedback.",
   "在顶栏「换模型」里换一个（推荐 DeepSeek Flash），或去「AI 设置」重配驱动。":
     "Pick another in the top bar (DeepSeek Flash recommended), or reconfigure the provider in AI Settings.",
   "找不到这个程序": "Program not found",

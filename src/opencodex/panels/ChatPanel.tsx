@@ -251,6 +251,22 @@ export function humanizeError(raw: string, ownAccount = false): Humanized | null
     return ["找不到这个程序", "多半是它没装好。去「装 AI」页重装一次，装完会自动验证。"];
   if (has("context", "too long", "maximum context", "token limit"))
     return ["这一轮聊太长了，超出了模型能记住的上限", "点输入框旁边的「清空对话」开个新会话，把关键信息重说一遍。"];
+  /* thinking-400（2026-09-07 定性，new-api#6939 / PR#6998 同类）：
+   * 网关 Anthropic→DeepSeek 转换时剥掉 thinking signature / reasoning_content，续轮回放即 400；
+   * 另一触发是中途换模型 + --resume 旧 sid（claude.rs 换模型自动断续接盖住后者）。
+   * 共同点：错的是「上一轮的记录和当前通道没对上」，**不是没装好 —— 不许再把客户支去重装驱动**
+   *（这就是之前几次"修完又回来"的原因：一直在修错的地方）。
+   * 文案不写死「清空就好」（渠道漂移/历史改写类清了也可能再犯），留「技术支持」升级口。
+   * 匹配口径收紧：裸 "thinking" 不认（MCP 名字里有它），必须带 400 或 passed back / reasoning_content。 */
+  if (
+    s.includes("passed back") ||
+    s.includes("reasoning_content") ||
+    (s.includes("thinking") && s.includes("400"))
+  )
+    return [
+      "上一轮的思考记录和当前通道没对上",
+      "不用重装，这个跟驱动没关系。先点输入框旁边的「清空对话」，再把刚才那句话重发一次；如果刚换过模型，换回去能接上文。还出现就用「技术支持」把下面这段原文发给我们。",
+    ];
   return null;
 }
 

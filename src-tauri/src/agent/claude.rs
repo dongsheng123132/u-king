@@ -305,7 +305,11 @@ fn run_turn(
     // 取上一轮 session_id（有则 --resume 续接）。**从盘上取** —— 关掉 U-King 再打开、
     // 甚至重启电脑，这个会话依旧接着上文说。以前记在进程内存里，界面上会话和聊天记录
     // 都还在、只有模型不知道「刚才」是什么，看起来像 AI 变笨了。见 `threads.rs`。
-    let resume = super::threads::recall(AGENT, &task_id);
+    let stored = super::threads::recall_with_model(AGENT, &task_id);
+    let resume = stored.as_ref().map(|(sid, _)| sid.clone());
+    let stored_model = stored.as_ref().and_then(|(_, m)| m.clone());
+    // 本轮顶栏"换模型"的值（归一化口径与 remember 存的一致，见 threads::norm_model）。
+    let cur_model = super::threads::norm_model(model.as_deref());
 
     // 🔴 **续接前先看这个会话在不在这个目录下**（2026-08-18 客户实拍：
     // 「一旦我中途切换文件夹，就会出现报错」，底层命令 `claude --resume <sid>`
@@ -329,6 +333,18 @@ fn run_turn(
             None => (Some(sid), None),
         },
         None => (None, None),
+    };
+    // 🔴 **换模型自动断续接**（2026-09-07 thinking-400 定性）：顶栏"换模型"是每轮生效的，
+    // 但旧 sid 里躺着旧模型的 thinking 块 —— 拿它去 --resume，新模型在网关翻译层必 400
+    //（new-api#6939 / PR#6998 同类：thinking signature 回放对不上）。model 变了不断不断，
+    // 而是明说一句开新轮 —— 静默断等于上下文归零还不告诉人（Opus 评审 B）。
+    // 只认"两边都已知且不一样"：老数据没记过模型（stored None）不断，避免发版后全员无辜掉一次上文。
+    let (resume, thread_note) = match (resume, stored_model, cur_model.clone(), thread_note) {
+        (Some(_), Some(stored), cur, _) if Some(stored.as_str()) != cur.as_deref() => (
+            None,
+            Some("换了模型，上一轮（旧模型建的会话）接不上 —— 这一轮从头开始（之前的记录还在，换回原来那个模型就能接上）。".to_string()),
+        ),
+        (r, _, _, n) => (r, n),
     };
     if let Some(n) = &thread_note {
         let _ = on_event.send(serde_json::json!({ "kind": "text", "text": n }));
@@ -449,7 +465,7 @@ fn run_turn(
                 // 记住 session_id 供下轮 --resume（落盘，见 threads.rs）
                 if ev.get("kind").and_then(|k| k.as_str()) == Some("session") {
                     if let Some(sid) = ev.get("session_id").and_then(|s| s.as_str()) {
-                        super::threads::remember(AGENT, &task_id, sid);
+                        super::threads::remember_with_model(AGENT, &task_id, sid, cur_model.as_deref());
                     }
                 }
                 let _ = on_event.send(ev);

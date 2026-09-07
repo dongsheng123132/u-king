@@ -52,6 +52,11 @@ struct Thread {
     /// 最近一次续上的时间（epoch ms），过期清理用。
     #[serde(default)]
     at: i64,
+    /// 建这条线程时顶栏"换模型"的值；None = 跟 preset 默认走，或老数据没记过。
+    /// 换模型 + --resume 旧 sid = 网关 thinking-400（2026-09-07 定性），开轮时比对用。
+    /// Option + serde(default)：老盘数据没这个键照样装得上，Unknown 不断续接、只不参与判定。
+    #[serde(default)]
+    model: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -84,9 +89,12 @@ fn now_ms() -> i64 {
 ///（并行测试串 env 是本仓库栽过的坑，报错里的「实际值」看着还都对）。
 /// 只测纯序列化会漏掉真正会坏的那一段 —— 原子写、Windows 的 rename 覆盖、目录不存在。
 fn load_from(p: &Path) -> File {
-    let mut f: File = std::fs::read_to_string(p)
-        .ok()
-        .and_then(|s| serde_json::from_str::<File>(&s).ok())
+    let raw = std::fs::read_to_string(p).ok();
+    let mut f: File = raw
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<File>(s).ok())
+        // 整盘 parse 失败时逐条抢救（Opus 评审 B）：一条坏记录不许带走整盘好记录。
+        .or_else(|| raw.as_deref().and_then(salvage))
         .unwrap_or_default();
     let cutoff = now_ms() - KEEP_DAYS * DAY_MS;
     for m in f.agents.values_mut() {
@@ -94,6 +102,27 @@ fn load_from(p: &Path) -> File {
     }
     f.version = 1;
     f
+}
+
+/// 整盘 typed parse 失败时的抢救通道：按 agent→task 逐条转 Thread，坏的跳过、好的留下。
+/// 结构对不上（连 agents 层都没有）就返回 None → 调用方按空盘起。绝不 panic。
+fn salvage(s: &str) -> Option<File> {
+    let v: serde_json::Value = serde_json::from_str(s).ok()?;
+    let mut agents: HashMap<String, HashMap<String, Thread>> = HashMap::new();
+    for (agent, tasks) in v.get("agents")?.as_object()? {
+        let mut m = HashMap::new();
+        for (task, t) in tasks.as_object()? {
+            if let Ok(th) = serde_json::from_value::<Thread>(t.clone()) {
+                if !th.id.trim().is_empty() {
+                    m.insert(task.clone(), th);
+                }
+            }
+        }
+        if !m.is_empty() {
+            agents.insert(agent.clone(), m);
+        }
+    }
+    Some(File { version: 1, agents })
 }
 
 /// 进程内缓存。首次访问时从盘上装载并顺手清过期。
@@ -155,18 +184,34 @@ fn flush(f: &File) {
 
 /// 这个工作台会话上一轮接的是哪条线程（没有 = 该开新会话）。
 pub fn recall(agent: &str, task_id: &str) -> Option<String> {
+    recall_with_model(agent, task_id).map(|(id, _)| id)
+}
+
+/// 连模型一起取回（换模型自动断续接用）。第二项 None = 老数据，没记过（未知，不断续接）。
+pub fn recall_with_model(agent: &str, task_id: &str) -> Option<(String, Option<String>)> {
     cache()
         .lock()
         .ok()?
         .agents
         .get(agent)?
         .get(task_id)
-        .map(|t| t.id.clone())
+        .map(|t| (t.id.clone(), t.model.clone()))
+}
+
+/// 模型覆写归一化：空白按没传算。remember 存的和开轮比的必须是同一口径，
+/// 否则 "x" vs "x " 能把续接全断掉。
+pub fn norm_model(s: Option<&str>) -> Option<String> {
+    s.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
 }
 
 /// 记住这一轮的线程 id。**每轮都调**（那家工具可能在续接后换了 id），
 /// id 相同就只刷新时间戳、不重复写盘。
 pub fn remember(agent: &str, task_id: &str, id: &str) {
+    remember_with_model(agent, task_id, id, None);
+}
+
+/// 连模型一起记。model = 本轮顶栏"换模型"的值（None = 跟 preset 默认）。
+pub fn remember_with_model(agent: &str, task_id: &str, id: &str, model: Option<&str>) {
     let id = id.trim();
     if id.is_empty() || task_id.is_empty() {
         return;
@@ -176,15 +221,21 @@ pub fn remember(agent: &str, task_id: &str, id: &str) {
     let now = now_ms();
     match m.get_mut(task_id) {
         // 同一条线程连着聊，只是刷新「最近用过」——一天最多写一次盘，别在热路径上抖 IO。
+        // 但模型变了必须立即落盘：去抖窗口内换模型，下次开轮会拿着旧模型做比对，误判不断。
         Some(t) if t.id == id => {
             let stale = now - t.at > DAY_MS;
+            let nm = norm_model(model);
+            let model_changed = t.model != nm;
             t.at = now;
-            if !stale {
+            if model_changed {
+                t.model = nm;
+            }
+            if !stale && !model_changed {
                 return;
             }
         }
         _ => {
-            m.insert(task_id.to_string(), Thread { id: id.to_string(), at: now });
+            m.insert(task_id.to_string(), Thread { id: id.to_string(), at: now, model: norm_model(model) });
         }
     }
     flush(&f);
@@ -228,7 +279,7 @@ mod tests {
         f.agents
             .entry("claude".into())
             .or_default()
-            .insert("sess-abc".into(), Thread { id: "sid-1".into(), at: now_ms() });
+            .insert("sess-abc".into(), Thread { id: "sid-1".into(), at: now_ms(), model: None });
         flush_to(&p, &f);
         assert!(p.exists(), "落盘没成 —— 重启后必然从零开始");
 
@@ -236,7 +287,7 @@ mod tests {
         let mut f = load_from(&p);
         f.agents.get_mut("claude").unwrap().insert(
             "sess-abc".into(),
-            Thread { id: "sid-2".into(), at: now_ms() },
+            Thread { id: "sid-2".into(), at: now_ms(), model: None },
         );
         flush_to(&p, &f);
 
@@ -259,9 +310,9 @@ mod tests {
 
         let mut f = File::default();
         let m = f.agents.entry("claude".into()).or_default();
-        m.insert("fresh".into(), Thread { id: "s-new".into(), at: now });
-        m.insert("stale".into(), Thread { id: "s-old".into(), at: now - (KEEP_DAYS + 1) * DAY_MS });
-        m.insert("blank".into(), Thread { id: "  ".into(), at: now });
+        m.insert("fresh".into(), Thread { id: "s-new".into(), at: now, model: None });
+        m.insert("stale".into(), Thread { id: "s-old".into(), at: now - (KEEP_DAYS + 1) * DAY_MS, model: None });
+        m.insert("blank".into(), Thread { id: "  ".into(), at: now, model: None });
         flush_to(&p, &f);
 
         let back = load_from(&p);
@@ -291,9 +342,9 @@ mod tests {
         let now = now_ms();
         let mut f = File::default();
         f.agents.entry("claude".into()).or_default()
-            .insert("same-task".into(), Thread { id: "claude-sid".into(), at: now });
+            .insert("same-task".into(), Thread { id: "claude-sid".into(), at: now, model: None });
         f.agents.entry("codex".into()).or_default()
-            .insert("same-task".into(), Thread { id: "codex-tid".into(), at: now });
+            .insert("same-task".into(), Thread { id: "codex-tid".into(), at: now, model: None });
         flush_to(&p, &f);
 
         let back = load_from(&p);
@@ -373,8 +424,8 @@ mod tests {
         let now = now_ms();
         let mut f = File::default();
         let m = f.agents.entry("test-retention-agent".into()).or_default();
-        m.insert("inside".into(), Thread { id: "sid-inside".into(), at: now - KEEP_DAYS * DAY_MS + 5_000 });
-        m.insert("outside".into(), Thread { id: "sid-outside".into(), at: now - KEEP_DAYS * DAY_MS - 5_000 });
+        m.insert("inside".into(), Thread { id: "sid-inside".into(), at: now - KEEP_DAYS * DAY_MS + 5_000, model: None });
+        m.insert("outside".into(), Thread { id: "sid-outside".into(), at: now - KEEP_DAYS * DAY_MS - 5_000, model: None });
         flush_to(&p, &f);
 
         let back = load_from(&p);
@@ -382,5 +433,66 @@ mod tests {
         assert_eq!(m.get("inside").map(|t| t.id.as_str()), Some("sid-inside"));
         assert!(!m.contains_key("outside"));
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    /// 老盘数据（没有 model 键）必须照样装得上 —— 发版后全量客户都是这个形状。
+    /// None = 未知：不断续接，只是不参与"换模型"判定。
+    #[test]
+    fn old_file_without_model_loads_as_unknown() {
+        let p = tmp_path("oldfmt");
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, r#"{"agents":{"claude":{"t1":{"id":"sid-old","at":9999999999999}}}}"#).unwrap();
+        let back = load_from(&p);
+        let t = &back.agents["claude"]["t1"];
+        assert_eq!(t.id, "sid-old");
+        assert_eq!(t.model, None, "老数据 model 必须是 None（未知），不能编一个出来");
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    /// 整盘 typed parse 失败时逐条抢救：一条坏记录不许带走整盘好记录（Opus 评审 B）。
+    #[test]
+    fn salvage_keeps_good_entries_when_one_is_corrupt() {
+        let p = tmp_path("salvage");
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        // "bad" 的 id 不是字符串 → 整盘 typed parse 必失败；"good" 必须被抢救回来。
+        std::fs::write(
+            &p,
+            r#"{"agents":{"claude":{"good":{"id":"sid-good","at":9999999999999},"bad":{"id":42,"at":9999999999999}}}}"#,
+        )
+        .unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.agents["claude"].get("good").map(|t| t.id.as_str()), Some("sid-good"));
+        assert!(!back.agents["claude"].contains_key("bad"));
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    /// remember_with_model 存的和 recall_with_model 取的必须是同一口径（含归一化）。
+    #[test]
+    fn model_roundtrip_through_remember() {
+        struct ResetReadonly;
+        impl Drop for ResetReadonly {
+            fn drop(&mut self) { set_readonly(false); }
+        }
+        let sb = crate::testsandbox::enter_raw("threads-model-roundtrip");
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::set_var("HOME", sb.root());
+        let _reset = ResetReadonly;
+        set_readonly(false);
+        remember_with_model("test-model-agent", "t1", "sid-m", Some("  deepseek-v4-pro  "));
+        assert_eq!(
+            recall_with_model("test-model-agent", "t1"),
+            Some(("sid-m".to_string(), Some("deepseek-v4-pro".to_string()))),
+            "首尾空白必须归一化掉"
+        );
+        // 同 id 换模型：必须立即落盘，不能等 24h 去抖窗口。
+        std::fs::remove_file(sb.root().join(".uking/agent-threads.json")).unwrap();
+        remember_with_model("test-model-agent", "t1", "sid-m", Some("qwen3.8-flash"));
+        assert!(sb.root().join(".uking/agent-threads.json").exists(), "换模型必须立即落盘");
+        assert_eq!(
+            recall_with_model("test-model-agent", "t1").unwrap().1.as_deref(),
+            Some("qwen3.8-flash")
+        );
     }
 }
