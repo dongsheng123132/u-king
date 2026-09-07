@@ -103,9 +103,11 @@ async function generateOrCheck(manifest, bindingSnapshot) {
 function hostManifest(full, bindingSnapshot) {
   const guiBound = new Set((bindingSnapshot.bound ?? []).map((binding) => binding.id));
   const actions = full.actions
-    // `runtime.*` 是设备管理动作；`media.*` 是客户显式提交的内容动作。
-    // 两者都必须出现在 CLI/MCP 的同一份契约里，不能因为前缀不同把识图链藏掉。
-    .filter((action) => action.id.startsWith("runtime.") || action.id.startsWith("media."))
+    // `runtime.*` 是设备管理动作；`media.*` 是客户显式提交的内容动作；
+    // `target.*` 是便携 AI 目标运行时统一入口（合流方案 P2，docs/uclaw-genie-convergence.md
+    // §3.3 明确要求 8 个 action 进 parity 三端）。三者都必须出现在 CLI/MCP 的同一份
+    // 契约里，不能因为前缀不同把识图链 / 目标运行时藏掉。
+    .filter((action) => action.id.startsWith("runtime.") || action.id.startsWith("media.") || action.id.startsWith("target."))
     .map((action) => ({
       ...action,
       bindings: action.bindings.filter((binding) =>
@@ -128,8 +130,8 @@ function hostManifest(full, bindingSnapshot) {
     actions,
     state: {
       ...full.state,
-      queries: (full.state?.queries ?? []).filter((id) => id.startsWith("runtime.") || id.startsWith("media.")),
-      events: (full.state?.events ?? []).filter((id) => id.startsWith("runtime.") || id.startsWith("media."))
+      queries: (full.state?.queries ?? []).filter((id) => id.startsWith("runtime.") || id.startsWith("media.") || id.startsWith("target.")),
+      events: (full.state?.events ?? []).filter((id) => id.startsWith("runtime.") || id.startsWith("media.") || id.startsWith("target."))
     }
   };
 }

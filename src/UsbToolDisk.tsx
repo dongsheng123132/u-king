@@ -5,6 +5,12 @@
  * 制作支持 credential_ref=none（默认，保留盘上已有凭据）或 official_device
  * （写入本机设备钱包凭据，可随时用「移除此盘凭据」撤回）；P1 固定单一 runtime
  * 版本，界面不提供更新入口。不能为了有按钮而把半成品写操作交给用户。
+ *
+ * P2（合流方案 docs/uclaw-genie-convergence.md）：盘面列表改读 `target.list`
+ * （「盘 × 内置 manifest」笛卡尔积），v1 manifest 表只 picoclaw 一份，每张
+ * 盘恰好产生一条 entry，渲染结果与旧的 `runtime.usb_genie.inspect` 完全等价。
+ * 写动作（deploy/launch/verify/credential_remove）仍走 `runtime.usb_genie.*`：
+ * P2 故意只换抽象层的读面，写面委托给现有实现，零行为变化。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, HardDrive, KeyRound, Play, RefreshCw, ShieldAlert, TriangleAlert } from "lucide-react";
@@ -23,6 +29,29 @@ type Target = {
   picoclaw_version?: string | null; target_state_version: string; credential_present: boolean;
 };
 type Inspection = { ready: boolean; blockers: string[]; targets: Target[]; inventory_state_version?: string; launched_from_target_id?: string | null };
+
+// P2：把 `target.list`（盘 × manifest）返回的「manifest 视角」条目适配成
+// P1 UI 一直在用的「盘视角」形状。v1 manifest 表只 picoclaw 一份，每张盘对应
+// 一条；manifest_id == picoclaw 时填 `version` 到 `picoclaw_version`，其它字段
+// 一一对应；`volume_label` / `read_only` target.list 不返回，用 target_root
+// /false 兜底（与 P1 inspect 在 label 为空 / read-only 未实现时一致）。
+function adaptTargetListEntry(raw: Record<string, unknown>): Target {
+  const targetRoot = String(raw.target_root ?? "");
+  return {
+    target_id: String(raw.target_id ?? ""),
+    target_root: targetRoot,
+    display_name: String(raw.display_name ?? targetRoot),
+    volume_label: "", // target.list 不返回，旧 UI 在 label 为空时也走 fallback
+    filesystem: String(raw.filesystem ?? "未知格式"),
+    total_bytes: Number(raw.total_bytes ?? 0),
+    free_bytes: Number(raw.free_bytes ?? 0),
+    read_only: false, // target.list 不返回；P1 没用到这个字段的差异分支
+    installed: Boolean(raw.installed),
+    picoclaw_version: (raw.version as string | null | undefined) ?? null,
+    target_state_version: String(raw.target_state_version ?? ""),
+    credential_present: Boolean(raw.credential_present),
+  };
+}
 type Verification = { ok: boolean; blockers: string[] };
 type CredentialRef = "none" | "official_device";
 
@@ -41,13 +70,22 @@ export function UsbToolDisk({ onToast }: { onToast?: (message: string) => void }
   const inspect = useCallback(async () => {
     setBusy("inspect");
     try {
-      const envelope = await callAction(ACTION.RUNTIME_USB_GENIE_INSPECT, {});
+      const envelope = await callAction(ACTION.TARGET_LIST, {});
       if (!envelope.ok) throw new Error(envelope.error?.message ?? "读取 U 盘状态失败");
-      const next = envelope.result as unknown as Inspection;
+      const raw = envelope.result as { targets?: unknown[]; blockers?: string[]; ready?: boolean; inventory_state_version?: string };
+      const raws = Array.isArray(raw.targets) ? raw.targets : [];
+      const next: Inspection = {
+        ready: Boolean(raw.ready),
+        blockers: Array.isArray(raw.blockers) ? raw.blockers as string[] : [],
+        targets: raws.filter((e): e is Record<string, unknown> => !!e && typeof e === "object").map(adaptTargetListEntry),
+        inventory_state_version: raw.inventory_state_version,
+        // target.list 不返回 launched_from_target_id；P1 在没有它时也走「首条 fallback」分支。
+        launched_from_target_id: null,
+      };
       setInspection(next);
       setRoot((old) => {
         if (next.targets.some((item) => item.target_root === old)) return old;
-        return next.targets.find((item) => item.target_id === next.launched_from_target_id)?.target_root ?? next.targets[0]?.target_root ?? null;
+        return next.targets[0]?.target_root ?? null;
       });
       setVerification(null);
       setError(null);

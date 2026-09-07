@@ -313,6 +313,19 @@ pub const USB_GENIE_DEPLOY: &str = "runtime.usb_genie.deploy";
 pub const USB_GENIE_VERIFY: &str = "runtime.usb_genie.verify";
 pub const USB_GENIE_LAUNCH: &str = "runtime.usb_genie.launch";
 pub const USB_GENIE_CREDENTIAL_REMOVE: &str = "runtime.usb_genie.credential_remove";
+
+/// 便携 AI「目标运行时」统一入口（合流方案 P2，真相源 docs/uclaw-genie-convergence.md）。
+/// 🔴 注册表长度恒定 8：新增第三个 target **只加 manifest 不加 action** ——
+/// 这是 action-parity 静态可枚举/allowlist 编译期穷举不受冲击的关键，任何
+/// 「给某 target 单开一组 action」的提议直接否掉。
+pub const TARGET_LIST: &str = "target.list";
+pub const TARGET_DETECT: &str = "target.detect";
+pub const TARGET_START: &str = "target.start";
+pub const TARGET_STOP: &str = "target.stop";
+pub const TARGET_STATUS: &str = "target.status";
+pub const TARGET_CONFIG_GET: &str = "target.config.get";
+pub const TARGET_CONFIG_SET: &str = "target.config.set";
+pub const TARGET_MANIFEST_LIST: &str = "target.manifest.list";
 pub const GEO_INSPECT: &str = "runtime.geo.inspect";
 pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
 pub const PODAPP_INSPECT: &str = "runtime.podapp.inspect";
@@ -391,6 +404,7 @@ pub const READ_ACTIONS: &[&str] = &[
     HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
     CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, GEO_INSPECT, UU_REMOTE_INSPECT, PODAPP_INSPECT, AUTOMATION_INSPECT,
+    TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,

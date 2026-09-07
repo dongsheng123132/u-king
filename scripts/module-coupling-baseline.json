@@ -1,6 +1,6 @@
 {
-  "pairs": 46,
-  "why": "1a12a4b 的 tools/toolprobe 收敛重构引入的双向引用（TOOL_SPECS 单一真相源 + 探测标记），09-05 基线更新随 rm -rf 事故丢失，重新登记",
+  "pairs": 47,
+  "why": "P2 引入 usb_targets 抽象层（合流方案 §2 / §3.3）。usb_genie 仍是 P1 真机验收过的 portable AI 运行时实现，delegated_target_* / action_target_list 都直接调它以保零行为变化；P3 接入 U-Claw 时（U-Claw manifest 用 http-api transport 不走 usb_genie）自然解耦。",
   "list": [
     "agent → device",
     "agent → journal",
@@ -46,6 +46,7 @@
     "tools → term",
     "tools → toolprobe",
     "tools → uuswitch",
+    "usb_targets → usb_genie",
     "uuswitch → device",
     "uuswitch → providers"
   ]
