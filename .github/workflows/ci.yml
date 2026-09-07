@@ -22,10 +22,10 @@ jobs:
       # ── 1. 版本号四处同步 ──
       - name: 版本号四处一致
         run: |
-          v_ts=$(grep -oE 'APP_VERSION = "[^"]+"' src/version.ts | grep -oE '[0-9.]+')
+          v_ts=$(sed -nE 's/^export const APP_VERSION = "([^"]+)";$/\1/p' src/version.ts)
           v_pkg=$(node -p "require('./package.json').version")
           v_tauri=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          v_cargo=$(grep -oE '^version = "[^"]+"' src-tauri/Cargo.toml | grep -oE '[0-9.]+')
+          v_cargo=$(sed -nE 's/^version = "([^"]+)"$/\1/p' src-tauri/Cargo.toml)
           echo "version.ts=$v_ts package.json=$v_pkg tauri.conf=$v_tauri Cargo.toml=$v_cargo"
           if [ "$v_ts" = "$v_pkg" ] && [ "$v_pkg" = "$v_tauri" ] && [ "$v_tauri" = "$v_cargo" ]; then
             echo "✓ 四处一致 ($v_ts)"

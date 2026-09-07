@@ -6,7 +6,7 @@
 
 ## 设计依据
 
-已核对 [Manager.tsx](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2083)、[CustomProviderModal.tsx](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/CustomProviderModal.tsx:119)、[globals.css](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/globals.css:30)，并阅读 Sidebar、MyAI 和供应商模板。
+已核对 [Manager.tsx](../src/Manager.tsx#L2083)、[CustomProviderModal.tsx](../src/components/CustomProviderModal.tsx#L119)、[globals.css](../src/globals.css#L30)，并阅读 Sidebar、MyAI 和供应商模板。
 
 需要先澄清三点：
 

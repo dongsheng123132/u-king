@@ -71,6 +71,9 @@ function walk(root) {
     if (entry.isDirectory()) {
       if (!SKIP_DIRS.has(entry.name)) walk(full);
     } else if (entry.isFile()) {
+      // A linked worktree stores Git metadata in a .git file, not a directory.
+      // It is never published source; apply the same exclusion as .git dirs.
+      if (entry.name === '.git') continue;
       const ext = path.extname(entry.name).toLowerCase();
       if (BINARY_EXTENSIONS.has(ext)) continue;
       if (entry.name === 'check-leak.mjs') continue; // 闸门不扫自己（规则字面量自匹配）

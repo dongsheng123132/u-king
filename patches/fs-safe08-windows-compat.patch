@@ -1,0 +1,12 @@
+diff --git a/src/root-impl.ts b/src/root-impl.ts
+--- a/src/root-impl.ts
++++ b/src/root-impl.ts
+@@ -1091,7 +1091,7 @@ async function writeFileInRoot(
+   await serializePathWrite(rootWriteQueueKey(root, params.relativePath), async () => {
+     if (
+       process.platform === "win32" &&
+-      (params.renameIdentity === "verify-content-with-lock" || !getNativeBinding())
++      params.renameIdentity !== "verify-content-with-lock" && !getNativeBinding()
+     ) {
+       await writeFileFallback(root, params);
+       return;

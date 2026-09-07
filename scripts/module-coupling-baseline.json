@@ -1,6 +1,6 @@
 {
-  "pairs": 46,
-  "why": "1a12a4b 的 tools/toolprobe 收敛重构引入的双向引用（TOOL_SPECS 单一真相源 + 探测标记），09-05 基线更新随 rm -rf 事故丢失，重新登记",
+  "pairs": 49,
+  "why": "Portable marker context is a shared, immutable path resolver used before wallets and runtime state initialize.",
   "list": [
     "agent → device",
     "agent → journal",
@@ -22,6 +22,7 @@
     "cleanup → uuswitch",
     "codex_proxy → device",
     "codex_proxy → providers",
+    "device → portable_context",
     "device → providers",
     "expert → skillpack",
     "feedback → codex_proxy",
@@ -32,8 +33,10 @@
     "feedback → report",
     "guard → device",
     "install → guard",
+    "journal → portable_context",
     "miniapp → artifacts",
     "miniapp → image",
+    "openclaw2 → portable_context",
     "providers → tools",
     "providers → usage",
     "report → crashlog",

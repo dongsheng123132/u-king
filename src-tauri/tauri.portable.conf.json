@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "U-King OpenClaw 绿色版",
+  "identifier": "org.uking.openclaw.portable",
+  "bundle": {
+    "shortDescription": "U-King OpenClaw 绿色版",
+    "longDescription": "随包运行、数据留在当前目录的 U-King OpenClaw 绿色版。"
+  }
+}

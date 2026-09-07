@@ -18,6 +18,7 @@ mod chatstore;
 mod cleanup;
 mod clawx;
 mod openclaw2;
+mod portable_context;
 mod usb_genie;
 mod claude_proxy;
 mod codex;
@@ -95,6 +96,14 @@ mod testsandbox;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
+use std::sync::OnceLock;
+
+fn action_opener() -> &'static OnceLock<AppHandle> {
+    static OPENER: OnceLock<AppHandle> = OnceLock::new();
+    &OPENER
+}
+
+fn set_action_opener(app: AppHandle) { let _ = action_opener().set(app); }
 
 /// 启动时探测到的环境信息（前端 hero 区展示）。
 #[derive(Debug, Clone, Serialize)]
@@ -1311,6 +1320,9 @@ fn device_wallet_consumer_targets() -> Vec<String> {
 /// 漏了对齐模型保持）。所以这里按工具各取 `driver_status` 里它现在的模型：
 /// 取得到就原样写回，取不到（该工具没有专属模型字段）才落回 preset 默认。
 fn sync_device_wallet_consumers(key: Option<&str>) -> Result<(), String> {
+    if portable_context::current().is_some() {
+        return openclaw2::sync_device_wallet_key(key);
+    }
     let targets = device_wallet_consumer_targets();
     if targets.is_empty() {
         return Ok(());
@@ -1928,7 +1940,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "Inspect the isolated OpenClaw 2 runtime",
             "Read only U-King's private OpenClaw 2 runtime and state. It never probes ClawX or legacy OpenClaw paths.",
             5_000,
-            &["schema_version", "ready", "blockers", "installed", "prepared", "running", "state_version", "profile", "paths", "runtime", "gateway"],
+            &["schema_version", "ready", "blockers", "installed", "prepared", "running", "state_version", "profile", "paths", "runtime", "gateway", "model"],
             openclaw2::action_inspect,
         ),
         actions::readonly(
@@ -1971,18 +1983,18 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             actions::OPENCLAW2_LAUNCH,
             "Launch the isolated OpenClaw 2 gateway",
             "Launch only U-King's private OpenClaw 2 profile under external supervision. It refuses an externally owned port and never exposes the gateway token.",
-            60_000,
+            210_000,
             "required",
             serde_json::json!({}),
             &[],
-            &["changed", "running", "ready", "pid", "port", "dashboard_url", "health", "state_version"],
+            &["changed", "running", "ready", "starting", "retryable", "reason", "pid", "port", "dashboard_url", "health", "state_version"],
             openclaw2::action_launch,
             Some(openclaw2::state_version),
         ),
         actions::write(
             actions::OPENCLAW2_CONFIGURE_MODEL,
             "Configure an isolated OpenClaw 2 model",
-            "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned.",
+            "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are never returned; portable mode injects its verified managed secret only into its own child process.",
             180_000,
             "required",
             serde_json::json!({
@@ -1991,7 +2003,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "api_key": { "type": "string", "writeOnly": true }
             }),
             &["provider_id"],
-            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "state_version"],
+            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "restart_message", "state_version"],
             |_, input, _| {
                 let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
                     .ok_or("invalid_input: provider_id 必填")?;
@@ -2010,6 +2022,98 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 openclaw2::configure_model(route)
             },
             Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::OPENCLAW2_CONFIGURE_MODEL_NO_PROBE,
+            "Configure an isolated OpenClaw 2 model without paid probe",
+            "Validate and commit one OpenAI-compatible model without calling it. runtime.openclaw2.configure_model is the separate, explicit potentially chargeable probe.",
+            60_000,
+            "required",
+            serde_json::json!({
+                "provider_id": { "type": "string", "minLength": 1 },
+                "model": { "type": "string" },
+                "api_key": { "type": "string", "writeOnly": true }
+            }),
+            &["provider_id"],
+            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "restart_message", "state_version"],
+            |_, input, _| {
+                let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
+                    .ok_or("invalid_input: provider_id 必填")?;
+                let api_key = input.get("api_key").and_then(serde_json::Value::as_str);
+                let device_key = if api_key.is_some_and(|key| !key.trim().is_empty()) { None } else { device::device_key_offline().ok() };
+                let route = providers::resolve_openai_route_for_openclaw2(provider_id, input.get("model").and_then(serde_json::Value::as_str), api_key, device_key.as_deref())?;
+                openclaw2::configure_model_without_probe(route)
+            },
+            Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::OPENCLAW2_STOP,
+            "Stop the isolated OpenClaw 2 gateway",
+            "Stop only the gateway whose process identity is owned by this private OpenClaw 2 tree; it never kills unrelated node processes.",
+            15_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["changed", "stopped", "state_version"],
+            openclaw2::action_stop,
+            Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::OPENCLAW2_OPEN_DASHBOARD,
+            "Open the isolated OpenClaw 2 dashboard",
+            "Verify that only this package owns the running gateway before the desktop transport opens its local dashboard. The Action output never contains the gateway token.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["changed", "opened", "state_version"],
+            openclaw2::action_open_dashboard,
+            Some(openclaw2::state_version),
+        ),
+        actions::write(
+            actions::DEVICE_WALLET_RECHARGE,
+            "Open the device-wallet recharge page",
+            "Open the approved recharge page in the system browser. It never submits or pays an order.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["changed", "opened"],
+            action_open_recharge,
+            None,
+        ),
+        actions::readonly(
+            actions::DEVICE_WALLET_STATUS,
+            "Inspect the device wallet without revealing its key",
+            "Return wallet balance and a masked key only. The credential never crosses the Action response boundary.",
+            15_000,
+            // Offline or zero-balance wallets legitimately report `balance: null`.
+            // Keep the field in the response for the UI, but do not mark it required:
+            // Action conformance treats a null required value as a contract failure.
+            &["masked_key", "charged", "low_balance", "wallet_id", "legacy_balance_unrecoverable"],
+            |_, _, _| {
+                let wallet = device::get_device_key()?;
+                Ok(serde_json::json!({
+                    "masked_key": mask_device_wallet_key(&wallet.key),
+                    "balance": wallet.balance,
+                    "charged": wallet.charged,
+                    "low_balance": wallet.low_balance,
+                    "wallet_id": wallet.wallet_id,
+                    "legacy_balance_unrecoverable": wallet.legacy_balance_unrecoverable,
+                }))
+            },
+        ),
+        actions::write(
+            actions::DEVICE_WALLET_COPY_BACKUP,
+            "Copy the device-wallet key to the system clipboard",
+            "Copy the current key directly to the operating-system clipboard for backup. The key is never returned, printed, logged, or accepted through CLI arguments.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["copied"],
+            |_, _, _| copy_device_wallet_backup(),
+            None,
         ),
         actions::readonly(
             actions::USB_GENIE_INSPECT,
@@ -3225,8 +3329,8 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "required",
             serde_json::json!({}),
             &[],
-            &["message"],
-            |_, _, _| Ok(serde_json::json!({ "message": device::rotate_device_key()? })),
+            &["message", "applies_on_next_start", "restart_required", "restart_message"],
+            |_, _, _| Ok(device_wallet_action_success(device::rotate_device_key()?)),
             None,
         ),
         // 填入一把已有的密钥。**要确认**：它会顶掉本机当前那把 —— 如果当前这把上还有
@@ -3241,10 +3345,10 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "key": { "type": "string", "description": "The sk- access key to use on this machine." }
             }),
             &["key"],
-            &["message"],
+            &["message", "applies_on_next_start", "restart_required", "restart_message"],
             |_, input, _| {
                 let key = input["key"].as_str().unwrap_or_default();
-                Ok(serde_json::json!({ "message": device::adopt_device_key(key)? }))
+                Ok(device_wallet_action_success(device::adopt_device_key(key)?))
             },
             None,
         ),
@@ -6291,6 +6395,43 @@ async fn get_driver_status() -> serde_json::Value {
     run_action_blocking(actions::DRIVER_INSPECT).await
 }
 
+fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("U-King AI 管家")
+        .inner_size(1120.0, 720.0)
+        .min_inner_size(900.0, 600.0)
+        .center()
+        .visible(false);
+    if let Some(context) = portable_context::current() {
+        let webview = context.root.join("U-King").join("data").join("webview");
+        portable_context::ensure_owned_path(&webview)?;
+        std::fs::create_dir_all(&webview)?;
+        // This is evaluated before WebView2 is constructed. A config-relative
+        // data directory is insufficient because Tauri otherwise resolves it
+        // against AppData under the host account.
+        builder = builder.data_directory(webview);
+    }
+    builder.build()?;
+    Ok(())
+}
+
+/// The frontend must decide which application to mount before any desktop
+/// effects run.  Expose only the marker state and package-local data root;
+/// callers never need an OS home directory to render the portable shell.
+#[tauri::command]
+fn portable_context_status() -> serde_json::Value {
+    match portable_context::current() {
+        Some(context) => serde_json::json!({
+            "portable": true,
+            "package_root": context.root,
+            "data_root": context.uking_home(),
+            "openclaw_root": context.openclaw_root(),
+        }),
+        None => serde_json::json!({"portable": false}),
+    }
+}
+
+
 /// 每日消耗趋势（最近 N 天）。
 #[tauri::command]
 fn get_usage_trend(days: Option<usize>) -> usage::UsageTrend {
@@ -6323,14 +6464,72 @@ async fn open_recharge(app: AppHandle, url: String) -> Result<(), String> {
         return Ok(());
     }
     let parsed = url.parse().map_err(|_| "充值地址解析失败".to_string())?;
-    WebviewWindowBuilder::new(&app, "recharge", WebviewUrl::External(parsed))
+    let mut recharge = WebviewWindowBuilder::new(&app, "recharge", WebviewUrl::External(parsed))
         .title("U-King · 充值")
         .inner_size(560.0, 760.0)
         .center()
-        .resizable(true)
-        .build()
+        .resizable(true);
+    if let Some(context) = portable_context::current() {
+        let webview = context.root.join("U-King").join("data").join("webview");
+        portable_context::ensure_owned_path(&webview)?;
+        std::fs::create_dir_all(&webview).map_err(|e| format!("创建便携 WebView 目录失败: {e}"))?;
+        recharge = recharge.data_directory(webview);
+    }
+    recharge.build()
         .map_err(|e| format!("打开充值窗口失败: {e}"))?;
     Ok(())
+}
+
+fn action_open_recharge(_: &str, _: serde_json::Value, _: &actions::ProgressSink) -> Result<serde_json::Value, String> {
+    // The key-bearing URL is derived and consumed in the core. Passing it
+    // through a renderer request risks exposing it in devtools or adapter logs.
+    let recharge_url = device::get_device_key()?.recharge_url;
+    let url = recharge_url.as_str();
+    const ALLOWED: [&str; 2] = ["https://u-claw.org.cn/", "https://cloud.u-claw.org/"];
+    if !ALLOWED.iter().any(|p| url.starts_with(p)) { return Err("非法充值地址".into()); }
+    // The browser launch belongs to the Action Core so the GUI, CLI and MCP
+    // share one route. Do not include the credential-bearing recharge URL in
+    // an error returned to any surface.
+    openclaw2::open_system_browser(url).map_err(|_| "打开充值页失败")?;
+    Ok(serde_json::json!({"changed":false,"opened":true}))
+}
+
+/// A portable gateway receives its credential only when it is spawned.  Wallet
+/// mutation deliberately does not restart a potentially active user session,
+/// so every machine caller gets an explicit applicability receipt.
+fn device_wallet_action_success(message: String) -> serde_json::Value {
+    let portable = portable_context::current().is_some();
+    serde_json::json!({
+        "message": message,
+        "applies_on_next_start": portable,
+        "restart_required": portable,
+        "restart_message": if portable {
+            serde_json::json!("请停止并重新启动 OpenClaw，使新密钥生效")
+        } else {
+            serde_json::Value::Null
+        }
+    })
+}
+
+fn mask_device_wallet_key(key: &str) -> String {
+    if key.chars().count() <= 7 {
+        return "已设置".into();
+    }
+    let prefix: String = key.chars().take(3).collect();
+    let suffix: String = key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    format!("{prefix}••••••••{suffix}")
+}
+
+fn copy_device_wallet_backup() -> Result<serde_json::Value, String> {
+    // Backing up an existing wallet must work while offline and must never
+    // converge/bind a fresh wallet as a side effect of a copy click.
+    let key = device::device_key_offline()?;
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|_| "无法访问系统剪贴板，请关闭占用剪贴板的程序后重试")?;
+    clipboard
+        .set_text(key)
+        .map_err(|_| "无法写入系统剪贴板，请关闭占用剪贴板的程序后重试")?;
+    Ok(serde_json::json!({ "copied": true }))
 }
 
 /// 本机某个端口上有没有服务在听（给「预览网页」用；测试报告 #015）。
@@ -8280,8 +8479,15 @@ fn cli_help_text() -> String {
 }
 
 pub fn run() {
+    if let Err(error) = portable_context::validate_current_executable() {
+        eprintln!("[portable] {error}");
+        // An invalid marker is a failed safety gate, not a successful no-op.
+        // Do not let automation accept it or fall back to host storage.
+        std::process::exit(2);
+    }
     // 无头自检模式：U-King.exe --selfcheck [out.json]
     let args: Vec<String> = std::env::args().collect();
+    let portable_preview = portable_context::current().is_some();
     // 影核协议通用 CLI：U-King.exe action list|describe|manifest|run <id> --json --no-input
     // 当前切片只提供只读 runtime.command_guard.inspect；未知动作/非法输入返回结构化错误且不副作用。
     // Token 压缩机的 hook 包装器：U-King.exe rtk-hook（读 stdin 出 stdout）。
@@ -9703,7 +9909,7 @@ pub fn run() {
     // 只迁移旧版 U-King 自己写出的两行 CLI shim：旧写法把 Unicode 用户目录以 UTF-8
     // 字面量塞进 .cmd，cmd.exe 按 ACP 读取时会找不到 Codex。此处不创建 shim、不改 PATH、
     // 不覆盖未知脚本，因此普通启动的副作用只限于修复已识别的历史坏文件。
-    let migrated_cli_shims = installer::migrate_legacy_cli_command_guards();
+    let migrated_cli_shims = if portable_preview { 0 } else { installer::migrate_legacy_cli_command_guards() };
     if migrated_cli_shims > 0 {
         ulog::write("installer", &format!("已迁移 {migrated_cli_shims} 个 Unicode 安全 CLI shim"));
     }
@@ -9714,7 +9920,7 @@ pub fn run() {
     // U 盘护符口味**不**做静默自升级：服务器上的绿色 exe 是「下载版（无护符）」，自动替换会把护符
     // 悄悄抹掉。U 盘版按「换新盘 / 装到本地后走安装版」拿更新。下载版照旧静默升级。
     #[cfg(windows)]
-    if !cfg!(feature = "usb-guard") && args.len() <= 1 && installer::apply_staged_update() {
+    if !portable_preview && !cfg!(feature = "usb-guard") && args.len() <= 1 && installer::apply_staged_update() {
         std::process::exit(0);
     }
 
@@ -9775,7 +9981,17 @@ pub fn run() {
     // 只借「跳过单实例」这一件事，**不复用 `nav_probe` 本身** —— 它在下面还会真的去跑
     // 浏览器导航跑道（`run_browser_nav_probe`）。把两者混成一个布尔，多开预览会莫名其妙
     // 起一个探针然后自己退出，而症状看起来会像「新版启动就崩」。
-    let skip_single_instance = nav_probe || allow_multi;
+    let portable_gui = portable_context::current().is_some();
+    // A portable package uses its root-hashed OS mutex below. The normal
+    // plugin's identifier-wide mutex would make independent USB packages
+    // block one another.
+    let skip_single_instance = nav_probe || allow_multi || portable_gui;
+    if portable_gui {
+        if let Err(error) = claim_portable_gui_instance() {
+            eprintln!("[portable] {error}");
+            return;
+        }
+    }
 
     // 演示卸载绿色版是**独立分发的另一个产品**，却和主程序共用同一份 tauri.conf.json（=同一个
     // identifier，也就是同一把单实例锁）。不排除它的话，客户机上开着 U-King 时那个绿色版
@@ -9852,6 +10068,11 @@ pub fn run() {
             });
         })
         .setup(move |app| {
+            // Action Core owns dashboard opening so CLI, MCP and the desktop
+            // invoke exactly one checked path. Keep the token-bearing URL
+            // inside the process and pass only this capability handle.
+            set_action_opener(app.handle().clone());
+            create_main_window(app)?;
             // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
             // 真的让**外部页面**导航了。整个过程窗口 `visible(false)`，屏幕上什么都不出现，
             // 不抢前台、不动鼠标、不截屏。跑完直接退出进程 —— 不起托盘、不起调度线程。
@@ -9873,7 +10094,7 @@ pub fn run() {
             //
             // 无头模式（`action run` / `mcp serve` / `--selfcheck`）走不到这儿，
             // 对它们 `inspect()` 报 headless、能力完整 —— 不该因为界面开着就被降权。
-            let is_sidecar = allow_multi;
+            let is_sidecar = allow_multi && !portable_gui;
             instance::mark(is_sidecar);
             // ★ 「这两份缓存只读」由组合根注入，**不是让 tasks/agent 去 import instance**
             //   —— 模块独立铁律禁止模块间横向 import，`check-module-coupling` 拦过这一版。
@@ -9903,7 +10124,7 @@ pub fn run() {
             //
             // 调试实例不发：新旧两版的动作表和技能目录不同，而落盘是同名覆盖 ——
             // 两个实例会轮流把对方刚写的说明书刷掉，别家 AI 读到哪一版全看谁最后启动。
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
                 std::thread::spawn(|| {
                     let dir = identity::uking_dir();
                     let id = identity::load_identity_in(&dir);
@@ -9968,7 +10189,7 @@ pub fn run() {
             if cfg!(feature = "demo-uninstaller") {
                 return Ok(());
             }
-            tray::install(app.handle())?;
+            if !portable_context::current().is_some() { tray::install(app.handle())?; }
             // 崩溃取证开一次会话：结上次的账（没正常退出的话留证据）+ 落本次标记 + 起心跳。
             // **必须在这儿而不是 run() 顶上** —— 无头模式（--selfcheck / action run / mcp serve）
             // 都在 tauri::Builder 之前就 exit 了，放上面会让运维远程跑一条 `action run`
@@ -10003,7 +10224,7 @@ pub fn run() {
             // 短命的那条还会 `report_bug` 灌进 bug 采集。
             //
             // （这跟 08-23 那版 leader.rs 被把关打回的第一条是同一个坑：拿自己的镜像名判别人。）
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
                 if let Some(prev) = crashlog::begin_session() {
                     // 上报只挑短命的那种（启动即崩 / 崩溃循环）：跑了几小时的异常退出多半是关机，
                     // 全报会把 issue 区淹掉，反而让真信号沉底。本地留痕则一条不落。
@@ -10022,7 +10243,7 @@ pub fn run() {
             // 🔴 门控写成 `if !is_sidecar { … }` 而不是抽成一个函数：抽出来就得有第二个调用点
             // 才划算，而这版**刻意没有晋升**（见 `instance.rs` 模块头），只有这一个调用点。
             // 一个只被调一次的函数，只是把「启动时到底跑了什么」多藏了一层。
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
             // ClawX 例行检查：只放行防火墙（让 ClawX 能联网），**不再后台静默写用户配置**。
             //（旧 auto_heal_clawx 会偷偷把 ClawX 切到虾盘云，已废弃；是否接入改由前端引导用户手动点。）
             std::thread::spawn(providers::clawx_firewall_only);
@@ -10097,7 +10318,7 @@ pub fn run() {
             //   上面的 `set_notifier` / `set_keep_awake` **刻意留在门外**：它们只是注入，
             //   不起任何线程、不写任何共享文件。调试实例里用户照样能手点「立即运行一次」，
             //   注入没做的话那次手动运行会静悄悄跑完、连个提示都没有。
-            if !is_sidecar {
+            if !is_sidecar && !portable_context::current().is_some() {
             automation::start(Box::new(run_automation_job));
             // Codex 省钱路由自愈：客户开过 DeepSeek 本地路由（config 指向 127.0.0.1:15722）
             // 但代理进程已不在（最常见：重启电脑后）→ 自动拉回来，否则 codex 全废且客户不知道
@@ -10336,6 +10557,7 @@ pub fn run() {
             usage_sources,
             set_usage_sources,
             get_driver_status,
+            portable_context_status,
             get_device_key,
             save_health_report,
             ai_diagnose,
@@ -10444,12 +10666,31 @@ pub fn run() {
                 ]);
             move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
                 let label = invoke.message.webview().label().to_string();
+                let cmd = invoke.message.command().to_string();
                 if label.starts_with("miniapp-") {
-                    let cmd = invoke.message.command().to_string();
                     eprintln!("[miniapp] 拒绝宿主命令调用: {label} → {cmd}");
                     invoke
                         .resolver
                         .reject("forbidden: 小程序不得直接调用宿主命令，请走 uking:// 桥");
+                    return true;
+                }
+                // A portable bundle is deliberately a narrow appliance. The
+                // full desktop command table remains compiled for the normal
+                // product, but cannot be reached from a portable WebView (or
+                // its devtools) to write a host configuration.
+                if portable_context::current().is_some()
+                    && !matches!(
+                        cmd.as_str(),
+                        "portable_context_status"
+                            | "open_recharge"
+                            | "action_run"
+                            | "action_parity_call"
+                    )
+                {
+                    eprintln!("[portable] 拒绝宿主命令调用: {label} → {cmd}");
+                    invoke
+                        .resolver
+                        .reject("forbidden: OpenClaw 便携预览只允许受管动作");
                     return true;
                 }
                 inner(invoke)
@@ -10481,6 +10722,66 @@ pub fn run() {
                 }
             }
         });
+}
+
+// The regular desktop product uses the Tauri identifier-wide single-instance
+// plugin. A portable package needs a narrower scope: two launches of the same
+// folder must converge, while two separately copied packages may run together.
+// Keep this GUI-only; `action run` and MCP exit before the window path and must
+// remain usable for diagnostics while the GUI is open.
+static PORTABLE_GUI_MUTEX: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+fn claim_portable_gui_instance() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        unsafe extern "system" {
+            fn CreateMutexW(
+                attributes: *const std::ffi::c_void,
+                initial_owner: i32,
+                name: *const u16,
+            ) -> *mut std::ffi::c_void;
+            fn GetLastError() -> u32;
+            fn SetLastError(error: u32);
+            fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+            fn MessageBoxW(
+                hwnd: *mut std::ffi::c_void,
+                text: *const u16,
+                caption: *const u16,
+                kind: u32,
+            ) -> i32;
+        }
+
+        const ERROR_ALREADY_EXISTS: u32 = 183;
+        const MB_OK: u32 = 0;
+        const MB_ICONINFORMATION: u32 = 0x40;
+        let context = portable_context::current().ok_or("当前不是受管便携包")?;
+        let root = context.root.to_string_lossy().to_lowercase();
+        let mutex_name = format!("Local\\U-King-OpenClaw-Portable-{}", blake3::hash(root.as_bytes()).to_hex());
+        let wide_name: Vec<u16> = std::ffi::OsStr::new(&mutex_name).encode_wide().chain(Some(0)).collect();
+        unsafe {
+            SetLastError(0);
+            let handle = CreateMutexW(std::ptr::null(), 1, wide_name.as_ptr());
+            if handle.is_null() {
+                return Err("无法创建便携包单实例锁".into());
+            }
+            if GetLastError() == ERROR_ALREADY_EXISTS {
+                let _ = CloseHandle(handle);
+                let text: Vec<u16> = std::ffi::OsStr::new("此绿色包已在运行，已保留原窗口。")
+                    .encode_wide().chain(Some(0)).collect();
+                let title: Vec<u16> = std::ffi::OsStr::new("U-King OpenClaw 绿色版")
+                    .encode_wide().chain(Some(0)).collect();
+                MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
+                return Err("同一便携包已在运行".into());
+            }
+            // Never close this handle: the OS releases it when this GUI exits.
+            // Retaining it in a static prevents a future refactor from dropping
+            // it while the window is still alive.
+            let _ = PORTABLE_GUI_MUTEX.set(handle as usize);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
