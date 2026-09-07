@@ -86,7 +86,7 @@ const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const DshPlugins = lazy(() => import("./DshPlugins").then((m) => ({ default: m.DshPlugins })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
-const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
+// U盘工具盘 2026-09-08 隐藏：import 与路由分支一起摘掉（恢复时两处一起加回，见 Sidebar 那条注释）。
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
 import { cn } from "./lib/cn";
@@ -1354,8 +1354,6 @@ export function App() {
                   setTermSnapshot(null);
                 }}
               />
-            ) : tab === "usbgenie" ? (
-              <UsbToolDisk onToast={flash} />
             ) : (
               <>
                 <DriverBar driver={driver} deviceKey={deviceKey} onStart={startWizard} onInstallAll={startInstallAll} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
@@ -1932,6 +1930,7 @@ const UNINSTALLABLE = new Set([
   "dsh",
   "harness-doctor",
   "openclaw",
+  // "cline" 已下架：不再展示，但保留卸载入口，存量已装用户仍可清掉。
   "cline",
   "ollama",
   "uu-switch",

@@ -34,7 +34,7 @@ import { useI18n } from "../i18n";
  * 客户装了 pi，敲 `pi` 撞 google 的交互式登录，回头看界面上根本没有 pi 这一行。
  * 界面能勾的必须 ⊇ 后端会配的，否则「全部」这两个字是假的。
  */
-type Target = "claude" | "codex" | "clawx" | "hermes" | "pi" | "qwen" | "crush" | "opencode" | "cline";
+type Target = "claude" | "codex" | "clawx" | "hermes" | "pi" | "qwen" | "crush" | "opencode";
 
 type Driver = {
   claude_base?: string | null;
@@ -65,7 +65,6 @@ const EXTRA_TOOLS: { id: Target; name: string; icon: string }[] = [
   { id: "qwen", name: "Qwen Code", icon: "qwen" },
   { id: "crush", name: "Crush", icon: "crush" },
   { id: "opencode", name: "OpenCode", icon: "opencode" },
-  { id: "cline", name: "Cline", icon: "cline" },
 ];
 
 type Stack = Record<string, { found?: boolean } | undefined>;

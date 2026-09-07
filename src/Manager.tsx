@@ -174,9 +174,6 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
   // 全部』里的隐藏项」：客户既看不见也配不准（用户 2026-08-24 点名要）。cc-switch 和
   // EchoBird 都把 opencode 当一等公民列着，我们不列纯粹是自己藏自己。
   { target: "opencode", label: "OpenCode", icon: "opencode" },
-  // Cline：2026-08-29 上架 —— apply_cline 写 ~/.cline 的 openai-compatible 槽位，
-  // 走通用 apply_provider 路径（同 pi/opencode，不需要托管重启）。
-  { target: "cline", label: "Cline", icon: "cline" },
 ];
 
 /** 配置目标 → 「我的 AI」里的工具 id，只为 `realInstalled()` 读安装态（渲染「未安装」徽章）。
@@ -190,7 +187,6 @@ const TARGET_TOOL_ID: Record<string, string> = {
   dsh: "dsh",
   pi: "pi",
   opencode: "opencode",
-  cline: "cline",
 };
 
 /**
@@ -376,9 +372,6 @@ function toolInstalledOf(driver: DriverStatus | null, target: string): boolean {
     // 那批照样填这张表（不填就会从「一键配好全部」弹窗里静默消失）。
     case "opencode":
       return !!driver.extra_installed?.opencode;
-    // cline 同 pi/opencode：PROMOTED_TO_LIST_TOOLS 那批，装没装从 extra_installed 读。
-    case "cline":
-      return !!driver.extra_installed?.cline;
     default:
       return false;
   }

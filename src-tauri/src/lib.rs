@@ -19,6 +19,7 @@ mod cleanup;
 mod clawx;
 mod openclaw2;
 mod usb_genie;
+mod usb_targets;
 mod claude_proxy;
 mod codex;
 mod codex_proxy;
@@ -1334,7 +1335,7 @@ fn sync_device_wallet_consumers(key: Option<&str>) -> Result<(), String> {
                     "clawx" => st.clawx_model.clone(),
                     "hermes" => st.hermes_model.clone(),
                     "dsh" => st.dsh_model.clone(),
-                    "pi" | "opencode" | "qwen" | "crush" | "cline" => {
+                    "pi" | "opencode" | "qwen" | "crush" => {
                         let ec = providers::effective_config(tool);
                         // 端点读得到且不是虾盘云 → 别家的路由，跳过。
                         // 端点读不到（文件不在/没配全）→ 当未接管，照常写默认。
@@ -2019,6 +2020,127 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &["schema_version", "ready", "blockers", "targets", "state_version"],
             usb_genie::action_inspect,
         ),
+        // ———————— target.*：便携 AI 目标运行时统一入口（P2 收编） ————————
+        // 形状与语义 = usb_genie 同款（盘面探测、乐观并发、确认门禁全部继承）。
+        // v1 只有 picoclaw manifest；对它的 handler 全部委托 usb_genie 现有实现，
+        // 零行为变化。target.stop / target.config.* 的注册与实现属 P3
+        //（U-Claw http-api transport 落地时一并提供），先注册桩位拒绝执行，
+        // 让 action-parity 清单现在就锁死 8 个、UI 可以开始按能力面渲染。
+        actions::readonly(
+            actions::TARGET_LIST,
+            "List portable AI targets",
+            "List every removable-disk portable AI target (disk × built-in manifest), including installed state and per-target capabilities. Reads only; never recursively scans a drive.",
+            5_000,
+            &["targets", "ready", "blockers", "state_version"],
+            |_, _, _| usb_targets::action_target_list(),
+        ),
+        actions::readonly_req(
+            actions::TARGET_DETECT,
+            "Detect portable AI targets on disks",
+            "Snapshot removable disks and report which built-in target manifests are detected or installed on each. Reads only.",
+            5_000,
+            serde_json::json!({ "disk": { "type": "string", "description": "Optional drive root to scope the snapshot to (e.g. F:\\\\). Omit to snapshot every removable disk." } }),
+            &[],
+            &["targets", "ready", "blockers", "state_version"],
+            |_, input, _| usb_targets::action_target_detect(&input),
+        ),
+        actions::readonly_req(
+            actions::TARGET_MANIFEST_LIST,
+            "List built-in target manifests",
+            "Read the built-in target manifest table shipped inside U-King (id, kind, capabilities, config transport). Never reads disks; U-disk files are never trusted as manifests.",
+            5_000,
+            serde_json::json!({}),
+            &[],
+            &["manifests"],
+            |_, _, _| usb_targets::action_manifest_list(),
+        ),
+        actions::write(
+            actions::TARGET_START,
+            "Start a portable AI target",
+            "Launch one installed portable AI target in its own console. Verifies the target immediately before launch and refuses a same-name executable elsewhere; duplicate launch is detected and reported instead of stacking processes.",
+            60_000,
+            "required",
+            serde_json::json!({
+                "id": { "type": "string", "minLength": 1, "description": "Target manifest id from target.manifest.list (e.g. picoclaw)." },
+                "target_id": { "type": "string", "minLength": 1, "description": "Stable removable-volume identity from target.list; a drive letter alone is not trusted." },
+                "target_root": { "type": "string", "minLength": 1 }
+            }),
+            &["id", "target_id", "target_root"],
+            &["changed", "launched", "state_version"],
+            usb_targets::action_target_start,
+            Some(usb_genie::action_state_version),
+        ),
+        actions::readonly_req(
+            actions::TARGET_STATUS,
+            "Read one portable AI target's status",
+            "Verify one installed target on its disk: runtime files, pinned version, config shape and credential consistency. No model request is made.",
+            30_000,
+            serde_json::json!({
+                "id": { "type": "string", "minLength": 1 },
+                "target_id": { "type": "string", "minLength": 1 },
+                "target_root": { "type": "string", "minLength": 1 }
+            }),
+            &["id", "target_id", "target_root"],
+            &["ok", "checks", "blockers", "state_version"],
+            |_, input, progress| usb_targets::action_target_status("", input, progress),
+        ),
+        // —— P3 桩位：target.stop / target.config.get / target.config.set ——
+        // 注册即进 parity 清单（锁定 8 个），但 picoclaw 没有对应能力（它的
+        // launch 去重靠进程探测，停止交给用户关控制台），U-Claw 的 http-api
+        // transport 属 P3。桩位 handler 一律明确拒绝，不虚报、不静默成功。
+        actions::write(
+            actions::TARGET_STOP,
+            "Stop a portable AI target (not available yet)",
+            "Reserved for the next phase: stop one running portable AI target. Currently refuses with unsupported_target because no built-in manifest declares a stop capability yet.",
+            10_000,
+            "required",
+            serde_json::json!({
+                "id": { "type": "string", "minLength": 1 },
+                "target_id": { "type": "string", "minLength": 1 },
+                "target_root": { "type": "string", "minLength": 1 }
+            }),
+            &["id", "target_id", "target_root"],
+            &["changed", "stopped"],
+            |_, input, _| usb_targets::action_target_unsupported(&input),
+            None,
+        ),
+        actions::readonly_req(
+            actions::TARGET_CONFIG_GET,
+            "Read a portable AI target's configuration (not available yet)",
+            "Reserved for the next phase: read one target's configuration through its manifest-declared transport. Currently refuses with unsupported_target.",
+            10_000,
+            serde_json::json!({
+                "id": { "type": "string", "minLength": 1 },
+                "target_id": { "type": "string", "minLength": 1 },
+                "target_root": { "type": "string", "minLength": 1 }
+            }),
+            &["id", "target_id", "target_root"],
+            &["config"],
+            |_, input, _| {
+                let _ = usb_targets::action_target_unsupported(&input)?;
+                Err("unsupported_target: target.config.get 属于 P3（U-Claw 接入阶段）".to_string())
+            },
+        ),
+        actions::write(
+            actions::TARGET_CONFIG_SET,
+            "Write a portable AI target's configuration (not available yet)",
+            "Reserved for the next phase: write one target's configuration through its manifest-declared transport (http-api for openclaw; the shell never writes openclaw.json directly). Currently refuses with unsupported_target.",
+            30_000,
+            "required",
+            serde_json::json!({
+                "id": { "type": "string", "minLength": 1 },
+                "target_id": { "type": "string", "minLength": 1 },
+                "target_root": { "type": "string", "minLength": 1 },
+                "patch": { "type": "object", "description": "Configuration fields to write, keyed by the target's config field schema." }
+            }),
+            &["id", "target_id", "target_root", "patch"],
+            &["changed"],
+            |_, input, _| {
+                let _ = usb_targets::action_target_unsupported(&input)?;
+                Err("unsupported_target: target.config.set 属于 P3（U-Claw 接入阶段）".to_string())
+            },
+            None,
+        ),
         actions::with_progress(actions::write(
             actions::USB_GENIE_DEPLOY,
             "Build or refresh a USB AI Genie",
@@ -2672,7 +2794,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 "model": { "type": "string", "description": "Optional model override." },
                 "targets": {
                     "type": "array",
-                    "items": { "type": "string", "enum": ["claude", "codex", "clawx", "hermes", "dsh", "qwen", "crush", "opencode", "pi", "cline"] },
+                    "items": { "type": "string", "enum": ["claude", "codex", "clawx", "hermes", "dsh", "qwen", "crush", "opencode", "pi"] },
                     "description": "Any supported AI tool id. DSH Web and terminal share the dsh target."
                 }
             }),

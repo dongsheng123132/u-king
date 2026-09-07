@@ -207,6 +207,22 @@ export const ACTION = {
   RUNTIME_WORKBENCH_INSTALL: "runtime.workbench.install",
   /** Count files by extension, biggest subfolders, how much changed in the last 30 days, and how deep it nests — the evidence for shaping a workbench around what this person actually does. Only stats files; never opens one, because it does not yet know which are private. Never reads this machine's AI usage records either: the only inputs are the folder the customer pointed at and what he says. Caps out at 20000 files and reports `truncated` when it does — not seeing something is not the same as it not being there. */
   RUNTIME_WORKBENCH_SCAN: "runtime.workbench.scan",
+  /** Reserved for the next phase: read one target's configuration through its manifest-declared transport. Currently refuses with unsupported_target. */
+  TARGET_CONFIG_GET: "target.config.get",
+  /** Reserved for the next phase: write one target's configuration through its manifest-declared transport (http-api for openclaw; the shell never writes openclaw.json directly). Currently refuses with unsupported_target. */
+  TARGET_CONFIG_SET: "target.config.set",
+  /** Snapshot removable disks and report which built-in target manifests are detected or installed on each. Reads only. */
+  TARGET_DETECT: "target.detect",
+  /** List every removable-disk portable AI target (disk × built-in manifest), including installed state and per-target capabilities. Reads only; never recursively scans a drive. */
+  TARGET_LIST: "target.list",
+  /** Read the built-in target manifest table shipped inside U-King (id, kind, capabilities, config transport). Never reads disks; U-disk files are never trusted as manifests. */
+  TARGET_MANIFEST_LIST: "target.manifest.list",
+  /** Launch one installed portable AI target in its own console. Verifies the target immediately before launch and refuses a same-name executable elsewhere; duplicate launch is detected and reported instead of stacking processes. */
+  TARGET_START: "target.start",
+  /** Verify one installed target on its disk: runtime files, pinned version, config shape and credential consistency. No model request is made. */
+  TARGET_STATUS: "target.status",
+  /** Reserved for the next phase: stop one running portable AI target. Currently refuses with unsupported_target because no built-in manifest declares a stop capability yet. */
+  TARGET_STOP: "target.stop",
 } as const;
 
 export type ActionId = (typeof ACTION)[keyof typeof ACTION];
@@ -237,8 +253,8 @@ export type ActionInputMap = {
   "runtime.device.key_rotate": { expected_state_version?: string; };
   "runtime.device.wallet_reset_local": { expected_state_version?: string; };
   "runtime.diagnostics.collect": Record<string, never>;
-  "runtime.driver.apply": { api_key: string; expected_state_version?: string; model?: string; provider_id: string; targets: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi" | "cline">; };
-  "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "cline" | "qwen" | "crush">; };
+  "runtime.driver.apply": { api_key: string; expected_state_version?: string; model?: string; provider_id: string; targets: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi">; };
+  "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush">; };
   "runtime.driver.inspect": Record<string, never>;
   "runtime.dsh.plugin_install": { expected_state_version?: string; profile?: string; spec: string; };
   "runtime.env.install_tools": { expected_state_version?: string; };
@@ -285,9 +301,9 @@ export type ActionInputMap = {
   "runtime.podapp.inspect": Record<string, never>;
   "runtime.podapp.install": { expected_state_version?: string; };
   "runtime.podapp.launch": { expected_state_version?: string; };
-  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "cline"; };
-  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "cline"; };
-  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "cline"; };
+  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
   "runtime.provider.save": { expected_state_version?: string; provider: Record<string, unknown>; };
   "runtime.readiness.inspect": Record<string, never>;
   "runtime.rtk.demo": Record<string, never>;
@@ -313,6 +329,14 @@ export type ActionInputMap = {
   "runtime.workbench.inspect": { manifest?: Record<string, unknown>; overwrite_doc?: boolean; path?: string; template?: string; };
   "runtime.workbench.install": { expected_state_version?: string; manifest?: Record<string, unknown>; overwrite_doc?: boolean; path: string; template?: string; };
   "runtime.workbench.scan": { path: string; };
+  "target.config.get": { id: string; target_id: string; target_root: string; };
+  "target.config.set": { expected_state_version?: string; id: string; patch: Record<string, unknown>; target_id: string; target_root: string; };
+  "target.detect": { disk?: string; };
+  "target.list": Record<string, never>;
+  "target.manifest.list": Record<string, never>;
+  "target.start": { expected_state_version?: string; id: string; target_id: string; target_root: string; };
+  "target.status": { id: string; target_id: string; target_root: string; };
+  "target.stop": { expected_state_version?: string; id: string; target_id: string; target_root: string; };
 };
 
 export type ActionOutputMap = {
@@ -417,6 +441,14 @@ export type ActionOutputMap = {
   "runtime.workbench.inspect": Record<string, unknown>;
   "runtime.workbench.install": Record<string, unknown>;
   "runtime.workbench.scan": Record<string, unknown>;
+  "target.config.get": Record<string, unknown>;
+  "target.config.set": Record<string, unknown>;
+  "target.detect": Record<string, unknown>;
+  "target.list": Record<string, unknown>;
+  "target.manifest.list": Record<string, unknown>;
+  "target.start": Record<string, unknown>;
+  "target.status": Record<string, unknown>;
+  "target.stop": Record<string, unknown>;
 };
 
 export type ActionRequest<A extends ActionId = ActionId> = {

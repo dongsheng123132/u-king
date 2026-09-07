@@ -820,7 +820,7 @@ pub fn remove(id: &str, on_log: &(dyn Fn(&str) + Send + Sync)) -> Result<String,
         "tool-hermes-cli" => crate::cleanup::uninstall_ai_tool("hermes", on_log),
         "tool-dsh" => crate::cleanup::uninstall_ai_tool("dsh", on_log),
         "tool-harness-doctor" => crate::cleanup::uninstall_ai_tool("harness-doctor", on_log),
-        // Cline（2026-08-29 上架）：npm 全局包 + 328MB，走官方 npm uninstall，不 rm。
+        // Cline 已下架（2026-09-08）：只保留存量卸载（npm 全局包，走官方 npm uninstall，不 rm）。
         "tool-cline" => npm_uninstall("cline", on_log),
 
         #[cfg(windows)]

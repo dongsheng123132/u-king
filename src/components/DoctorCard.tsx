@@ -71,7 +71,6 @@ const UPGRADE_TOOLS = [
   "opencode",
   "dsh",
   "pi",
-  "cline",
 ];
 
 function Probe({ label, p }: { label: string; p: CmdProbe | undefined }) {

@@ -11,7 +11,14 @@
 //! - **只采诊断数据**：版本、OS、错误种类、日志尾部、设备 Key 前 12 位（去重用，不含完整 Key）
 //! - **客户端不含任何密钥**：GitHub token 只存在服务端受控目录（权限 600）
 //! - 防滥用在服务端做（payload 校验 + 限流 + 按 hash 去重）
+//! - **客户端先节流再发**（`throttle`）：同签名 24h 只发 1 次 + 单设备每小时上限 10 次。
+//!   2026-09-08 reports 仓被上百条 `[auto][install_failed]` 淹没的教训 —— 服务端按 hash
+//!   去重挡不住「每台机器错误文本都不同」的洪水（Cline 二进制缺失、代理连不上，每台标题
+//!   都不一样）。节流只拦**网络发送**，本地 `metrics`/`crashlog` 落盘一条不少，信号不丢，
+//!   只是不再每台机器每天开几十个 Issue。用户主动点的「一键提交」(`report_feedback`)
+//!   永不节流。
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// 第一顺位走国内可达的 u-claw.org.cn 反代（/uking/bug → 服务端采集服务）。
@@ -53,13 +60,19 @@ pub fn report_bug(kind: &str, summary: &str, detail: &str) {
     crate::metrics::log_error(&kind, None, &crate::feedback::desensitize(&summary));
 
     std::thread::spawn(move || {
-        let _ = send(&kind, &summary, &detail, &[]);
+        let _ = send(&kind, &summary, &detail, &[], true);
     });
 }
 
 /// `shots`：客户明确勾选「同意上传」时才有值 —— 已压缩的 JPEG base64（不含 data: 前缀）。
 /// 服务端用建 issue 的同一把 token 传进仓库，客户端不接触任何凭证。
-fn send(kind: &str, summary: &str, detail: &str, shots: &[String]) -> Result<(), String> {
+///
+/// `throttle`：自动上报传 true（同签名 24h 只发 1 次 + 每小时上限，见本文件节流节）；
+/// 用户主动反馈传 false（用户亲手点的，永不拦）。
+fn send(kind: &str, summary: &str, detail: &str, shots: &[String], throttle: bool) -> Result<(), String> {
+    if throttle && !throttle_allow(kind, summary) {
+        return Ok(()); // 被节流：本地 metrics/crashlog 已落盘，只是不再发网络
+    }
     let device = crate::device::get_device_key_cached_prefix();
     let body = json!({
         "app": "u-king-mini",
@@ -112,7 +125,7 @@ pub fn report_feedback(summary: &str, detail: &str, shots: &[String]) -> Result<
     // 开头才是主语，截尾会得到一条「…的时候就没反应了」这种看不出说啥的 Issue 标题。
     let summary = truncate_head(summary, 160);
     let detail = truncate(detail, 10 * 1024);
-    send("user_feedback", &summary, &detail, shots)
+    send("user_feedback", &summary, &detail, shots, false)
 }
 
 /// 安装 panic hook：崩溃也上报（panic=abort 下 hook 仍会先执行）。
@@ -143,7 +156,7 @@ pub fn install_panic_hook() {
 }
 
 fn send_blocking_quick(kind: &str, summary: &str, detail: &str) -> Result<(), String> {
-    send(kind, summary, &truncate(detail, 2048), &[])
+    send(kind, summary, &truncate(detail, 2048), &[], true)
 }
 
 /// 保**尾部** n 个字符 —— 日志用（报错总在最后）。
@@ -166,6 +179,149 @@ fn truncate_head(s: &str, n: usize) -> String {
     }
 }
 
+// ============================================================
+// 客户端上报节流（2026-09-08，reports 仓洪水教训）
+// ============================================================
+//
+// 只拦**网络发送**：本地 metrics/crashlog 落盘在节流之前（report_bug 里），信号不丢。
+// 两条规则（都按单设备本地时钟）：
+//   1. 同签名 24h 只发 1 次 —— 签名 = kind + 归一化后的 summary（数字→#、空白折叠、
+//      截 120 字符）。同一类错误每小时报一次就够了，剩下的本地有数。
+//   2. 每小时全局上限 10 次 —— 签名归一化也兜不住的新花样（每台标题都不同），由总量兜底。
+//
+// 状态落 `~/.uking/report-throttle.json`（best-effort：读不到/写不进一律放行，
+// 上报链路不因节流文件坏掉而静默 —— 丢上报比多上报更坏）。
+// 用户主动反馈（report_feedback）不走这里。
+
+/// 同一签名 24 小时内最多发 1 次。
+const THROTTLE_SIG_WINDOW_SECS: u64 = 24 * 3600;
+/// 单设备每小时最多发 10 次（所有签名合计）。
+const THROTTLE_HOUR_CAP: u32 = 10;
+const THROTTLE_HOUR_SECS: u64 = 3600;
+/// 状态文件条数上限（防无限膨胀；超了先扔最老的）。
+const THROTTLE_MAX_SIGS: usize = 200;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct SigRec {
+    first: u64,
+    last: u64,
+    count: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct ThrottleState {
+    #[serde(default)]
+    sigs: std::collections::HashMap<String, SigRec>,
+    #[serde(default)]
+    hour_start: u64,
+    #[serde(default)]
+    hour_n: u32,
+}
+
+/// 签名归一化：数字段→`#`（「失败 3 次」和「失败 47 次」是同一类），空白折叠，截 120 字符。
+/// 路径/版本号里的数字也会被吃掉 —— 这是故意的：签名只用来「认出重复」，不用来定位，
+/// 定位看 Issue 正文里的原文 summary（服务端收到的是未归一化的）。
+fn sig_of(kind: &str, summary: &str) -> String {
+    let mut out = String::with_capacity(summary.len().min(120) + kind.len() + 1);
+    out.push_str(kind);
+    out.push('|');
+    let mut in_digit = false;
+    let mut in_space = false;
+    for c in summary.chars() {
+        if c.is_ascii_digit() {
+            if !in_digit {
+                out.push('#');
+                in_digit = true;
+            }
+            in_space = false;
+        } else if c.is_whitespace() {
+            if !in_space {
+                out.push(' ');
+                in_space = true;
+            }
+            in_digit = false;
+        } else {
+            out.push(c);
+            in_digit = false;
+            in_space = false;
+        }
+        if out.len() >= 120 + kind.len() + 1 {
+            break;
+        }
+    }
+    out
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// 纯决策函数（不碰磁盘，可单测）：该发返回 true，同时把计数写进 state。
+fn decide(state: &mut ThrottleState, kind: &str, summary: &str, now: u64) -> bool {
+    // 小时窗口滚动
+    if now.saturating_sub(state.hour_start) >= THROTTLE_HOUR_SECS {
+        state.hour_start = now;
+        state.hour_n = 0;
+    }
+    if state.hour_n >= THROTTLE_HOUR_CAP {
+        return false;
+    }
+    let sig = sig_of(kind, summary);
+    match state.sigs.get_mut(&sig) {
+        Some(rec) if now.saturating_sub(rec.first) < THROTTLE_SIG_WINDOW_SECS => {
+            // 同一窗口内：只放行第一次，之后的全拦（但更新 last，供排查看「最后一次见到」）。
+            rec.last = now;
+            rec.count += 1;
+            return false;
+        }
+        _ => {}
+    }
+    // 新签名，或旧窗口已过 24h → 重新开窗
+    if state.sigs.len() >= THROTTLE_MAX_SIGS {
+        // 扔最老的：按 last 排序，保留最新的 MAX-1 条
+        let mut keys: Vec<(String, u64)> =
+            state.sigs.iter().map(|(k, r)| (k.clone(), r.last)).collect();
+        keys.sort_by_key(|(_, last)| *last);
+        for (k, _) in keys.into_iter().take(state.sigs.len().saturating_sub(THROTTLE_MAX_SIGS - 1))
+        {
+            state.sigs.remove(&k);
+        }
+    }
+    state.sigs.insert(sig, SigRec { first: now, last: now, count: 1 });
+    state.hour_n += 1;
+    true
+}
+
+fn throttle_path() -> std::path::PathBuf {
+    // ~/.uking 下（metrics 同级），复用 metrics 的 UKING_TEST_HOME 沙箱口径。
+    crate::metrics::metrics_dir()
+        .parent()
+        .map(|p| p.join("report-throttle.json"))
+        .unwrap_or_else(|| std::path::PathBuf::from("report-throttle.json"))
+}
+
+/// 读状态 → 决策 → 写回。全程 best-effort：任何一步失败都**放行**（丢上报比多上报更坏）。
+fn throttle_allow(kind: &str, summary: &str) -> bool {
+    let now = now_secs();
+    let path = throttle_path();
+    let mut state: ThrottleState = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let allow = decide(&mut state, kind, summary, now);
+    if allow {
+        // 写不进也不拦这次（已经决定发了），下次重读旧状态而已。
+        let _ = std::fs::write(&path, serde_json::to_string(&state).unwrap_or_default());
+    } else {
+        // 被拦的也要更新 last/count 落盘吗？不 —— 洪水时每次错误都写一次文件，
+        // 磁盘 IO 反而成了新噪音。下次放行时 count 会重开窗，无所谓。
+    }
+    allow
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,5 +335,44 @@ mod tests {
         // 日志相反：保尾部（报错都在最后）
         let log = format!("{}最后一行报错", "x".repeat(500));
         assert!(truncate(&log, 40).ends_with("最后一行报错"), "日志要保尾部");
+    }
+
+    #[test]
+    fn sig_normalizes_numbers_and_spaces() {
+        // 「失败 3 次」和「失败 47 次」是同一签名（洪水时每台数字都不同）
+        assert_eq!(
+            sig_of("install_failed", "cline 安装失败，重试 3 次"),
+            sig_of("install_failed", "cline 安装失败，重试 47 次")
+        );
+        // kind 不同 = 不同签名
+        assert_ne!(
+            sig_of("install_failed", "x 3"),
+            sig_of("panic", "x 3")
+        );
+    }
+
+    #[test]
+    fn same_sig_reports_once_per_day() {
+        let mut st = ThrottleState::default();
+        assert!(decide(&mut st, "install_failed", "cline 安装失败 1", 1_000_000));
+        // 同一窗口内：数字不同也被归一化拦住
+        assert!(!decide(&mut st, "install_failed", "cline 安装失败 2", 1_000_100));
+        assert!(!decide(&mut st, "install_failed", "cline 安装失败 3", 1_003_600));
+        // 24h 窗口过了 → 重新放行
+        assert!(decide(&mut st, "install_failed", "cline 安装失败 4", 1_000_000 + 86_400 + 1));
+    }
+
+    #[test]
+    fn hour_cap_bounds_novel_flood() {
+        let mut st = ThrottleState::default();
+        // 每个签名都不同（注意：数字会被归一化吃掉，所以用不同字母构造差异），
+        // 总量兜底：每小时 10 次
+        for i in 0..10u8 {
+            let s = format!("完全不同的错误-{}-尾巴", (b'a' + i) as char);
+            assert!(decide(&mut st, "k", &s, 2_000_000), "第 {i} 个该放行");
+        }
+        assert!(!decide(&mut st, "k", "完全不同的错误-k-尾巴", 2_000_001), "第 11 个该拦");
+        // 下一小时滚动 → 重新放行
+        assert!(decide(&mut st, "k", "完全不同的错误-z-尾巴", 2_000_000 + 3600 + 1));
     }
 }

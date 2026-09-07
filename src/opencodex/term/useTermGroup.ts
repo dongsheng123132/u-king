@@ -599,7 +599,7 @@ export type TermGroup = {
  * 只按**用户敲下去的那条命令**认，不去猜屏幕上的内容：猜错了会在人家跑别的东西时
  * 挂一条驴唇不对马嘴的小抄。带参数（`claude -p …`）也算，管道/重定向里的不算。
  */
-const ENGLISH_TUIS = ["claude", "codex", "hermes", "qwen", "crush", "opencode", "dsh", "pi", "cline"];
+const ENGLISH_TUIS = ["claude", "codex", "hermes", "qwen", "crush", "opencode", "dsh", "pi"];
 function tuiOf(cmd: string): string | null {
   const head = cmd.trim().split(/\s+/)[0]?.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase() ?? "";
   return ENGLISH_TUIS.includes(head) ? head : null;

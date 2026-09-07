@@ -559,8 +559,8 @@ fn resolve_cwd(cwd: Option<String>) -> String {
 /// **ASCII 字符**只允许 `[A-Za-z0-9-_=./:]` 且不含 `..`（防元字符注入与路径穿越）；
 /// **非 ASCII 字符**（如中文提示词）一律放行 —— cmd.exe / PowerShell 的元字符
 /// （`&|<>^%!"` `` ` `` `;$(){}` 等）全部是 ASCII，非 ASCII 字符不可能被 shell 当元字符
-/// 解释，所以只放行非 ASCII 不会削弱现有的注入防护（见 `src/opencodex/apps.ts` 里
-/// cline 的中文一次性任务提示词 `cline 说说你能做什么`，旧的纯 ASCII 白名单会把它整条拒绝）。
+/// 解释，所以只放行非 ASCII 不会削弱现有的注入防护（如中文一次性任务提示词
+/// `pi 说说你能做什么`，旧的纯 ASCII 白名单会把它整条拒绝）。
 /// 空命令、以及超过 512 字符的命令直接拒绝（后者是防呆：bat 单行长度有实际上限）。
 ///
 /// ## 风险留痕：中文命令不要走 `term_open_external`
@@ -572,7 +572,7 @@ fn resolve_cwd(cwd: Option<String>) -> String {
 /// 附近注释，实现时不要漏掉这一条。
 pub fn validate_cmd(cmd: &str) -> bool {
     const ALLOWED_PROGRAMS: &[&str] =
-        &["claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "cline", "node", "npm", "git", "ollama"];
+        &["claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;
     if cmd.len() > MAX_LEN {
         return false;
@@ -1736,14 +1736,14 @@ mod tests {
     #[test]
     fn allows_non_ascii_but_still_blocks_ascii_metacharacters() {
         let cases: &[(&str, bool)] = &[
-            ("cline 说说你能做什么", true),
-            ("cline history", true),
-            ("cline & calc", false),      // '&' 是 ASCII 元字符
-            ("cline %PATH%", false),      // '%' 变量展开
-            ("cline <evil>", false),
-            ("cline `whoami`", false),
-            ("cline \"quoted\"", false),
-            ("cline $(whoami)", false),
+            ("pi 说说你能做什么", true),
+            ("pi history", true),
+            ("pi & calc", false),      // '&' 是 ASCII 元字符
+            ("pi %PATH%", false),      // '%' 变量展开
+            ("pi <evil>", false),
+            ("pi `whoami`", false),
+            ("pi \"quoted\"", false),
+            ("pi $(whoami)", false),
         ];
         for (cmd, expected) in cases {
             assert_eq!(validate_cmd(cmd), *expected, "cmd={cmd:?}");

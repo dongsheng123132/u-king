@@ -139,7 +139,6 @@ const TOOL_NAMES: Record<string, string> = {
   "qwen-code": "Qwen Code",
   crush: "Crush",
   opencode: "OpenCode",
-  cline: "Cline",
 };
 
 /** 写驱动配置的目标（apply_provider 的 targets）展示名。

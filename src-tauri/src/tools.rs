@@ -256,22 +256,6 @@ pub fn plan_all() -> Vec<LaunchPlan> {
         .collect()
 }
 
-/// Cline 的探测 prompt：**不能是塞进一个 argv 位的整句**。本机实测（`src/opencodex/apps.ts`
-/// 同名条目注释记录）它拿 commander 解析位置参数，单 token（哪怕内部带空格、但只占一个
-/// argv 位）会被当成未知子命令拒绝，必须拆成多个 argv token 传。这里手工拆开
-/// `toolprobe::PROMPT` 的词，不在运行时切（一次性写死更直白，也避免运行时分词规则跑偏）。
-///
-/// 🔴 **没有本机真机验证过这条命令** —— `toolprobe.rs` 文件头的规矩是「先手工把命令跑通
-/// 再往表里加，否则会把『我们命令写错了』报成『这个工具坏了』」，这条是记录在案的例外：
-/// 写这张表时环境里没装 Cline，没法验证。发版前务必先手工跑一次再信这份数据。
-const CLINE_PROBE_ARGS: &[&str] = &[
-    "--json",
-    "Reply",
-    "with",
-    "exactly:",
-    crate::toolprobe::MARKER,
-];
-
 pub const TOOL_SPECS: &[ToolSpec] = &[
     ToolSpec {
         id: "claude-code",
@@ -365,11 +349,11 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: LaunchMode::RouteTab,
         route_tab: Some("dsh"),
     },
-    // 🔴 下面 pi/opencode/crush/cline 在 `TOOL_SPECS` 里的相对顺序不是随意的：
+    // 🔴 下面 pi/opencode/crush 在 `TOOL_SPECS` 里的相对顺序不是随意的：
     // `providers::list_tools_targets()` 按本表原有顺序过滤派生 `LIST_TOOLS`，而
     // `apply_everywhere_contract_lists_every_target_the_backend_configures` 用例要求
     // 派生结果的**顺序**严格等于历史上手写的 `["claude","codex","clawx","hermes","dsh",
-    // "pi","opencode","cline"]`（跟 `APPLY_ALL_TARGETS` 字面量顺序对齐）。这里的顺序
+    // "pi","opencode"]`（跟 `APPLY_ALL_TARGETS` 字面量顺序对齐）。这里的顺序
     // 就是照那份历史顺序摆的，挪动会让那条用例返工——不是巧合，动之前先看那条用例。
     ToolSpec {
         id: "pi",
@@ -401,17 +385,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: Some("Crush"),
         probe_args: Some(&["run", crate::toolprobe::PROMPT]),
         // apps.ts::TUI_APPS 专属 tab id 是 "crush" —— 有内嵌终端。
-        launch_mode: LaunchMode::EmbeddedPty,
-        route_tab: None,
-    },
-    ToolSpec {
-        id: "cline",
-        cmd: "cline",
-        config_target: Some("cline"),
-        in_list_tools: true,
-        in_checkup: Some("Cline"),
-        probe_args: Some(CLINE_PROBE_ARGS),
-        // apps.ts::TUI_APPS 专属 tab id 是 "cline" —— 有内嵌终端。
         launch_mode: LaunchMode::EmbeddedPty,
         route_tab: None,
     },
@@ -1161,22 +1134,6 @@ pub fn list_tools() -> Vec<ToolInfo> {
             action: "install".into(),
             target: "".into(),
             launch_cmd: "dsh web".into(),
-            launch_app: "".into(),
-            hidden: false,
-        },
-        ToolInfo {
-            // ★ 2026-08-29 上架（opus + sol 会审裁定）。四门槛 2026-08-29 沙箱实测全过：
-            // npm 328 包/17s；auth 非交互接虾盘云；headless 真调 6.6s；工具调用真改文件。
-            // 体量全场最大（328MB），summary 明写，让客户自己决定装不装（对齐 opencode 08-24
-            // 的教训：「装得慢」是安装时才付的代价，不该换来「装完找不到」）。
-            id: "cline".into(),
-            name: "Cline CLI".into(),
-            summary: "开源 AI 编程 agent（GitHub ★67k）。特色是自动化编排：headless JSON 任务流、定时任务、多项目并行看板。体量约 330MB，慢网安装要等一会儿；一键接虾盘云。".into(),
-            kind: "standalone".into(),
-            installed: crate::installer::tool_installed("cline"),
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "cline".into(),
             launch_app: "".into(),
             hidden: false,
         },

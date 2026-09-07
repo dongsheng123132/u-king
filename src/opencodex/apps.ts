@@ -6,7 +6,7 @@
  */
 
 // 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突
-export type TuiAppId = "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi" | "cline";
+export type TuiAppId = "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -206,29 +206,6 @@ export const TUI_APPS: TuiApp[] = [
     // 换来「装完在工作台 Dock 里也找不到它」不划算 —— 上面那条修正本身就说明
     // 当初的隐藏理由（run 子命令坏了）是误判，剩下的只有体积，而体积已在文案里明说。
     hidden: false,
-  },
-  {
-    // ★ 2026-08-29 上架（会审裁定：opus + gpt-5.6-sol 双路）。上架四门槛 2026-08-29 本机
-    // 沙箱实测全过（npm 328 包/17s；`cline auth openai-compatible` 非交互接虾盘云 exit 0；
-    // `cline --json` 无头真调 6.6s 回话；工具调用 34.1s 真改文件并跑 node 验证）。
-    // 差异化 = headless NDJSON 事件流 + schedule/cron + kanban + --worktree（自动化编排线），
-    // 与 OpenCode 的「交互 TUI」定位区分。体量大：328MB/27769 文件，慢网要等（文案已写明）。
-    // 🔴 两个实测坑写死在这：
-    //   ① 单 token prompt（"OK"/"你好"）被 commander 当未知子命令拒绝 —— prompts 一律多词；
-    //   ② 裸跑没配 provider 报 "Unauthorized ... re-authenticate" —— ensureWebToolConfigured
-    //      已把 cline 纳入（ToolAppView），先配虾盘云再启动。
-    //   ③ 官方没有 --resume 旗标（sol 实锤 `unknown option '--resume'`），继续上次用 history。
-    id: "cline",
-    toolId: "cline",
-    name: "Cline CLI",
-    tool: "cline",
-    prompts: [
-      { label: "启动", cmd: "cline" },
-      { label: "历史会话", cmd: "cline history" },
-      { label: "一次性任务", cmd: "cline 说说你能做什么" },
-    ],
-    configTargets: ["cline"],
-    group: "cli",
   },
   {
     // ★ 2026-08-03 上架。四条门槛本机实测**全过**（用便携 Node 22.20 + npmmirror + 沙箱 HOME）：

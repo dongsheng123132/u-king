@@ -123,8 +123,9 @@ const SECONDARY_BUILTINS: &[&str] = &["deepseek", "glm", "kimi", "ollama"];
 /// 🔴 **必须进这份清单，光加前端 Tab 不够** —— `check_tool`（本文件 `restore_provider_for` /
 /// `hide_provider_for` 那几处调用）对不在 `LIST_TOOLS` 的 target 直接返回「未知的 AI 工具」，
 /// Tab 能切驱动但列表增删改会当场报错。
-/// 2026-08-29：加入 `cline` —— 同 pi/opencode 的第三批。apply_cline 当天新写（写
-/// `~/.cline/data/settings/providers.json` 的 `openai-compatible` 槽位），AI 设置页同步开 Tab。
+/// 2026-08-29：加入 `cline` —— 同 pi/opencode 的第三批。2026-09-08 下架（见下架注释）：
+/// 二进制缺失类上报淹没 reports 仓 + 产品收窄，驱动/体检/探测/安装入口全部移除；
+/// 存量已装用户仍可经「一键卸载」（cleanup::tool-cline）清掉。
 ///
 /// 2026-09-04（Phase C）：这份清单本身不再手写字面量——改成从 `tools::TOOL_SPECS` 里
 /// `in_list_tools == true` 的项按表内原有顺序派生（`OnceLock` 只是避免每次调用都重新
@@ -1247,8 +1248,6 @@ pub struct ApplyResult {
     pub opencode: Option<String>,
     /// pi（2026-08-03 上架）。四条门槛实测全过，见 apply_pi 注释。
     pub pi: Option<String>,
-    /// Cline（2026-08-29 上架）。纯增量字段，老前端读不到只是不显示。
-    pub cline: Option<String>,
 }
 
 // ============================================================
@@ -1361,7 +1360,6 @@ pub fn apply_provider(
         crush: None,
         opencode: None,
         pi: None,
-        cline: None,
     };
 
     for t in targets {
@@ -1496,20 +1494,6 @@ pub fn apply_provider(
                     apply_opencode(&p, api_key, &model)?;
                     r.opencode = Some(format!("已把 OpenCode 切到 {}（{}）", p.name, model));
                     record_active_driver("opencode", provider_id);
-                }
-            }
-            // Cline（2026-08-29 上架）：同 pi/opencode 口径 —— 未装静默跳过，
-            // official 走 reset（回滚备份 / 只删我们的槽位）。
-            "cline" => {
-                if p.id == "official" {
-                    reset_cline()?;
-                    r.cline = Some("已移除 Cline 的虾盘云配置".into());
-                    record_active_driver("cline", provider_id);
-                } else if crate::installer::tool_installed("cline") {
-                    let model = effective_model(&p, model_override);
-                    apply_cline(&p, api_key, &model)?;
-                    r.cline = Some(format!("已把 Cline 切到 {}（{}）", p.name, model));
-                    record_active_driver("cline", provider_id);
                 }
             }
             other => return Err(format!("未知目标 {other}")),
@@ -1678,7 +1662,6 @@ pub fn apply_xiapan_everywhere(
         ("qwen", "Qwen Code", apply_qwen),
         ("crush", "Crush", apply_crush),
         ("opencode", "OpenCode", apply_opencode),
-        ("cline", "Cline", apply_cline),
     ] {
         if want(tool) && crate::installer::tool_installed(tool) {
             let model = effective_model(&p, model_override);
@@ -4497,290 +4480,6 @@ fn reset_opencode() -> Result<(), String> {
     atomic_write(&path, text.as_bytes()).map_err(|e| format!("还原 OpenCode 配置失败: {e}"))
 }
 
-// ============================================================
-// Cline CLI（2026-08-29 上架，见 LIST_TOOLS / apply_cline 注释）
-// ============================================================
-
-/// Cline 的 provider 配置：`~/.cline/data/settings/providers.json`。
-/// 形状是 2026-08-29 让 CLI 自己写一份（`cline auth openai-compatible -k -m -b`）
-/// 再回读抄的**权威 schema**，不是猜的：`providers.<id>.settings.{provider,apiKey,model,baseUrl}`。
-fn cline_providers_path() -> PathBuf {
-    config_home().join(".cline").join("data").join("settings").join("providers.json")
-}
-
-/// 🔴 Cline 的 provider id **只认内置 id 表**（实测：`providers.json` 里写自定义 id
-/// `uking-xiapan`、类型 `custom` 都被拒「Unknown or disabled provider」）。
-/// 所以必须占用通用的 `openai-compatible` 槽位 —— 它是官方 CLI `cline auth` 自己
-/// 会写的 id，我们自己实测这条槽位 + 虾盘云端点真回话（6.6s）。
-const CLINE_PROVIDER_KEY: &str = "openai-compatible";
-
-/// UTC RFC3339（Cline 的 `updatedAt` 字段格式）。项目没有 chrono（体积优先），
-/// 沿用 origin.rs `now_iso` 的 civil_from_days 算法自己算。
-fn cline_utc_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let days = secs.div_euclid(86_400);
-    let tod = secs.rem_euclid(86_400);
-    // civil_from_days（Howard Hinnant）
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.000Z",
-        y,
-        m,
-        d,
-        tod / 3600,
-        (tod % 3600) / 60,
-        tod % 60
-    )
-}
-
-/// 把驱动写进 Cline。只动 `providers.openai-compatible` 一把 key +
-/// `lastUsedProvider` 指针，**绝不整文件重写**（用户的其它 provider 条目、
-/// IDE 扩展共享的这份配置一律原样保留）。
-fn apply_cline(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
-    if key.trim().is_empty() {
-        return Err("API Key 不能为空".into());
-    }
-    let base = p.openai_base.trim().trim_end_matches('/').to_string();
-    if base.is_empty() {
-        return Err(format!("{} 不支持 Cline（缺 OpenAI 兼容端点）", p.name));
-    }
-    let path = cline_providers_path();
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("创建 Cline 配置目录失败: {e}"))?;
-    }
-    backup_once(&path);
-    let mut root: Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({ "version": 1, "modes": {} }));
-    if !root.is_object() {
-        root = serde_json::json!({ "version": 1, "modes": {} });
-    }
-    if root.get("modes").is_none() {
-        if let Some(o) = root.as_object_mut() {
-            o.insert("modes".into(), Value::Object(serde_json::Map::new()));
-        }
-    }
-    set_json_path(
-        &mut root,
-        &["providers", CLINE_PROVIDER_KEY],
-        serde_json::json!({
-            "settings": {
-                "provider": CLINE_PROVIDER_KEY,
-                "apiKey": key,
-                "model": model,
-                "baseUrl": base,
-            },
-            "updatedAt": cline_utc_now(),
-            "tokenSource": "manual",
-        }),
-    );
-    set_json_path(&mut root, &["lastUsedProvider"], Value::String(CLINE_PROVIDER_KEY.into()));
-    let text = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    atomic_write(&path, text.as_bytes()).map_err(|e| format!("写 Cline 配置失败: {e}"))
-}
-
-/// 还原 Cline：优先回滚首次改动前的备份；没有备份就只删我们的
-/// `openai-compatible` 槽位 + 摘掉指向它的 lastUsedProvider（用户的其它条目不动）。
-fn reset_cline() -> Result<(), String> {
-    let path = cline_providers_path();
-    if restore_backup(&path) {
-        return Ok(());
-    }
-    let Ok(s) = std::fs::read_to_string(&path) else {
-        return Ok(()); // 没配过 = 已经是官方状态
-    };
-    let Ok(mut root) = serde_json::from_str::<Value>(&s) else {
-        return Ok(());
-    };
-    let mut changed = false;
-    if let Some(ps) = root.get_mut("providers").and_then(|v| v.as_object_mut()) {
-        if ps.remove(CLINE_PROVIDER_KEY).is_some() {
-            changed = true;
-        }
-    }
-    if root.get("lastUsedProvider").and_then(|v| v.as_str()) == Some(CLINE_PROVIDER_KEY) {
-        if let Some(o) = root.as_object_mut() {
-            o.remove("lastUsedProvider");
-        }
-        changed = true;
-    }
-    if !changed {
-        return Ok(());
-    }
-    let text = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    atomic_write(&path, text.as_bytes()).map_err(|e| format!("还原 Cline 配置失败: {e}"))
-}
-
-#[cfg(test)]
-mod cline_provider_tests {
-    use super::*;
-
-    /// 每个用例一个独立沙箱（`UKING_TEST_HOME`），绝不碰真实的 ~/.cline。
-    /// 闭包拿到的是沙箱里的 `.cline/data/settings` 目录。
-    fn with_sandbox(tag: &str, f: impl FnOnce(&std::path::Path)) {
-        crate::testsandbox::with_sandbox(&format!("cline-{tag}"), &[".cline"], |root| {
-            f(&root.join(".cline").join("data").join("settings"))
-        })
-    }
-
-    fn preset() -> ProviderPreset {
-        ProviderPreset {
-            id: "xiapan".into(),
-            name: "虾盘云（U-King 内置）".into(),
-            summary: String::new(),
-            // 故意带尾斜杠：apply 必须 trim（Cline 对 baseUrl 敏感）
-            openai_base: "https://api.u-claw.org.cn/v1/".into(),
-            anthropic_base: None,
-            model: "deepseek-v4-flash".into(),
-            small_model: "deepseek-v4-flash".into(),
-            codex_model: String::new(),
-            codex_wire_api: WIRE_API.into(),
-            key_url: String::new(),
-            key_hint: String::new(),
-            builtin_recharge: true,
-            recommended: true,
-            builtin: true,
-            api_key: String::new(),
-        }
-    }
-
-    /// 用户自有配置（CLI 写出的形状 + 用户自己配过的条目）。
-    const USER_PROVIDERS_JSON: &str = r#"{
-  "version": 1,
-  "modes": {},
-  "providers": {
-    "anthropic": {
-      "settings": { "provider": "anthropic", "apiKey": "sk-ant-user", "model": "claude-x" },
-      "updatedAt": "2026-08-01T00:00:00.000Z",
-      "tokenSource": "manual"
-    }
-  },
-  "lastUsedProvider": "anthropic"
-}"#;
-
-    /// 🔴 2026-08-30 发版会审条件（opus）：apply 只动 `openai-compatible` 槽位 +
-    /// `lastUsedProvider` 指针，用户自有条目逐字段不变；baseUrl 尾斜杠 trim。
-    #[test]
-    fn apply_only_touches_our_slot() {
-        with_sandbox("apply-slot", |dir| {
-            std::fs::create_dir_all(dir).unwrap();
-            let path = dir.join("providers.json");
-            std::fs::write(&path, USER_PROVIDERS_JSON).unwrap();
-
-            apply_cline(&preset(), "sk-xp-test", "deepseek-v4-flash").unwrap();
-
-            let after: Value =
-                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            let orig: Value = serde_json::from_str(USER_PROVIDERS_JSON).unwrap();
-            assert_eq!(
-                after["providers"]["anthropic"], orig["providers"]["anthropic"],
-                "用户自有条目被动了"
-            );
-            let slot = &after["providers"]["openai-compatible"]["settings"];
-            assert_eq!(slot["apiKey"], "sk-xp-test");
-            assert_eq!(slot["model"], "deepseek-v4-flash");
-            assert_eq!(slot["baseUrl"], "https://api.u-claw.org.cn/v1", "尾斜杠必须 trim");
-            assert_eq!(after["lastUsedProvider"], "openai-compatible");
-        });
-    }
-
-    /// apply 前已有文件 → backup_once 留锚点 → reset 走备份回滚，整文件回到改前。
-    #[test]
-    fn reset_restores_backup_after_apply() {
-        with_sandbox("reset-bak", |dir| {
-            std::fs::create_dir_all(dir).unwrap();
-            let path = dir.join("providers.json");
-            std::fs::write(&path, USER_PROVIDERS_JSON).unwrap();
-
-            apply_cline(&preset(), "sk-xp-test", "deepseek-v4-flash").unwrap();
-            reset_cline().unwrap();
-
-            let after: Value =
-                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            let orig: Value = serde_json::from_str(USER_PROVIDERS_JSON).unwrap();
-            assert_eq!(after, orig, "备份回滚后必须与改前逐字段一致");
-            assert!(after["providers"].get("openai-compatible").is_none());
-        });
-    }
-
-    /// 没有备份（客户手工删过 .uking-bak 的形状）：reset 只摘我们的槽位与指针，用户条目不动。
-    #[test]
-    fn reset_without_backup_keeps_user_entries() {
-        with_sandbox("reset-nobak", |dir| {
-            std::fs::create_dir_all(dir).unwrap();
-            let path = dir.join("providers.json");
-            let taken_over = r#"{
-  "version": 1,
-  "modes": {},
-  "providers": {
-    "anthropic": { "settings": { "provider": "anthropic", "apiKey": "sk-ant-user", "model": "claude-x" } },
-    "openai-compatible": { "settings": { "provider": "openai-compatible", "apiKey": "sk-xp-old", "model": "old", "baseUrl": "https://api.u-claw.org.cn/v1" } }
-  },
-  "lastUsedProvider": "openai-compatible"
-}"#;
-            std::fs::write(&path, taken_over).unwrap();
-            reset_cline().unwrap();
-            let after: Value =
-                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert!(after["providers"].get("openai-compatible").is_none(), "我们的槽位要摘掉");
-            assert_eq!(
-                after["providers"]["anthropic"]["settings"]["apiKey"], "sk-ant-user",
-                "用户条目不能动"
-            );
-            assert!(after.get("lastUsedProvider").is_none(), "指向我们的指针要摘掉");
-        });
-    }
-
-    /// 从零 apply（客户没配过 Cline）：造出合法形状，modes 键补齐。
-    #[test]
-    fn apply_creates_shape_from_scratch() {
-        with_sandbox("fresh", |dir| {
-            std::fs::create_dir_all(dir).unwrap();
-            apply_cline(&preset(), "sk-xp-test", "deepseek-v4-flash").unwrap();
-            let path = dir.join("providers.json");
-            let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert_eq!(v["lastUsedProvider"], "openai-compatible");
-            assert!(v["providers"]["openai-compatible"]["settings"]["baseUrl"].is_string());
-            assert!(v.get("modes").is_some(), "Cline 的 modes 键必须存在");
-        });
-    }
-
-    /// 空 Key 必须被拒（防呆：客户没填 Key 就点应用）。
-    #[test]
-    fn apply_rejects_empty_key() {
-        with_sandbox("empty-key", |_| {
-            let err = apply_cline(&preset(), "   ", "m").unwrap_err();
-            assert!(err.contains("Key"), "应报 Key 为空，实际: {err}");
-        });
-    }
-
-    /// 缺 OpenAI 端点的预设必须明确报「不支持」，而不是把空 baseUrl 写进配置。
-    #[test]
-    fn apply_rejects_missing_openai_base() {
-        with_sandbox("no-openai", |dir| {
-            std::fs::create_dir_all(dir).unwrap();
-            let mut p = preset();
-            p.openai_base = String::new();
-            let err = apply_cline(&p, "sk-xp-test", "m").unwrap_err();
-            assert!(err.contains("不支持"), "应报不支持，实际: {err}");
-            assert!(!dir.join("providers.json").exists(), "失败时不应写出文件");
-        });
-    }
-}
-
 /// 还原官方：优先回滚首次改动前留的备份；没有备份就只摘掉我们写进去的那部分，
 /// **绝不整文件删** —— 用户可能自己在同一个文件里配了别的 provider。
 fn reset_qwen() -> Result<(), String> {
@@ -5549,7 +5248,7 @@ pub struct DriverStatus {
     pub extra_installed: std::collections::BTreeMap<String, bool>,
     /// **在哪里发现了每个 AI 工具的可执行文件**——不止「装没装」，还答「装在哪、
     /// 是不是自包含绿色版、跟当前生效的是不是同一份」（ActionParity 第 15 条：结果要可见）。
-    /// 覆盖 `LIST_TOOLS` 这 8 个；同名多处发现时全部保留，按 machine > portable
+    /// 覆盖 `LIST_TOOLS` 这 7 个；同名多处发现时全部保留，按 machine > portable
     /// 排序，第一条是当前 `search_paths`/`tool_installed` 实际会用到的那个。
     /// 不新增探测：复用 `installer::search_paths` 已经在走的目录 + 已经算出来的 `active`，
     /// 不为它单独起进程（`version` 拿不到就是 `null`，不为它多花一次进程调用）。
@@ -5595,8 +5294,7 @@ pub struct ToolDiscovery {
 /// 三处规则不一致还必须保持一致效果的工具。**
 /// 2026-08-24：`opencode` 也挪去了 `LIST_TOOLS`（它现在有自己的 Tab）。同 pi 的处理，
 /// 见下面的 [`PROMOTED_TO_LIST_TOOLS`]。
-/// 2026-08-29：`cline` 上架即走 pi/opencode 同款路径 —— 直接进 `LIST_TOOLS` +
-/// 本数组 + 尾表 + `driver_status()` 四处，不重复 pi 当年「先进这数组、后升级」的两段式。
+/// 2026-08-29：`cline` 上架即走 pi/opencode 同款路径。2026-09-08 下架，已从四处全部移除。
 pub const EXTRA_APPLY_TOOLS: &[&str] = &["qwen", "crush"];
 
 /// 从 [`EXTRA_APPLY_TOOLS`] **升上去**到 [`LIST_TOOLS`]（有了自己的 Tab）、
@@ -5607,7 +5305,7 @@ pub const EXTRA_APPLY_TOOLS: &[&str] = &["qwen", "crush"];
 /// 一个工具从 `EXTRA_APPLY_TOOLS` 挪走 = **从弹窗里静默消失**（两处入口只剩一处）。
 /// pi 那次是在 `driver_status()` 里硬写了两行补上的；opencode 再来一次就会是第二份复制。
 /// 抽成数组之后，下一个工具升级只要在这里加一个词。
-pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode", "cline"];
+pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode"];
 
 /// 🔴 **「一键配好全部」真正会配的全部目标 —— 动作契约 `targets` 那份 enum 的唯一真相源。**
 ///
@@ -5628,7 +5326,7 @@ pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode", "cline"];
 /// 机器上没装」长得一模一样。这个用例只能挡「常量清单互相漂移」，挡不住「常量写对了、
 /// 循环体没跟着写」。缺一条断言分派表本身确实遍历了 `APPLY_ALL_TARGETS` 每一项（已记进需求榜）。
 pub const APPLY_ALL_TARGETS: &[&str] = &[
-    "claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode", "cline", "qwen", "crush",
+    "claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode", "qwen", "crush",
 ];
 
 /// 「我们写的配置，那个工具真的会照着跑吗」—— **回读工具自己的配置文件**，解析出它启动时
@@ -5775,33 +5473,6 @@ pub fn effective_config(target: &str) -> EffectiveConfig {
             r.model = yaml_model_default(&s);
             r.base_url = read_hermes_model_key(&s, "base_url");
             r.provider_key = id_from_base(r.base_url.as_deref());
-        }
-        // Cline：回读我们自己写的 `openai-compatible` 槽位（apply_cline 的权威 schema）。
-        // `provider_key` 是 Cline 内置 id（不是 U-King 的 preset id），端点对上虾盘云时
-        // 由 `id_from_base` 反推成 preset id 供前端显示；lastUsedProvider 指别处时如实报。
-        "cline" => {
-            let Ok(s) = std::fs::read_to_string(cline_providers_path()) else {
-                return r;
-            };
-            let Ok(v) = serde_json::from_str::<Value>(&s) else {
-                return EffectiveConfig::unknown(target);
-            };
-            let active = v
-                .get("lastUsedProvider")
-                .and_then(|x| x.as_str())
-                .filter(|id| *id == CLINE_PROVIDER_KEY);
-            if active.is_none() {
-                // 用户自己在 Cline 里切去了别的 provider = 别人的路由，回读如实报「不指我们」。
-                r.provider_key = v.get("lastUsedProvider").and_then(|x| x.as_str()).map(str::to_string);
-                return r;
-            }
-            let slot = v.pointer(&format!("/providers/{CLINE_PROVIDER_KEY}/settings"));
-            r.model = slot.and_then(|s| s.get("model")).and_then(|x| x.as_str()).map(str::to_string);
-            r.base_url = slot
-                .and_then(|s| s.get("baseUrl"))
-                .and_then(|x| x.as_str())
-                .map(str::to_string);
-            r.provider_key = id_from_base(r.base_url.as_deref()).or(Some(CLINE_PROVIDER_KEY.into()));
         }
         "dsh" => {
             let (prov, model, base) = dsh_live_selection();
@@ -6243,7 +5914,7 @@ mod tool_discovery_source_tests {
     }
 }
 
-/// `DriverStatus::discovered` 的实际计算：覆盖 `LIST_TOOLS` 这 8 个工具，
+/// `DriverStatus::discovered` 的实际计算：覆盖 `LIST_TOOLS` 这 7 个工具，
 /// 每个工具在每处已知搜索目录里查文件是否存在（跟 `tool_installed` 同款
 /// 纯文件存在性检查，不起进程），同名多处发现全部保留，按
 /// machine > portable 排序（本机装的优先，别让盘上的遮蔽本机的）。

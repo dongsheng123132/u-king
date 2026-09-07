@@ -37,10 +37,6 @@ function targetConfigured(app: TuiApp, d: DriverStatus | null): boolean {
   if (t === "codex") return !!d.codex_provider;
   if (t === "clawx") return !!d.clawx_model;
   if (t === "dsh") return !!d.dsh_model;
-  // Cline：裸跑没配 provider 报 "Unauthorized ... re-authenticate"（2026-08-29 实测），
-  // 用 active["cline"]（显式记录）+ providers.json 的 openai-compatible 槽位判断是否接管过。
-  // active["cline"] 由后端 record_active_driver 写，用户显式切过（含 official）在上面 line 27 已挡。
-  if (t === "cline") return !!d.active?.cline;
   // Hermes 特例：**不能**用 `!!d.hermes_model` 兜底 —— Hermes 首次运行会**自造**一个默认
   // 模型（alibaba/qwen3.7-max），config.yaml 里永远有 model.default，导致这里恒为 true →
   // 启动时的自动配置被跳过 → Hermes 用它自己的 qwen 默认 + 空 Key → HTTP 401（客户实锤，
@@ -66,7 +62,6 @@ const APP_BLURB: Record<string, string> = {
   openclaw: "开源 AI 智能体（龙虾）。一键启动后会打开网页版控制台，能聊天、自动办事。",
   hermes: "Hermes 适合聊天、写方案和轻量工具任务。点启动会弹出独立终端窗口进入对话（默认已接好虾盘云），显示区域更大；浏览器接管需要单独体检。",
   dsh: "DeepSeek 官方智能体框架。可选 Web 工作台或持续对话终端；两种模式共用同一份模型、工具和权限。U-King 会用本机虾盘云 Key 一键配好，无需再申请 DeepSeek API Key。",
-  cline: "开源编程 Agent，擅长自动化：定时任务、多项目并行、批量改代码。点启动自动配好虾盘云，直接对话或让它跑任务。",
 };
 
 type HermesBrowserStatus = {
@@ -187,9 +182,8 @@ export function ToolAppView({
   // 只是跑 CLI、绝不替他切驱动；要接虾盘云请用右侧 ProviderSwitch 显式切（可一键还原）。
   const ensureWebToolConfigured = async () => {
     if (!deviceKey?.key) return;
-    // cline（2026-08-29 上架）：裸跑没配 provider 报 "Unauthorized ... re-authenticate"
-    // 看不懂（2026-08-29 实测），必须在启动前按需配好虾盘云。同 openclaw/hermes/dsh 的按需口径。
-    if (app.id !== "openclaw" && app.id !== "hermes" && app.id !== "dsh" && app.id !== "cline") return;
+    // cline 已下架（2026-09-08），不再按需配。
+    if (app.id !== "openclaw" && app.id !== "hermes" && app.id !== "dsh") return;
     const d = await invoke<DriverStatus>("get_driver_status").catch(() => null);
     if (targetConfigured(app, d)) return; // 已配过（含官方直连）→ 尊重用户选择，不动
     try {

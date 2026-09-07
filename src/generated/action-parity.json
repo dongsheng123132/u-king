@@ -497,7 +497,7 @@
         "headless": true,
         "idempotent": true,
         "progress_events": false,
-        "timeout_ms": 15000
+        "timeout_ms": 45000
       },
       "id": "runtime.tool.inspect",
       "input_schema": {
@@ -826,7 +826,7 @@
         "headless": true,
         "idempotent": true,
         "progress_events": false,
-        "timeout_ms": 60000
+        "timeout_ms": 90000
       },
       "id": "runtime.openclaw2.preflight",
       "input_schema": {
@@ -1097,6 +1097,421 @@
         "type": "object"
       },
       "title": "Inspect removable USB AI Genie targets"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.list --json --no-input"
+        }
+      ],
+      "description": "List every removable-disk portable AI target (disk × built-in manifest), including installed state and per-target capabilities. Reads only; never recursively scans a drive.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "target.list",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "targets",
+          "ready",
+          "blockers",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "List portable AI targets"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.detect --json --no-input"
+        }
+      ],
+      "description": "Snapshot removable disks and report which built-in target manifests are detected or installed on each. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "target.detect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "disk": {
+            "description": "Optional drive root to scope the snapshot to (e.g. F:\\\\). Omit to snapshot every removable disk.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "targets",
+          "ready",
+          "blockers",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Detect portable AI targets on disks"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.manifest.list --json --no-input"
+        }
+      ],
+      "description": "Read the built-in target manifest table shipped inside U-King (id, kind, capabilities, config transport). Never reads disks; U-disk files are never trusted as manifests.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "target.manifest.list",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "manifests"
+        ],
+        "type": "object"
+      },
+      "title": "List built-in target manifests"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.start --json --no-input"
+        }
+      ],
+      "description": "Launch one installed portable AI target in its own console. Verifies the target immediately before launch and refuses a same-name executable elsewhere; duplicate launch is detected and reported instead of stacking processes.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 60000
+      },
+      "id": "target.start",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Target manifest id from target.manifest.list (e.g. picoclaw).",
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Stable removable-volume identity from target.list; a drive letter alone is not trusted.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "launched",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Start a portable AI target"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.status --json --no-input"
+        }
+      ],
+      "description": "Verify one installed target on its disk: runtime files, pinned version, config shape and credential consistency. No model request is made.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "target.status",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "checks",
+          "blockers",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Read one portable AI target's status"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.stop --json --no-input"
+        }
+      ],
+      "description": "Reserved for the next phase: stop one running portable AI target. Currently refuses with unsupported_target because no built-in manifest declares a stop capability yet.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "target.stop",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed",
+          "stopped"
+        ],
+        "type": "object"
+      },
+      "title": "Stop a portable AI target (not available yet)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.config.get --json --no-input"
+        }
+      ],
+      "description": "Reserved for the next phase: read one target's configuration through its manifest-declared transport. Currently refuses with unsupported_target.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "target.config.get",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_root"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "config"
+        ],
+        "type": "object"
+      },
+      "title": "Read a portable AI target's configuration (not available yet)"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run target.config.set --json --no-input"
+        }
+      ],
+      "description": "Reserved for the next phase: write one target's configuration through its manifest-declared transport (http-api for openclaw; the shell never writes openclaw.json directly). Currently refuses with unsupported_target.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "target.config.set",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "patch": {
+            "description": "Configuration fields to write, keyed by the target's config field schema.",
+            "type": "object"
+          },
+          "target_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_root": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_root",
+          "patch"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "changed"
+        ],
+        "type": "object"
+      },
+      "title": "Write a portable AI target's configuration (not available yet)"
     },
     {
       "bindings": [
@@ -2639,8 +3054,7 @@
                 "qwen",
                 "crush",
                 "opencode",
-                "pi",
-                "cline"
+                "pi"
               ],
               "type": "string"
             },
@@ -2820,7 +3234,6 @@
                 "dsh",
                 "pi",
                 "opencode",
-                "cline",
                 "qwen",
                 "crush"
               ],
@@ -2940,8 +3353,7 @@
               "hermes",
               "dsh",
               "pi",
-              "opencode",
-              "cline"
+              "opencode"
             ],
             "type": "string"
           }
@@ -3002,8 +3414,7 @@
               "hermes",
               "dsh",
               "pi",
-              "opencode",
-              "cline"
+              "opencode"
             ],
             "type": "string"
           }
@@ -3056,8 +3467,7 @@
               "hermes",
               "dsh",
               "pi",
-              "opencode",
-              "cline"
+              "opencode"
             ],
             "type": "string"
           }
@@ -5031,6 +5441,10 @@
       "runtime.uu_remote.inspect",
       "runtime.podapp.inspect",
       "runtime.automation.inspect",
+      "target.list",
+      "target.detect",
+      "target.status",
+      "target.manifest.list",
       "runtime.optimizer.inspect",
       "runtime.origin.inspect",
       "runtime.ai_tasks.inspect",
