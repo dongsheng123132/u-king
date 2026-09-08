@@ -30,7 +30,6 @@ import {
   QrCode,
   ScreenShare,
   Send,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import { useI18n } from "./i18n";
@@ -254,14 +253,8 @@ export function Feedback({ version, onToast }: { version?: string; onToast: (s: 
     }
     setSubmitting(true);
     try {
-      // 协助开着就把编号带进正文 —— 否则作者收到 Issue 还得回头问「你那个 pc-XXXX 是多少」，
-      // 而客户往往这会儿已经离开电脑了。
-      const withId =
-        assist?.running && assist.device_id
-          ? `${message}\n\n【远程协助已开启，编号 ${assist.device_id}】`
-          : message;
       const msg = await invoke<string>("submit_feedback", {
-        message: withId,
+        message,
         includeDiagnostics: includeDiag,
         shots: shots.map((s) => s.path),
         // 只有勾了才发图。草稿恢复回来的截图没有内存里的压缩版（upload 为空），
