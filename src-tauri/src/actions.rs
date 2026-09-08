@@ -3,7 +3,7 @@
 //! GUI、无头 CLI 与未来的 MCP/远端影子都只能经这里调用稳定 Action ID；
 //! 各个界面不再各自复制一份「检查命令冲突」逻辑。
 //!
-//! 依赖方向是单向的：业务模块（installer / hardware / ollama / codex / miniapp）**不认识本文件**，
+//! 依赖方向是单向的：业务模块（installer / hardware / ollama / codex）**不认识本文件**，
 //! 由组合根 `lib.rs::action_table()` 把它们登记进来。所以删掉任何一个功能模块，
 //! 仍然只需要动 `lib.rs` + 前端两个文件 —— 不会因为「登记在动作核心里」多出第三处要改。
 
@@ -461,19 +461,6 @@ pub const EXPERT_DISMISS: &str = "runtime.expert.dismiss";
 /// 装机失败占全部 bug 的 49%，其中一大半是「装完了但用不了」而不是「装的时候报错」——
 /// 后者客户会截图给我们，前者他只会觉得这软件不行。
 pub const READINESS_INSPECT: &str = "runtime.readiness.inspect";
-/// 已装小程序清单。只读。
-///
-/// 小程序运行时（`miniapp.rs`）一直活着 —— 2026-08-11「第三刀」删的是**商店页**，
-/// 不是能力。结果：开发机上此刻装着 4 个小程序、正往动作表里注册 4 个动作
-/// （`app.imagefix.*` / `app.idcard.*` / `app.resize.*`），而 GUI 里**一个入口都没有**，
-/// 用户既看不见也删不掉。这跟客户抱怨的「预制 skill 删不掉」是同一个病在另一层。
-/// 没有这条，装/删/开三件事在界面上全是盲操作。
-pub const MINIAPP_INSPECT: &str = "runtime.miniapp.inspect";
-/// 卸载一个小程序。目录先挪进回收站再摘注册表，**默认不动它的用户数据**
-/// （`.data/<id>/` 故意放在 app 目录之外，就是为了重装不丢东西）。
-/// 幂等：没装的再调一次返回 `removed:false`，不报错 —— `write()` 一律声明 idempotent，
-/// 声明了就得真兑现。
-pub const MINIAPP_UNINSTALL: &str = "runtime.miniapp.uninstall";
 /// 给 DSH 装一个插件（`dsh plugin --profile <p> add <spec>`）。
 ///
 /// 🔴 **这是「插件生态」的正确投法**（2026-08-18 定）：我们内置了 DSH，而 DSH 那边
@@ -482,17 +469,6 @@ pub const MINIAPP_UNINSTALL: &str = "runtime.miniapp.uninstall";
 ///
 /// 只跑 `dsh plugin add`，不碰别的 —— spec 由用户从我们筛过的清单里点，或自己粘。
 pub const DSH_PLUGIN_INSTALL: &str = "runtime.dsh.plugin_install";
-/// 从本机一个 `.ukapp` 包 / 目录装一个小程序。
-///
-/// 「能装能删，用户自己定」的**装**那半。装第三方包之前那道闸在 `miniapp.rs`：
-/// 清单里的 `host_actions` **只允许只读动作**，声明写动作的包装不上
-/// （`--miniapp-test` 有断言守着，且已变异验证 —— 把闸门去掉那条当场变红）。
-pub const MINIAPP_INSTALL: &str = "runtime.miniapp.install";
-/// 把随 exe 内置的小程序补装回来，并撤掉所有「用户删过」的墓碑。
-///
-/// 删除的回头路（宪法 10：任何写入都要可回滚）。没有这条，`uninstall` 就是单向门 ——
-/// 而单向门会让人**不敢删**，「能删能装、用户自己定」就只剩一半。
-pub const MINIAPP_RESTORE: &str = "runtime.miniapp.restore";
 pub const UU_REMOTE_INSTALL: &str = "runtime.uu_remote.install";
 pub const PODAPP_INSTALL: &str = "runtime.podapp.install";
 pub const PODAPP_LAUNCH: &str = "runtime.podapp.launch";
@@ -602,8 +578,7 @@ pub type Handler = fn(&str, Value, &ProgressSink) -> Result<Value, String>;
 /// 的回调签名本来就是这个，统一成一份省得两头转接。
 pub type ProgressSink = dyn Fn(&str) + Send + Sync;
 
-/// 字段是 `String` 而不是 `&'static str`：动作不再只有编译期写死的几个，
-/// 已装小程序的动作也要摊进同一张表（见 `miniapp::action_specs`），静态字符串装不下。
+/// 字段是 `String` 而不是 `&'static str`：动作 id 可由组合根统一传递，不受字面量生命周期限制。
 #[derive(Clone, Serialize)]
 pub struct ActionSpec {
     pub id: String,
@@ -993,29 +968,15 @@ fn wire_input_schema(schema: Option<Value>, confirmation: &str) -> Value {
 /// ActionParity 清单的一小段可执行投影。发布清单可直接复用这个结构，避免文档与核心漂移。
 pub fn manifest() -> Value {
     let specs = list();
-    let has_miniapp = specs.iter().any(|a| a.id.starts_with("app."));
     let actions = specs
         .into_iter()
         .map(|a| {
-            // 小程序动作带着自己的 bindings（miniapp / cli / mcp）进来，但在**合并后的宿主清单**里
-            // 还得补一条 desktop 绑定：用户是从 U-King 首页那排图标点进小程序的，
-            // 所以它在桌面面上确实可达。不补的话 strict parity 会判「desktop 面缺绑定」——
-            // 而且那不是误报，是这份清单没把可达路径说清楚。
-            let bindings = match a.bindings.clone() {
-                Some(Value::Array(mut b)) => {
-                    if !b.iter().any(|x| x.get("surface").and_then(|s| s.as_str()) == Some("desktop")) {
-                        b.push(json!({
-                            "surface": "desktop",
-                            "target": format!("uking:miniapp/open#{}", a.id)
-                        }));
-                    }
-                    Value::Array(b)
-                }
-                _ => json!([
+            let bindings = a.bindings.clone().unwrap_or_else(|| {
+                json!([
                     { "surface": "desktop", "target": "tauri:command/action_run" },
                     { "surface": "cli", "target": format!("cli:action run {} --json --no-input", a.id) }
-                ]),
-            };
+                ])
+            });
             json!({
                 "id": a.id,
                 "title": a.title,
@@ -1047,26 +1008,10 @@ pub fn manifest() -> Value {
             })
         })
         .collect::<Vec<_>>();
-    // 装了小程序就得把它们的面一并声明，否则 bindings 会指向未声明的 surface，
-    // 合并出来的清单过不了上游校验。
-    let mut surfaces = vec![
+    let surfaces = vec![
         json!({ "id": "desktop", "kind": "gui", "required_for_parity": true }),
         json!({ "id": "cli", "kind": "cli", "required_for_parity": true }),
     ];
-    if has_miniapp {
-        // required_for_parity=false 是实话：宿主自己的 runtime.* 动作没有、也不该有小程序界面。
-        // 标成 true 会要求每个动作都绑到这个面上，那是把「有这个面」和「人人都在这个面上」混为一谈。
-        surfaces.push(json!({
-            "id": "miniapp", "kind": "gui", "required_for_parity": false,
-            "test_driver": "uking-miniapp-webview",
-            "description": "Installed U-King MiniApps, served over the uking:// protocol."
-        }));
-        surfaces.push(json!({
-            "id": "mcp", "kind": "mcp", "required_for_parity": false,
-            "exclusion_reason": "Only installed MiniApp Actions are exposed through MCP; host runtime Actions are not yet in MCP parity.",
-            "description": "Exposed through `U-King.exe mcp serve`."
-        }));
-    }
     json!({
         // 🔴 **必须跟我们实际校验用的那份 schema 一致**：影核上游至今是 0.5.0
         // （`node_modules/action-parity/schema` 里 `spec_version` 是 `const: "0.5.0"`）。
@@ -1217,11 +1162,10 @@ fn run_inner(id: &str, input: Value, progress: &ProgressSink) -> Result<Value, S
 /// `claude/codex/clawx/hermes`，实测传 `["pi"]` 照样跑通并真的改了机器。
 /// 同一份契约里的 `additionalProperties:false` 有人执行、`enum` 没人执行 ——
 /// 而调用方（尤其是照着 manifest 生成入参的 AI）没法从契约里看出这个区别。
-/// 小程序动作那边的 validator（`miniapp.rs`）一直是执行 enum 的，
-/// **宿主自己反而没有**：能力早就有了，只是没接到这条路上。
+/// 宿主自己此前没有执行 enum：能力早就有了，只是没接到这条路上。
 ///
-/// 只管 `additionalProperties:false` 的宿主契约。小程序动作有自己的 validator，
-/// 没声明 schema 的（契约未知）一律放行 —— 宁可少拦一个，不能拦死一个本来能用的。
+/// 只管 `additionalProperties:false` 的宿主契约；没声明 schema 的（契约未知）一律放行 ——
+/// 宁可少拦一个，不能拦死一个本来能用的。
 ///
 /// **可选字段上的 `null` 一律当「没给」**（见 `null_on_optional_field_means_absent`）：
 /// 这不是通融，是照着调用方的语言收 —— JS 的 `undefined` 过一趟 IPC 就是 `null`，

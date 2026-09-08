@@ -120,24 +120,7 @@ export const sidebar: Record<string, string> = {
   "技术支持": "Support",
   "技术支持 · 报告问题 · 加微信找我们": "Support · Report an issue · Reach us on WeChat",
 
-  // 小程序动态区（用户自己装的，能删）
-  "小程序": "Mini-apps",
-  "你自己装的，能删。删掉它注册的动作也会一起从 AI 那儿消失。":
-    "Yours to keep or remove. Deleting one also removes the actions it gave your AI.",
-  "删掉这个小程序": "Remove this mini-app",
-  "删除小程序": "Remove mini-app",
-  "删掉小程序「{name}」？它注册的 {n} 个动作会同时从动作表里消失（AI 也就调不到了）。你的文件不会被删，随时可以「补装内置」装回来。":
-    "Remove the mini-app “{name}”? The {n} action(s) it registers disappear from the action table too, so your AI can no longer call them. Your files are kept, and “Restore built-ins” brings it back any time.",
-  "已删掉「{name}」": "Removed “{name}”",
-  "装着但读不出：{err}": "Installed but unreadable: {err}",
-  "补装内置（少了 {n} 个）": "Restore built-ins ({n} missing)",
-  "补装了 {n} 个内置小程序": "Restored {n} built-in mini-app(s)",
-  "内置小程序都在，没什么要补的": "All built-in mini-apps are present — nothing to restore",
-
-  "做一个自己的小程序（复制给 AI）": "Make your own mini-app (copy for your AI)",
-  "已复制，粘给 U-Chat 里的 AI 就行": "Copied — paste it to the AI in U-Chat",
-
-  // DSH 插件页（2026-08-18 新增；不叫「小程序」——两者安全模型相反）
+  // DSH 插件页
   "DSH 插件": "DSH plugins",
   "打开 DeepSeek Harness · 给它装插件": "Open DeepSeek Harness · install plugins into it",
   "DeepSeek Harness": "DeepSeek Harness",

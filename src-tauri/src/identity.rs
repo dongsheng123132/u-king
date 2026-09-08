@@ -555,8 +555,8 @@ fn render_capabilities(manifest: &Value, full: bool) -> String {
     }
 
     // 🔴 **不能笼统说「写动作每一个都要人同意」** —— 实测 49 个非只读动作里有 15 个
-    // `confirmation: never`（13 个 browser 页面内交互 + `runtime.origin.save` + 2 个
-    // `app.imagefix.*`）。那是有意的取舍：页面内点一下不设门，真正有外部后果的
+    // `confirmation: never`（browser 页面内交互 + `runtime.origin.save`）。那是有意的取舍：
+    // 页面内点一下不设门，真正有外部后果的
     // `browser.submit`（提交/下单/发帖）才是 `always`。
     //
     // 但**这句话正是 AI 判断「我该不该问用户」的直接依据**，说反了就会让它在该问的时候不问。

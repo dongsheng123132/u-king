@@ -88,7 +88,6 @@ pub const DISABLED_IN_SIDECAR: &[&str] = &[
     // 同一个 task_id 被两个进程轮询，出片时两边都往本机落一份、都去改同一条任务记录。
     "video.resume",
     // 新旧两版内嵌的小程序版本不同，各自 ensure 会互相按回自己那版。
-    "bundled_apps.ensure",
     "metrics.rollup",
     // 防火墙 / codex config.toml / Claude Code hook 三条一次性自愈：幂等 ≠ 可并发，
     // 两个进程同时读-改-写同一个文件会写出交错的半截内容。

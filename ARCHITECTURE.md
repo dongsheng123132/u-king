@@ -50,7 +50,6 @@ flowchart TB
         Generated["generated/action-client.ts\nActionParity 客户端"]
         CLI["U-King action run"]
         MCP["MCP server"]
-        MiniRPC["uking://rpc\n小程序受限接口"]
     end
 
     subgraph Backend["Rust / Tauri"]
@@ -85,7 +84,6 @@ flowchart TB
     Invoke --> Lib
     CLI --> Actions
     MCP --> Actions
-    MiniRPC --> Actions
     Lib --> Actions
     Actions --> Domains
     Lib --> Domains
@@ -132,12 +130,9 @@ flowchart TB
 1. 处理命令行 / sidecar / 自检等无界面入口；
 2. 构造 Tauri，加载单实例、opener、shell、dialog 等插件；
 3. 在 `setup` 中恢复窗口、托盘、实例角色和服务回调；
-4. 主实例启动自动任务调度、Codex 代理看门狗、用量汇总、内置小程序落地、技能包同步和更新暂存；
+4. 主实例启动自动任务调度、Codex 代理看门狗、用量汇总、技能包同步和更新暂存；
 5. 注册 Tauri `invoke_handler`；
 6. 退出时清理 PTY 和崩溃会话标记。
-
-小程序 WebView 被禁止直接调用宿主 Tauri 命令，只能走 `uking://rpc` 的受限权限表。这道门位于
-`invoke_handler` 外层，是当前小程序隔离的关键边界。
 
 ## API 与动作模型
 
@@ -262,9 +257,8 @@ launch 和凭据移除。它只管理 `U-King/AI-Genie` 范围，不应扫描或
 | 工作台 | `UWorkspace.tsx`、`Chat.tsx`、`ChatPanel.tsx`、`store.tsx`、`tasks.rs`、`chatstore.rs` | 任务、会话、对话、历史和工作目录 |
 | 终端与代理 | `term.rs`、`agent/*` | PTY、CLI 子进程、流式事件、超时/中断和权限询问 |
 | 便携运行时 | `usb_genie.rs`、`openclaw2.rs`、`clawx.rs` | U 盘及便携 AI 的生命周期与状态边界 |
-| 内容能力 | `image.rs`、`video.rs`、`reel.rs`、`vision.rs`、`draw.rs`、`officedoc.rs` | 图片、视频、视觉和办公产物 |
+| 内容能力 | `video.rs`、`reel.rs`、`vision.rs`、`draw.rs`、`officedoc.rs` | 图片、视频、视觉和办公产物 |
 | 本地数据 | `usage_local.rs`、`metrics.rs`、`journal.rs`、`artifacts.rs`、`backup.rs` | 本地用量、行为记录、产物索引和备份 |
-| 小程序 | `miniapp.rs`、`bundled_apps.rs`、`src-tauri/apps/*` | 小程序安装、权限清单、RPC 和内置 Web 应用 |
 
 ## 数据存储
 

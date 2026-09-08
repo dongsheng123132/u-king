@@ -99,7 +99,6 @@ function measureActionModuleAccess() {
     "src-tauri/src/agent/chat.rs",
     "src-tauri/src/identity.rs",
     "src-tauri/src/mcp_serve.rs",
-    "src-tauri/src/miniapp.rs",
   ]);
   try {
     const files = execFileSync("rg", [
@@ -311,7 +310,7 @@ for (const r of rows) {
   if (r.extra?.unexpected_actions_files?.length)
     console.error(
       `  └ ❌ 新的 crate::actions:: 越权文件：${r.extra.unexpected_actions_files.join(", ")} ` +
-        "（只允许 agent/chat.rs、identity.rs、mcp_serve.rs、miniapp.rs）",
+        "（只允许 agent/chat.rs、identity.rs、mcp_serve.rs）",
     );
 }
 

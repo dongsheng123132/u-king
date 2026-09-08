@@ -152,7 +152,6 @@ fn friendly_log_name(stem: &str) -> String {
         "cleanup" => "逐项清理",
         "backup" => "备份/还原",
         "install-local" => "装到本地",
-        "miniapp" => "小程序",
         "rtk" => "Token 压缩机",
         "mcp" => "MCP 连接器",
         "skillpack" => "AI 技能包",

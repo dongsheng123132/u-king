@@ -9,7 +9,7 @@
 //!
 //! **独立可插拔**：纯 std + serde_json，不 import 任何业务模块。
 //! 落盘范式照抄 draw.rs（它是 AI 创作页的专用历史，两者互不干涉）。
-//! 删它：lib.rs 去 `mod artifacts;` + handler 条目；miniapp.rs 去 artifact.emit 那一支。
+//! 产出箱由桌面 UI 与动作结果引用共用；协议路由只负责按 id 读取二进制。
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

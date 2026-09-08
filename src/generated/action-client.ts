@@ -115,14 +115,6 @@ export const ACTION = {
   RUNTIME_LOCALLLM_START: "runtime.localllm.start",
   /** Stop the process U-King started for that engine. Idempotent: succeeds when nothing is running. Only ever kills the recorded PID, and only after re-checking that PID still carries the image name we launched — never by bare process name, which would take down a customer's own identically-named server. */
   RUNTIME_LOCALLLM_STOP: "runtime.localllm.stop",
-  /** Report every installed mini-app: id, name, version, icon, which ActionParity actions it registers, and which host capabilities it was granted. `enabled:false` means it is installed but switched off — its actions stay out of the table. */
-  RUNTIME_MINIAPP_INSPECT: "runtime.miniapp.inspect",
-  /** Install a mini-app the user picked from disk. Third-party packages are gated: a manifest that asks for any non-read host action is rejected outright, so installing one can never hand it the ability to change this machine without asking. */
-  RUNTIME_MINIAPP_INSTALL: "runtime.miniapp.install",
-  /** Clear the 'user deleted this' tombstones and reinstall any built-in mini-app that is missing or outdated. This is the way back from uninstall; apps you installed yourself are untouched. */
-  RUNTIME_MINIAPP_RESTORE: "runtime.miniapp.restore",
-  /** Move the mini-app's folder to the trash area and drop it from the registry, so its actions leave the action table. Its user data under .data/<id>/ is kept unless purge_data is true. */
-  RUNTIME_MINIAPP_UNINSTALL: "runtime.miniapp.uninstall",
   /** Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
   /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
@@ -289,10 +281,6 @@ export type ActionInputMap = {
   "runtime.localllm.model_add": { expected_state_version?: string; kind: "dir" | "gguf"; name?: string; path: string; };
   "runtime.localllm.start": { ctx?: number; engine: "ollama" | "llamacpp"; expected_state_version?: string; gpu_layers?: number; model?: string; port?: number; threads?: number; };
   "runtime.localllm.stop": { engine: "ollama" | "llamacpp"; expected_state_version?: string; };
-  "runtime.miniapp.inspect": Record<string, never>;
-  "runtime.miniapp.install": { expected_state_version?: string; path: string; };
-  "runtime.miniapp.restore": { expected_state_version?: string; };
-  "runtime.miniapp.uninstall": { expected_state_version?: string; id: string; purge_data?: boolean; };
   "runtime.network.inspect": Record<string, never>;
   "runtime.openclaw2.configure_model": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
   "runtime.openclaw2.inspect": Record<string, never>;
@@ -404,10 +392,6 @@ export type ActionOutputMap = {
   "runtime.localllm.model_add": Record<string, unknown>;
   "runtime.localllm.start": Record<string, unknown>;
   "runtime.localllm.stop": Record<string, unknown>;
-  "runtime.miniapp.inspect": Record<string, unknown>;
-  "runtime.miniapp.install": Record<string, unknown>;
-  "runtime.miniapp.restore": Record<string, unknown>;
-  "runtime.miniapp.uninstall": Record<string, unknown>;
   "runtime.network.inspect": Record<string, unknown>;
   "runtime.openclaw2.configure_model": Record<string, unknown>;
   "runtime.openclaw2.inspect": Record<string, unknown>;

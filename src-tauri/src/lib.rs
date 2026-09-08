@@ -43,7 +43,6 @@ mod geo;
 mod guard;
 mod hardware;
 mod identity;
-mod image;
 mod install;
 mod instance;
 mod localllm;
@@ -66,8 +65,6 @@ mod toolbox;
 mod providers;
 mod report;
 mod rtk;
-mod bundled_apps;
-mod miniapp;
 mod podapp;
 mod skillpack;
 mod tasks;
@@ -1509,7 +1506,7 @@ pub(crate) fn recipe_table() -> Vec<actions::Recipe> {
 }
 
 pub(crate) fn action_table() -> Vec<actions::Action> {
-    let mut t = vec![
+    let t = vec![
         actions::readonly(
             actions::COMMAND_GUARD_INSPECT,
             "Inspect CLI command priority",
@@ -3782,89 +3779,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 }))
             },
         ),
-        actions::readonly(
-            actions::MINIAPP_INSPECT,
-            "List installed mini-apps and whether each one can actually run",
-            "Report every installed mini-app: id, name, version, icon, which ActionParity actions it registers, and which host capabilities it was granted. `enabled:false` means it is installed but switched off — its actions stay out of the table.",
-            10_000,
-            &["apps", "broken", "ready", "blockers"],
-            |_, _, _| {
-                let apps = miniapp::list();
-                let live = apps.iter().filter(|a| a.enabled).count();
-
-                // 目录在、但清单加载失败的。**`list()` 会静默跳过它们** —— 而「装了却调不到
-                // 它的动作」正是这么来的：目录明明在，动作表里就是没有。不把这些捞出来，
-                // 这条动作就跟它要取代的 `--miniapp-list` 有一模一样的盲区（那个开关当初
-                // 就是为补这个盲区才单开的），readiness 也会假绿。
-                let mut broken: Vec<serde_json::Value> = vec![];
-                if let Ok(rd) = std::fs::read_dir(miniapp::apps_root()) {
-                    for e in rd.flatten() {
-                        let p = e.path();
-                        if !p.is_dir() || e.file_name().to_string_lossy().starts_with('.') {
-                            continue;
-                        }
-                        if let Err(err) = miniapp::load_dir(&p) {
-                            broken.push(serde_json::json!({
-                                "dir": p.display().to_string(),
-                                "error": err,
-                            }));
-                        }
-                    }
-                }
-
-                let mut blockers: Vec<String> = vec![];
-                if apps.is_empty() && broken.is_empty() {
-                    blockers.push("一个小程序都没装 —— 侧栏的小程序区会是空的".into());
-                } else if live == 0 && !apps.is_empty() {
-                    blockers.push(format!(
-                        "装了 {} 个小程序，但全被停用了 —— 它们的动作不在动作表里，AI 也调不到",
-                        apps.len()
-                    ));
-                }
-                for b in &broken {
-                    blockers.push(format!(
-                        "{} 装着但读不出清单（{}）—— 它的动作不会进动作表，界面上跟没装一样",
-                        b["dir"].as_str().unwrap_or("?"),
-                        b["error"].as_str().unwrap_or("?"),
-                    ));
-                }
-
-                Ok(serde_json::json!({
-                    "apps": apps.iter().map(|a| serde_json::to_value(a).unwrap_or(serde_json::Value::Null)).collect::<Vec<_>>(),
-                    "broken": broken,
-                    "apps_root": miniapp::apps_root().display().to_string(),
-                    "bundled": bundled_apps::count(),
-                    // 有坏的就不算 ready —— 「大部分能用」在排障时会被读成「没问题」
-                    "ready": live > 0 && broken.is_empty(),
-                    "blockers": blockers,
-                }))
-            },
-        ),
-        actions::write(
-            actions::MINIAPP_UNINSTALL,
-            "Uninstall a mini-app",
-            "Move the mini-app's folder to the trash area and drop it from the registry, so its actions leave the action table. Its user data under .data/<id>/ is kept unless purge_data is true.",
-            30_000,
-            "required",
-            serde_json::json!({
-                "id": { "type": "string", "description": "Mini-app id from runtime.miniapp.inspect." },
-                "purge_data": { "type": "boolean", "description": "Also delete the app's user data. Default false — reinstalling normally keeps your stuff." }
-            }),
-            &["id"],
-            &["removed"],
-            |_, input, _| {
-                let id = input["id"].as_str().unwrap_or_default();
-                // 幂等靠这一步：没装就直说没删，而不是报错。`write()` 声明了 idempotent，
-                // 声明了就得兑现 —— 重试一个已经成功的卸载不该变成一次失败。
-                if miniapp::get(id).is_err() {
-                    return Ok(serde_json::json!({ "removed": false }));
-                }
-                let purge = input["purge_data"].as_bool().unwrap_or(false);
-                miniapp::uninstall(id, purge)?;
-                Ok(serde_json::json!({ "removed": true }))
-            },
-            None,
-        ),
         actions::write(
             actions::DSH_PLUGIN_INSTALL,
             "Install a plugin into DSH (DeepSeek Harness)",
@@ -3896,50 +3810,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 )?;
                 Ok(serde_json::json!({ "message": out.lines().rev().take(6).collect::<Vec<_>>().join("
 ") }))
-            },
-            None,
-        ),
-        actions::write(
-            actions::MINIAPP_INSTALL,
-            "Install a mini-app from a local .ukapp package or folder",
-            "Install a mini-app the user picked from disk. Third-party packages are gated: a manifest that asks for any non-read host action is rejected outright, so installing one can never hand it the ability to change this machine without asking.",
-            60_000,
-            "required",
-            serde_json::json!({
-                "path": { "type": "string", "description": "Absolute path to a .ukapp package or an unpacked mini-app folder." }
-            }),
-            &["path"],
-            &["id", "name", "version"],
-            |_, input, _| {
-                let path = input["path"].as_str().unwrap_or_default();
-                if path.trim().is_empty() {
-                    return Err("invalid_input: path 不能为空".into());
-                }
-                let info = miniapp::install_from_path(std::path::Path::new(path), "user")?;
-                Ok(serde_json::json!({ "id": info.id, "name": info.name, "version": info.version }))
-            },
-            None,
-        ),
-        actions::write(
-            actions::MINIAPP_RESTORE,
-            "Reinstall the mini-apps that ship inside U-King",
-            "Clear the 'user deleted this' tombstones and reinstall any built-in mini-app that is missing or outdated. This is the way back from uninstall; apps you installed yourself are untouched.",
-            120_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["restored", "forgot_removals"],
-            |_, _, _| {
-                let forgot = miniapp::forget_removals();
-                let before: Vec<String> = miniapp::list().into_iter().map(|a| a.id).collect();
-                bundled_apps::ensure_installed(&|_| {});
-                let after = miniapp::list();
-                let restored: Vec<String> = after
-                    .iter()
-                    .map(|a| a.id.clone())
-                    .filter(|id| !before.contains(id))
-                    .collect();
-                Ok(serde_json::json!({ "restored": restored, "forgot_removals": forgot }))
             },
             None,
         ),
@@ -4280,13 +4150,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             browser::run,
         ),
     ];
-    // 已装小程序的动作。装一个小程序 = 给这台设备的动作面扩容，
-    // CLI / MCP / 影核三个面自动看见，不需要各自再登记一遍。整族共用一个分发 handler。
-    t.extend(miniapp::action_specs().into_iter().map(|spec| actions::Action {
-        spec,
-        handler: |id, input, _| miniapp::run_action(id, input),
-        state_fn: None,
-    }));
     t
 }
 
@@ -7854,210 +7717,31 @@ fn run_selfcheck(out_path: Option<String>) -> ! {
     std::process::exit(if ok { 0 } else { 1 });
 }
 
-// ─────────────────────── 小程序：宿主侧接线 ───────────────────────
-
-/// GUI 侧的宿主能力实现。**API Key 只在这里现形，随即消亡** ——
-/// miniapp.rs 没有网络代码也不读 device.json，拿不到的东西泄不了。
-struct GuiHost {
-    app: AppHandle,
-}
-
-impl miniapp::HostBridge for GuiHost {
-    fn ai_image_edit(&self, args: &serde_json::Value) -> Result<serde_json::Value, String> {
-        let key = device::device_key_offline()?;
-        let prompt = args.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
-        let model = args
-            .get("model")
-            .and_then(|v| v.as_str())
-            .filter(|m| !m.trim().is_empty())
-            .unwrap_or("gpt-image-2");
-        let size = args.get("size").and_then(|v| v.as_str()).unwrap_or("1024x1024");
-        let img = args.get("image").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        if img.is_empty() {
-            return Err("invalid_input: ai.imageEdit 缺少 image".into());
-        }
-        let r = providers::generate_image_edit(&key, prompt, model, size, &[img])?;
-        serde_json::to_value(r).map_err(|e| e.to_string())
-    }
-    fn ai_image_generate(&self, args: &serde_json::Value) -> Result<serde_json::Value, String> {
-        let key = device::device_key_offline()?;
-        let prompt = args.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
-        let model = args
-            .get("model")
-            .and_then(|v| v.as_str())
-            .filter(|m| !m.trim().is_empty())
-            .unwrap_or("gpt-image-2");
-        let size = args.get("size").and_then(|v| v.as_str()).unwrap_or("1024x1024");
-        let quality = args.get("quality").and_then(|v| v.as_str());
-        let r = providers::generate_image(&key, prompt, model, size, quality)?;
-        serde_json::to_value(r).map_err(|e| e.to_string())
-    }
-    fn ai_chat(&self, _args: &serde_json::Value) -> Result<serde_json::Value, String> {
-        Err("capability_unavailable: 小程序的对话能力尚未接入".into())
-    }
-    fn file_save(&self, name: &str, data_url: &str) -> Result<serde_json::Value, String> {
-        // 原生「另存为」：路径由**用户**选，小程序无从得知任意路径 —— 这是权限模型的一部分，
-        // 不是偷懒。给它一个任意写盘的接口，fs 沙箱就白做了。
-        use tauri_plugin_dialog::DialogExt;
-        let raw = data_url.rsplit(',').next().unwrap_or(data_url);
-        let bytes = qr_merge_b64_decode(raw)?;
-        if bytes.is_empty() {
-            return Err("要保存的数据是空的".into());
-        }
-        let name = if name.trim().is_empty() { "uking-miniapp.png" } else { name };
-        let dest = self
-            .app
-            .dialog()
-            .file()
-            .set_file_name(name)
-            .add_filter("PNG 图片", &["png"])
-            .blocking_save_file();
-        match dest {
-            Some(fp) => {
-                let p = fp.into_path().map_err(|e| format!("路径无效: {e}"))?;
-                std::fs::write(&p, &bytes).map_err(|e| format!("保存失败: {e}"))?;
-                Ok(serde_json::json!(p.display().to_string()))
-            }
-            None => Ok(serde_json::Value::Null),
-        }
-    }
-    fn file_open(&self, filters: &[String]) -> Result<serde_json::Value, String> {
-        use tauri_plugin_dialog::DialogExt;
-        let exts: Vec<&str> = filters.iter().map(|s| s.as_str()).collect();
-        let exts = if exts.is_empty() { vec!["png", "jpg", "jpeg", "webp", "bmp"] } else { exts };
-        let picked = self
-            .app
-            .dialog()
-            .file()
-            .add_filter("图片", &exts)
-            .blocking_pick_file();
-        let Some(p) = picked else { return Ok(serde_json::Value::Null) };
-        let path = p.into_path().map_err(|e| e.to_string())?;
-        let bytes = std::fs::read(&path).map_err(|e| format!("读不到文件: {e}"))?;
-        let mime = match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
-            "png" => "image/png",
-            "webp" => "image/webp",
-            "bmp" => "image/bmp",
-            _ => "image/jpeg",
-        };
-        Ok(serde_json::json!({
-            "name": path.file_name().and_then(|n| n.to_str()).unwrap_or(""),
-            "dataUrl": format!("data:{mime};base64,{}", b64_encode_bytes(&bytes)),
-        }))
-    }
-    fn host_action(&self, id: &str, input: serde_json::Value) -> Result<serde_json::Value, String> {
-        actions::run(id, input)
-    }
-}
-
-fn b64_encode_bytes(b: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(b.len().div_ceil(3) * 4);
-    for c in b.chunks(3) {
-        let n = ((c[0] as u32) << 16)
-            | ((*c.get(1).unwrap_or(&0) as u32) << 8)
-            | *c.get(2).unwrap_or(&0) as u32;
-        out.push(T[(n >> 18) as usize & 63] as char);
-        out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
-    }
-    out
-}
-
-fn json_response(status: u16, v: &serde_json::Value) -> tauri::http::Response<Vec<u8>> {
-    tauri::http::Response::builder()
-        .status(status)
-        .header("content-type", "application/json; charset=utf-8")
-        .header("cache-control", "no-store")
-        .body(v.to_string().into_bytes())
-        .unwrap()
-}
-
-/// `uking://localhost/…` 的总路由。
-fn miniapp_protocol(
-    app: &AppHandle,
-    path: &str,
-    is_post: bool,
-    body: &[u8],
-) -> tauri::http::Response<Vec<u8>> {
-    // 桥脚本
-    if path == "__uking/bridge.js" {
+/// `uking://artifact/<id>` 只服务产出箱的二进制数据；它不再承载应用资源或 RPC。
+fn artifact_protocol(path: &str) -> tauri::http::Response<Vec<u8>> {
+    let Some(id) = path.strip_prefix("artifact/") else {
         return tauri::http::Response::builder()
-            .status(200)
-            .header("content-type", "text/javascript; charset=utf-8")
-            .header("cache-control", "no-store")
-            .body(miniapp::BRIDGE_JS.as_bytes().to_vec())
+            .status(404)
+            .body(Vec::new())
             .unwrap();
+    };
+    match artifacts::read_bytes(id) {
+        Some(bytes) => tauri::http::Response::builder()
+            .status(200)
+            .header("content-type", "image/png")
+            .header("cache-control", "no-store")
+            .body(bytes)
+            .unwrap(),
+        None => tauri::http::Response::builder().status(404).body(Vec::new()).unwrap(),
     }
-    // 产出箱取图：GUI 拿像素走这里，动作返回的只是引用
-    if let Some(id) = path.strip_prefix("artifact/") {
-        return match artifacts::read_bytes(id) {
-            Some(b) => tauri::http::Response::builder()
-                .status(200)
-                .header("content-type", "image/png")
-                .header("cache-control", "no-store")
-                .body(b)
-                .unwrap(),
-            None => json_response(404, &serde_json::json!({ "ok": false, "error": "artifact not found" })),
-        };
-    }
-    // 能力桥
-    if let Some(rest) = path.strip_prefix("rpc/") {
-        if !is_post {
-            return json_response(405, &serde_json::json!({ "ok": false, "error": "method_not_allowed" }));
-        }
-        let mut it = rest.splitn(2, '/');
-        let app_id = it.next().unwrap_or("");
-        let verb = it.next().unwrap_or("");
-        let args: serde_json::Value = serde_json::from_slice(body).unwrap_or(serde_json::json!({}));
-        let host = GuiHost { app: app.clone() };
-        return match miniapp::rpc(app_id, verb, &args, &host) {
-            Ok(d) => json_response(200, &serde_json::json!({ "ok": true, "data": d })),
-            Err(e) => json_response(200, &serde_json::json!({ "ok": false, "error": e })),
-        };
-    }
-    // 静态资源
-    if let Some(rest) = path.strip_prefix("app/") {
-        let mut it = rest.splitn(2, '/');
-        let app_id = it.next().unwrap_or("");
-        let rel = it.next().unwrap_or("");
-        let mut s = miniapp::serve(app_id, rel);
-        let is_html = s.mime.starts_with("text/html");
-        if is_html {
-            s.body = miniapp::inject_bridge(&s.body, app_id);
-        }
-        let csp = miniapp::permissions(app_id)
-            .map(|p| miniapp::csp_for(&p))
-            .unwrap_or_else(|_| "default-src 'self'".into());
-        let mut b = tauri::http::Response::builder()
-            .status(s.status)
-            .header("content-type", s.mime)
-            .header("cache-control", if s.no_store { "no-store" } else { "max-age=60" });
-        if is_html {
-            // connect-src 'self' 是承重墙：挡住恶意小程序把用户的图外传第三方
-            b = b.header("content-security-policy", csp);
-        }
-        return b.body(s.body).unwrap();
-    }
-    json_response(404, &serde_json::json!({ "ok": false, "error": "not_found" }))
 }
-
-// ─── 小程序：只剩「打开」这一条给宿主用 ───
-//
-// 2026-08-11 简化：小程序**商店页**（MiniApps.tsx / AppStrip.tsx）已删，
-// 随之删掉只有那两个页面在调的四个命令（list_miniapps / install_miniapp_dialog /
-// uninstall_miniapp / set_miniapp_pinned）。**运行时和能力全留着** ——
-// 泊舟仍可通过影核动作 `runtime.podapp.install` / `.launch` 和 CLI `--miniapp-*` 装、开、更新。
-// `open_miniapp` 留下：`--miniapp-open` 走的就是它这条路（和界面点击同一条，不另写一份）。
 
 /// 把终端拉成一个独立窗口（客户 2026-08-18：「终端能拉出来不？做对比之类的」）。
 ///
 /// 用**同一份前端**加 `?pane=terminal` —— `main.tsx` 在入口按这个参数分流，
 /// 只挂 `TerminalWindow`，不挂整个 App（两份 App 同时活着会各跑一套定时任务/升级检查）。
 ///
-/// 🔴 **不复用 `open_miniapp` 那条 `uking://` 路**：小程序要的是隔离（独立 origin + 专属 CSP），
-/// 终端要的正相反 —— 它得跟主窗口同源，才能调 `term_*` 那批命令。
+/// 终端必须和主窗口同源，才能调 `term_*` 那批命令。
 ///
 /// ⚠️ 注意「注册表和心跳」是**每个 webview 各一份**，不是共用：`registry.ts` 的 `owned`
 /// 和 `main.tsx` 的保活 `setInterval` 都是模块级单例，而两个 webview 是两个独立 JS realm，
@@ -8107,48 +7791,6 @@ async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<S
         .inner_size(960.0, 640.0)
         .build()
         .map_err(|e| format!("拉出终端窗口失败: {e}"))?;
-    Ok(())
-}
-
-/// `uking://` 协议被请求到的次数。
-///
-/// 判据用途：小程序「点了没反应」和「协议压根没被访问」在界面上长得一模一样。
-/// 0.9.72 发出去的包就是后者（iframe 跨 scheme 被 WebView2 拒），
-/// 而当时没有任何自动化能区分这两种情况 —— `--miniapp-open` 靠这个计数器补上。
-static MINIAPP_PROTO_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-
-/// 打开一个小程序。
-///
-/// **必须用独立 WebviewWindow，不能用主窗口里的 iframe。**
-/// 实测：主窗口在 http(s) 源上，iframe 指向 `uking://` 是跨 scheme，WebView2 直接不放行 ——
-/// 表现为容器打开了但永远停在「正在打开…」，而且协议处理器一次都不会被调用
-/// （没有日志的话，这和「协议没注册」长得一模一样，极难查）。
-/// spike 当初验过的是「uking:// 页面里的 iframe 指向 uking://」——同源，不能推广到主窗口。
-#[tauri::command]
-async fn open_miniapp(app: AppHandle, id: String) -> Result<(), String> {
-    let info = tauri::async_runtime::spawn_blocking({
-        let id = id.clone();
-        move || miniapp::get(&id)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let label = format!("miniapp-{}", info.slug);
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-        return Ok(());
-    }
-    let url: tauri::Url = format!("uking://localhost/app/{}/", info.id)
-        .parse()
-        .map_err(|_| "地址解析失败".to_string())?;
-    // label 以 miniapp- 打头 —— invoke_handler 的门禁按这个前缀拒绝宿主命令调用
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::CustomProtocol(url))
-        .title(format!("{} · U-King 小程序", info.name))
-        .inner_size(1100.0, 760.0)
-        .center()
-        .build()
-        .map_err(|e| format!("打开失败: {e}"))?;
     Ok(())
 }
 
@@ -8629,22 +8271,6 @@ pub fn run() {
             }
         }
     }
-    // 小程序运行时自检：U-King.exe --miniapp-test
-    // 装→列→跑→卸全在临时目录里做，绝不碰真实 ~/.uking（同 mcp_test_headless 的沙箱做法）。
-    if args.iter().any(|a| a == "--miniapp-test") {
-        std::process::exit(miniapp::selftest());
-    }
-    // 补装内置小程序：U-King.exe --miniapp-ensure
-    // 正常由首启后台线程做；这里给一个无头入口——客户「小程序不见了 / 装坏了」时一条命令补回来，
-    // 也是这条路径唯一能被自动化验证的地方（GUI 那次调用没法在 CI 里跑）。幂等。
-    if args.iter().any(|a| a == "--miniapp-ensure") {
-        bundled_apps::ensure_installed(&|m| println!("{m}"));
-        let n = miniapp::list().len();
-        println!("[miniapp-ensure] 完成，现有 {n} 个小程序");
-        std::process::exit(0);
-    }
-    // `--miniapp-list` 已删（2026-08-18）—— 影核动作 `runtime.miniapp.inspect` 严格覆盖了它：
-    //   U-King.exe action run runtime.miniapp.inspect --json
     // 那个开关唯一独有的本事是报告「目录在、清单读不出」的坏小程序（`list()` 静默跳过它们），
     // 现在成了动作的 `broken[]` + blockers，还顺带被 `action conformance` 自动盖住 ——
     // 手写开关是永远不会被 conformance 盖住的，这正是「别再加开关」那条的由来。
@@ -9933,29 +9559,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        // 小程序资源与桥。资源和 RPC 同源（Windows 上都是 http://uking.localhost/…），
-        // 所以不触发 CORS；异步变体是必须的 —— 一次 AI 修图上限 600s，
-        // 同步处理会冻死整个 webview。
-        .register_asynchronous_uri_scheme_protocol("uking", |ctx, req, responder| {
-            let app = ctx.app_handle().clone();
+        // 产出箱二进制读取：只保留 artifact URI，不承载可执行应用资源或 RPC。
+        .register_asynchronous_uri_scheme_protocol("uking", |_ctx, req, responder| {
             std::thread::spawn(move || {
-                // 坑：自定义 scheme 里第一段会被解析成 **host**。写 `uking://app/x` 的话
-                // host=app、path=/x，而且页面内所有相对请求都会带上同一个 host，
-                // `/rpc/y` 变成 `uking://app/rpc/y` —— 路由永远对不齐。
-                // 所以 authority 固定用无意义的 `localhost`，一切语义只放在 path 里。
                 let path = req.uri().path().trim_start_matches('/').to_string();
-                let is_post = req.method() == tauri::http::Method::POST;
-                let resp = miniapp_protocol(&app, &path, is_post, req.body());
-                MINIAPP_PROTO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                // 保留这行：小程序打不开时第一件事就是看协议有没有被请求到。
-                // 没有日志的话，「点了没反应」和「协议压根没被访问」长得一模一样 —— 踩过。
-                eprintln!(
-                    "[uking://] {} /{path} → {} ({}B)",
-                    if is_post { "POST" } else { "GET" },
-                    resp.status(),
-                    resp.body().len()
-                );
-                responder.respond(resp);
+                responder.respond(artifact_protocol(&path));
             });
         })
         .setup(move |app| {
@@ -10022,46 +9630,6 @@ pub fn run() {
                 });
             }
 
-            // 无头验证 / 客服排障：U-King.exe --miniapp-open <id|slug>
-            //
-            // 走的是**和界面点击完全同一条路**（open_miniapp），不是另写一份加载逻辑；
-            // 8 秒后按「uking:// 协议有没有被请求到」判定：>0 = 页面真的在加载，0 = 白窗。
-            // 加它的原因：0.9.72 的小程序全量打不开，而 `--miniapp-list` 全绿
-            //（列表读目录、加载走协议，两条路各自会失败），CI 里没有任何东西能发现。
-            if let Some(i) = std::env::args().position(|a| a == "--miniapp-open") {
-                let want = std::env::args().nth(i + 1).unwrap_or_default();
-                let hit = miniapp::list()
-                    .into_iter()
-                    .find(|a| a.id == want || a.slug == want)
-                    .or_else(|| miniapp::list().into_iter().next());
-                let Some(info) = hit else {
-                    eprintln!("[miniapp-open] 本机一个小程序都没装");
-                    std::process::exit(2);
-                };
-                eprintln!("[miniapp-open] 打开 {} ({})", info.name, info.id);
-                let app2 = app.handle().clone();
-                let id = info.id.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = open_miniapp(app2, id).await {
-                        eprintln!("[miniapp-open] 打开失败: {e}");
-                        std::process::exit(3);
-                    }
-                });
-                std::thread::spawn(|| {
-                    std::thread::sleep(std::time::Duration::from_secs(8));
-                    let n = MINIAPP_PROTO_HITS.load(std::sync::atomic::Ordering::Relaxed);
-                    if n == 0 {
-                        eprintln!("[miniapp-open] ✗ 协议一次都没被请求到 —— 窗口是空的（0.9.72 的病）");
-                        std::process::exit(1);
-                    }
-                    eprintln!("[miniapp-open] ✓ 协议被请求 {n} 次，页面真的加载了");
-                    std::process::exit(0);
-                });
-                // 主窗口现在默认隐藏（visible:false），这条诊断路径也照旧把它显示出来 ——
-                // 排障时窗口凭空不见了，人会以为是崩了。
-                show_main_window(app.handle());
-                return Ok(());
-            }
             if cfg!(feature = "demo-uninstaller") {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_title("U-King 演示卸载工具");
@@ -10229,11 +9797,6 @@ pub fn run() {
                 metrics::prune();
                 metrics_rollup_now();
             });
-            // 内置小程序落地：随 exe 发货的那几个（抠正 / 图片修补 / 改尺寸）首启自动装好，
-            // 断网也有得用。幂等；用户手上更新的版本不会被按回旧版；装不上只记日志不拦启动。
-            std::thread::spawn(|| {
-                bundled_apps::ensure_installed(&|m| eprintln!("{m}"));
-            });
             // 技能包同步：exe 里带的那几套技能（作图/视频 · PPT · 文档 · 表格 · 网页 · 读文档）
             // 每次启动同步进已装 AI 工具的 skills 目录。
             //
@@ -10296,20 +9859,7 @@ pub fn run() {
                 }
             }
         })
-        // 小程序 webview 的 IPC 门禁。
-        //
-        // 【实测教训，别删】capabilities 里的 `windows: ["main","recharge"]` **拦不住这个**。
-        // 那份白名单管的是 plugin/core 权限（core:window:allow-show 之类）；而
-        // `generate_handler!` 注册的应用自定义命令默认不受 capability 约束 ——
-        // spike 实测：label=miniapp-* 的窗口成功调到了 list_tools 并拿回完整结果。
-        // 没有这道闸，一个小程序就能调 generate_image 烧额度、调 install_tool / cleanup_* 动机器。
-        //
-        // 小程序本来也不需要 Tauri IPC：它的一切能力走 uking://rpc（那条路才有权限核验）。
-        // 所以这里一刀切拒绝，且拒在**面之下**——GUI、iframe、devtools 走的都是这一条。
-        .invoke_handler({
-            // 显式标注：generate_handler! 展开成泛型闭包，绑到 let 上时运行时类型推不出来。
-            let inner: Box<dyn Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync> =
-                Box::new(tauri::generate_handler![
+        .invoke_handler(tauri::generate_handler![
             get_env,
             install_local,
             open_install_dir,
@@ -10544,24 +10094,10 @@ pub fn run() {
             open_log_dir,
             save_feedback_shot,
             open_feedback_shots_dir,
-            open_miniapp,
             open_terminal_window,
             list_artifacts,
             mark_artifacts_seen,
-                ]);
-            move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
-                let label = invoke.message.webview().label().to_string();
-                if label.starts_with("miniapp-") {
-                    let cmd = invoke.message.command().to_string();
-                    eprintln!("[miniapp] 拒绝宿主命令调用: {label} → {cmd}");
-                    invoke
-                        .resolver
-                        .reject("forbidden: 小程序不得直接调用宿主命令，请走 uking:// 桥");
-                    return true;
-                }
-                inner(invoke)
-            }
-        })
+        ])
         // 用 build + run 而不是直接 run，只为了拿到 `RunEvent::Exit`：
         // 崩溃取证靠「会话标记还在不在」判断上次是不是异常退出，所以**正常退出必须销账**，
         // 否则每次托盘退出都会给自己记一笔假崩溃，真信号立刻被噪音埋掉。
@@ -10758,8 +10294,8 @@ mod llms_manifest_tests {
     }
 
     /// 说明书曾经笼统写着「写（N 个，**每一个都会改这台机器**）调用前必须让人同意」。
-    /// 真实动作表里有 15 个非只读动作是 `confirmation: never`（13 个 browser 页面内交互
-    /// + `runtime.origin.save` + 2 个 `app.imagefix.*`）——那是有意的取舍，但**这句话正是
+    /// 真实动作表里有非只读动作是 `confirmation: never`（browser 页面内交互
+    /// + `runtime.origin.save`）——那是有意的取舍，但这句话正是
     /// AI 判断「我该不该问用户」的直接依据**，说反了它就会在该问的时候不问。
     ///
     /// 这条守的是：门禁分组必须来自 manifest 的真实字段，不是文案凭空断言。

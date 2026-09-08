@@ -13,10 +13,6 @@ website/.vercel/
 # 自检输出
 *selfcheck*.json
 uking-*.json
-# 但内置小程序的清单必须入库：它叫 uking-app.json，正好被上面那条通配吃掉。
-# 后果很隐蔽 —— 本机有文件照样编得过，只有从干净检出构建（Mac/CI）才会
-# 报 include_bytes 找不到文件，产物与仓库悄悄不一致。
-!src-tauri/apps/**/uking-app.json
 *.bak-before*
 
 # 临时调试产物（截图 / 一次性 json / 脚本，本地保留不入库）
