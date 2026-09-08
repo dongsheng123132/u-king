@@ -7753,7 +7753,7 @@ fn artifact_protocol(path: &str) -> tauri::http::Response<Vec<u8>> {
 /// 各开各的窗，2026-09-06 修：工具启动改走本命令后，全部 cwd 为空，若只按目录去重会把第二个
 /// 工具的启动命令静默吞掉。
 #[tauri::command]
-async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<String>) -> Result<(), String> {
+async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<String>) -> Result<&'static str, String> {
     let dir = cwd.unwrap_or_default();
     // label 只能是 [A-Za-z0-9-_]，中文目录直接当 label 会被 Tauri 拒 —— 用稳定哈希。
     // 哈希输入是 dir + '\0' + cmd：先启动 codex 再启动 opencode 时 cwd 都是空，
@@ -7767,7 +7767,7 @@ async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<S
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.unminimize();
         let _ = w.set_focus();
-        return Ok(());
+        return Ok("focused");
     }
     let enc = |s: &str| {
         s.bytes()
@@ -7791,7 +7791,7 @@ async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<S
         .inner_size(960.0, 640.0)
         .build()
         .map_err(|e| format!("拉出终端窗口失败: {e}"))?;
-    Ok(())
+    Ok("opened")
 }
 
 #[tauri::command]

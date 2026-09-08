@@ -555,8 +555,10 @@ export const workbench: Record<string, string> = {
   "专家": "Expert",
   "权限": "Permissions",
 
-  "拉出": "Pop out",
-  "把终端拉成独立窗口（可以和工作台并排看）": "Pop the terminal into its own window (side-by-side with the workbench)",
+  "新窗口": "New window",
+  "在新窗口打开同一项目的终端（当前终端内容不会搬过去）": "Open a terminal for this project in a new window (the current terminal content stays here)",
+  "已在新窗口打开终端": "Terminal opened in a new window",
+  "已切回已打开的终端窗口": "Switched to the terminal window already open",
   "拉出终端失败：{e}": "Could not pop out the terminal: {e}",
   "装好了，再试一次": "Installed it — try again",
 

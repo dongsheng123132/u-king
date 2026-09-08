@@ -1458,11 +1458,12 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                 同一目录再点 = 把已开那个顶到前面，不会开出一堆一模一样、各带 PTY 的窗口。 */}
             {rightKind === "terminal" && (
               <button
-                onClick={() => void invoke("open_terminal_window", { cwd: workspace || null, cmd: null })
+                onClick={() => void invoke<string>("open_terminal_window", { cwd: workspace || null, cmd: null })
+                  .then((state) => onToast?.(state === "focused" ? t("已切回已打开的终端窗口") : t("已在新窗口打开终端")))
                   .catch((e) => onToast?.(t("拉出终端失败：{e}", { e: String(e) })))}
-                title={t("把终端拉成独立窗口（可以和工作台并排看）")}
+                title={t("在新窗口打开同一项目的终端（当前终端内容不会搬过去）")}
                 className="inline-flex items-center gap-1 h-6 px-2 rounded text-[12px] ml-1 text-ink-3 hover:bg-white/[0.05]">
-                <Maximize2 size={13} /> {t("拉出")}
+                <Maximize2 size={13} /> {t("新窗口")}
               </button>
             )}
             {rightKind === "terminal" && workspace && (

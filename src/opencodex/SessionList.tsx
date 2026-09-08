@@ -630,8 +630,13 @@ export function SessionList({ view = "chat", onView, navBadge }: {
       className="relative shrink-0 flex flex-col border-r border-white/[0.06] bg-bg-1 min-h-0"
     >
       {/* 顶部品牌条 + 收起按钮 */}
-      <div className="px-3 pt-3 pb-1 shrink-0 flex items-center justify-between">
-        <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">{tr("会话")}</span>
+      <div className="px-3 pt-3 pb-2 shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[12px] font-semibold text-ink-1">{tr("会话")}</span>
+          <span className="min-w-4 h-4 px-1 grid place-items-center rounded-full bg-bg-0 text-[10px] tabular-nums text-ink-4">
+            {state.tasks.length}
+          </span>
+        </div>
         <button
           onClick={toggleCollapsed}
           title={tr("收起会话栏（把地方让给终端）")}
@@ -642,21 +647,20 @@ export function SessionList({ view = "chat", onView, navBadge }: {
       </div>
 
       {/* 新建对话（主）+ 新建项目（次）—— Codex 式入口 */}
-      <div className="px-2.5 pt-2 pb-1.5 shrink-0 space-y-1">
+      <div className="px-2.5 pb-2 shrink-0 flex items-center gap-1.5">
         <button
           onClick={newChat}
-          className="w-full inline-flex items-center gap-2 h-8 px-2.5 rounded-card bg-accent/[0.14] text-accent-400 hover:bg-accent/[0.20] text-[12.5px] font-medium"
+          className="flex-1 inline-flex items-center gap-2 h-8 px-2.5 rounded-card bg-accent/[0.14] text-accent-400 hover:bg-accent/[0.20] text-[12.5px] font-medium"
         >
           <MessageSquarePlus size={14} />
           {tr("新建对话")}
         </button>
         <button
           onClick={pickFolder}
-          className="w-full inline-flex items-center gap-2 h-7 px-2.5 rounded-card text-ink-3 hover:bg-white/[0.04] text-[12px]"
+          className="inline-flex items-center justify-center w-8 h-8 rounded-card border border-white/[0.08] text-ink-3 hover:text-ink-1 hover:bg-white/[0.04]"
           title={tr("选择文件夹新建项目")}
         >
           <FolderPlus size={13} />
-          {tr("新建项目（选文件夹）")}
         </button>
       </div>
       {/* AI 专家 / 自动化 —— 和会话同一根左栏（WorkBuddy 式）：挑专家、配定时任务都不用离开工作台 */}
@@ -717,7 +721,10 @@ export function SessionList({ view = "chat", onView, navBadge }: {
       </div>
       )}
 
-      <div className="px-3 pb-1 shrink-0 text-[11px] text-ink-5">{tr("已打开的项目")}</div>
+      <div className="px-3 pb-1.5 shrink-0 flex items-center gap-2 text-[10.5px] font-medium tracking-wide text-ink-5">
+        <span>{tr("已打开的项目")}</span>
+        <span className="h-px flex-1 bg-white/[0.06]" />
+      </div>
 
       <div className="flex-1 overflow-y-auto py-1.5 min-h-0">
         {state.tasks.length === 0 ? (
@@ -767,7 +774,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
             return (
               <div
                 key={projKey || "_loose"}
-                className="mb-1.5"
+                className="mb-2"
                 data-drop-group={projKey}
               >
                 {/* 项目组头：拖拽把手重排顺序（指针拖拽，见 beginDrag）；垃圾桶整组删除。
@@ -781,8 +788,8 @@ export function SessionList({ view = "chat", onView, navBadge }: {
                     //    **父级比子级还轻**，于是整栏读起来是一排平的，眼睛找不到分组的边。
                     //    改成：组头更大更深更粗（12.5px / ink-1 / semibold）+ 上方留白拉开组间距。
                     //    会话行不动（它已经够醒目了）—— 修的是「父级太轻」，不是「子级太重」。
-                    "group flex items-center gap-1 px-2.5 pt-3 pb-1 mt-0.5 text-[12.5px] font-semibold text-ink-1 select-none cursor-grab active:cursor-grabbing border-t " +
-                    (overGroup === projKey ? "border-accent" : "border-transparent")
+                    "group flex items-center gap-1.5 mx-2 px-2 py-1.5 rounded-lg text-[12px] font-semibold text-ink-1 select-none cursor-grab active:cursor-grabbing border " +
+                    (overGroup === projKey ? "border-accent bg-accent/[0.08]" : "border-transparent bg-bg-0/55 hover:bg-bg-0")
                   }
                 >
                   <GripVertical
