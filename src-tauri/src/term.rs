@@ -544,6 +544,15 @@ fn inject_no_proxy_loopback(builder: &mut CommandBuilder) {
     builder.env("no_proxy", &merged);
 }
 
+/// 内嵌 PTY 是给人看的交互终端，不能继承宿主进程的无色批处理约束。
+///
+/// 例如从 Codex 等自动化环境启动开发版时，父进程会带 `NO_COLOR=1`；即使下面明确
+/// 设置了 `TERM=xterm-256color`，Hermes/Rich 仍会据此关掉 ANSI 色，终端就退化成黑白。
+/// 这里只移除这个标准的「禁色」开关，不伪造颜色级别，也不改变用户在外部终端的偏好。
+fn enable_interactive_color(builder: &mut CommandBuilder) {
+    builder.env_remove("NO_COLOR");
+}
+
 /// cwd 选择：传入路径非空且确为已存在目录则用它，否则回落 home。
 /// （工作台按任务文件夹开终端用；原底部抽屉传 None → 行为不变。）
 fn resolve_cwd(cwd: Option<String>) -> String {
@@ -625,6 +634,7 @@ pub fn headless_run(cmd: &str, timeout_ms: u64) -> Result<String, String> {
     let mut builder = shell_builder();
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
+    enable_interactive_color(&mut builder);
     inject_openclaw_env(&mut builder);
     inject_pip_mirror(&mut builder);
     inject_no_proxy_loopback(&mut builder);
@@ -1095,6 +1105,7 @@ pub async fn term_open_pty(
     let mut builder = shell_builder();
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
+    enable_interactive_color(&mut builder);
     inject_openclaw_env(&mut builder);
     inject_pip_mirror(&mut builder);
     inject_no_proxy_loopback(&mut builder);
