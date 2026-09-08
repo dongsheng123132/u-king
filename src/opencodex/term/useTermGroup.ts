@@ -1057,7 +1057,7 @@ export function useTermGroup(opts: {
   /**
    * 「找终端（没有则新建）→ 建 PTY → 往里写」这套逻辑被 `runInActive` / `runInNew` /
    * 待运行命令 effect 共用三份，抽成一个 helper —— 调用方只需决定「用哪个终端」。
-   * `send` 决定写进去之后要不要回车（`writeToActive` 只贴路径，不回车、不切 activeTui）。
+   * `send` 决定写进去之后要不要回车（`writeToActive` 只贴文本，不回车、不切 activeTui）。
    */
   const runCmdInSession = useCallback(
     async (s: TermSession | undefined, cmd: string, opts?: { asCommand?: boolean }): Promise<RunOutcome> => {
@@ -1065,7 +1065,10 @@ export function useTermGroup(opts: {
       const sid = await ensurePty(s);
       if (!sid) return { ok: false, reason: "pty_failed", detail: s.lastError };
       if (opts?.asCommand === false) {
-        s.input.push(cmd);
+        // 程序化「贴进终端」也必须走 xterm 的 paste：它会统一换行、按当前 TUI 的
+        // bracketed-paste 模式加边界，并经唯一的 onData → FIFO 进入 PTY。直接 input.push
+        // 会绕开这些规则，多行内容容易被 TUI 当成一串按键/提交。
+        s.term.paste(cmd);
       } else {
         const command = preserveCodexScrollback(cmd);
         setActiveTui(tuiOf(command));
@@ -1165,6 +1168,13 @@ export function useTermGroup(opts: {
   const [dropOver, setDropOver] = useState(false);
   const writeRef = useRef(writeToActive);
   writeRef.current = writeToActive;
+  // 图片/超长文本会先异步落盘；完成时用户可能已经切到另一个标签。把触发 paste
+  // 时命中的 session 固定下来，绝不悄悄把路径送给「现在恰好激活」的另一个任务。
+  const writePasteRef = useRef((s: TermSession | undefined, text: string) =>
+    s && !s.closed ? runCmdInSession(s, text, { asCommand: false }) : writeRef.current(text),
+  );
+  writePasteRef.current = (s, text) =>
+    s && !s.closed ? runCmdInSession(s, text, { asCommand: false }) : writeRef.current(text);
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -1185,6 +1195,11 @@ export function useTermGroup(opts: {
     const onPaste = (e: ClipboardEvent) => {
       const dt = e.clipboardData;
       if (!dt) return;
+      const target = e.target;
+      const targetSession =
+        target instanceof Node
+          ? sessionsRef.current.find((s) => !s.closed && s.el.contains(target))
+          : undefined;
       const img = Array.from(dt.items).find((it) => it.kind === "file" && it.type.startsWith("image/"));
       if (img) {
         const file = img.getAsFile();
@@ -1197,7 +1212,7 @@ export function useTermGroup(opts: {
             const ext = (file.type.split("/")[1] || "png").toLowerCase();
             const path = await invoke<string>("save_pasted_image", { bytes: Array.from(buf), ext });
             const quoted = /\s/.test(path) ? `"${path}"` : path;
-            writeRef.current(quoted + " ");
+            writePasteRef.current(targetSession, quoted + " ");
           } catch {
             /* 存图失败静默 —— 用户可改用「拖文件进终端」 */
           }
@@ -1216,10 +1231,10 @@ export function useTermGroup(opts: {
           // 复用存粘贴图那条落盘通道（同一个临时目录、同一套一天自动清理），不再造第二个命令
           const path = await invoke<string>("save_pasted_image", { bytes: Array.from(bytes), ext: "txt" });
           const quoted = /\s/.test(path) ? `"${path}"` : path;
-          writeRef.current(quoted + " ");
+          writePasteRef.current(targetSession, quoted + " ");
         } catch {
           // 落盘失败就退回原样粘 —— 宁可碎，也不能把用户的内容整段吞掉
-          writeRef.current(text);
+          writePasteRef.current(targetSession, text);
         }
       })();
     };

@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { ChevronDown, ChevronUp, Plus, RotateCw, X } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsDown, Plus, RotateCw, X } from "lucide-react";
 import { useTermGroup, type RunOutcome } from "../term/useTermGroup";
 import { copyToClipboard } from "../../lib/clipboard";
 import { isWindows } from "../../lib/platform";
@@ -404,8 +404,8 @@ export function TermPanel({
             <Plus size={14} />
           </button>
         </div>
-        {/* 不借用 ↑/↓：那是 Codex TUI 的输入历史 / 菜单键。这里滚的是 xterm 回滚缓冲；
-            鼠标滚轮同样可回看。 */}
+        {/* 不借用键盘 ↑/↓：那是 Codex TUI 的输入历史 / 菜单键。这里滚的是 xterm 回滚缓冲；
+            鼠标滚轮同样可回看。上下按同样的步长，另留一个明确的「回到最新」。 */}
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
@@ -418,12 +418,21 @@ export function TermPanel({
           </button>
           <button
             type="button"
+            onClick={() => scrollActive(8)}
+            className="inline-flex items-center justify-center w-6 h-6 rounded text-ink-3 hover:text-ink-1 hover:bg-white/[0.06]"
+            title={tr("向下回看较新输出")}
+            aria-label={tr("向下回看较新输出")}
+          >
+            <ChevronDown size={14} />
+          </button>
+          <button
+            type="button"
             onClick={() => scrollActive(Number.POSITIVE_INFINITY)}
             className="inline-flex items-center justify-center w-6 h-6 rounded text-ink-3 hover:text-ink-1 hover:bg-white/[0.06]"
             title={tr("回到最新输出")}
             aria-label={tr("回到最新输出")}
           >
-            <ChevronDown size={14} />
+            <ChevronsDown size={14} />
           </button>
         </div>
         {/* 应用专属启动按钮（不可编辑）+ 可增删自定义的托管快捷列表（在当前终端跑）
