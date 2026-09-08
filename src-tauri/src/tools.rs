@@ -1180,16 +1180,16 @@ pub fn list_tools() -> Vec<ToolInfo> {
             hidden: false,
         },
         ToolInfo {
-            // 豆包（字节跳动）：闭源消费级 AI 助手桌面版，用自家模型，不走 U-King 的模型配置
-            // ——不进体检/探测、不出现在任何模型配置/供应商链路里。action:url 跳官网下载页。
+            // 豆包工作台（字节跳动）：闭源网页工作台，用自家模型，不走 U-King 的模型配置
+            // ——不进体检/探测、不出现在任何模型配置/供应商链路里。action:url 跳官方工作台。
             // 2026-09-06 查证：官方域名只认 doubao.com，网上有 win-doubao.com.cn 等仿冒站，不采用。
             id: "doubao".into(),
-            name: "豆包".into(),
-            summary: "字节跳动 AI 助手桌面版，聊天/写作/读文档。用自家模型，不走 U-King 的模型配置。点开下载官网客户端（认准 doubao.com，勿信仿冒站）。".into(),
+            name: "豆包工作台".into(),
+            summary: "字节跳动 AI 工作台，聊天/写作/读文档。用自家模型，不走 U-King 的模型配置。点开官方工作台（认准 doubao.com，勿信仿冒站）。".into(),
             kind: "standalone".into(),
             installed: false,
             action: "url".into(),
-            target: "https://www.doubao.com/download/desktop".into(),
+            target: "https://www.doubao.com/work".into(),
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,

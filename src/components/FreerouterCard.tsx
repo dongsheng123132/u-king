@@ -14,6 +14,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpRight,
   CheckCircle2,
+  Copy,
   Loader2,
   Play,
   Router,
@@ -21,7 +22,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "../lib/cn";
+import { copyToClipboard } from "../lib/clipboard";
 import { useI18n } from "../i18n";
+
+const LOCAL_ENDPOINT = "http://127.0.0.1:8787/v1";
+const LOCAL_MODEL = "free-best";
 
 type FrStatus = {
   installed: boolean;
@@ -32,7 +37,11 @@ type FrStatus = {
   log_tail: string[];
 };
 
-export function FreerouterCard({ onToast }: { onToast?: (msg: string) => void }) {
+export function FreerouterCard({
+  onToast,
+}: {
+  onToast?: (msg: string, kind?: "success" | "error" | "info") => void;
+}) {
   const { t } = useI18n();
   const [st, setSt] = useState<FrStatus | null>(null);
   const [busy, setBusy] = useState<"" | "install" | "start" | "stop" | "key">("");
@@ -64,7 +73,7 @@ export function FreerouterCard({ onToast }: { onToast?: (msg: string) => void })
     setBusy("start");
     try {
       await invoke("freerouter_start");
-      onToast?.(t("Free Router 已在后台运行：") + "http://127.0.0.1:8787/v1");
+      onToast?.(t("Free Router 已在后台运行：") + LOCAL_ENDPOINT);
     } catch (e) {
       onToast?.(String(e));
     } finally {
@@ -99,6 +108,11 @@ export function FreerouterCard({ onToast }: { onToast?: (msg: string) => void })
       setBusy("");
       refresh();
     }
+  }
+
+  async function copy(value: string, label: string) {
+    const ok = await copyToClipboard(value);
+    onToast?.(ok ? t("已复制{label}", { label }) : t("复制失败，请手动选中复制"), ok ? "success" : "error");
   }
 
   const installed = !!st?.installed;
@@ -205,13 +219,18 @@ export function FreerouterCard({ onToast }: { onToast?: (msg: string) => void })
 
           {/* 运行中：给「怎么用」的一句话 + 停止入口已在标题行 */}
           {running && (
-            <div className="text-[11px] text-ink-4 leading-relaxed">
-              {t("本地接口")} <span className="font-mono text-ink-3">http://127.0.0.1:8787/v1</span>
-              {" · "}{t("模型名")} <span className="font-mono text-ink-3">free-best</span>
-              {" · "}
-              {t(
-                "在「供应商库」添加自定义供应商填这个地址即可把任何 OpenAI 兼容工具接上来（仅本机可访问）",
-              )}
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-ink-4 leading-relaxed">
+              <span>{t("本地接口")}</span>
+              <span className="font-mono text-ink-3 select-text">{LOCAL_ENDPOINT}</span>
+              <button onClick={() => void copy(LOCAL_ENDPOINT, t("地址"))} className="inline-flex items-center gap-0.5 text-accent hover:underline">
+                <Copy size={10} />{t("复制地址")}
+              </button>
+              <span>· {t("模型名")}</span>
+              <span className="font-mono text-ink-3 select-text">{LOCAL_MODEL}</span>
+              <button onClick={() => void copy(LOCAL_MODEL, t("模型名"))} className="inline-flex items-center gap-0.5 text-accent hover:underline">
+                <Copy size={10} />{t("复制模型")}
+              </button>
+              <span>{t("仅支持 OpenAI Chat Completions 工具，不能直连 Codex 或 Claude Code（仅本机可访问）")}</span>
             </div>
           )}
         </div>

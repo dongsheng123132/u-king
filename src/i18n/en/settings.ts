@@ -515,8 +515,11 @@ export const settings: Record<string, string> = {
   "Key 已保存到本机 .env（不会上传）": "Key saved to the local .env file (never uploaded)",
   "本地接口": "Local endpoint",
   "模型名": "model name",
-  "在「供应商库」添加自定义供应商填这个地址即可把任何 OpenAI 兼容工具接上来（仅本机可访问）":
-    "Add a custom provider in the Provider library with this address to connect any OpenAI-compatible tool (localhost only)",
+  "复制地址": "Copy endpoint",
+  "复制模型": "Copy model",
+  "已复制{label}": "Copied {label}",
+  "仅支持 OpenAI Chat Completions 工具，不能直连 Codex 或 Claude Code（仅本机可访问）":
+    "For OpenAI Chat Completions tools only; not Codex or Claude Code (localhost only)",
   "版本": "ver",
 
   // ── CustomProviderModal 弹窗升级（astra-ui-design-2.md B 节，2026-09-06）──
