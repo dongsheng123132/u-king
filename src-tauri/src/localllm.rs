@@ -1,20 +1,13 @@
-//! 本地大模型 —— 四个引擎的探测 / 安装 / 启停 / 模型扫描。
+//! 本地大模型 —— Ollama 与 llama.cpp 的探测 / 安装 / 启停 / 模型扫描。
 //!
-//! ## 四个引擎，两类人
+//! ## 两个引擎
 //!
 //! | 引擎 | 谁用 | 端点 | 模型格式 |
 //! |---|---|---|---|
 //! | **Ollama** | 小白默认。装完就有后台服务，`ollama run` 就能聊 | `:11434/v1` | 自带仓库 |
 //! | **llama.cpp**（`llama-server`） | 想自己挑量化版本的人。CPU 也能跑 | 自选端口 `/v1` | GGUF 文件 |
-//! | **vLLM** | 有 Linux + N 卡服务器的人。吞吐最高 | 自选端口 `/v1` | HuggingFace 目录 |
-//! | **SGLang** | 同上，长上下文/结构化输出更强 | 自选端口 `/v1` | HuggingFace 目录 |
 //!
-//! 🔴 **vLLM / SGLang 在 Windows 上装不了**（官方只支持 Linux + CUDA/ROCm）。这不是我们
-//! 没做，是上游如此。所以它们的 `blockers` 会直说这件事，而不是让客户点了 START 之后
-//! 对着一个失败日志猜 —— U-King 的客户几乎全是 Windows 个人机，这两个引擎对他们的
-//! 正确答案是「你这台跑不了」，说清楚比藏起来强。
-//!
-//! ## 为什么四个都要
+//! ## 为什么保留这两个
 //!
 //! 2026-08-11「简化第三刀」把这一页连同 `ollama.rs` 一起删了（只留 `hardware.rs`，
 //! 因为 AI 优化大师在用）。现在按 EchoBird 的形态恢复：**引擎不是一个，是一个货架** ——
@@ -356,13 +349,13 @@ pub fn install_ollama(_on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<Str
 }
 
 // ============================================================
-// 多引擎层（llama.cpp / vLLM / SGLang，+ 上面那套 Ollama）
+// 多引擎层（llama.cpp + 上面那套 Ollama）
 // ============================================================
 
 /// 一个引擎的完整状态。**回答「能不能用」，不是「装没装」**（影核 readiness 约定）。
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineStatus {
-    /// 稳定 id：ollama / llamacpp / vllm / sglang
+    /// 稳定 id：ollama / llamacpp
     pub id: String,
     pub label: String,
     /// 一句话说明这个引擎适合谁
@@ -385,7 +378,7 @@ pub struct EngineStatus {
     pub unsupported_here: bool,
 }
 
-pub const ENGINE_IDS: [&str; 4] = ["ollama", "llamacpp", "vllm", "sglang"];
+pub const ENGINE_IDS: [&str; 2] = ["ollama", "llamacpp"];
 
 fn uking_dir() -> PathBuf {
     let home = std::env::var("USERPROFILE")
@@ -639,35 +632,6 @@ fn scan_gguf() -> Vec<String> {
     out
 }
 
-/// 扫 HuggingFace 模型目录（vLLM / SGLang 吃这个）：有 config.json 且有权重文件的目录。
-fn scan_hf() -> Vec<String> {
-    let mut out = Vec::new();
-    for dir in model_dirs() {
-        let Ok(rd) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            if !p.is_dir() || !p.join("config.json").exists() {
-                continue;
-            }
-            let has_weights = std::fs::read_dir(&p)
-                .map(|r| {
-                    r.flatten().any(|f| {
-                        let n = f.file_name().to_string_lossy().to_string();
-                        n.ends_with(".safetensors") || n.ends_with(".bin")
-                    })
-                })
-                .unwrap_or(false);
-            if has_weights {
-                out.push(p.to_string_lossy().to_string());
-            }
-        }
-    }
-    out.sort();
-    out
-}
-
 /// 找 llama-server 可执行文件：`~/.uking/llama-server/bin/` → PATH。
 fn llama_server_exe() -> Option<PathBuf> {
     let name = if cfg!(windows) {
@@ -683,38 +647,6 @@ fn llama_server_exe() -> Option<PathBuf> {
         .into_iter()
         .map(|d| d.join(name))
         .find(|p| p.exists())
-}
-
-/// python 解释器（vLLM / SGLang 都是 python 包）。
-fn python_exe() -> Option<PathBuf> {
-    for name in ["python3", "python"] {
-        let n = if cfg!(windows) {
-            format!("{name}.exe")
-        } else {
-            name.to_string()
-        };
-        if let Some(p) = crate::installer::search_paths(None)
-            .into_iter()
-            .map(|d| d.join(&n))
-            .find(|p| p.exists())
-        {
-            return Some(p);
-        }
-    }
-    None
-}
-
-/// python 包装没装（`python -c "import x"` 退出码为准，不解析文案）。
-fn python_module_present(module: &str) -> bool {
-    let Some(py) = python_exe() else {
-        return false;
-    };
-    let mut c = std::process::Command::new(py);
-    c.args(["-c", &format!("import {module}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    hidden(&mut c);
-    c.status().map(|s| s.success()).unwrap_or(false)
 }
 
 /// 端口上有没有人在服务（本地 TCP 连一下，最直接）。
@@ -739,7 +671,7 @@ fn live_run(engine: &str) -> Option<RunRecord> {
     }
 }
 
-/// 四个引擎的状态一次给全（前端一页展示）。
+/// 两个引擎的状态一次给全（前端一页展示）。
 pub fn inspect_all() -> Vec<EngineStatus> {
     ENGINE_IDS.iter().map(|id| inspect(id)).collect()
 }
@@ -795,53 +727,6 @@ pub fn inspect(engine: &str) -> EngineStatus {
                 running_model: run.map(|r| r.model),
                 models,
                 unsupported_here: false,
-            }
-        }
-        "vllm" | "sglang" => {
-            let is_vllm = engine == "vllm";
-            let module = if is_vllm { "vllm" } else { "sglang" };
-            // 🔴 上游只支持 Linux + CUDA/ROCm。Windows/macOS 上说清楚跑不了，
-            //    别让客户点了 START 之后对着 pip 的报错猜。
-            let unsupported = cfg!(windows) || cfg!(target_os = "macos");
-            let installed = !unsupported && python_module_present(module);
-            let models = if unsupported { Vec::new() } else { scan_hf() };
-            let run = live_run(engine);
-            let mut blockers = Vec::new();
-            if unsupported {
-                blockers.push(format!(
-                    "{} 只能跑在 Linux + N 卡（CUDA）上，这台机器跑不了 —— 个人电脑请用 Ollama 或 llama.cpp",
-                    if is_vllm { "vLLM" } else { "SGLang" }
-                ));
-            } else if python_exe().is_none() {
-                blockers.push("找不到 python3".to_string());
-            } else if !installed {
-                blockers.push(format!("python 里没装 {module}（pip install {module}）"));
-            } else if models.is_empty() {
-                blockers.push(
-                    "没有 HuggingFace 格式的模型目录（要有 config.json + 权重文件）".to_string(),
-                );
-            }
-            EngineStatus {
-                id: engine.to_string(),
-                label: if is_vllm {
-                    "vLLM".to_string()
-                } else {
-                    "SGLang".to_string()
-                },
-                blurb: if is_vllm {
-                    "有 Linux + N 卡服务器时吞吐最高".to_string()
-                } else {
-                    "长上下文 / 结构化输出更强，同样要 Linux + N 卡".to_string()
-                },
-                installed,
-                ready: installed && !models.is_empty(),
-                blockers,
-                version: None,
-                endpoint: run.as_ref().map(|r| format!("http://127.0.0.1:{}/v1", r.port)),
-                running_pid: run.as_ref().map(|r| r.pid),
-                running_model: run.map(|r| r.model),
-                models,
-                unsupported_here: unsupported,
             }
         }
         other => EngineStatus {
@@ -1008,38 +893,6 @@ pub fn start(engine: &str, model: &str, opts: Option<RunSettings>) -> Result<Str
                 a.push(cfg.threads.to_string());
             }
             (exe, a)
-        }
-        "vllm" => {
-            let py = python_exe().ok_or("找不到 python3")?;
-            let mut a = vec![
-                "-m".to_string(),
-                "vllm.entrypoints.openai.api_server".to_string(),
-                "--model".to_string(),
-                model.to_string(),
-                "--port".to_string(),
-                port.to_string(),
-            ];
-            if cfg.ctx > 0 {
-                a.push("--max-model-len".into());
-                a.push(cfg.ctx.to_string());
-            }
-            (py, a)
-        }
-        "sglang" => {
-            let py = python_exe().ok_or("找不到 python3")?;
-            let mut a = vec![
-                "-m".to_string(),
-                "sglang.launch_server".to_string(),
-                "--model-path".to_string(),
-                model.to_string(),
-                "--port".to_string(),
-                port.to_string(),
-            ];
-            if cfg.ctx > 0 {
-                a.push("--context-length".into());
-                a.push(cfg.ctx.to_string());
-            }
-            (py, a)
         }
         other => return Err(format!("没有这个引擎：{other}")),
     };
@@ -1773,7 +1626,7 @@ pub struct LocalModel {
     pub path: String,
     pub name: String,
     pub size_bytes: u64,
-    /// 哪个引擎吃得下：llamacpp（.gguf）/ vllm|sglang（HF 目录）
+    /// 哪个引擎吃得下：llamacpp（.gguf）
     pub engine: String,
 }
 
@@ -1790,15 +1643,6 @@ pub fn local_model_files() -> Vec<LocalModel> {
             size_bytes: std::fs::metadata(&pb).map(|m| m.len()).unwrap_or(0),
             path: p,
             engine: "llamacpp".into(),
-        });
-    }
-    for p in scan_hf() {
-        let pb = PathBuf::from(&p);
-        out.push(LocalModel {
-            name: pb.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-            size_bytes: 0, // 目录体积要递归算，值不大 —— 别为一个数字去遍历几十 GB
-            path: p,
-            engine: "vllm".into(),
         });
     }
     out

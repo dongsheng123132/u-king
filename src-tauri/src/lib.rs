@@ -2289,8 +2289,8 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
         ),
         actions::readonly(
             actions::LOCALLLM_INSPECT,
-            "Inspect the four local LLM engines",
-            "Report Ollama, llama.cpp, vLLM and SGLang together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. vLLM and SGLang are reported as `unsupported_here` on Windows/macOS because upstream only ships Linux+CUDA — saying so is the answer, not hiding them. Reads only.",
+            "Inspect local LLM engines",
+            "Report Ollama and llama.cpp together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. Reads only.",
             15_000,
             &["engines"],
             |_, _, _| {
@@ -2364,8 +2364,8 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             120_000,
             "required",
             serde_json::json!({
-                "engine": { "type": "string", "enum": ["ollama", "llamacpp", "vllm", "sglang"], "description": "Which engine to start." },
-                "model": { "type": "string", "description": "Model to load: a .gguf path for llama.cpp, a HuggingFace folder for vLLM/SGLang. Ignored by Ollama, which loads per request." },
+                "engine": { "type": "string", "enum": ["ollama", "llamacpp"], "description": "Which engine to start." },
+                "model": { "type": "string", "description": "Model to load: a .gguf path for llama.cpp. Ignored by Ollama, which loads per request." },
                 "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "Port to serve on. Defaults to 18820; Ollama always uses 11434." },
                 "ctx": { "type": "integer", "minimum": 0, "maximum": 1048576, "description": "Context length in tokens. 0 leaves it to the engine. Bigger contexts cost memory even before the first token." },
                 "gpu_layers": { "type": "integer", "minimum": -1, "maximum": 999, "description": "Layers to offload to the GPU: -1 auto (the engine decides), 0 CPU only, 999 all of them. Forcing 999 on a card without the VRAM makes the server exit on load, which looks to the customer like the button did nothing — so auto is the default." },
@@ -2406,7 +2406,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             30_000,
             "required",
             serde_json::json!({
-                "engine": { "type": "string", "enum": ["ollama", "llamacpp", "vllm", "sglang"], "description": "Which engine to stop." }
+                "engine": { "type": "string", "enum": ["ollama", "llamacpp"], "description": "Which engine to stop." }
             }),
             &["engine"],
             &["ok", "message"],
@@ -2427,7 +2427,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             2_400_000,
             "required",
             serde_json::json!({
-                "engine": { "type": "string", "enum": ["ollama", "llamacpp", "vllm", "sglang"], "description": "Which engine to install." },
+                "engine": { "type": "string", "enum": ["ollama", "llamacpp"], "description": "Which engine to install." },
                 "variant": { "type": "string", "enum": ["vulkan", "cuda", "cpu"], "description": "llama.cpp build flavour. Defaults to vulkan when this machine has a GPU, cpu otherwise. CUDA is faster on NVIDIA but needs a ~540MB download (build + CUDA runtime) versus ~35MB for Vulkan, so it is opt-in rather than automatic." }
             }),
             &["engine"],
@@ -2443,9 +2443,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                         &hardware::detect_hardware().gpu_vendor,
                         &|_m: &str| {},
                     )?,
-                    "vllm" | "sglang" => return Err(
-                        format!("{engine} 只能装在 Linux + N 卡（CUDA）上：`pip install {engine}`。Windows / macOS 上装不了 —— 个人电脑请用 Ollama 或 llama.cpp。"),
-                    ),
                     other => return Err(format!("没有这个引擎：{other}")),
                 };
                 Ok(serde_json::json!({ "ok": true, "message": msg, "engine": engine }))
@@ -5146,11 +5143,9 @@ fn register_local_provider(engine: &str, endpoint: &str, model: &str) -> serde_j
     let label = match engine {
         "ollama" => "Ollama",
         "llamacpp" => "llama.cpp",
-        "vllm" => "vLLM",
-        "sglang" => "SGLang",
         other => other,
     };
-    // 模型名给个能用的默认：llama.cpp/vLLM 传的是文件或目录路径，取最后一段当模型名。
+    // 模型名给个能用的默认：llama.cpp 传的是文件路径，取最后一段当模型名。
     let model_name = model
         .rsplit(['\\', '/'])
         .next()

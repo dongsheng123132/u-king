@@ -267,7 +267,7 @@ export function LocalLLMStore({
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-4">
                   {m.size_bytes > 0 && <span>{gb(m.size_bytes)}</span>}
-                  <span className="font-mono">{m.engine === "llamacpp" ? "llama.cpp" : "vLLM / SGLang"}</span>
+                  <span className="font-mono">{m.engine === "llamacpp" ? "llama.cpp" : m.engine}</span>
                 </div>
               </button>
             ))

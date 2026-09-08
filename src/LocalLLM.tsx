@@ -2,14 +2,14 @@
  * 本地大模型 —— 在自己电脑上跑开源模型。**离线 · 免费 · 数据不出本机。**
  *
  * 2026-08-11「简化第三刀」把这一页删了（那时只有 Ollama 一个引擎）。现在按 EchoBird
- * 的形态恢复成**四引擎货架**：
+ * 的形态恢复成**本地引擎货架**：
  *
- *   Ollama · llama.cpp · vLLM · SGLang
+ *   Ollama · llama.cpp
  *
  * 为什么是货架不是一个：能跑什么由客户那台机器决定。8G 内存无独显的笔记本和一台
  * 带 4090 的台式机，正确答案不是同一个；我们替他选一个，就必然在另一半机器上失灵。
- * 所以四个并排摆着，每个都自己回答「你这台能不能用我」——
- * `blockers` 说人话地讲卡在哪，`unsupported_here` 直接置灰（vLLM/SGLang 只有 Linux+N 卡）。
+ * 所以两个并排摆着，每个都自己回答「你这台能不能用我」——
+ * `blockers` 说人话地讲卡在哪。
  *
  * ## 2026-08-19 补齐的三件（客户拿 EchoBird 对比着提的，三条都成立）
  *
@@ -121,7 +121,7 @@ export function LocalLLM({ onToast }: { onToast?: (msg: string) => void }) {
   const engines = useMemo(() => data.engines || [], [data.engines]);
 
   // 默认引擎：优先「正在跑的」→「能用的」→「装了的」→ llama.cpp。
-  // 别默认挑一个这台机器根本跑不了的（vLLM 在 Windows 上永远是灰的）。
+  // 默认挑当前能用或已经安装的引擎。
   useEffect(() => {
     if (engineId || engines.length === 0) return;
     const pick =

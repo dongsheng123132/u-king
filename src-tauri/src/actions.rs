@@ -396,6 +396,16 @@ pub const CREATOR_REEL_PRESETS_INSPECT: &str = "runtime.creator.reel_presets.ins
 /// 单段视频生成的唯一提交入口。ActionParity execution id 会落为上游扣费幂等键；
 /// GUI、CLI、MCP 与 AI 工具重放同一请求时必须取回原任务，而不是再次收费。
 pub const CREATOR_VIDEO_SUBMIT: &str = "runtime.creator.video.submit";
+/// 完整短片（一键成片）的唯一提交入口。**两段式**：立即返回本地记录 id 与初始状态，
+/// 绝不阻塞到生成完成——成片最多 40 镜、耗时可能远超普通请求超时，阻塞式提交会让
+/// 外部 AI 工具误判超时重投，重复烧钱。进度与终态改由 `CREATOR_REEL_INSPECT` 轮询。
+/// ActionParity execution id 落为本地写前日志的幂等键，同一请求重放不会起第二个付费子进程。
+pub const CREATOR_REEL_SUBMIT: &str = "runtime.creator.reel.submit";
+/// 查一条/全部成片的状态、两段式进度与产物路径；也是 `pending-verify`（提交结果未知，
+/// 待人工核实是否已扣费）唯一的可见入口。只读，绝不触发重投。
+pub const CREATOR_REEL_INSPECT: &str = "runtime.creator.reel.inspect";
+/// 把一条已完成的成片转成不受历史裁剪影响的项目资产（拷进 `~/.uking/projects/<id>/exports/`）。
+pub const CREATOR_REEL_KEEP: &str = "runtime.creator.reel.keep";
 
 /// `manifest().state.queries` 用：全部只读查询动作。加动作时别忘了这里 ——
 /// 影核清单里少一个，远端影子就看不见它。
@@ -408,7 +418,7 @@ pub const READ_ACTIONS: &[&str] = &[
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
-    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT,
+    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT, CREATOR_REEL_INSPECT,
 ];
 
 // —— 写动作（会改这台机器）——
@@ -531,14 +541,13 @@ pub const ORIGIN_SAVE: &str = "runtime.origin.save";
 /// 三道闸门在核心里（盘根/家目录、非空外来目录、不覆盖已有文件），**故意没有「强制覆盖」** ——
 /// 客户最容易随手选中「桌面」，装错地方撒一堆文件夹比装不上难收拾得多。
 pub const WORKBENCH_INSTALL: &str = "runtime.workbench.install";
-// 本地大模型（四引擎）。启停都**幂等**：已经在跑就原样返回那个端点，不重复起进程。
+// 本地大模型（Ollama / llama.cpp）。启停都**幂等**：已经在跑就原样返回那个端点，不重复起进程。
 /// 起本地推理服务，返回 OpenAI 兼容端点。幂等：已在跑就返回现有端点。
 pub const LOCALLLM_START: &str = "runtime.localllm.start";
 /// 停掉**我们启动的**那个进程。幂等：没在跑也算成功。
 /// 🔴 只按 PID 关且关前核对镜像名 —— 按裸名字关会误杀客户自己起的同名服务。
 pub const LOCALLLM_STOP: &str = "runtime.localllm.stop";
-/// 装引擎（当前只有 Ollama 能一键装；llama.cpp 给下载指引，vLLM/SGLang 在
-/// Windows/macOS 上直接拒绝并说明原因）。幂等：装过了直接返回已安装。
+/// 装引擎（Ollama 或 llama.cpp）。幂等：装过了直接返回已安装。
 pub const LOCALLLM_INSTALL: &str = "runtime.localllm.install";
 /// 添加模型目录 / 导入 GGUF。幂等：同一个目录/同一把模型重放结果一样。
 pub const LOCALLLM_MODEL_ADD: &str = "runtime.localllm.model_add";
@@ -2425,7 +2434,7 @@ mod tests {
     ///
     /// 🔴 **必须先看 `enum`，再看 `type`。** 只按 type 造值时，带 enum 的字符串字段会拿到
     /// `"x"` —— 而 enum 从 0.9.99 起是**真执行**的（在那之前它是装饰，见那次修复），
-    /// 于是 `runtime.localllm.start` 这种 `engine: ollama|llamacpp|vllm|sglang` 的动作
+    /// 于是 `runtime.localllm.start` 这种 `engine: ollama|llamacpp` 的动作
     /// 会被判 `invalid_input`，报出来的却是「不收可选字段=null」—— **断言消息指向了错的地方**，
     /// 照它去查会一路查进 null 处理逻辑，而真因在占位符自己身上。
     /// ★ 契约变严之后，围绕契约的测试脚手架也得跟着变严，否则它会以别人的名义报错。

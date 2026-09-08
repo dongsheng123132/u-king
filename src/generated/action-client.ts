@@ -43,6 +43,12 @@ export const ACTION = {
   RUNTIME_CRASH_INSPECT: "runtime.crash.inspect",
   /** List the built-in schema-v1 visual-style presets for one-click reels. Reads only; selecting a preset never enables BGM or changes a user's supplied audio settings. */
   RUNTIME_CREATOR_REEL_PRESETS_INSPECT: "runtime.creator.reel_presets.inspect",
+  /** List reel job history (status, two-phase progress, whether the mp4 exists) or a single job by id. This is the only way to see the terminal 'pending-verify' state (submission outcome unknown after an unclean shutdown); it never re-submits anything. */
+  RUNTIME_CREATOR_REEL_INSPECT: "runtime.creator.reel.inspect",
+  /** Copy a finished reel's mp4 into a project asset folder that history pruning never touches, and mark it kept. Only jobs that already have a video can be kept. */
+  RUNTIME_CREATOR_REEL_KEEP: "runtime.creator.reel.keep",
+  /** Submit a multi-shot reel job and return immediately with its local record id and status; it never blocks until the reel finishes (a reel can have up to 40 shots and take a long time). Poll runtime.creator.reel.inspect for progress and the final file. Pass resume_id to restart an existing failed/running job with its original parameters instead of creating a new one. The ActionParity execution_id is used as a local idempotency key so retrying the same request never starts a second paid generation. */
+  RUNTIME_CREATOR_REEL_SUBMIT: "runtime.creator.reel.submit",
   /** Submit a text-to-video or image-to-video job, poll the original task until it finishes, and download its MP4 into U-King history. The ActionParity execution_id is used as the upstream idempotency key, so retrying the same request never creates a second paid task. */
   RUNTIME_CREATOR_VIDEO_SUBMIT: "runtime.creator.video.submit",
   /** Create a desktop shortcut pointing at the currently running executable. */
@@ -99,7 +105,7 @@ export const ACTION = {
   RUNTIME_LOCALLLM_CATALOG: "runtime.localllm.catalog",
   /** Fetch one quantisation of a shelf model into the download folder, resuming a half-finished file rather than starting over, and verifying the finished bytes against the size the host reported. Idempotent: an already-complete file is skipped, so re-running costs nothing. A model is tens of GB — this can run for hours on a home connection. */
   RUNTIME_LOCALLLM_DOWNLOAD: "runtime.localllm.download",
-  /** Report Ollama, llama.cpp, vLLM and SGLang together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. vLLM and SGLang are reported as `unsupported_here` on Windows/macOS because upstream only ships Linux+CUDA — saying so is the answer, not hiding them. Reads only. */
+  /** Report Ollama and llama.cpp together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. Reads only. */
   RUNTIME_LOCALLLM_INSPECT: "runtime.localllm.inspect",
   /** Install the engine itself (not a model). Ollama installs unattended from mirrored sources; the others report what to do instead of pretending. Idempotent: already installed returns success without touching anything. */
   RUNTIME_LOCALLLM_INSTALL: "runtime.localllm.install",
@@ -247,6 +253,9 @@ export type ActionInputMap = {
   "runtime.context_menu.set": { enabled: boolean; expected_state_version?: string; };
   "runtime.crash.inspect": Record<string, never>;
   "runtime.creator.reel_presets.inspect": Record<string, never>;
+  "runtime.creator.reel.inspect": { id?: number; };
+  "runtime.creator.reel.keep": { expected_state_version?: string; id: number; };
+  "runtime.creator.reel.submit": { bgm_prompt?: string; expected_state_version?: string; narration?: string; preset_id?: string; prompt?: string; resolution?: string; resume_id?: number; shots?: Array<string>; storyboard?: string; voice?: string; };
   "runtime.creator.video.submit": { expected_state_version?: string; image?: string; model?: string; prompt: string; };
   "runtime.desktop.pin": { expected_state_version?: string; };
   "runtime.device.key_adopt": { expected_state_version?: string; key: string; };
@@ -276,10 +285,10 @@ export type ActionInputMap = {
   "runtime.localllm.catalog": { model_id?: string; refresh?: boolean; };
   "runtime.localllm.download": { dir?: string; expected_state_version?: string; model_id: string; quant: string; };
   "runtime.localllm.inspect": Record<string, never>;
-  "runtime.localllm.install": { engine: "ollama" | "llamacpp" | "vllm" | "sglang"; expected_state_version?: string; variant?: "vulkan" | "cuda" | "cpu"; };
+  "runtime.localllm.install": { engine: "ollama" | "llamacpp"; expected_state_version?: string; variant?: "vulkan" | "cuda" | "cpu"; };
   "runtime.localllm.model_add": { expected_state_version?: string; kind: "dir" | "gguf"; name?: string; path: string; };
-  "runtime.localllm.start": { ctx?: number; engine: "ollama" | "llamacpp" | "vllm" | "sglang"; expected_state_version?: string; gpu_layers?: number; model?: string; port?: number; threads?: number; };
-  "runtime.localllm.stop": { engine: "ollama" | "llamacpp" | "vllm" | "sglang"; expected_state_version?: string; };
+  "runtime.localllm.start": { ctx?: number; engine: "ollama" | "llamacpp"; expected_state_version?: string; gpu_layers?: number; model?: string; port?: number; threads?: number; };
+  "runtime.localllm.stop": { engine: "ollama" | "llamacpp"; expected_state_version?: string; };
   "runtime.miniapp.inspect": Record<string, never>;
   "runtime.miniapp.install": { expected_state_version?: string; path: string; };
   "runtime.miniapp.restore": { expected_state_version?: string; };
@@ -359,6 +368,9 @@ export type ActionOutputMap = {
   "runtime.context_menu.set": Record<string, unknown>;
   "runtime.crash.inspect": Record<string, unknown>;
   "runtime.creator.reel_presets.inspect": Record<string, unknown>;
+  "runtime.creator.reel.inspect": Record<string, unknown>;
+  "runtime.creator.reel.keep": Record<string, unknown>;
+  "runtime.creator.reel.submit": Record<string, unknown>;
   "runtime.creator.video.submit": Record<string, unknown>;
   "runtime.desktop.pin": Record<string, unknown>;
   "runtime.device.key_adopt": Record<string, unknown>;

@@ -616,6 +616,180 @@
       "bindings": [
         {
           "surface": "cli",
+          "target": "cli:action run runtime.creator.reel.submit --json --no-input"
+        }
+      ],
+      "description": "Submit a multi-shot reel job and return immediately with its local record id and status; it never blocks until the reel finishes (a reel can have up to 40 shots and take a long time). Poll runtime.creator.reel.inspect for progress and the final file. Pass resume_id to restart an existing failed/running job with its original parameters instead of creating a new one. The ActionParity execution_id is used as a local idempotency key so retrying the same request never starts a second paid generation.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.creator.reel.submit",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "bgm_prompt": {
+            "description": "Optional BGM description. BGM is a separately billed channel and is only added when this is explicitly set.",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "narration": {
+            "description": "Optional narration script.",
+            "type": "string"
+          },
+          "preset_id": {
+            "description": "Optional built-in visual style preset id from runtime.creator.reel_presets.inspect.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "The reel's topic/prompt. Required unless storyboard or shots is given.",
+            "type": "string"
+          },
+          "resolution": {
+            "description": "480p or 720p.",
+            "type": "string"
+          },
+          "resume_id": {
+            "description": "Optional. Restart an existing failed/running reel by its local record id (returned by a previous submit) instead of creating a new one.",
+            "type": "integer"
+          },
+          "shots": {
+            "description": "Optional per-shot list, up to 8 items, each 'scene::camera move'.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "storyboard": {
+            "description": "Optional free-form storyboard script.",
+            "type": "string"
+          },
+          "voice": {
+            "description": "Optional voice id for narration.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "title": "Submit a one-click reel job"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.reel.inspect --json --no-input"
+        }
+      ],
+      "description": "List reel job history (status, two-phase progress, whether the mp4 exists) or a single job by id. This is the only way to see the terminal 'pending-verify' state (submission outcome unknown after an unclean shutdown); it never re-submits anything.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.reel.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Optional. Look up a single reel job by its local record id; omit to list all history.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "items",
+          "count"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect one-click reel jobs"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.reel.keep --json --no-input"
+        }
+      ],
+      "description": "Copy a finished reel's mp4 into a project asset folder that history pruning never touches, and mark it kept. Only jobs that already have a video can be kept.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.creator.reel.keep",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The reel job's local record id.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "kept",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "title": "Keep a reel as a project asset"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
           "target": "cli:action run runtime.rtk.inspect --json --no-input"
         }
       ],
@@ -1775,7 +1949,7 @@
           "target": "cli:action run runtime.localllm.inspect --json --no-input"
         }
       ],
-      "description": "Report Ollama, llama.cpp, vLLM and SGLang together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. vLLM and SGLang are reported as `unsupported_here` on Windows/macOS because upstream only ships Linux+CUDA — saying so is the answer, not hiding them. Reads only.",
+      "description": "Report Ollama and llama.cpp together: installed, whether each is actually usable right now (`ready` + `blockers`), the OpenAI-compatible endpoint when one is serving, which process U-King started, and the local models each engine can load. Reads only.",
       "effects": {
         "audit_required": false,
         "class": "read",
@@ -1801,7 +1975,7 @@
         ],
         "type": "object"
       },
-      "title": "Inspect the four local LLM engines"
+      "title": "Inspect local LLM engines"
     },
     {
       "bindings": [
@@ -1950,9 +2124,7 @@
             "description": "Which engine to start.",
             "enum": [
               "ollama",
-              "llamacpp",
-              "vllm",
-              "sglang"
+              "llamacpp"
             ],
             "type": "string"
           },
@@ -1967,7 +2139,7 @@
             "type": "integer"
           },
           "model": {
-            "description": "Model to load: a .gguf path for llama.cpp, a HuggingFace folder for vLLM/SGLang. Ignored by Ollama, which loads per request.",
+            "description": "Model to load: a .gguf path for llama.cpp. Ignored by Ollama, which loads per request.",
             "type": "string"
           },
           "port": {
@@ -2031,9 +2203,7 @@
             "description": "Which engine to stop.",
             "enum": [
               "ollama",
-              "llamacpp",
-              "vllm",
-              "sglang"
+              "llamacpp"
             ],
             "type": "string"
           },
@@ -2090,9 +2260,7 @@
             "description": "Which engine to install.",
             "enum": [
               "ollama",
-              "llamacpp",
-              "vllm",
-              "sglang"
+              "llamacpp"
             ],
             "type": "string"
           },
@@ -5461,7 +5629,8 @@
       "runtime.hire.search",
       "runtime.localllm.inspect",
       "runtime.localllm.catalog",
-      "runtime.creator.reel_presets.inspect"
+      "runtime.creator.reel_presets.inspect",
+      "runtime.creator.reel.inspect"
     ]
   },
   "surfaces": [
