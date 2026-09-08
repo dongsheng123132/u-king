@@ -2,6 +2,12 @@
 export const feedback: Record<string, string> = {
   // 远程协助（Feedback.tsx 底部区块）
   "远程协助（需要时再开）": "Remote assistance (only when you need it)",
+  "两种方式：① 按网页说明运行诊断命令（查配置和日志最快）；② 让作者看到你的屏幕（界面点不动、弹窗看不懂时用）。":
+    "Two ways: ① run the diagnostic command from the web instructions (fastest for config and log issues); ② let the author see your screen (for when a button will not respond or a dialog makes no sense).",
+  "① 按网页说明运行诊断命令": "① Run the diagnostic command from the web instructions",
+  "装不上、报错说不清、截图看不出问题时，打开网页复制命令运行，再把结果发给作者。":
+    "When installation fails, an error is hard to describe, or screenshots do not explain it, open the webpage, copy and run its command, then send the result to the author.",
+  "打开远程协助说明": "Open remote-assistance instructions",
   "两种方式：① 让作者跑命令排查（不用装东西，查配置/日志最快）；② 让作者看到你的屏幕（界面点不动、弹窗看不懂时用）。":
     "Two ways: ① let the author run commands (nothing to install — fastest for config/log issues); ② let the author see your screen (for when a button won't respond or a dialog makes no sense).",
   "① 让作者跑命令排查（U-King 自带）": "① Let the author run commands (built into U-King)",

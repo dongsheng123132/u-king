@@ -64,7 +64,6 @@ mod origin;
 mod org;
 mod toolbox;
 mod providers;
-mod remote_assist;
 mod report;
 mod rtk;
 mod bundled_apps;
@@ -1873,6 +1872,94 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         )),
+        // 完整短片：**两段式**。这里只落一条本地记录 + 写前日志，真正的 gen-reel.mjs
+        // 跑在后台线程；handler 几乎立刻返回，绝不等 40 镜生成完成。进度/终态改由
+        // `CREATOR_REEL_INSPECT` 轮询——同步 return 之后线程池里的 `ProgressSink` 已经用不上了，
+        // 长期进度只能落盘由 inspect 读，不能像 video.submit 那样内联 emit。
+        // `resume_id` 可选：带上它就是"按原参数重新生成一条已有记录"（对应旧 GUI 的 resume_reel），
+        // 不带就是"提交一条新的"（对应旧 GUI 的 submit_reel）——两者共用同一个 Action，
+        // 不为「重投」另开一条 id（宪法第 14 条：业务动作只实现一次）。
+        actions::with_progress(actions::write(
+            actions::CREATOR_REEL_SUBMIT,
+            "Submit a one-click reel job",
+            "Submit a multi-shot reel job and return immediately with its local record id and status; it never blocks until the reel finishes (a reel can have up to 40 shots and take a long time). Poll runtime.creator.reel.inspect for progress and the final file. Pass resume_id to restart an existing failed/running job with its original parameters instead of creating a new one. The ActionParity execution_id is used as a local idempotency key so retrying the same request never starts a second paid generation.",
+            30_000,
+            "required",
+            serde_json::json!({
+                "prompt": { "type": "string", "description": "The reel's topic/prompt. Required unless storyboard or shots is given." },
+                "storyboard": { "type": "string", "description": "Optional free-form storyboard script." },
+                "shots": { "type": "array", "items": { "type": "string" }, "description": "Optional per-shot list, up to 8 items, each 'scene::camera move'." },
+                "narration": { "type": "string", "description": "Optional narration script." },
+                "voice": { "type": "string", "description": "Optional voice id for narration." },
+                "bgm_prompt": { "type": "string", "description": "Optional BGM description. BGM is a separately billed channel and is only added when this is explicitly set." },
+                "resolution": { "type": "string", "description": "480p or 720p." },
+                "preset_id": { "type": "string", "description": "Optional built-in visual style preset id from runtime.creator.reel_presets.inspect." },
+                "resume_id": { "type": "integer", "description": "Optional. Restart an existing failed/running reel by its local record id (returned by a previous submit) instead of creating a new one." }
+            }),
+            &[],
+            &["id", "status"],
+            |_, input, _progress| {
+                let execution_id = actions::current_execution_id();
+                let resume_id = input.get("resume_id").and_then(|v| v.as_i64());
+                // 设备鉴权在组合根同步取一次再传给 reel.rs：reel 模块本身不认识 device 模块
+                // （宪法第 13 条「模块独立可插拔」；`check-module-coupling.mjs` 会拦住反过来的写法）。
+                let key = device::device_key_offline()?;
+                let id = if let Some(rid) = resume_id {
+                    reel::resume_start(rid, execution_id.as_deref(), key)?
+                } else {
+                    let params: reel::ReelParams = serde_json::from_value(input.clone())
+                        .map_err(|e| format!("invalid_input: {e}"))?;
+                    reel::submit_start(params, execution_id.as_deref(), key)?
+                };
+                let item = reel::list_history()
+                    .into_iter()
+                    .find(|item| item.id == id)
+                    .ok_or_else(|| "reel job created without a history record".to_string())?;
+                action_json(item)
+            },
+            None,
+        )),
+        actions::readonly_opt(
+            actions::CREATOR_REEL_INSPECT,
+            "Inspect one-click reel jobs",
+            "List reel job history (status, two-phase progress, whether the mp4 exists) or a single job by id. This is the only way to see the terminal 'pending-verify' state (submission outcome unknown after an unclean shutdown); it never re-submits anything.",
+            10_000,
+            serde_json::json!({ "id": { "type": "integer", "description": "Optional. Look up a single reel job by its local record id; omit to list all history." } }),
+            &["items", "count"],
+            |_, input, _| {
+                let items = reel::list_history();
+                match input.get("id").and_then(|v| v.as_i64()) {
+                    Some(target) => {
+                        let item = items
+                            .into_iter()
+                            .find(|it| it.id == target)
+                            .ok_or_else(|| "找不到该成片任务".to_string())?;
+                        Ok(serde_json::json!({ "items": [action_json(item)?], "count": 1 }))
+                    }
+                    None => Ok(serde_json::json!({ "count": items.len(), "items": action_json(items)? })),
+                }
+            },
+        ),
+        actions::write(
+            actions::CREATOR_REEL_KEEP,
+            "Keep a reel as a project asset",
+            "Copy a finished reel's mp4 into a project asset folder that history pruning never touches, and mark it kept. Only jobs that already have a video can be kept.",
+            30_000,
+            "required",
+            serde_json::json!({ "id": { "type": "integer", "description": "The reel job's local record id." } }),
+            &["id"],
+            &["id", "kept", "project_id"],
+            |_, input, _| {
+                let id = input.get("id").and_then(|v| v.as_i64()).ok_or("invalid_input: missing id")?;
+                reel::keep_record(id)?;
+                let item = reel::list_history()
+                    .into_iter()
+                    .find(|it| it.id == id)
+                    .ok_or_else(|| "找不到该成片任务".to_string())?;
+                Ok(serde_json::json!({ "id": item.id, "kept": item.kept, "project_id": item.project_id }))
+            },
+            None,
+        ),
         actions::readonly(
             actions::RTK_INSPECT,
             "Inspect the token squeezer (RTK)",
@@ -5012,46 +5099,6 @@ async fn open_log_dir() -> Result<(), String> {
     feedback::open_log_dir()
 }
 
-// ── 远程协助（remote_assist.rs）────────────────────────────────────────────────
-// 独立可插拔：删这个功能只动本文件（去 mod remote_assist + 下面 4 个 command + invoke 注册）
-// 与 `Feedback.tsx`（去一个区块）。模块本身不碰 AppHandle，进度用 |msg| 回调传出，这里再 emit。
-
-/// 远程协助当前状态（有没有开、协助编号、还剩多久自动断、审计日志在哪）。只读。
-#[tauri::command]
-async fn remote_assist_status() -> remote_assist::AssistStatus {
-    tauri::async_runtime::spawn_blocking(remote_assist::status)
-        .await
-        .unwrap_or_default()
-}
-
-/// 开启远程协助。**必须由客户在界面上主动点**——这一层是 GUI 的礼貌，真正的门在于
-/// 不点就不下载、不启动、不连服务器，作者那边压根看不到这台机器。
-/// 下载/连接进度走事件 `uking:remote_assist`。
-#[tauri::command]
-async fn remote_assist_start(app: AppHandle) -> Result<remote_assist::AssistStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        remote_assist::start(&|msg: &str| {
-            let _ = app.emit("uking:remote_assist", msg.to_string());
-        })
-    })
-    .await
-    .map_err(|e| format!("远程协助任务异常: {e}"))?
-}
-
-/// 停止远程协助（只杀我们自己起的那个进程，见 remote_assist::stop 的注释）。幂等。
-#[tauri::command]
-async fn remote_assist_stop() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(remote_assist::stop)
-        .await
-        .map_err(|e| format!("远程协助任务异常: {e}"))?
-}
-
-/// 打开审计日志目录 —— 客户可以自己核对我们远程执行过哪些命令。
-#[tauri::command]
-async fn remote_assist_open_audit() -> Result<(), String> {
-    remote_assist::reveal_audit_dir()
-}
-
 /// 反馈页粘贴的截图落盘（data URL → `~/.uking/feedback/`），返回本机路径。
 /// 图不进 Issue（body 8000 字上限塞不下 base64），留本机 + 反馈正文注明，作者按需索取。
 #[tauri::command]
@@ -6108,48 +6155,6 @@ async fn resume_video(app: AppHandle, id: i64) -> Result<i64, String> {
     .map_err(|e| format!("视频续跑异常: {e}"))?
 }
 
-/// 一键成片：只负责本地进程/历史/进度，分镜、作图、视频、配音、拼接全部由成熟的
-/// `gen-reel.mjs` 编排器完成。进度事件 `{id,phase,detail}` 给 Reel.tsx 模块级状态消费。
-#[tauri::command]
-async fn submit_reel(app: AppHandle, params: reel::ReelParams) -> Result<i64, String> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let params = reel::prepare_params(params)?;
-        let id = reel::create_record(&params)?;
-        let key = match device::device_key_offline() {
-            Ok(key) => key,
-            Err(e) => { reel::mark_failed(id, e.clone()); return Err(e); }
-        };
-        let _ = app2.emit("uking:reel_progress", serde_json::json!({"id": id, "phase": "dialogue", "detail": "【1/5】准备对白与分镜…"}));
-        match reel::run(id, &params, &key, &|phase, detail| {
-            let _ = app2.emit("uking:reel_progress", serde_json::json!({"id": id, "phase": phase, "detail": detail}));
-        }) {
-            Ok(()) => Ok(id),
-            Err(e) => { reel::mark_failed(id, e.clone()); Err(e) }
-        }
-    }).await.map_err(|e| format!("一键成片任务异常: {e}"))?
-}
-
-/// 失败/中断的成片只能按原参数**重新生成**；不声称可续传，也不掩盖它会产生新费用。
-#[tauri::command]
-async fn resume_reel(app: AppHandle, id: i64) -> Result<i64, String> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let params = reel::restart_record(id)?;
-        let key = match device::device_key_offline() {
-            Ok(key) => key,
-            Err(e) => { reel::mark_failed(id, e.clone()); return Err(e); }
-        };
-        let _ = app2.emit("uking:reel_progress", serde_json::json!({"id": id, "phase": "dialogue", "detail": "【1/5】按原参数重新生成（将产生新费用）…"}));
-        match reel::run(id, &params, &key, &|phase, detail| {
-            let _ = app2.emit("uking:reel_progress", serde_json::json!({"id": id, "phase": phase, "detail": detail}));
-        }) {
-            Ok(()) => Ok(id),
-            Err(e) => { reel::mark_failed(id, e.clone()); Err(e) }
-        }
-    }).await.map_err(|e| format!("重新生成成片任务异常: {e}"))?
-}
-
 #[tauri::command]
 fn list_reel_history() -> Vec<reel::ReelItemOut> { reel::list_history() }
 
@@ -6161,6 +6166,24 @@ fn read_reel_file(id: i64) -> Result<String, String> {
 
 #[tauri::command]
 fn delete_reel(id: i64) -> Result<(), String> { reel::delete_record(id) }
+
+/// "查一次"：客户主动核实 pending-verify 任务的本地运行状态，绝不发起任何提交/重投。
+#[tauri::command]
+fn reel_recheck_pending(id: i64) -> Result<String, String> {
+    reel::recheck_pending(id)
+}
+
+/// "确认没扣费后重投"：唯一能让 pending-verify 任务重新进入生成流程的入口，
+/// 必须由客户显式点击触发，绝不能在启动/轮询路径上自动调用。
+#[tauri::command]
+async fn reel_confirm_resubmit(id: i64) -> Result<i64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let key = device::device_key_offline()?;
+        reel::confirm_no_charge_and_resubmit(id, key)
+    })
+    .await
+    .map_err(|e| format!("确认重投异常: {e}"))?
+}
 
 #[tauri::command]
 fn list_video_history() -> Vec<video::VideoItemOut> {
@@ -8843,39 +8866,6 @@ pub fn run() {
         let ok = d.contains("AI进程取证") && d.contains("版本:");
         std::process::exit(if ok { 0 } else { 1 });
     }
-    // 远程协助无头验证：U-King.exe --assist-test [保持秒数]
-    // 走「开启远程协助」按钮的**同一条代码路径**（下载 agent.exe → 起进程 → 查状态 → 停止），
-    // 打印协助编号。默认起完就停；给个秒数则先保持那么久，方便运维侧同时跑
-    // `remote-agent.exe list` 确认这台机器真的出现在在线列表里（端到端证据，不只是「编译过了」）。
-    if let Some(i) = args.iter().position(|a| a == "--assist-test") {
-        let hold: u64 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(0);
-        match remote_assist::start(&|m: &str| eprintln!("[assist] {m}")) {
-            Ok(st) => {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": st.running,
-                        "device_id": st.device_id,
-                        "remaining_secs": st.remaining_secs,
-                        "audit_log": st.audit_log,
-                    })
-                );
-                if hold > 0 {
-                    eprintln!("[assist] 保持 {hold}s（这期间可在运维侧跑 remote-agent.exe list 核对）…");
-                    std::thread::sleep(std::time::Duration::from_secs(hold));
-                }
-                // 自检不该给机器留下一个还开着的远程通道 —— 无论如何都关掉再退出。
-                let stopped = remote_assist::stop().is_ok();
-                let after = remote_assist::status();
-                eprintln!("[assist] 已停止={stopped} 停止后 running={}", after.running);
-                std::process::exit(if st.running && stopped && !after.running { 0 } else { 1 });
-            }
-            Err(e) => {
-                eprintln!("[assist] 失败: {e}");
-                std::process::exit(1);
-            }
-        }
-    }
     // ★ 工具可用性实测：U-King.exe --toolstack-probe [tool] [out.json]
     //
     // 「该下架谁」的三个数字里，**这条回答「配了能不能用」**。发版前跑一遍，
@@ -10170,6 +10160,10 @@ pub fn run() {
             // 视频按次扣费，不能把恢复责任绑在“客户有没有点进视频页”上。启动即接管所有
             // running/ready 任务：继续轮询原 task_id，出片后落本机；全过程不再 POST、不再扣费。
             resume_pending_videos(app.handle().clone());
+            // 成片同理，但恢复语义不同：video 是继续轮询原任务，reel 是「进程死在
+            // 已发起、不知道有没有接单的缝里」——只标记 pending-verify，绝不自动重投
+            // （见 reel::recover_dangling_pending 文档）。
+            reel::recover_dangling_pending();
             } // ← `if !is_sidecar` 第一段到此为止
             // 跑完通知人。**这是「你不用盯着」真正成立的前提**：在此之前，任务跑完只写
             // `~/.uking/automation/*.md` 和列表里的 last_message，客户不打开工作台那个
@@ -10438,11 +10432,11 @@ pub fn run() {
             instance_role,
             read_video,
             clear_video_history,
-            submit_reel,
-            resume_reel,
             list_reel_history,
             read_reel_file,
             delete_reel,
+            reel_recheck_pending,
+            reel_confirm_resubmit,
             report_bug,
             test_provider,
             list_remote_models,
@@ -10553,10 +10547,6 @@ pub fn run() {
             collect_diagnostics,
             submit_feedback,
             open_log_dir,
-            remote_assist_status,
-            remote_assist_start,
-            remote_assist_stop,
-            remote_assist_open_audit,
             save_feedback_shot,
             open_feedback_shots_dir,
             open_miniapp,

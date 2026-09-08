@@ -35,15 +35,6 @@ import {
 } from "lucide-react";
 import { useI18n } from "./i18n";
 
-/** 远程协助状态（后端 remote_assist.rs::AssistStatus 镜像）。 */
-type AssistStatus = {
-  running: boolean;
-  device_id?: string | null;
-  remaining_secs?: number | null;
-  audit_log: string;
-  supported: boolean;
-};
-
 /** UU远程（网易官方远控）状态 —— 影核动作 `runtime.uu_remote.inspect` 的输出镜像。
  *
  *  两个字段别混：`ready` = **客户现在能不能接受屏幕协助**（装了就能）；
@@ -119,61 +110,12 @@ export function Feedback({ version, onToast }: { version?: string; onToast: (s: 
   const [diag, setDiag] = useState<string | null>(null);
   const [loadingDiag, setLoadingDiag] = useState(false);
   const [sent, setSent] = useState<string | null>(null);
-  // 远程协助
-  const [assist, setAssist] = useState<AssistStatus | null>(null);
-  const [assistBusy, setAssistBusy] = useState(false);
-  const [assistLog, setAssistLog] = useState("");
   // 二维码大图（小图 92px 手机不一定扫得动，点开给一张够大的）
   const [qrOpen, setQrOpen] = useState(false);
   // 屏幕协助（UU远程）
   const [uu, setUu] = useState<UuStatus | null>(null);
   const [uuBusy, setUuBusy] = useState(false);
   const [uuLog, setUuLog] = useState("");
-
-  // 进页面拉一次状态；开着的时候每 30s 刷新一次（为了让「还剩 X 分钟」是活的）。
-  useEffect(() => {
-    let alive = true;
-    const pull = () => {
-      invoke<AssistStatus>("remote_assist_status")
-        .then((s) => alive && setAssist(s))
-        .catch(() => {});
-    };
-    pull();
-    const timer = setInterval(pull, 30_000);
-    const un = listen<string>("uking:remote_assist", (e) => alive && setAssistLog(String(e.payload)));
-    return () => {
-      alive = false;
-      clearInterval(timer);
-      void un.then((f) => f());
-    };
-  }, []);
-
-  const startAssist = async () => {
-    setAssistBusy(true);
-    setAssistLog("");
-    try {
-      setAssist(await invoke<AssistStatus>("remote_assist_start"));
-      onToast(t("远程协助已开启，请把协助编号发给作者"));
-    } catch (e) {
-      onToast(t("开启失败：") + String(e));
-    } finally {
-      setAssistBusy(false);
-    }
-  };
-
-  const stopAssist = async () => {
-    setAssistBusy(true);
-    try {
-      await invoke("remote_assist_stop");
-      setAssist(await invoke<AssistStatus>("remote_assist_status"));
-      setAssistLog("");
-      onToast(t("已停止远程协助"));
-    } catch (e) {
-      onToast(t("停止失败：") + String(e));
-    } finally {
-      setAssistBusy(false);
-    }
-  };
 
   // UU远程状态：进页面拉一次；装完再拉一次刷新按钮文案。
   const pullUu = () =>
@@ -204,17 +146,6 @@ export function Feedback({ version, onToast }: { version?: string; onToast: (s: 
   const openUuPage = () => {
     const url = uu?.download_page || "https://uuyc.163.com/download/";
     openUrl(url).catch(() => onToast(t("打开失败，请手动访问 {url}", { url })));
-  };
-
-  const copyDeviceId = async () => {
-    const id = assist?.device_id;
-    if (!id) return;
-    try {
-      await navigator.clipboard.writeText(id);
-      onToast(t("已复制协助编号：{id}", { id }));
-    } catch {
-      onToast(id);
-    }
   };
 
   // 草稿随打随存：切页/关窗都不丢，提交成功才清（下面 submit 里 clearDraft）。
@@ -616,114 +547,28 @@ export function Feedback({ version, onToast }: { version?: string; onToast: (s: 
         </p>
       </section>
 
-      {/* 远程协助 —— 复杂问题靠截图和日志说不清时，让作者直接连上来看现场。
-          刻意放在最后、默认关、文案把权限讲透：这是全权限远程执行，不是「诊断上报」。 */}
-      {assist?.supported !== false && (
-        // 默认折叠（测试报告 #023：「文字内容过多，直接平铺显示视觉冗长」）。
-        // 这一段有两屏权限说明 —— 该讲透，但不该挡在「我就想提个 bug」的人面前。
-        // **正在协助时强制展开**：那时候屏幕上唯一重要的东西是设备编号，折起来等于把它藏了。
-        <details
-          open={!!assist?.running}
-          className="group rounded-card border border-white/[0.08] bg-bg-1/70 px-5 py-4 shadow-card"
-        >
+      {/* 远程协助不在客户端内置连接实现：说明和命令由网站维护，避免发布包携带运维连接细节。 */}
+      <details className="group rounded-card border border-white/[0.08] bg-bg-1/70 px-5 py-4 shadow-card">
           <summary className="flex items-center gap-2 cursor-pointer select-none list-none">
             <MonitorSmartphone size={14} className="text-accent" />
             <h2 className="text-[13px] font-semibold text-ink-0">{t("远程协助（需要时再开）")}</h2>
-            {assist?.running ? (
-              <span className="text-[10.5px] text-success-400 border border-success-500/30 bg-success-500/[0.10] rounded px-1.5 py-0.5">
-                {t("协助进行中")}
-              </span>
-            ) : (
-              <span className="ml-auto text-[11px] text-ink-5 group-open:hidden">{t("展开 ›")}</span>
-            )}
+            <span className="ml-auto text-[11px] text-ink-5 group-open:hidden">{t("展开 ›")}</span>
           </summary>
           <div className="space-y-3 mt-3">
-          {/* 两条路各有各的适用场景，别让客户以为是重复功能：命令查不出来的（界面点不动、
-              弹窗看不懂、装到一半卡着）只能看屏幕；反过来，看屏幕排 PATH/配置又极慢。 */}
+          {/* 两条路各有各的适用场景，别让客户以为是重复功能。 */}
           <p className="text-[11px] text-ink-4 leading-relaxed">
-            {t("两种方式：① 让作者跑命令排查（不用装东西，查配置/日志最快）；② 让作者看到你的屏幕（界面点不动、弹窗看不懂时用）。")}
+            {t("两种方式：① 按网页说明运行诊断命令（查配置和日志最快）；② 让作者看到你的屏幕（界面点不动、弹窗看不懂时用）。")}
           </p>
-
-          {!assist?.running ? (
-            <>
-              <h3 className="text-[12.5px] font-semibold text-ink-1">{t("① 让作者跑命令排查（U-King 自带）")}</h3>
-              <p className="text-[12px] text-ink-2 leading-relaxed">
-                {t("装不上、报错说不清、截图看不出问题时，可以让作者直接连上你的电脑排查，不用你再截图描述。")}
-              </p>
-              {/* 权限必须说人话讲清楚，别用「协助」两个字把「远程执行命令」糊过去。 */}
-              <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2.5 text-[11.5px] text-ink-2 leading-relaxed space-y-1">
-                <p className="flex items-start gap-1.5">
-                  <ShieldCheck size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                  <span>
-                    {t("开启后，作者可以在你这台电脑上执行命令、读取文件来排查问题。请只在你正在联系作者时开启。")}
-                  </span>
-                </p>
-                <p className="pl-[18px]">
-                  {t("· 你随时可以点「停止协助」立刻断开；{h} 小时后也会自动断开。", { h: 2 })}
-                </p>
-                <p className="pl-[18px]">{t("· 作者执行过的每条命令都会记进本机审计日志，你可以随时查看。")}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={startAssist}
-                  disabled={assistBusy}
-                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-accent/40 text-accent text-[13px] font-medium hover:bg-accent/[0.10] disabled:opacity-60"
-                >
-                  {assistBusy ? <Loader2 size={14} className="animate-spin" /> : <MonitorSmartphone size={14} />}
-                  {t("开启远程协助")}
-                </button>
-                <button
-                  onClick={() => void invoke("remote_assist_open_audit").catch(() => {})}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-white/[0.10] text-ink-2 text-[12px] hover:bg-white/[0.04]"
-                >
-                  <FolderOpen size={14} /> {t("查看审计日志")}
-                </button>
-              </div>
-              {assistBusy && assistLog && <p className="text-[11.5px] text-ink-3">{assistLog}</p>}
-            </>
-          ) : (
-            <>
-              <div className="rounded-lg border border-accent/30 bg-accent/[0.08] px-3.5 py-3">
-                <p className="text-[11.5px] text-ink-3 mb-1">{t("把这个编号发给作者：")}</p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={copyDeviceId}
-                    title={t("点此复制")}
-                    className="font-mono text-[22px] font-semibold text-accent hover:text-accent-600 tracking-wide"
-                  >
-                    {assist.device_id}
-                  </button>
-                  <button
-                    onClick={copyDeviceId}
-                    className="inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-white/[0.10] text-ink-2 text-[11px] hover:bg-white/[0.04]"
-                  >
-                    <ClipboardCopy size={12} /> {t("复制")}
-                  </button>
-                </div>
-                {typeof assist.remaining_secs === "number" && (
-                  <p className="text-[11px] text-ink-4 mt-1.5">
-                    {t("约 {m} 分钟后自动断开", { m: Math.max(1, Math.round(assist.remaining_secs / 60)) })}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={stopAssist}
-                  disabled={assistBusy}
-                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-danger-500/40 text-danger-400 text-[13px] font-medium hover:bg-danger-500/[0.10] disabled:opacity-60"
-                >
-                  {assistBusy ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-                  {t("停止协助")}
-                </button>
-                <button
-                  onClick={() => void invoke("remote_assist_open_audit").catch(() => {})}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-white/[0.10] text-ink-2 text-[12px] hover:bg-white/[0.04]"
-                >
-                  <FolderOpen size={14} /> {t("查看审计日志")}
-                </button>
-              </div>
-            </>
-          )}
+          <h3 className="text-[12.5px] font-semibold text-ink-1">{t("① 按网页说明运行诊断命令")}</h3>
+          <p className="text-[12px] text-ink-2 leading-relaxed">
+            {t("装不上、报错说不清、截图看不出问题时，打开网页复制命令运行，再把结果发给作者。")}
+          </p>
+          <button
+            onClick={() => openUrl("https://www.u-claw.org.cn/agent.html").catch(() => onToast(t("打开失败，请手动访问 {url}", { url: "https://www.u-claw.org.cn/agent.html" })))}
+            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-accent/40 text-accent text-[13px] font-medium hover:bg-accent/[0.10]"
+          >
+            <ExternalLink size={14} /> {t("打开远程协助说明")}
+          </button>
 
           {/* ② 屏幕协助 —— UU远程（网易官方）。这里只做「帮你把它装上」，连接走它自己的界面。
               为什么值得内置：客户自己找官网 → 挑平台 → 在一堆「高速下载器」里挑真包，
@@ -773,7 +618,6 @@ export function Feedback({ version, onToast }: { version?: string; onToast: (s: 
           </div>
           </div>
         </details>
-      )}
     </div>
   );
 }
