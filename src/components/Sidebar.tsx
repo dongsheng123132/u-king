@@ -9,7 +9,6 @@ import { useState } from "react";
 import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, Hammer, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
-// import { SidebarMiniApps } from "./SidebarMiniApps"; // 小程序隐藏中（2026-09-08），恢复时解开
 import { useViewport } from "../lib/useViewport";
 import { useI18n } from "../i18n";
 
@@ -606,10 +605,6 @@ export function Sidebar({
           </>
         )}
 
-        {/* 小程序 2026-09-08 隐藏（用户决定下架，入口先藏、运行时不动）。
-            恢复：解开下一行即可。注意 08-18 的警告：隐藏期间已装用户看不见也删不掉，
-            长期藏等于删，要删就走删除+清理路径，别一直藏着。 */}
-        {/* <SidebarMiniApps compact={short} /> */}
       </nav>
         {/* 装得下时它盖在 bg-1 上、从 bg-1 渐隐到透明 = 看不见；装不下时才显出「下面还有」。
             纯 CSS，不测滚动高度 —— 少一个会跟折叠/窗口尺寸不同步的 state。 */}

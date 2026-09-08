@@ -63,7 +63,6 @@ const Manager = lazy(() => import("./Manager").then((m) => ({ default: m.Manager
 const CodexZone = lazy(() => import("./CodexZone").then((m) => ({ default: m.CodexZone })));
 const Create = lazy(() => import("./Create").then((m) => ({ default: m.Create })));
 const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
-// 小程序图标条已收进实验室（2026-07-27 做减法），文件与 props 全保留，恢复解开这行即可。
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const Reel = lazy(() => import("./Reel").then((m) => ({ default: m.Reel })));
@@ -1374,9 +1373,6 @@ export function App() {
         </main>
         )}
       </div>
-
-      {/* 小程序开在独立窗口里（open_miniapp），不是浮层 ——
-          主窗口在 http 源上，iframe 指向 uking:// 属跨 scheme，WebView2 不放行。 */}
 
       {providerMgr && (
         <ProviderManager
