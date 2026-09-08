@@ -6,7 +6,7 @@
 
 U-King 要让不懂终端的人，把一句需求交给本机 AI 工具执行，看见成果、处理故障，并在需要模型额度时方便地充值——替用户承担环境和配置复杂度。
 
-导航现状：Windows/macOS 展开后有 **13 个固定功能入口：核心 4、更多 7、实验室 2**；加技术支持是 14 个，另有条件显示的终端和用户安装的小程序。工作台内部还有护照、看板、专家、自动化四个入口。隐藏的 GEO、团队空间、运行中心、竞技场未计入。[Sidebar.tsx:75](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:75)、[SessionList.tsx:145](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/opencodex/SessionList.tsx:145)
+导航现状：Windows/macOS 展开后有 **13 个固定功能入口：核心 4、更多 7、实验室 2**；加技术支持是 14 个，另有条件显示的终端和用户安装的小程序。工作台内部还有护照、看板、专家、自动化四个入口。隐藏的 GEO、团队空间、运行中心、竞技场未计入。[Sidebar.tsx:75](src/components/Sidebar.tsx:75)、[SessionList.tsx:145](src/opencodex/SessionList.tsx:145)
 
 相对你提出的 EchoBird 三页参照，差距说明：**U-King 同时在向用户展示工作流程和开发出来的能力目录。**但不能据此认定必须压到三页；其[当前官网](https://echobird.ai/)还展示本地模型、安装修复等能力，也不足以验证用户量及其增长原因。
 
@@ -14,32 +14,32 @@ U-King 要让不懂终端的人，把一句需求交给本机 AI 工具执行，
 
 | 删除项与位置 | 薄弱假设与证据 | 可执行删除范围、用户损失及风险 |
 |---|---|---|
-| **① 删除“免费额度”组中智谱、硅基流动的两条现有快捷入口** | 代码明确承认：两条入口仍预填付费旗舰模型，免费模型要用户另看说明再手改；点击还会清空免费路线上下文。假设小白能自己纠正“免费”按钮的默认配置，站不住脚。[Manager.tsx:2282](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2282)、[Manager.tsx:1300](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:1300) | 从 `freeTemplateNames` 移除这两条；普通供应商模板和已有配置继续可用。**主改 1 文件。**损失只是两条误导性的捷径，风险低；不能把“厂商有免费模型”等同于“当前预填调用免费”。 |
-| **② 删除团队空间、运行中心这组产品原型** | 团队空间明确不做真实文件同步和远端权限隔离；运行中心读取开发目录和固定回放报告，成本统一按固定单价估算。它们验证的是演示机制，尚未证明能解决客户协作、观测问题。[TeamSpace.tsx:17](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/TeamSpace.tsx:17)、[RunCenter.tsx:2](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/RunCenter.tsx:2)、[trace-store.ts:31](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/lib/otel/trace-store.ts:31) | 删除两页、`lib/team/`、仅该页消费的 `trace-store.ts`，清理 App 路由、Sidebar 类型、专属翻译与烟测。**十余文件，绝非两文件插件。**不要连带删 U-Chat 使用的 `otel/tracer.ts`。用户失去本机协作演示和开发报告查看器；风险低至中，不能宣称只是删静态假数据——项目顾问确实会调用模型。[project-assistant.ts:49](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/lib/team/project-assistant.ts:49) |
-| **③ 从桌面产品拆除 GEO 体检及咨询模块** | 注释记录：截至当时检查的 460 条工单，客户询问 0 条，仅一次免费体检；恢复依据是负责人判断，未提供成交证据。当前实现已撤自助下单，剩免费搜索面板、演示报告和人工咨询。[Sidebar.tsx:167](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:167)、[Geo.tsx:3](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Geo.tsx:3) | 删除 `Geo.tsx`、`geo.rs`、路由、命令注册、`GEO_INSPECT` 及产品内专家/技能分发引用；人工咨询素材移出产品发行面。**至少 6 个代码文件，另有技能、翻译和生成物。**损失独立 GEO 获客渠道，风险中等：微信成交未核验，不能断言零收入。旧版脚本清理逻辑须迁入升级迁移后再移除，避免删除功能同时丢掉历史清理责任。[geo.rs:49](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src-tauri/src/geo.rs:49) |
-| **④ 完全删除竞技场残留** | 导航早已撤掉，代码自己称其为“横向评测玩具”；运行时默认勾选六个 CLI，质量仍靠用户逐项打星。让小白先当评测员，才能决定谁替自己干活，是倒置责任。[SessionList.tsx:152](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/opencodex/SessionList.tsx:152)、[Arena.tsx:48](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/opencodex/Arena.tsx:48) | 删除前后端 Arena、工作台分支、`WorkView` 枚举项、注释入口、`arena_run`、`--arena-test` 和专属耦合基线项。**至少 7 文件。**用户失去隐藏的横评能力，日常执行不受影响；风险低至中。保留复用的 `toolprobe`，不清除用户已有评测产物。 |
-| **⑤ 删除已撤 Dock 的整条数据与回调链** | Sidebar 已不解构、不消费 Dock props；App 仍构建列表、创建启动回调并传入。保留理由甚至明确写着“现在删了将来还得重写”。Git 已经承担历史保存职责。[Sidebar.tsx:318](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:318)、[App.tsx:843](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/App.tsx:843) | 删除 `dockApps`、`onLaunchDock`、专属计算、类型、透传和注释 JSX。**2 文件，边界最好。**用户无功能损失，风险低；实际工具启动函数及其他入口继续保留。 |
+| **① 删除“免费额度”组中智谱、硅基流动的两条现有快捷入口** | 代码明确承认：两条入口仍预填付费旗舰模型，免费模型要用户另看说明再手改；点击还会清空免费路线上下文。假设小白能自己纠正“免费”按钮的默认配置，站不住脚。[Manager.tsx:2282](src/Manager.tsx:2282)、[Manager.tsx:1300](src/Manager.tsx:1300) | 从 `freeTemplateNames` 移除这两条；普通供应商模板和已有配置继续可用。**主改 1 文件。**损失只是两条误导性的捷径，风险低；不能把“厂商有免费模型”等同于“当前预填调用免费”。 |
+| **② 删除团队空间、运行中心这组产品原型** | 团队空间明确不做真实文件同步和远端权限隔离；运行中心读取开发目录和固定回放报告，成本统一按固定单价估算。它们验证的是演示机制，尚未证明能解决客户协作、观测问题。[TeamSpace.tsx:17](src/TeamSpace.tsx:17)、[RunCenter.tsx:2](src/RunCenter.tsx:2)、[trace-store.ts:31](src/lib/otel/trace-store.ts:31) | 删除两页、`lib/team/`、仅该页消费的 `trace-store.ts`，清理 App 路由、Sidebar 类型、专属翻译与烟测。**十余文件，绝非两文件插件。**不要连带删 U-Chat 使用的 `otel/tracer.ts`。用户失去本机协作演示和开发报告查看器；风险低至中，不能宣称只是删静态假数据——项目顾问确实会调用模型。[project-assistant.ts:49](src/lib/team/project-assistant.ts:49) |
+| **③ 从桌面产品拆除 GEO 体检及咨询模块** | 注释记录：截至当时检查的 460 条工单，客户询问 0 条，仅一次免费体检；恢复依据是负责人判断，未提供成交证据。当前实现已撤自助下单，剩免费搜索面板、演示报告和人工咨询。[Sidebar.tsx:167](src/components/Sidebar.tsx:167)、[Geo.tsx:3](src/Geo.tsx:3) | 删除 `Geo.tsx`、`geo.rs`、路由、命令注册、`GEO_INSPECT` 及产品内专家/技能分发引用；人工咨询素材移出产品发行面。**至少 6 个代码文件，另有技能、翻译和生成物。**损失独立 GEO 获客渠道，风险中等：微信成交未核验，不能断言零收入。旧版脚本清理逻辑须迁入升级迁移后再移除，避免删除功能同时丢掉历史清理责任。[geo.rs:49](src-tauri/src/geo.rs:49) |
+| **④ 完全删除竞技场残留** | 导航早已撤掉，代码自己称其为“横向评测玩具”；运行时默认勾选六个 CLI，质量仍靠用户逐项打星。让小白先当评测员，才能决定谁替自己干活，是倒置责任。[SessionList.tsx:152](src/opencodex/SessionList.tsx:152)、[Arena.tsx:48](src/opencodex/Arena.tsx:48) | 删除前后端 Arena、工作台分支、`WorkView` 枚举项、注释入口、`arena_run`、`--arena-test` 和专属耦合基线项。**至少 7 文件。**用户失去隐藏的横评能力，日常执行不受影响；风险低至中。保留复用的 `toolprobe`，不清除用户已有评测产物。 |
+| **⑤ 删除已撤 Dock 的整条数据与回调链** | Sidebar 已不解构、不消费 Dock props；App 仍构建列表、创建启动回调并传入。保留理由甚至明确写着“现在删了将来还得重写”。Git 已经承担历史保存职责。[Sidebar.tsx:318](src/components/Sidebar.tsx:318)、[App.tsx:843](src/App.tsx:843) | 删除 `dockApps`、`onLaunchDock`、专属计算、类型、透传和注释 JSX。**2 文件，边界最好。**用户无功能损失，风险低；实际工具启动函数及其他入口继续保留。 |
 
 删除验收应包含“引用与发行资源消失”，不能只检查侧栏没了。涉及动作表时重新生成产物并跑 `action-parity:verify`；后续执行更改时再按仓库要求跑构建、Rust 测试与泄漏闸门。
 
 **3. 简化清单**
 
-- **修正“一键全安装”的名字和承诺。**实际队列已经收窄为 Claude Code 加 Windows 终端环境，但首页仍写“全部工具”。统一改成“装好 Claude Code 和必要环境”，无需再改安装架构。[Wizard.tsx:337](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Wizard.tsx:337)、[Wizard.tsx:382](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Wizard.tsx:382)、[App.tsx:2263](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/App.tsx:2263)
-- **免费接入只保留一条带上下文的流程。**现有免费路线抽屉已保留路线信息；普通快速添加却另走模板预填。统一复用前者完成“领 Key→选择对应模型→验证”，减少用户补课步骤。[Manager.tsx:1574](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:1574)
-- **夜班页按实际能力命名为“行为记录”。**目前只记录、不执行，却以“晚上替你值班”为主承诺。审查期间新提交恢复了六张预告卡；尊重其保留决定，将预告集中折叠，实际记录作为主内容。[NightShift.tsx:155](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/NightShift.tsx:155)、[NightShift.tsx:309](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/NightShift.tsx:309)
-- **清掉互相覆盖的历史架构说明，留下当前规则和证据链接。**例如 Sidebar 仍用“设置页包含体检升级”解释位置，后文又承认这些已迁走；这会直接误导下一轮判断。[Sidebar.tsx:63](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:63)、[Sidebar.tsx:103](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:103)
+- **修正“一键全安装”的名字和承诺。**实际队列已经收窄为 Claude Code 加 Windows 终端环境，但首页仍写“全部工具”。统一改成“装好 Claude Code 和必要环境”，无需再改安装架构。[Wizard.tsx:337](src/Wizard.tsx:337)、[Wizard.tsx:382](src/Wizard.tsx:382)、[App.tsx:2263](src/App.tsx:2263)
+- **免费接入只保留一条带上下文的流程。**现有免费路线抽屉已保留路线信息；普通快速添加却另走模板预填。统一复用前者完成“领 Key→选择对应模型→验证”，减少用户补课步骤。[Manager.tsx:1574](src/Manager.tsx:1574)
+- **夜班页按实际能力命名为“行为记录”。**目前只记录、不执行，却以“晚上替你值班”为主承诺。审查期间新提交恢复了六张预告卡；尊重其保留决定，将预告集中折叠，实际记录作为主内容。[NightShift.tsx:155](src/NightShift.tsx:155)、[NightShift.tsx:309](src/NightShift.tsx:309)
+- **清掉互相覆盖的历史架构说明，留下当前规则和证据链接。**例如 Sidebar 仍用“设置页包含体检升级”解释位置，后文又承认这些已迁走；这会直接误导下一轮判断。[Sidebar.tsx:63](src/components/Sidebar.tsx:63)、[Sidebar.tsx:103](src/components/Sidebar.tsx:103)
 
 **4. 保持原样**
 
-- **最小安装队列＋收尾可用性检查：很好，别扩大。**Hermes、ffmpeg、MarkItDown 已退出默认队列；向导实际调用 readiness。这里已经贯彻了“先让一个工具干成活”。[Wizard.tsx:373](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Wizard.tsx:373)、[Wizard.tsx:942](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Wizard.tsx:942)
-- **U-Chat 的真实 CLI 调用、成果查看和终端保活：保留。**对话实际调用 `${agent}_send`，并非另造一个只会聊天的界面；文件预览注释记录了客户“做完却看不到成果”的具体问题。这些复杂度服务交付。[ChatPanel.tsx:631](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/opencodex/panels/ChatPanel.tsx:631)、[Chat.tsx:496](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/opencodex/Chat.tsx:496)
-- **AI 创作独立入口：保留，不再强塞回对话。**有客户要求恢复入口的记录，也有撤掉双挂载以避免状态分裂的实现依据。所谓“第二高频”尚非统计证明，但明确的使用反馈足以反对整块删除；不能由此替每个新增创作子功能背书。[Create.tsx:4](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Create.tsx:4)、[Sidebar.tsx:86](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:86)
-- **配置生效检测、按工具协议实测、钱包真实可用额度：保留。**它们分别解决“写入成功但没生效”“测通一种协议却跑不了目标 CLI”“余额大于零却发不出请求”等已有故障，不能当繁琐步骤砍掉。[actions.rs:408](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src-tauri/src/actions.rs:408)、[Manager.tsx:959](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:959)、[device.rs:79](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src-tauri/src/device.rs:79)
+- **最小安装队列＋收尾可用性检查：很好，别扩大。**Hermes、ffmpeg、MarkItDown 已退出默认队列；向导实际调用 readiness。这里已经贯彻了“先让一个工具干成活”。[Wizard.tsx:373](src/Wizard.tsx:373)、[Wizard.tsx:942](src/Wizard.tsx:942)
+- **U-Chat 的真实 CLI 调用、成果查看和终端保活：保留。**对话实际调用 `${agent}_send`，并非另造一个只会聊天的界面；文件预览注释记录了客户“做完却看不到成果”的具体问题。这些复杂度服务交付。[ChatPanel.tsx:631](src/opencodex/panels/ChatPanel.tsx:631)、[Chat.tsx:496](src/opencodex/Chat.tsx:496)
+- **AI 创作独立入口：保留，不再强塞回对话。**有客户要求恢复入口的记录，也有撤掉双挂载以避免状态分裂的实现依据。所谓“第二高频”尚非统计证明，但明确的使用反馈足以反对整块删除；不能由此替每个新增创作子功能背书。[Create.tsx:4](src/Create.tsx:4)、[Sidebar.tsx:86](src/components/Sidebar.tsx:86)
+- **配置生效检测、按工具协议实测、钱包真实可用额度：保留。**它们分别解决“写入成功但没生效”“测通一种协议却跑不了目标 CLI”“余额大于零却发不出请求”等已有故障，不能当繁琐步骤砍掉。[actions.rs:408](src-tauri/src/actions.rs:408)、[Manager.tsx:959](src/Manager.tsx:959)、[device.rs:79](src-tauri/src/device.rs:79)
 
 **5. 薄弱假设 Top 3**
 
-**第一：供应商存在免费档，就可以把供应商入口叫“免费额度”。**当前代码直接反证：入口预填付费模型，免费选择靠用户手改。对小白而言，免费必须落实到这一条配置、这一个模型和这一次验证。厂商级标签承担不了调用级承诺。优先删除误导入口，比添加更多免责说明有效。[Manager.tsx:2287](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/Manager.tsx:2287)
+**第一：供应商存在免费档，就可以把供应商入口叫“免费额度”。**当前代码直接反证：入口预填付费模型，免费选择靠用户手改。对小白而言，免费必须落实到这一条配置、这一个模型和这一次验证。厂商级标签承担不了调用级承诺。优先删除误导入口，比添加更多免责说明有效。[Manager.tsx:2287](src/Manager.tsx:2287)
 
-**第二：技术上接入完整，就说明值得成为产品功能。**实验室“毕业标准”主要检查动作表、ready/blockers、环境依赖，没有要求真实使用或成功任务证据。于是工程成熟度容易被误认成需求成熟度。团队空间的完整锁与审批演示、运行中心的瀑布图，都不能证明客户因此更容易完成第一件事。[Sidebar.tsx:199](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:199)
+**第二：技术上接入完整，就说明值得成为产品功能。**实验室“毕业标准”主要检查动作表、ready/blockers、环境依赖，没有要求真实使用或成功任务证据。于是工程成熟度容易被误认成需求成熟度。团队空间的完整锁与审批演示、运行中心的瀑布图，都不能证明客户因此更容易完成第一件事。[Sidebar.tsx:199](src/components/Sidebar.tsx:199)
 
-**第三：入口先藏起来，复杂度就消失了；已有变现出口，就值得继续留着。**竞技场隐藏后仍有前后端执行链，GEO 隐藏后仍有动作注册和内嵌资源。隐藏只减少眼前选择，没有减少发布和维护责任。GEO 的历史记录又明确区分了“负责人想做这门生意”和“已发现客户需求”。没有成交证据时，应把它作为独立业务实验核算，不能让主产品无限期承担成本。[SessionList.tsx:156](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/opencodex/SessionList.tsx:156)、[Sidebar.tsx:167](C:/Users/ZhuanZ/Desktop/claude/u-claw/u-king/src/components/Sidebar.tsx:167)
+**第三：入口先藏起来，复杂度就消失了；已有变现出口，就值得继续留着。**竞技场隐藏后仍有前后端执行链，GEO 隐藏后仍有动作注册和内嵌资源。隐藏只减少眼前选择，没有减少发布和维护责任。GEO 的历史记录又明确区分了“负责人想做这门生意”和“已发现客户需求”。没有成交证据时，应把它作为独立业务实验核算，不能让主产品无限期承担成本。[SessionList.tsx:156](src/opencodex/SessionList.tsx:156)、[Sidebar.tsx:167](src/components/Sidebar.tsx:167)
