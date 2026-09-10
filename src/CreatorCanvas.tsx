@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Clapperboard, Download, ExternalLink, ImagePlus, LoaderCircle, PanelTopOpen, Plus, Trash2 } from "lucide-react";
+import { Clapperboard, Download, Expand, ExternalLink, ImagePlus, LoaderCircle, Minimize, PanelTopOpen, Plus, Trash2 } from "lucide-react";
 
 type Envelope = { ok: boolean; result?: Record<string, unknown>; error?: { message?: string } };
 type BridgeRequest = {
@@ -45,6 +45,7 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
   const [projectTitle, setProjectTitle] = useState<string>();
   const [startupError, setStartupError] = useState<string>();
   const frame = useRef<HTMLIFrameElement>(null);
+  const canvasContainer = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [taskStatus, setTaskStatus] = useState<string>();
@@ -54,6 +55,13 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
   const [component, setComponent] = useState<ComponentStatus>();
   const [offer, setOffer] = useState<ComponentOffer>();
   const [checkingComponent, setCheckingComponent] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(document.fullscreenElement === canvasContainer.current);
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
 
   const refreshComponent = async () => {
     setCheckingComponent(true);
@@ -227,6 +235,18 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     finally { setBusy(false); }
   };
 
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement === canvasContainer.current) {
+        await document.exitFullscreen();
+      } else if (canvasContainer.current?.requestFullscreen) {
+        await canvasContainer.current.requestFullscreen();
+      } else {
+        onToast("当前设备不支持全屏创作。");
+      }
+    } catch (error) { onToast(`切换全屏失败：${error instanceof Error ? error.message : String(error)}`); }
+  };
+
   const canvasUrl = url ? (() => {
     const localCanvasUrl = new URL(url);
     // This mode bit is intentionally the only iframe URL addition. It makes
@@ -235,10 +255,11 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     return localCanvasUrl.toString();
   })() : undefined;
 
-  return <div className="flex min-h-0 flex-1 flex-col gap-3">
+  return <div ref={canvasContainer} className={`flex min-h-0 flex-1 flex-col gap-3 ${isFullscreen ? "h-screen w-screen bg-[#161616] p-4" : ""}`}>
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
       <PanelTopOpen size={16} className="text-accent" />
       <span className="mr-auto text-sm font-medium">{projectTitle ? `本地创作画布 · ${projectTitle}` : "本地创作画布"}</span>
+      {component?.state === "installed" && <button type="button" onClick={() => void toggleFullscreen()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">{isFullscreen ? <Minimize size={15} /> : <Expand size={15} />}{isFullscreen ? "退出大屏" : "大屏创作"}</button>}
       {component?.state === "installed" && <button onClick={() => void uninstallComponent()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Trash2 size={15} />卸载画布</button>}
       {component?.state === "installed" &&
       <select aria-label="打开本地项目" value={projectId || ""} disabled={busy || saving || Boolean(saveError)} onChange={event => void start({ openId: event.target.value })} className="rounded-lg border border-white/[0.1] bg-black/20 px-2 py-2 text-sm"><option value="" disabled>选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title} · {project.id.slice(-6)}</option>)}</select>
@@ -252,6 +273,7 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
       </>}
       {taskStatus && <span className="text-xs text-ink-3">任务：{taskStatus}</span>}
     </div>
+    {isFullscreen && <p className="text-center text-xs text-ink-3">按 Esc 返回普通视图</p>}
     {saving && <span className="text-xs text-ink-3">正在保存…</span>}
     {saveError && <div role="alert" className="text-sm text-amber-400">{saveError}</div>}
     {checkingComponent ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在检查本地画布组件…</div>
