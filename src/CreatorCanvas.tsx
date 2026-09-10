@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Download, ExternalLink, ImagePlus, LoaderCircle, PanelTopOpen, Plus, Trash2 } from "lucide-react";
+import { Clapperboard, Download, ExternalLink, ImagePlus, LoaderCircle, PanelTopOpen, Plus, Trash2 } from "lucide-react";
 
 type Envelope = { ok: boolean; result?: Record<string, unknown>; error?: { message?: string } };
 type BridgeRequest = {
@@ -34,7 +34,11 @@ async function action(id: string, input: Record<string, unknown> = {}, confirmed
   return response.result || {};
 }
 
-export function CreatorCanvas({ onToast }: { onToast: (message: string) => void }) {
+export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
+  onToast: (message: string) => void;
+  onGoDraw?: () => void;
+  onGoVideo?: () => void;
+}) {
   const [url, setUrl] = useState<string>();
   const [capability, setCapability] = useState<string>();
   const [projectId, setProjectId] = useState<string>();
@@ -252,7 +256,7 @@ export function CreatorCanvas({ onToast }: { onToast: (message: string) => void 
     {saveError && <div role="alert" className="text-sm text-amber-400">{saveError}</div>}
     {checkingComponent ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在检查本地画布组件…</div>
       : component?.state === "damaged" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地画布组件已损坏。</p><p className="mt-1 text-xs">{component.detail || "请先卸载损坏组件，再重新下载安装；你的创作项目会保留。"}</p></div><button onClick={() => void uninstallComponent()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Trash2 size={15} />卸载损坏组件，保留项目</button>{saveError && <p role="alert" className="text-xs text-amber-400">请先修复保存问题后再卸载。</p>}{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
-      : component?.state !== "installed" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地创作画布是可选下载组件，安装后仅在本机运行。</p><p className="mt-1 text-xs">{offer?.available ? `下载大小：${Math.ceil((offer.archive_bytes || 0) / 1024 / 1024)} MB` : "组件发布包尚未就绪，请等待 U-King 更新组件目录。"}</p></div>{offer?.available && <button onClick={() => void installComponent()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />下载并安装本地画布</button>}{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
+      : component?.state !== "installed" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地创作画布是可选下载组件，安装后仅在本机运行。</p><p className="mt-1 text-xs">{offer?.available ? `下载大小：${Math.ceil((offer.archive_bytes || 0) / 1024 / 1024)} MB` : "组件发布包尚未就绪，请等待 U-King 更新组件目录。"}</p></div>{offer?.available && <button onClick={() => void installComponent()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />下载并安装本地画布</button>}<div className="flex flex-wrap justify-center gap-2"><button type="button" onClick={onGoDraw} disabled={!onGoDraw} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><ImagePlus size={15} />AI 作图</button><button type="button" onClick={onGoVideo} disabled={!onGoVideo} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Clapperboard size={15} />视频片段</button></div>{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
       : busy && !url ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在启动本地画布…</div> : canvasUrl && projectId ? <iframe key={projectId} ref={frame} onLoad={initializeBridge} title="OpenTu 本地创作画布" src={canvasUrl} className="min-h-0 flex-1 rounded-xl border border-white/[0.08] bg-white" sandbox="allow-scripts allow-same-origin allow-downloads" /> : <div className="grid flex-1 place-items-center gap-2 text-ink-3">{startupError ? `无法打开上次项目：${startupError}` : "本地画布尚未启动。"}<div className="flex gap-2"><button onClick={() => void start()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><ExternalLink size={14} />打开本地画布</button><button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><Plus size={14} />新建项目</button></div></div>}
   </div>;
 }

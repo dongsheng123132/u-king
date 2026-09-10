@@ -32,8 +32,6 @@ export type TabId =
   | "draw"
   | "qrmerge"
   | "video"
-  | "reel"
-  | "tasks"
   | "geo"
   | "skillpack"
   | "toolbox"
