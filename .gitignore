@@ -1,5 +1,7 @@
 node_modules/
 dist/
+/src-tauri/resources/opentu/
+/src-tauri/resources/opentu/
 dist-usb/
 src-tauri/target/
 src-tauri/gen/schemas/

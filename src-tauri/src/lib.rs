@@ -25,6 +25,8 @@ mod codex;
 mod codex_proxy;
 mod context_menu;
 mod crashlog;
+/// 本地优先创作画布的项目权威存储；浏览器缓存只是预览缓存。
+mod creator_local;
 mod freerouter;
 mod doc;
 mod device;
@@ -4149,6 +4151,167 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &["ok", "ws_url", "port"],
             browser::run,
         ),
+        // Local creator canvas. These are deliberately narrow: the browser can
+        // save its board and ask for one image, but cannot proxy arbitrary URLs,
+        // filesystem paths, providers, or Action IDs.
+        actions::readonly(
+            actions::CREATOR_CANVAS_INSPECT,
+            "Inspect the local OpenTu canvas bundle",
+            "Report the locally installed OpenTu component and whether this executable has a trusted optional-download offer. Reads only.",
+            5_000,
+            &["ready", "project_root", "static_bundle", "component", "offer", "blockers"],
+            |_, _, _| Ok(creator_local::inspect_canvas()),
+        ),
+        actions::readonly(
+            actions::CREATOR_COMPONENT_INSPECT,
+            "Inspect the optional local creator component",
+            "Report whether the OpenTu canvas component is installed, damaged, or available from U-King's built-in trusted catalogue. It never exposes a download URL.",
+            5_000,
+            &["ready", "component", "offer", "blockers"],
+            |_, _, _| {
+                let canvas = creator_local::inspect_canvas();
+                Ok(serde_json::json!({
+                    "ready": canvas["ready"], "component": canvas["component"],
+                    "offer": canvas["offer"], "blockers": canvas["blockers"],
+                }))
+            },
+        ),
+        actions::write(
+            actions::CREATOR_COMPONENT_INSTALL,
+            "Download and install the local creator component",
+            "Download only U-King's built-in HTTPS OpenTu release entry, verify it, and atomically activate it. It never starts the canvas service automatically.",
+            360_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["component", "state"],
+            |_, _, _| creator_local::install_canvas_component(),
+            None,
+        ),
+        actions::write(
+            actions::CREATOR_COMPONENT_UNINSTALL,
+            "Uninstall the local creator component",
+            "Stop U-King's local canvas listener, wait for its port to release, then remove only the optional OpenTu component. Customer projects remain untouched.",
+            30_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["removed"],
+            |_, _, _| creator_local::uninstall_canvas_component(),
+            None,
+        ),
+        actions::write(
+            actions::CREATOR_CANVAS_START,
+            "Start the local creator canvas",
+            "Start U-King's loopback-only creator canvas. It never listens on a LAN interface and refuses an occupied port.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["started", "url"],
+            |_, _, _| creator_local::start_server(),
+            None,
+        ),
+        actions::write(
+            actions::CREATOR_CANVAS_STOP,
+            "Stop the local creator canvas",
+            "Stop only the loopback canvas process started by this U-King instance.",
+            10_000,
+            "required",
+            serde_json::json!({}),
+            &[],
+            &["stopped"],
+            |_, _, _| creator_local::stop_server(),
+            None,
+        ),
+        actions::write(
+            actions::CREATOR_PROJECT_CREATE,
+            "Create a local creator project",
+            "Create an empty canvas project under U-King's private project root.",
+            10_000,
+            "required",
+            serde_json::json!({ "title": { "type": "string", "description": "Optional project title." } }),
+            &[],
+            &["id", "title", "state_version"],
+            |_, input, _| creator_local::create_project(input.get("title").and_then(|v| v.as_str())),
+            None,
+        ),
+        actions::readonly(
+            actions::CREATOR_PROJECT_LIST,
+            "List local creator projects",
+            "List persisted local creator projects ordered by most recently updated. Reads only.",
+            10_000,
+            &[
+                "projects",
+            ],
+            |_, _, _| creator_local::list_projects(),
+        ),
+        actions::readonly_req(
+            actions::CREATOR_PROJECT_INSPECT,
+            "Read a local creator project",
+            "Read the authoritative canvas project from disk. Browser IndexedDB is not used as a source of truth.",
+            10_000,
+            serde_json::json!({ "project_id": { "type": "string" } }),
+            &["project_id"],
+            &["id", "canvas", "state_version"],
+            |_, input, _| creator_local::inspect_project(input.get("project_id").and_then(|v| v.as_str()).unwrap_or("")),
+        ),
+        actions::write(
+            actions::CREATOR_PROJECT_SAVE,
+            "Save a local creator canvas",
+            "Atomically save one canvas JSON document. A stale expected_state_version is refused rather than overwritten.",
+            10_000,
+            "required",
+            serde_json::json!({ "project_id": { "type": "string" }, "canvas": { "type": "object" } }),
+            &["project_id", "canvas"],
+            &["id", "state_version", "updated_at"],
+            |_, input, _| creator_local::save_project(
+                input.get("project_id").and_then(|v| v.as_str()).unwrap_or(""),
+                input.get("canvas").ok_or_else(|| "invalid_input: 缺少 canvas".to_string())?,
+                Some(input.get("expected_state_version").and_then(|v| v.as_str()).ok_or_else(|| "invalid_input: 保存必须带 expected_state_version".to_string())?),
+            ),
+            Some(creator_local::projects_state_version),
+        ),
+        actions::write(
+            actions::CREATOR_IMAGE_SUBMIT,
+            "Generate one image into a local creator project",
+            "Record one idempotent image request. This safety build has no real provider adapter and returns not_configured without contacting any network service.",
+            180_000,
+            "required",
+            serde_json::json!({
+                "project_id": { "type": "string" }, "prompt": { "type": "string" },
+                "model": { "type": "string" }, "size": { "type": "string" }, "quality": { "type": "string" }
+            }),
+            &["project_id", "prompt"],
+            &["project_id", "task_id", "status"],
+            |_, input, _| {
+                let project_id = input.get("project_id").and_then(|v| v.as_str()).unwrap_or("");
+                let prompt = input.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+                let model = input.get("model").and_then(|v| v.as_str()).unwrap_or("gpt-image-2");
+                let size = input.get("size").and_then(|v| v.as_str()).unwrap_or("1024x1024");
+                let quality = input.get("quality").and_then(|v| v.as_str());
+                let execution_id = actions::current_execution_id().ok_or("invalid_input: 图片提交必须带 ActionParity execution_id")?;
+                match creator_local::prepare_image_submit(project_id, &execution_id, prompt, model, size, quality)? {
+                    creator_local::ImageSubmitPreparation::Existing(output) => Ok(output),
+                    // A durable idempotency record is created before any future
+                    // provider adapter. Until that reviewed adapter exists,
+                    // explicitly report non-configuration instead of emitting a
+                    // fake bitmap that looks like a customer result.
+                    creator_local::ImageSubmitPreparation::New { task_id } => creator_local::mark_image_not_configured(project_id, &task_id),
+                }
+            },
+            None,
+        ),
+        actions::readonly_req(
+            actions::CREATOR_IMAGE_INSPECT,
+            "Inspect one local creator image task",
+            "Read a locally persisted creator image task. It never re-submits a paid generation.",
+            10_000,
+            serde_json::json!({ "project_id": { "type": "string" }, "task_id": { "type": "string" } }),
+            &["project_id", "task_id"],
+            &["task"],
+            |_, input, _| creator_local::inspect_task(input.get("project_id").and_then(|v| v.as_str()).unwrap_or(""), input.get("task_id").and_then(|v| v.as_str()).unwrap_or("")),
+        ),
     ];
     t
 }
@@ -5734,25 +5897,27 @@ async fn generate_image(
     size: Option<String>,
     quality: Option<String>,
 ) -> Result<providers::ImageResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let key = device::device_key_offline()?;
-        let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "gpt-image-2".into());
-        let size = size.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "1024x1024".into());
-        let r = require_image_b64(providers::generate_image(&key, &prompt, &model, &size, quality.as_deref()));
-        // 成功/失败都落历史（关 app 也不丢）。成功时 b64 落成 png 文件，只在历史里留路径。
-        // 用 img.model（实际出图模型）而非请求模型：安全兜底换了 Seedream 时历史如实显示。
-        match &r {
-            Ok(img) => {
-                let _ = draw::save_record(&prompt, &img.model, &size, img.b64.as_deref(), img.revised_prompt.as_deref(), None);
-            }
-            Err(e) => {
-                let _ = draw::save_record(&prompt, &model, &size, None, None, Some(e));
-            }
-        }
-        r
-    })
+    tauri::async_runtime::spawn_blocking(move || generate_image_core(prompt, model, size, quality))
     .await
     .map_err(|e| format!("作图任务异常: {e}"))?
+}
+
+/// 文生图只有这一份实现：旧作图页和本地画布 Action 都走这里，防止计费、兜底与历史逻辑漂移。
+fn generate_image_core(
+    prompt: String,
+    model: Option<String>,
+    size: Option<String>,
+    quality: Option<String>,
+) -> Result<providers::ImageResult, String> {
+    let key = device::device_key_offline()?;
+    let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "gpt-image-2".into());
+    let size = size.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "1024x1024".into());
+    let r = require_image_b64(providers::generate_image(&key, &prompt, &model, &size, quality.as_deref()));
+    match &r {
+        Ok(img) => { let _ = draw::save_record(&prompt, &img.model, &size, img.b64.as_deref(), img.revised_prompt.as_deref(), None); }
+        Err(e) => { let _ = draw::save_record(&prompt, &model, &size, None, None, Some(e)); }
+    }
+    r
 }
 
 /// AI 图生图 / 图片编辑：带参考图调虾盘云 edits 端点。images 为 base64（可带 data: 前缀）。
@@ -9567,6 +9732,9 @@ pub fn run() {
             });
         })
         .setup(move |app| {
+            // OpenTu is an optional signed component. Its loopback host resolves
+            // only `~/.uking/components/opentu/current.json`, never an app
+            // resource directory, CWD, or environment override.
             // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
             // 真的让**外部页面**导航了。整个过程窗口 `visible(false)`，屏幕上什么都不出现，
             // 不抢前台、不动鼠标、不截屏。跑完直接退出进程 —— 不起托盘、不起调度线程。
