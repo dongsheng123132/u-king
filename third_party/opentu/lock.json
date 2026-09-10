@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "upstream": "https://github.com/ljquan/opentu.git",
+  "tag": "v1.1.6",
+  "commit": "48802871554c5b8221b4c5d70baff0b68d00df46",
+  "pnpm": "10.21.0",
+  "pnpm_lock_sha256": "1f6325d90c5d80a1143e6cdb9e51c1cd3d1c15884e92ee61879e2c4c606c6bf8",
+  "license_sha256": "128d1034116682c17f3b2ba55ece313b492fcdcf74cf517a85d2b7d90e9f4f48",
+  "output": "dist/apps/web"
+}
