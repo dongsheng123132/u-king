@@ -82,15 +82,17 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     // —— 协议层自己发的（前缀确定，最先匹配）——
     ("unknown_action:", "unknown_action", Blame::Bug, false),
     ("confirmation_required:", "confirmation_required", Blame::Bug, false),
-    // 状态被别人改过 —— 重新读一次再来是**对的**处置，所以可重试。
-    ("conflict:", "conflict", Blame::Bug, true),
-    ("invalid_input:", "invalid_input", Blame::Bug, false),
     // Portable-runtime preflight rejects an unsuitable target before any write.
     // These are actionable user/environment states, not product faults.
     ("unsupported_filesystem:", "unsupported_filesystem", Blame::User, false),
     ("target_conflict:", "target_conflict", Blame::User, false),
     ("invalid_target:", "invalid_target", Blame::User, false),
     ("credential_unavailable:", "credential_unavailable", Blame::User, false),
+    // 状态被别人改过 —— 重新读一次再来是**对的**处置，所以可重试。
+    // It follows `target_conflict:` because that exact environment diagnosis
+    // contains the generic `conflict:` substring and must not become a bug.
+    ("conflict:", "conflict", Blame::Bug, true),
+    ("invalid_input:", "invalid_input", Blame::Bug, false),
     // —— 客户侧状态：不是 bug，别上报 ——
     ("余额不足", "insufficient_balance", Blame::User, false),
     ("insufficient", "insufficient_balance", Blame::User, false),
@@ -138,6 +140,11 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     ("工作台定义不合格", "refused", Blame::User, false),
     ("不能当工作台", "refused", Blame::User, false),
     // —— 网络 ——
+    // OpenTu component installer: curl and the Windows WinINET fallback both
+    // preserve this stable prefix.  It was observed during the first clean
+    // component-install test (curl Schannel exit 35), so callers can offer a
+    // retry instead of reporting a customer network state as a product bug.
+    ("network_error:", "network", Blame::Network, true),
     ("connection", "network", Blame::Network, true),
     ("连接被关闭", "network", Blame::Network, true),
     ("断网", "network", Blame::Network, true),
@@ -406,6 +413,19 @@ pub const CREATOR_REEL_SUBMIT: &str = "runtime.creator.reel.submit";
 pub const CREATOR_REEL_INSPECT: &str = "runtime.creator.reel.inspect";
 /// 把一条已完成的成片转成不受历史裁剪影响的项目资产（拷进 `~/.uking/projects/<id>/exports/`）。
 pub const CREATOR_REEL_KEEP: &str = "runtime.creator.reel.keep";
+// 本地创作画布：画布本身是可替换 Web surface，这六个 Action 才是稳定契约。
+pub const CREATOR_CANVAS_INSPECT: &str = "runtime.creator.canvas.inspect";
+pub const CREATOR_COMPONENT_INSPECT: &str = "runtime.creator.component.inspect";
+pub const CREATOR_COMPONENT_INSTALL: &str = "runtime.creator.component.install";
+pub const CREATOR_COMPONENT_UNINSTALL: &str = "runtime.creator.component.uninstall";
+pub const CREATOR_CANVAS_START: &str = "runtime.creator.canvas.start";
+pub const CREATOR_CANVAS_STOP: &str = "runtime.creator.canvas.stop";
+pub const CREATOR_PROJECT_CREATE: &str = "runtime.creator.project.create";
+pub const CREATOR_PROJECT_LIST: &str = "runtime.creator.project.list";
+pub const CREATOR_PROJECT_INSPECT: &str = "runtime.creator.project.inspect";
+pub const CREATOR_PROJECT_SAVE: &str = "runtime.creator.project.save";
+pub const CREATOR_IMAGE_SUBMIT: &str = "runtime.creator.image.submit";
+pub const CREATOR_IMAGE_INSPECT: &str = "runtime.creator.image.inspect";
 
 /// `manifest().state.queries` 用：全部只读查询动作。加动作时别忘了这里 ——
 /// 影核清单里少一个，远端影子就看不见它。
@@ -418,7 +438,9 @@ pub const READ_ACTIONS: &[&str] = &[
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
-    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT, CREATOR_REEL_INSPECT,
+    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT, CREATOR_REEL_INSPECT, CREATOR_CANVAS_INSPECT, CREATOR_COMPONENT_INSPECT,
+    CREATOR_PROJECT_LIST, CREATOR_PROJECT_INSPECT,
+    CREATOR_IMAGE_INSPECT,
 ];
 
 // —— 写动作（会改这台机器）——
@@ -2023,6 +2045,12 @@ mod tests {
         let e = ActionError::classify("connection was closed");
         assert_eq!(e.blame, Blame::Network);
         assert!(e.retriable);
+        let e = ActionError::classify("network_error: OpenTu component download failed");
+        assert_eq!(e.blame, Blame::Network);
+        assert!(e.retriable);
+        let e = ActionError::classify("target_conflict: 本地创作画布端口不可用");
+        assert_eq!(e.code, "target_conflict");
+        assert_eq!(e.blame, Blame::User);
 
         // 协议层自己发的错，文案确定，必须精确归到 bug（是调用方/我们写错了）。
         assert_eq!(ActionError::classify("unknown_action: runtime.nope").code, "unknown_action");

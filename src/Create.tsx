@@ -1,34 +1,32 @@
 /**
- * AI 创作 —— 作图 / 视频 / 海报二维码 三合一入口。
+ * AI 创作 —— AI 作图 / 视频片段 / 创作画布 / 海报二维码四合一入口。
  *
- * 信息架构梳理（2026-07-19）：这三个是老客户最高频的创作能力（也是烧 token 的主力），
- * 原先分散埋在侧栏「更多」折叠组里没人点。现合并成一个核心项「AI 创作」。
+ * 信息架构梳理：作图、视频片段和海报二维码是可直接使用的创作能力；创作画布是紧接
+ * 视频片段的本地选装组件。四项统一放在核心入口「AI 创作」，不再散落在侧栏其它位置。
  *
  * 本页只是壳：内部标签切换 + 懒挂载保活（访问过的 tab 用 display 切换不卸载，
- * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）保持独立模块、
+ * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）与创作画布保持独立模块、
  * 原路由不动（AI 专家页等深链仍可直达）。删除本页只需动 App.tsx + Sidebar（铁律④）。
  */
 import { lazy, Suspense, useState } from "react";
-import { Clapperboard, History, Image as ImageIcon, QrCode } from "lucide-react";
+import { Clapperboard, Image as ImageIcon, PanelTopOpen, QrCode } from "lucide-react";
 import { cn } from "./lib/cn";
 import { useI18n } from "./i18n";
 import type { DeviceKey } from "./lib/types";
 
 const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
-const Reel = lazy(() => import("./Reel").then((m) => ({ default: m.Reel })));
-const MediaTasks = lazy(() => import("./Reel").then((m) => ({ default: m.MediaTasks })));
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
+const CreatorCanvas = lazy(() => import("./CreatorCanvas").then((m) => ({ default: m.CreatorCanvas })));
 
 /** 与 App.tsx 的 DeviceKey 同构（透传，不加工）。 */
-type SubTab = "draw" | "video" | "reel" | "qrmerge" | "tasks";
+type SubTab = "canvas" | "draw" | "video" | "qrmerge";
 
 const SUBS: { id: SubTab; label: string; icon: typeof ImageIcon }[] = [
   { id: "draw", label: "AI 作图", icon: ImageIcon },
-  // 两层能力不能同名并列：视频是可被成片复用的原子片段；成片才是多镜头编排。
+  // 视频是可被创作画布和 CLI 编排复用的原子片段；这里直接提供视频片段入口。
   { id: "video", label: "视频片段", icon: Clapperboard },
-  { id: "reel", label: "完整短片", icon: Clapperboard },
-  { id: "tasks", label: "任务中心", icon: History },
+  { id: "canvas", label: "创作画布", icon: PanelTopOpen },
   { id: "qrmerge", label: "AI 海报二维码", icon: QrCode },
 ];
 
@@ -94,6 +92,11 @@ export function Create({
 
       {/* 子页内容：访问过即挂载，display 切换保活 */}
       <div className="flex min-h-0 flex-1 flex-col">
+      {mounted.has("canvas") && (
+        <div className="flex-1 min-h-0" style={{ display: sub === "canvas" ? undefined : "none" }}>
+          <Suspense fallback={<Fallback />}><CreatorCanvas onToast={onToast} onGoDraw={() => go("draw")} onGoVideo={() => go("video")} /></Suspense>
+        </div>
+      )}
       {mounted.has("draw") && (
         <div className="flex-1 min-h-0" style={{ display: sub === "draw" ? undefined : "none" }}>
           <Suspense fallback={<Fallback />}>
@@ -108,23 +111,11 @@ export function Create({
           </Suspense>
         </div>
       )}
-      {mounted.has("reel") && (
-        <div className="flex-1 min-h-0" style={{ display: sub === "reel" ? undefined : "none" }}>
-          <Suspense fallback={<Fallback />}>
-            <Reel deviceKey={deviceKey} onToast={onToast} onRecharge={onRecharge} />
-          </Suspense>
-        </div>
-      )}
       {mounted.has("qrmerge") && (
         <div className="flex-1 min-h-0" style={{ display: sub === "qrmerge" ? undefined : "none" }}>
           <Suspense fallback={<Fallback />}>
             <QrMerge deviceKey={deviceKey} onToast={onToast} onRecharge={onRecharge} />
           </Suspense>
-        </div>
-      )}
-      {mounted.has("tasks") && (
-        <div className="flex-1 min-h-0 overflow-y-auto" style={{ display: sub === "tasks" ? undefined : "none" }}>
-          <Suspense fallback={<Fallback />}><MediaTasks onGo={(next) => go(next)} /></Suspense>
         </div>
       )}
       </div>

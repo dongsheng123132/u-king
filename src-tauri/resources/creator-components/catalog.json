@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "components": [
+    {
+      "schema": 1,
+      "component": "opentu",
+      "upstream_version": "1.1.6",
+      "upstream_commit": "48802871554c5b8221b4c5d70baff0b68d00df46",
+      "bundle_id": "opentu-1.1.6-uking.2",
+      "bridge_schema": 1,
+      "archive_format": "tar.gz",
+      "archive_bytes": 18544441,
+      "archive_sha256": "cf1ffa8daee38ba6a9570397bba4a875c8fa2f5da02fd1fc1c1bca23e5c9faac",
+      "integrity_manifest_sha256": "48be36835039df7f8b7f708a422fb7d0e571c0a99b7d20c34b9418298d9936a1",
+      "unpacked_bytes": 36938847,
+      "file_count": 249,
+      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/components/opentu/1.1.6-uking.2/opentu-1.1.6-uking.2.tar.gz"
+    }
+  ]
+}

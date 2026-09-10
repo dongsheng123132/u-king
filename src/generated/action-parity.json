@@ -5384,6 +5384,544 @@
         "type": "object"
       },
       "title": "Uninstall one AI tool and everything that makes it look installed"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.canvas.inspect --json --no-input"
+        }
+      ],
+      "description": "Report the locally installed OpenTu component and whether this executable has a trusted optional-download offer. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.creator.canvas.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ready",
+          "project_root",
+          "static_bundle",
+          "component",
+          "offer",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the local OpenTu canvas bundle"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.component.inspect --json --no-input"
+        }
+      ],
+      "description": "Report whether the OpenTu canvas component is installed, damaged, or available from U-King's built-in trusted catalogue. It never exposes a download URL.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.creator.component.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ready",
+          "component",
+          "offer",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the optional local creator component"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.component.install --json --no-input"
+        }
+      ],
+      "description": "Download only U-King's built-in HTTPS OpenTu release entry, verify it, and atomically activate it. It never starts the canvas service automatically.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 360000
+      },
+      "id": "runtime.creator.component.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "component",
+          "state"
+        ],
+        "type": "object"
+      },
+      "title": "Download and install the local creator component"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.component.uninstall --json --no-input"
+        }
+      ],
+      "description": "Stop U-King's local canvas listener, wait for its port to release, then remove only the optional OpenTu component. Customer projects remain untouched.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 30000
+      },
+      "id": "runtime.creator.component.uninstall",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
+      "title": "Uninstall the local creator component"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.canvas.start --json --no-input"
+        }
+      ],
+      "description": "Start U-King's loopback-only creator canvas. It never listens on a LAN interface and refuses an occupied port.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.canvas.start",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "started",
+          "url"
+        ],
+        "type": "object"
+      },
+      "title": "Start the local creator canvas"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.canvas.stop --json --no-input"
+        }
+      ],
+      "description": "Stop only the loopback canvas process started by this U-King instance.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.canvas.stop",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "stopped"
+        ],
+        "type": "object"
+      },
+      "title": "Stop the local creator canvas"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.project.create --json --no-input"
+        }
+      ],
+      "description": "Create an empty canvas project under U-King's private project root.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.project.create",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Optional project title.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "title",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Create a local creator project"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.project.list --json --no-input"
+        }
+      ],
+      "description": "List persisted local creator projects ordered by most recently updated. Reads only.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.project.list",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "projects"
+        ],
+        "type": "object"
+      },
+      "title": "List local creator projects"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.project.inspect --json --no-input"
+        }
+      ],
+      "description": "Read the authoritative canvas project from disk. Browser IndexedDB is not used as a source of truth.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.project.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "canvas",
+          "state_version"
+        ],
+        "type": "object"
+      },
+      "title": "Read a local creator project"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.project.save --json --no-input"
+        }
+      ],
+      "description": "Atomically save one canvas JSON document. A stale expected_state_version is refused rather than overwritten.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.project.save",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "canvas": {
+            "type": "object"
+          },
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "canvas"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "id",
+          "state_version",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "title": "Save a local creator canvas"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.image.submit --json --no-input"
+        }
+      ],
+      "description": "Generate one image through U-King's configured image provider, then atomically store the verified result in the local project. The canvas never receives a provider key.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 180000
+      },
+      "id": "runtime.creator.image.submit",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "prompt"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "project_id",
+          "task_id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "title": "Generate one image into a local creator project"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
+          "target": "cli:action run runtime.creator.image.inspect --json --no-input"
+        }
+      ],
+      "description": "Read a locally persisted creator image task. It never re-submits a paid generation.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 10000
+      },
+      "id": "runtime.creator.image.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "task"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect one local creator image task"
     }
   ],
   "application": {
@@ -5447,7 +5985,12 @@
       "runtime.localllm.inspect",
       "runtime.localllm.catalog",
       "runtime.creator.reel_presets.inspect",
-      "runtime.creator.reel.inspect"
+      "runtime.creator.reel.inspect",
+      "runtime.creator.canvas.inspect",
+      "runtime.creator.component.inspect",
+      "runtime.creator.project.list",
+      "runtime.creator.project.inspect",
+      "runtime.creator.image.inspect"
     ]
   },
   "surfaces": [

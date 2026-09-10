@@ -41,6 +41,30 @@ export const ACTION = {
   RUNTIME_CONTEXT_MENU_SET: "runtime.context_menu.set",
   /** Read U-King's local crash log, panic and UI-crash records, and whether previous runs exited cleanly. Reads only; does not depend on Windows Event Log. */
   RUNTIME_CRASH_INSPECT: "runtime.crash.inspect",
+  /** Report the locally installed OpenTu component and whether this executable has a trusted optional-download offer. Reads only. */
+  RUNTIME_CREATOR_CANVAS_INSPECT: "runtime.creator.canvas.inspect",
+  /** Start U-King's loopback-only creator canvas. It never listens on a LAN interface and refuses an occupied port. */
+  RUNTIME_CREATOR_CANVAS_START: "runtime.creator.canvas.start",
+  /** Stop only the loopback canvas process started by this U-King instance. */
+  RUNTIME_CREATOR_CANVAS_STOP: "runtime.creator.canvas.stop",
+  /** Report whether the OpenTu canvas component is installed, damaged, or available from U-King's built-in trusted catalogue. It never exposes a download URL. */
+  RUNTIME_CREATOR_COMPONENT_INSPECT: "runtime.creator.component.inspect",
+  /** Download only U-King's built-in HTTPS OpenTu release entry, verify it, and atomically activate it. It never starts the canvas service automatically. */
+  RUNTIME_CREATOR_COMPONENT_INSTALL: "runtime.creator.component.install",
+  /** Stop U-King's local canvas listener, wait for its port to release, then remove only the optional OpenTu component. Customer projects remain untouched. */
+  RUNTIME_CREATOR_COMPONENT_UNINSTALL: "runtime.creator.component.uninstall",
+  /** Read a locally persisted creator image task. It never re-submits a paid generation. */
+  RUNTIME_CREATOR_IMAGE_INSPECT: "runtime.creator.image.inspect",
+  /** Generate one image through U-King's configured image provider, then atomically store the verified result in the local project. The canvas never receives a provider key. */
+  RUNTIME_CREATOR_IMAGE_SUBMIT: "runtime.creator.image.submit",
+  /** Create an empty canvas project under U-King's private project root. */
+  RUNTIME_CREATOR_PROJECT_CREATE: "runtime.creator.project.create",
+  /** Read the authoritative canvas project from disk. Browser IndexedDB is not used as a source of truth. */
+  RUNTIME_CREATOR_PROJECT_INSPECT: "runtime.creator.project.inspect",
+  /** List persisted local creator projects ordered by most recently updated. Reads only. */
+  RUNTIME_CREATOR_PROJECT_LIST: "runtime.creator.project.list",
+  /** Atomically save one canvas JSON document. A stale expected_state_version is refused rather than overwritten. */
+  RUNTIME_CREATOR_PROJECT_SAVE: "runtime.creator.project.save",
   /** List the built-in schema-v1 visual-style presets for one-click reels. Reads only; selecting a preset never enables BGM or changes a user's supplied audio settings. */
   RUNTIME_CREATOR_REEL_PRESETS_INSPECT: "runtime.creator.reel_presets.inspect",
   /** List reel job history (status, two-phase progress, whether the mp4 exists) or a single job by id. This is the only way to see the terminal 'pending-verify' state (submission outcome unknown after an unclean shutdown); it never re-submits anything. */
@@ -244,6 +268,18 @@ export type ActionInputMap = {
   "runtime.command_guard.inspect": Record<string, never>;
   "runtime.context_menu.set": { enabled: boolean; expected_state_version?: string; };
   "runtime.crash.inspect": Record<string, never>;
+  "runtime.creator.canvas.inspect": Record<string, never>;
+  "runtime.creator.canvas.start": { expected_state_version?: string; };
+  "runtime.creator.canvas.stop": { expected_state_version?: string; };
+  "runtime.creator.component.inspect": Record<string, never>;
+  "runtime.creator.component.install": { expected_state_version?: string; };
+  "runtime.creator.component.uninstall": { expected_state_version?: string; };
+  "runtime.creator.image.inspect": { project_id: string; task_id: string; };
+  "runtime.creator.image.submit": { expected_state_version?: string; model?: string; project_id: string; prompt: string; quality?: string; size?: string; };
+  "runtime.creator.project.create": { expected_state_version?: string; title?: string; };
+  "runtime.creator.project.inspect": { project_id: string; };
+  "runtime.creator.project.list": Record<string, never>;
+  "runtime.creator.project.save": { canvas: Record<string, unknown>; expected_state_version?: string; project_id: string; };
   "runtime.creator.reel_presets.inspect": Record<string, never>;
   "runtime.creator.reel.inspect": { id?: number; };
   "runtime.creator.reel.keep": { expected_state_version?: string; id: number; };
@@ -355,6 +391,18 @@ export type ActionOutputMap = {
   "runtime.command_guard.inspect": Record<string, unknown>;
   "runtime.context_menu.set": Record<string, unknown>;
   "runtime.crash.inspect": Record<string, unknown>;
+  "runtime.creator.canvas.inspect": Record<string, unknown>;
+  "runtime.creator.canvas.start": Record<string, unknown>;
+  "runtime.creator.canvas.stop": Record<string, unknown>;
+  "runtime.creator.component.inspect": Record<string, unknown>;
+  "runtime.creator.component.install": Record<string, unknown>;
+  "runtime.creator.component.uninstall": Record<string, unknown>;
+  "runtime.creator.image.inspect": Record<string, unknown>;
+  "runtime.creator.image.submit": Record<string, unknown>;
+  "runtime.creator.project.create": Record<string, unknown>;
+  "runtime.creator.project.inspect": Record<string, unknown>;
+  "runtime.creator.project.list": Record<string, unknown>;
+  "runtime.creator.project.save": Record<string, unknown>;
   "runtime.creator.reel_presets.inspect": Record<string, unknown>;
   "runtime.creator.reel.inspect": Record<string, unknown>;
   "runtime.creator.reel.keep": Record<string, unknown>;
