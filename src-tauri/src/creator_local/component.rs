@@ -1,8 +1,9 @@
 //! Transactional, local-only management for optional creator components.
 //!
-//! The caller downloads an archive by a separately authorized mechanism.  This
-//! module never constructs a URL or accepts an installation destination: it
-//! only promotes a verified OpenTu archive below U-King's own component root.
+//! The component download uses only the executable's built-in trusted
+//! catalogue. This module never accepts a caller-provided URL or installation
+//! destination, and only promotes a verified OpenTu archive below U-King's
+//! own component root.
 
 use super::{atomic_write, fresh_id, sha256_file, uking_home, verify_static_bundle};
 use flate2::read::GzDecoder;
@@ -656,33 +657,108 @@ pub fn install_catalogued_opentu() -> Result<ComponentInspection, String> {
     let state = component_state_root();
     let root = checked_component_root(&state, true)?.ok_or("component_error: 无法创建 OpenTu 组件目录")?;
     let temporary = root.join(format!(".download-{}.tar.gz", fresh_id()));
+    let downloaded = download_catalogued_archive(&url, &temporary, manifest.archive_bytes);
+    let installed = downloaded.and_then(|()| install_to_state_root(&state, &temporary, &manifest));
+    let _ = fs::remove_file(&temporary);
+    installed
+}
+
+/// Download a catalogue-controlled archive without going through a shell.  The
+/// installer validates its exact byte length and SHA-256 afterwards; download
+/// transports only decide how the bytes reach this private temporary path.
+fn download_catalogued_archive(url: &str, temporary: &Path, archive_bytes: u64) -> Result<(), String> {
     let curl = if cfg!(windows) { "curl.exe" } else { "curl" };
     let mut download = Command::new(curl);
     download.args([
-            "--fail", "--silent", "--show-error", "--location",
-            "--proto", "=https", "--proto-redir", "=https",
-            "--connect-timeout", "15", "--max-time", "300",
-            "--max-filesize",
-        ])
-        .arg(manifest.archive_bytes.to_string())
-        .args(["--output"])
-        .arg(&temporary)
-        .arg(&url);
+        "--fail", "--silent", "--show-error", "--location",
+        "--proto", "=https", "--proto-redir", "=https",
+        "--connect-timeout", "15", "--max-time", "300", "--max-filesize",
+    ])
+    .arg(archive_bytes.to_string())
+    .args(["--output"])
+    .arg(temporary);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // Never flash a console window for this optional background download.
+        // Schannel revocation lookups often fail on customer networks even
+        // when HTTPS itself is reachable.  The archive's pinned SHA-256 is
+        // still verified before any file is promoted.
+        download.arg("--ssl-no-revoke");
         download.creation_flags(0x0800_0000);
     }
-    let result = download.status()
-        .map_err(|e| format!("network_error: 无法启动 OpenTu 组件下载: {e}"));
-    let installed = match result {
-        Ok(status) if status.success() => install_to_state_root(&state, &temporary, &manifest),
-        Ok(status) => Err(format!("network_error: OpenTu 组件下载失败（curl exit {}），请检查网络后重试", status.code().unwrap_or(-1))),
-        Err(error) => Err(error),
+    download.arg(url);
+    let curl_error = match download.status() {
+        Ok(status) if status.success() => return Ok(()),
+        Ok(status) => format!("curl exit {}", status.code().unwrap_or(-1)),
+        Err(error) => format!("无法启动 curl: {error}"),
     };
-    let _ = fs::remove_file(&temporary);
-    installed
+
+    #[cfg(windows)]
+    {
+        // Avoid accepting a partial curl output as a completed fallback.
+        let _ = fs::remove_file(temporary);
+        match powershell_download_to_file(url, temporary) {
+            Ok(()) => return Ok(()),
+            Err(powershell_error) => {
+                let _ = fs::remove_file(temporary);
+                return Err(format!(
+                    "network_error: OpenTu 组件下载失败（{curl_error}; WinINET 回退：{powershell_error}），请检查网络后重试"
+                ));
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    Err(format!("network_error: OpenTu 组件下载失败（{curl_error}），请检查网络后重试"))
+}
+
+#[cfg(windows)]
+fn powershell_download_to_file(url: &str, destination: &Path) -> Result<(), String> {
+    let command = powershell_download_command(url, destination)?;
+    let mut process = Command::new("powershell.exe");
+    process.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &command]);
+    use std::os::windows::process::CommandExt;
+    process.creation_flags(0x0800_0000);
+    match process.status() {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("PowerShell exit {}", status.code().unwrap_or(-1))),
+        Err(error) => Err(format!("无法启动 PowerShell: {error}")),
+    }
+}
+
+/// Build an encoded PowerShell command, so an URL or private temporary path is
+/// never interpolated into PowerShell source.  Redirects are disabled here;
+/// curl handles catalogue HTTPS-to-HTTPS redirects, while this WinINET retry
+/// can only download the original pinned HTTPS URL.
+#[cfg(windows)]
+fn powershell_download_command(url: &str, destination: &Path) -> Result<String, String> {
+    if !url.starts_with("https://") {
+        return Err("拒绝非 HTTPS 下载地址".into());
+    }
+    let destination = destination.to_str().ok_or("下载临时路径不是有效 Unicode")?;
+    let url64 = base64_encode(url.as_bytes());
+    let destination64 = base64_encode(destination.as_bytes());
+    let source = format!(
+        "$ErrorActionPreference='Stop';$url=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{url64}'));$dest=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{destination64}'));if(-not $url.StartsWith('https://',[StringComparison]::OrdinalIgnoreCase)){{exit 2}};try{{Invoke-WebRequest -Uri $url -OutFile $dest -TimeoutSec 300 -MaximumRedirection 0 -UseBasicParsing;exit 0}}catch{{exit 1}}"
+    );
+    let utf16: Vec<u8> = source.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    Ok(base64_encode(&utf16))
+}
+
+#[cfg(windows)]
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity(((bytes.len() + 2) / 3) * 4);
+    for chunk in bytes.chunks(3) {
+        let value = ((chunk[0] as u32) << 16)
+            | ((chunk.get(1).copied().unwrap_or(0) as u32) << 8)
+            | chunk.get(2).copied().unwrap_or(0) as u32;
+        result.push(TABLE[((value >> 18) & 0x3f) as usize] as char);
+        result.push(TABLE[((value >> 12) & 0x3f) as usize] as char);
+        result.push(if chunk.len() > 1 { TABLE[((value >> 6) & 0x3f) as usize] as char } else { '=' });
+        result.push(if chunk.len() > 2 { TABLE[(value & 0x3f) as usize] as char } else { '=' });
+    }
+    result
 }
 
 /// Resolve exactly the `current.json` version.  The loopback server never
@@ -813,14 +889,18 @@ mod tests {
     }
 
     #[test]
-    fn embedded_empty_catalogue_never_offers_or_starts_a_component() {
-        crate::testsandbox::with_sandbox("opentu-component-empty-catalogue", &[], |_| {
+    fn embedded_catalogue_offers_only_the_built_in_component() {
+        crate::testsandbox::with_sandbox("opentu-component-catalogue", &[], |_| {
             // `trusted_offer` takes no caller-controlled input. It must read
             // only the `include_str!` catalogue compiled into this binary,
             // never an Action, GUI, CLI, or replaceable resource path.
             let offer = inspect_opentu_offer().unwrap();
-            assert!(!offer.available);
-            assert!(trusted_offer().unwrap().is_none());
+            assert!(offer.available);
+            assert_eq!(offer.bundle_id.as_deref(), Some("opentu-1.1.6-uking.2"));
+            assert_eq!(offer.archive_bytes, Some(18_544_441));
+            let (manifest, _) = trusted_offer().unwrap().unwrap();
+            assert_eq!(manifest.bundle_id, "opentu-1.1.6-uking.2");
+            assert_eq!(manifest.archive_bytes, 18_544_441);
             assert!(active_opentu_static_root()
                 .unwrap_err()
                 .starts_with("not_installed:"));
@@ -837,9 +917,9 @@ mod tests {
                     "bundle_id": "opentu-1.1.6-uking.1",
                     "bridge_schema": 1,
                     "archive_format": "tar.gz",
-                    "archive_bytes": 18452579,
-                    "archive_sha256": "af31b3ff4aff09c7b64f8eee7c0b5b64d85085fd1ac272c252f1844bca7c6cdf",
-                    "integrity_manifest_sha256": "60ac3e7ee3d0b4581de78aa3dfd722c6fae78ee80c50e52632a0c77074702d41",
+                    "archive_bytes": 18452610,
+                    "archive_sha256": "0e2842fab019eaa4c49e77e819b1079d8ba8fc7b0b0571108e3f8f08ddb3fcdf",
+                    "integrity_manifest_sha256": "d18999bb11e001eef3baba39060aa2942272496d15adda2cdd777bb5de96bff5",
                     "unpacked_bytes": 36838778,
                     "file_count": 248,
                     "url": "https://example.com/opentu-1.1.6-uking.1.tar.gz"
@@ -860,7 +940,56 @@ mod tests {
                 unpacked_bytes: entry.unpacked_bytes,
                 file_count: entry.file_count,
             }.validate().unwrap();
+
+            // The catalogue is a closed schema.  A GUI/CLI caller cannot
+            // smuggle an alternate download URL or hash through an extra
+            // field; `trusted_offer` has no input parameter either.
+            assert!(serde_json::from_str::<TrustedCatalogue>(r#"{
+                "schema": 1,
+                "components": [],
+                "url": "https://attacker.invalid/opentu.tar.gz"
+            }"#).is_err());
         });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_fallback_uses_encoded_values_and_disables_redirects() {
+        assert_eq!(base64_encode(b"Man"), "TWFu");
+        let url = "https://example.com/a';&.tar.gz";
+        let destination = Path::new(r"C:\Temp\a';&.tar.gz");
+        let encoded = powershell_download_command(url, destination).unwrap();
+        // The outer command line contains encoded UTF-16 source only, so
+        // apostrophes and command separators from either value cannot escape
+        // into PowerShell syntax.
+        assert!(!encoded.contains(url));
+        assert!(!encoded.contains(&destination.display().to_string()));
+        let script = decode_powershell_command(&encoded);
+        assert!(script.contains("FromBase64String"));
+        assert!(script.contains("-MaximumRedirection 0"));
+        assert!(script.contains("-TimeoutSec 300"));
+        assert!(powershell_download_command("http://example.com/a", destination).is_err());
+    }
+
+    #[cfg(windows)]
+    fn decode_powershell_command(encoded: &str) -> String {
+        fn digit(byte: u8) -> u8 {
+            match byte {
+                b'A'..=b'Z' => byte - b'A', b'a'..=b'z' => byte - b'a' + 26,
+                b'0'..=b'9' => byte - b'0' + 52, b'+' => 62, b'/' => 63,
+                _ => panic!("unexpected base64 byte"),
+            }
+        }
+        let mut bytes = Vec::new();
+        for part in encoded.as_bytes().chunks(4) {
+            let value = ((digit(part[0]) as u32) << 18) | ((digit(part[1]) as u32) << 12)
+                | (if part[2] == b'=' { 0 } else { (digit(part[2]) as u32) << 6 })
+                | if part[3] == b'=' { 0 } else { digit(part[3]) as u32 };
+            bytes.push((value >> 16) as u8);
+            if part[2] != b'=' { bytes.push((value >> 8) as u8); }
+            if part[3] != b'=' { bytes.push(value as u8); }
+        }
+        String::from_utf16(&bytes.chunks_exact(2).map(|b| u16::from_le_bytes([b[0], b[1]])).collect::<Vec<_>>()).unwrap()
     }
 
     #[test]

@@ -247,8 +247,8 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
       <button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Plus size={15} />新建项目</button>
       }
       {component?.state === "installed" && <>
-      <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} placeholder="描述想生成的图片…" className="min-w-48 flex-1 rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2 text-sm outline-none focus:border-accent" disabled title="图片生成尚未配置" />
-      <button onClick={() => void generate()} disabled title="图片生成尚未配置" className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><ImagePlus size={15} />图片生成未配置</button>
+      <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} placeholder="描述想生成的图片…" className="min-w-48 flex-1 rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2 text-sm outline-none focus:border-accent" disabled={busy} />
+      <button onClick={() => void generate()} disabled={busy || !prompt.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><ImagePlus size={15} />生成图片</button>
       </>}
       {taskStatus && <span className="text-xs text-ink-3">任务：{taskStatus}</span>}
     </div>

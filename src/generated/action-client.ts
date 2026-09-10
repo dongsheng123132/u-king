@@ -55,7 +55,7 @@ export const ACTION = {
   RUNTIME_CREATOR_COMPONENT_UNINSTALL: "runtime.creator.component.uninstall",
   /** Read a locally persisted creator image task. It never re-submits a paid generation. */
   RUNTIME_CREATOR_IMAGE_INSPECT: "runtime.creator.image.inspect",
-  /** Record one idempotent image request. This safety build has no real provider adapter and returns not_configured without contacting any network service. */
+  /** Generate one image through U-King's configured image provider, then atomically store the verified result in the local project. The canvas never receives a provider key. */
   RUNTIME_CREATOR_IMAGE_SUBMIT: "runtime.creator.image.submit",
   /** Create an empty canvas project under U-King's private project root. */
   RUNTIME_CREATOR_PROJECT_CREATE: "runtime.creator.project.create",

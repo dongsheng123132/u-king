@@ -1,11 +1,20 @@
+diff --git a/apps/web/src/app/ErrorBoundary.tsx b/apps/web/src/app/ErrorBoundary.tsx
+index 4c10d2a..f0db779 100644
+--- a/apps/web/src/app/ErrorBoundary.tsx
++++ b/apps/web/src/app/ErrorBoundary.tsx
+@@ -290,2 +290,2 @@ export const ErrorFallbackUI: React.FC<ErrorFallbackProps> = (props) => {
+-              src="https://nav.ourzhishi.top/api/dynamic-image/qr-code"
+-              alt="企业微信二维码"
++              src="/uking-wechat-contact.jpg"
++              alt="U-King 微信二维码"
+@@ -299 +299 @@ export const ErrorFallbackUI: React.FC<ErrorFallbackProps> = (props) => {
+-                扫码联系客服，或前往调试页面导出完整日志与备份数据
++                扫码联系 U-King，或前往调试页面导出完整日志与备份数据
 diff --git a/apps/web/src/app/app.tsx b/apps/web/src/app/app.tsx
-index 536ed6b..e7e9c92 100644
+index 536ed6b..bb73b6e 100644
 --- a/apps/web/src/app/app.tsx
 +++ b/apps/web/src/app/app.tsx
-@@ -68,4 +68,34 @@ type BoardCloseSnapshot = BoardPersistencePayload & {
-   updatedAt: number;
- };
-
+@@ -70,0 +71,30 @@ type BoardCloseSnapshot = BoardPersistencePayload & {
 +type UkingBridgeInit = {
 +  type?: string;
 +  projectId?: string;
@@ -36,11 +45,7 @@ index 536ed6b..e7e9c92 100644
 +  );
 +}
 +
- type BootController = {
-@@ -239,4 +263,43 @@ export function App() {
-   const localDirtyRef = useRef<boolean>(false);
-   // 标记当前标签页是否还有未落盘的本地变更（含元素与 viewport）
-   const hasPendingPersistenceRef = useRef<boolean>(false);
+@@ -241,0 +272,39 @@ export function App() {
 +  // U-King owns this optional local-first persistence. The regular OpenTu
 +  // IndexedDB remains available for upstream use, but is never authoritative
 +  // once this host bridge has supplied a project.
@@ -80,11 +85,7 @@ index 536ed6b..e7e9c92 100644
 +      }),
 +    []
 +  );
-
-@@ -247,4 +306,109 @@ export function App() {
-     currentBoardIdRef.current = currentBoardId;
-   }, [currentBoardId]);
-
+@@ -249,0 +319,105 @@ export function App() {
 +  useEffect(() => {
 +    const receive = (event: MessageEvent<UkingBridgeInit & UkingBridgeResult>) => {
 +      const message = event.data;
@@ -190,26 +191,13 @@ index 536ed6b..e7e9c92 100644
 +    [requestUking]
 +  );
 +
-   const updateLatestBoardData = useCallback(
-@@ -592,3 +766,4 @@ export function App() {
-   const handleBoardSwitch = useCallback(
-     async (board: Board, skipUrlUpdate: boolean = false) => {
+@@ -593,0 +768 @@ export function App() {
 +      if (isUkingHostMode) return;
-       try {
-@@ -643,3 +818,4 @@ export function App() {
-   useEffect(() => {
-     const handlePopState = async () => {
+@@ -644,0 +820 @@ export function App() {
 +      if (isUkingHostMode) return;
-       if (isHandlingPopStateRef.current) {
-@@ -680,3 +856,4 @@ export function App() {
-   // Handle tab sync (when other tab modified data)
-   const handleTabSyncNeeded = useCallback(async () => {
+@@ -681,0 +858 @@ export function App() {
 +    if (isUkingHostMode) return;
-     // 设置同步标志，防止同步期间的 onChange 触发保存（保存旧数据覆盖新数据）
-@@ -787,4 +904,19 @@ export function App() {
-
-       updateLatestBoardData(currentBoard.id, data);
-
+@@ -789,0 +967,15 @@ export function App() {
 +      if (isUkingHostMode) {
 +        const uking = ukingRef.current;
 +        // Drop all upstream bootstrap/switch callbacks until the host has
@@ -225,17 +213,10 @@ index 536ed6b..e7e9c92 100644
 +        return;
 +      }
 +
-       workspaceService
-@@ -799,5 +932,5 @@ export function App() {
-           console.error('[App] Failed to save board:', err);
-         });
-     },
+@@ -802 +994 @@ export function App() {
 -    [updateLatestBoardData]
 +    [enqueueUkingSave, updateLatestBoardData]
-   );
-@@ -806,3 +998,14 @@ export function App() {
-   const handleViewportChange = useCallback(
-     (viewport: Viewport) => {
+@@ -807,0 +1000,11 @@ export function App() {
 +      if (isUkingHostMode) {
 +        const uking = ukingRef.current;
 +        if (!uking || !uking.ready || !uking.snapshot) return;
@@ -247,19 +228,36 @@ index 536ed6b..e7e9c92 100644
 +        return;
 +      }
 +
-       // 更新最新 viewport
-@@ -855,3 +1058,3 @@ export function App() {
-     },
+@@ -856 +1059 @@ export function App() {
 -    [updateLatestBoardData]
 +    [enqueueUkingSave, updateLatestBoardData]
-   );
+diff --git a/packages/drawnix/src/components/feedback-button/feedback-button.tsx b/packages/drawnix/src/components/feedback-button/feedback-button.tsx
+index f193cc7..4368294 100644
+--- a/packages/drawnix/src/components/feedback-button/feedback-button.tsx
++++ b/packages/drawnix/src/components/feedback-button/feedback-button.tsx
+@@ -17,2 +17 @@ import './feedback-button.scss';
+-const QR_CODE_URL = 'https://tuziai.oss-cn-shenzhen.aliyuncs.com/aitu/AiTu.png';
+-const SERVICE_QR_CODE_URL = 'https://tuziai.oss-cn-shenzhen.aliyuncs.com/linkme.png';
++const QR_CODE_URL = '/uking-wechat-contact.jpg';
+@@ -29,2 +27,0 @@ export const FeedbackButton: React.FC = () => {
+-    const img2 = new Image();
+-    img2.src = SERVICE_QR_CODE_URL;
+@@ -39,2 +36,2 @@ export const FeedbackButton: React.FC = () => {
+-          aria-label="用户反馈群"
+-          tooltip="用户反馈群"
++          aria-label="联系 U-King"
++          tooltip="联系 U-King"
+@@ -57 +54 @@ export const FeedbackButton: React.FC = () => {
+-                alt="用户反馈群二维码"
++                alt="联系 U-King二维码"
+@@ -60 +57 @@ export const FeedbackButton: React.FC = () => {
+-              <div className="feedback-qrcode-text">用户反馈群</div>
++              <div className="feedback-qrcode-text">联系 U-King</div>
 diff --git a/packages/drawnix/src/index.ts b/packages/drawnix/src/index.ts
 index 5c68f6f..6dfd411 100644
 --- a/packages/drawnix/src/index.ts
 +++ b/packages/drawnix/src/index.ts
-@@ -1,2 +1,5 @@
- export * from './drawnix';
+@@ -1,0 +2,3 @@ export * from './drawnix';
 +// Narrow host integration hook: U-King feeds only a locally served image URL
 +// through the same insertion code used by the regular image tool.
 +export { insertImageFromUrl } from './data/image';
- export * from './utils';

@@ -10,29 +10,69 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lock = JSON.parse(await readFile(path.join(root, "third_party", "opentu", "lock.json"), "utf8"));
-const source = path.resolve(process.env.OPENTU_SOURCE_DIR || path.join("D:", "CodexWorktrees", "opentu-v1.1.6-source"));
+const configuredSource = process.env.OPENTU_SOURCE_DIR?.trim();
+if (!configuredSource) {
+  throw new Error("OPENTU_SOURCE_DIR is required. Set it to a clean checkout pinned by third_party/opentu/lock.json.");
+}
+const source = path.resolve(configuredSource);
 // The customer app downloads this optional package only after an explicit
 // click.  Never copy minified OpenTu assets into Tauri resources: only the
 // small, reviewed release catalogue is packaged with the executable.
 // Keep release artifacts outside the frontend `dist/` tree: Vite may clean
 // that directory and Tauri treats it as web assets.
 const releaseDir = path.join(root, "outputs", "creator-components");
-const bundleId = "opentu-1.1.6-uking.1";
+const bundleId = "opentu-1.1.6-uking.2";
 const archivePath = path.join(releaseDir, `${bundleId}.tar.gz`);
 const catalogueCandidate = path.join(releaseDir, `${bundleId}.json`);
 const patches = path.join(root, "third_party", "opentu", "patches");
+// This public contact card is explicitly supplied by the U-King maintainer.
+// Keep it versioned beside the patch rather than relying on an upstream-hosted
+// QR image, so the optional component is self-contained when offline.
+const contactQr = path.join(root, "third_party", "opentu", "assets", "uking-wechat-contact.jpg");
+const contactQrInSource = path.join(source, "apps", "web", "public", "uking-wechat-contact.jpg");
 
 function run(command, args, cwd) {
-  const r = spawnSync(command, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
-  if (r.status !== 0) throw new Error(`${command} ${args.join(" ")} failed (${r.status})`);
+  const r = spawnSync(command, args, { cwd, stdio: "inherit", shell: false });
+  if (r.error) throw new Error(`${command} could not start: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`${command} ${args.join(" ")} failed (${r.status ?? "no exit status"})`);
 }
 function succeeds(command, args, cwd) {
-  return spawnSync(command, args, { cwd, stdio: "ignore", shell: process.platform === "win32" }).status === 0;
+  const r = spawnSync(command, args, { cwd, stdio: "ignore", shell: false });
+  return !r.error && r.status === 0;
+}
+function corepackEntry() {
+  // Node's Windows installer bundles Corepack beside node.exe. Keep the lookup
+  // relative to the active Node runtime so a portable/runtime-selected Node is
+  // supported and no developer-machine path leaks into the release script.
+  const nodeDir = path.dirname(process.execPath);
+  const candidates = [
+    path.join(nodeDir, "node_modules", "corepack", "dist", "corepack.js"),
+    path.resolve(nodeDir, "..", "lib", "node_modules", "corepack", "dist", "corepack.js"),
+    path.resolve(nodeDir, "..", "node_modules", "corepack", "dist", "corepack.js"),
+  ];
+  const entry = candidates.find((candidate) => existsSync(candidate));
+  if (!entry) {
+    throw new Error(`Corepack JavaScript entry was not found beside ${process.execPath}. Checked: ${candidates.join(", ")}`);
+  }
+  return entry;
+}
+function spawnCorepack(args, options) {
+  // Do not execute the .cmd launcher through a shell: Windows shell mode lets
+  // child processes escape this script and emits Node DEP0190 warnings.
+  return spawnSync(process.execPath, [corepackEntry(), ...args], { shell: false, ...options });
+}
+function readPinnedPnpmVersion(cwd) {
+  const r = spawnCorepack([`pnpm@${lock.pnpm}`, "--version"], { cwd, encoding: "utf8" });
+  if (r.error) throw new Error(`Corepack could not start: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`pnpm ${lock.pnpm} version check failed: ${r.stderr || r.stdout || r.status}`);
+  return r.stdout.trim();
 }
 function runPinnedPnpm(args, cwd) {
   // Do not silently consume whatever pnpm happens to be on PATH. Corepack
   // resolves the exact version recorded in lock.json without modifying it.
-  run("corepack", [`pnpm@${lock.pnpm}`, ...args], cwd);
+  const r = spawnCorepack([`pnpm@${lock.pnpm}`, ...args], { cwd, stdio: "inherit" });
+  if (r.error) throw new Error(`Corepack could not start: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`corepack pnpm@${lock.pnpm} ${args.join(" ")} failed (${r.status ?? "no exit status"})`);
 }
 function sha256(file) { return readFile(file).then((data) => createHash("sha256").update(data).digest("hex")); }
 async function listFiles(root, relative = "") {
@@ -84,24 +124,34 @@ async function createArchive(stage, destination) {
 }
 
 if (!existsSync(path.join(source, ".git"))) throw new Error(`OpenTu source is missing: ${source}. Set OPENTU_SOURCE_DIR to a clean checkout.`);
-const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8", shell: process.platform === "win32" });
+const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8", shell: false });
+if (head.error) throw new Error(`git rev-parse could not start: ${head.error.message}`);
 if (head.status !== 0 || head.stdout.trim() !== lock.commit) throw new Error(`OpenTu must be exactly ${lock.commit}; got ${head.stdout.trim() || "unknown"}`);
 if (await sha256(path.join(source, "pnpm-lock.yaml")) !== lock.pnpm_lock_sha256) throw new Error("OpenTu pnpm lock hash differs from pinned lock.json");
 if (await sha256(path.join(source, "LICENSE")) !== lock.license_sha256) throw new Error("OpenTu LICENSE hash differs from pinned lock.json");
-const sourceStatus = spawnSync("git", ["status", "--porcelain"], { cwd: source, encoding: "utf8", shell: process.platform === "win32" });
+const sourceStatus = spawnSync("git", ["status", "--porcelain"], { cwd: source, encoding: "utf8", shell: false });
+if (sourceStatus.error) throw new Error(`git status could not start: ${sourceStatus.error.message}`);
 if (sourceStatus.status !== 0 || sourceStatus.stdout.trim()) throw new Error("OpenTu source must be clean before applying U-King patches");
-const pnpmVersion = spawnSync("corepack", [`pnpm@${lock.pnpm}`, "--version"], { cwd: source, encoding: "utf8", shell: process.platform === "win32" });
-if (pnpmVersion.status !== 0 || pnpmVersion.stdout.trim() !== lock.pnpm) throw new Error(`pnpm ${lock.pnpm} is required; got ${pnpmVersion.stdout.trim() || "unknown"}`);
+const pnpmVersion = readPinnedPnpmVersion(source);
+if (pnpmVersion !== lock.pnpm) throw new Error(`pnpm ${lock.pnpm} is required; got ${pnpmVersion || "unknown"}`);
+if (!existsSync(contactQr)) throw new Error(`U-King contact QR is missing: ${contactQr}`);
+if (existsSync(contactQrInSource)) throw new Error(`OpenTu upstream already owns the reserved contact asset path: ${contactQrInSource}`);
 
 const patchFiles = (await readdir(patches)).filter((entry) => entry.endsWith(".patch")).sort();
 const applied = [];
 let stage;
+let copiedContactQr = false;
 for (const entry of patchFiles) {
-  run("git", ["apply", "--check", path.join(patches, entry)], source);
-  run("git", ["apply", path.join(patches, entry)], source);
+  // The patch is generated with zero context so blank TypeScript separators do
+  // not become trailing whitespace in this public repository.  The source
+  // commit is checked above, so require Git to use the patch's exact locations.
+  run("git", ["apply", "--unidiff-zero", "--check", path.join(patches, entry)], source);
+  run("git", ["apply", "--unidiff-zero", path.join(patches, entry)], source);
   applied.push(entry);
 }
 try {
+  await cp(contactQr, contactQrInSource);
+  copiedContactQr = true;
   runPinnedPnpm(["install", "--frozen-lockfile"], source);
   runPinnedPnpm(["exec", "nx", "run", "web:build"], source);
   const output = path.join(source, ...lock.output.split("/"));
@@ -155,13 +205,17 @@ try {
   // The stage contains minified third-party assets and is never a release
   // artifact. Clean it on both success and failure before restoring patches.
   if (stage) await rm(stage, { recursive: true, force: true });
+  // The pinned upstream checkout is only a build input. Remove the temporary
+  // public QR before restoring patches so `git status` is clean for the next
+  // component build.
+  if (copiedContactQr) await rm(contactQrInSource, { force: true });
   // A failed build must leave the source checkout reusable. Successfully applied
   // bridge patches are reset as well: source ownership stays upstream.
   for (const entry of applied.reverse()) {
     const patch = path.join(patches, entry);
-    if (succeeds("git", ["apply", "--reverse", "--check", patch], source)) {
-      run("git", ["apply", "--reverse", patch], source);
-    } else if (!succeeds("git", ["apply", "--check", patch], source)) {
+    if (succeeds("git", ["apply", "--unidiff-zero", "--reverse", "--check", patch], source)) {
+      run("git", ["apply", "--unidiff-zero", "--reverse", patch], source);
+    } else if (!succeeds("git", ["apply", "--unidiff-zero", "--check", patch], source)) {
       throw new Error(`OpenTu patch cleanup cannot prove a clean source: ${entry}`);
     }
   }

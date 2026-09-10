@@ -82,15 +82,17 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     // —— 协议层自己发的（前缀确定，最先匹配）——
     ("unknown_action:", "unknown_action", Blame::Bug, false),
     ("confirmation_required:", "confirmation_required", Blame::Bug, false),
-    // 状态被别人改过 —— 重新读一次再来是**对的**处置，所以可重试。
-    ("conflict:", "conflict", Blame::Bug, true),
-    ("invalid_input:", "invalid_input", Blame::Bug, false),
     // Portable-runtime preflight rejects an unsuitable target before any write.
     // These are actionable user/environment states, not product faults.
     ("unsupported_filesystem:", "unsupported_filesystem", Blame::User, false),
     ("target_conflict:", "target_conflict", Blame::User, false),
     ("invalid_target:", "invalid_target", Blame::User, false),
     ("credential_unavailable:", "credential_unavailable", Blame::User, false),
+    // 状态被别人改过 —— 重新读一次再来是**对的**处置，所以可重试。
+    // It follows `target_conflict:` because that exact environment diagnosis
+    // contains the generic `conflict:` substring and must not become a bug.
+    ("conflict:", "conflict", Blame::Bug, true),
+    ("invalid_input:", "invalid_input", Blame::Bug, false),
     // —— 客户侧状态：不是 bug，别上报 ——
     ("余额不足", "insufficient_balance", Blame::User, false),
     ("insufficient", "insufficient_balance", Blame::User, false),
@@ -138,6 +140,11 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     ("工作台定义不合格", "refused", Blame::User, false),
     ("不能当工作台", "refused", Blame::User, false),
     // —— 网络 ——
+    // OpenTu component installer: curl and the Windows WinINET fallback both
+    // preserve this stable prefix.  It was observed during the first clean
+    // component-install test (curl Schannel exit 35), so callers can offer a
+    // retry instead of reporting a customer network state as a product bug.
+    ("network_error:", "network", Blame::Network, true),
     ("connection", "network", Blame::Network, true),
     ("连接被关闭", "network", Blame::Network, true),
     ("断网", "network", Blame::Network, true),
@@ -2038,6 +2045,12 @@ mod tests {
         let e = ActionError::classify("connection was closed");
         assert_eq!(e.blame, Blame::Network);
         assert!(e.retriable);
+        let e = ActionError::classify("network_error: OpenTu component download failed");
+        assert_eq!(e.blame, Blame::Network);
+        assert!(e.retriable);
+        let e = ActionError::classify("target_conflict: 本地创作画布端口不可用");
+        assert_eq!(e.code, "target_conflict");
+        assert_eq!(e.blame, Blame::User);
 
         // 协议层自己发的错，文案确定，必须精确归到 bug（是调用方/我们写错了）。
         assert_eq!(ActionError::classify("unknown_action: runtime.nope").code, "unknown_action");

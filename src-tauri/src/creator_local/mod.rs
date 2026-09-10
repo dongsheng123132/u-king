@@ -620,24 +620,6 @@ pub fn fail_image_submit(id: &str, task_id: &str, error: &str) {
     }
 }
 
-/// Image generation is deliberately unavailable until a reviewed, authorized
-/// provider adapter exists.  Keep the durable idempotency record, but mark it
-/// as a known non-submission; a fake bitmap must never look like a customer
-/// image result.
-pub fn mark_image_not_configured(id: &str, task_id: &str) -> Result<Value, String> {
-    let dir = project_dir(id)?;
-    let mut task = read_task(&task_path(&dir, task_id)?)?;
-    if task.status != "pending-submit" {
-        return Err("conflict: 图片任务不在可配置状态".into());
-    }
-    let detail = "not_configured: 本地创作台的真实图片生成尚未配置；未调用任何外部服务";
-    task.status = "not_configured".into();
-    task.updated_at = now_ms();
-    task.error = Some(detail.into());
-    save_task(&dir, &task)?;
-    Ok(json!({ "project_id": id, "task_id": task_id, "status": "not_configured", "error": detail }))
-}
-
 pub fn inspect_task(project_id: &str, task_id: &str) -> Result<Value, String> {
     if !valid_id(task_id) {
         return Err("invalid_input: task_id 格式不合法".into());
@@ -810,10 +792,14 @@ pub fn start_server() -> Result<Value, String> {
         return Ok(json!({ "started": false, "url": server.url, "capability": server.capability }));
     }
     let root = verified_static_root()?;
-    // A fixed, documented loopback port means the desktop UI can open exactly one origin.
-    // Do not kill a listener we do not own: bind failure is the actionable diagnosis.
-    let listener = TcpListener::bind("127.0.0.1:17778")
-        .map_err(|e| format!("target_conflict: 本地创作画布端口 17778 不可用: {e}"))?;
+    // Ask the OS for a free loopback port. A fixed port made the optional
+    // canvas unusable whenever another app already listened on 17778. The
+    // trusted desktop Action returns this exact origin; we never kill that app.
+    let listener = bind_loopback_listener()?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("读取本地创作画布端口失败: {e}"))?
+        .port();
     listener
         .set_nonblocking(true)
         .map_err(|e| format!("配置本地画布端口失败: {e}"))?;
@@ -821,8 +807,10 @@ pub fn start_server() -> Result<Value, String> {
     let thread_stop = stop.clone();
     let capability = random_capability()?;
     let thread_capability = capability.clone();
-    let server_thread = thread::spawn(move || serve_loop(listener, root, thread_capability, thread_stop));
-    let url = "http://127.0.0.1:17778/".to_string();
+    let origin = format!("http://127.0.0.1:{port}");
+    let thread_origin = origin.clone();
+    let server_thread = thread::spawn(move || serve_loop(listener, root, thread_capability, thread_origin, thread_stop));
+    let url = format!("{origin}/");
     *slot = Some(LocalServer {
         stop,
         thread: server_thread,
@@ -839,12 +827,17 @@ pub fn stop_server() -> Result<Value, String> {
     if let Some(server) = slot.take() {
         server.stop.store(true, Ordering::Release);
         // `serve_loop` owns the listener. Waiting for its exit proves port
-        // 17778 has been released before an uninstall can delete the current
-        // component version.
+        // The loopback port has been released before an uninstall can delete
+        // the current component version.
         server.thread.join().map_err(|_| "本地画布服务停止异常".to_string())?;
         return Ok(json!({ "stopped": true }));
     }
     Ok(json!({ "stopped": false }))
+}
+
+fn bind_loopback_listener() -> Result<TcpListener, String> {
+    TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("network_error: 无法启动本地创作画布服务: {e}"))
 }
 
 fn random_capability() -> Result<String, String> {
@@ -853,15 +846,16 @@ fn random_capability() -> Result<String, String> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-fn serve_loop(listener: TcpListener, root: PathBuf, capability: String, stop: Arc<AtomicBool>) {
+fn serve_loop(listener: TcpListener, root: PathBuf, capability: String, origin: String, stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, peer)) => {
                 if peer.ip().is_loopback() {
                     let root = root.clone();
                     let capability = capability.clone();
+                    let origin = origin.clone();
                     thread::spawn(move || {
-                        let _ = serve_one(stream, &root, &capability);
+                        let _ = serve_one(stream, &root, &capability, &origin);
                     });
                 }
             }
@@ -873,7 +867,7 @@ fn serve_loop(listener: TcpListener, root: PathBuf, capability: String, stop: Ar
     }
 }
 
-fn serve_one(mut stream: TcpStream, root: &Path, capability: &str) -> Result<(), String> {
+fn serve_one(mut stream: TcpStream, root: &Path, capability: &str, origin: &str) -> Result<(), String> {
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .map_err(|e| e.to_string())?;
@@ -925,7 +919,7 @@ fn serve_one(mut stream: TcpStream, root: &Path, capability: &str) -> Result<(),
         return serve_asset(&mut stream, raw_path, root, headers.get("origin"));
     }
     if raw_path == "/__uking/v1/action" && method == "POST" {
-        return serve_action(&mut stream, text, &headers);
+        return serve_action(&mut stream, text, &headers, origin);
     }
     if raw_path.starts_with("/__uking/") {
         return reply(
@@ -1166,6 +1160,7 @@ fn serve_action(
     stream: &mut TcpStream,
     _text: &str,
     headers: &std::collections::BTreeMap<String, String>,
+    origin: &str,
 ) -> Result<(), String> {
     if !headers
         .get("content-type")
@@ -1179,7 +1174,7 @@ fn serve_action(
             br#"{"error":"invalid_content_type"}"#,
         );
     }
-    if headers.get("origin").map(String::as_str) != Some("http://127.0.0.1:17778") {
+    if headers.get("origin").map(String::as_str) != Some(origin) {
         return reply(
             stream,
             400,
@@ -1374,6 +1369,14 @@ mod tests {
     }
 
     #[test]
+    fn loopback_server_uses_an_os_selected_port() {
+        let listener = bind_loopback_listener().unwrap();
+        let address = listener.local_addr().unwrap();
+        assert!(address.ip().is_loopback());
+        assert_ne!(address.port(), 0);
+    }
+
+    #[test]
     fn project_list_is_newest_first_and_never_uses_directory_names_as_data() {
         crate::testsandbox::with_sandbox("creator-project-list", &[], |_| {
             create_project_with_id("project-one", Some("B")).unwrap();
@@ -1521,45 +1524,6 @@ mod tests {
                     .count()
             });
             assert_eq!(saved, 1, "a stale writer must receive conflict");
-        });
-    }
-
-    #[test]
-    fn unconfigured_image_is_durable_and_never_looks_like_success() {
-        crate::testsandbox::with_sandbox("creator-not-configured", &[], |_| {
-            create_project_with_id("project-one", None).unwrap();
-            let task_id = match prepare_image_submit(
-                "project-one",
-                "not-configured-exec",
-                "cat",
-                "gpt-image-2",
-                "1024x1024",
-                Some("medium"),
-            )
-            .unwrap()
-            {
-                ImageSubmitPreparation::New { task_id } => task_id,
-                other => panic!("unexpected preparation: {other:?}"),
-            };
-            let output = mark_image_not_configured("project-one", &task_id).unwrap();
-            assert_eq!(output["status"], "not_configured");
-            let task = inspect_task("project-one", &task_id).unwrap();
-            assert_eq!(task["task"]["status"], "not_configured");
-            let replay = prepare_image_submit(
-                "project-one",
-                "not-configured-exec",
-                "cat",
-                "gpt-image-2",
-                "1024x1024",
-                Some("medium"),
-            )
-            .unwrap();
-            match replay {
-                ImageSubmitPreparation::Existing(value) => {
-                    assert_eq!(value["status"], "not_configured")
-                }
-                other => panic!("unexpected replay: {other:?}"),
-            }
         });
     }
 

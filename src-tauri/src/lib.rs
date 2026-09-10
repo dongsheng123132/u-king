@@ -4275,7 +4275,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
         actions::write(
             actions::CREATOR_IMAGE_SUBMIT,
             "Generate one image into a local creator project",
-            "Record one idempotent image request. This safety build has no real provider adapter and returns not_configured without contacting any network service.",
+            "Generate one image through U-King's configured image provider, then atomically store the verified result in the local project. The canvas never receives a provider key.",
             180_000,
             "required",
             serde_json::json!({
@@ -4293,11 +4293,19 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 let execution_id = actions::current_execution_id().ok_or("invalid_input: 图片提交必须带 ActionParity execution_id")?;
                 match creator_local::prepare_image_submit(project_id, &execution_id, prompt, model, size, quality)? {
                     creator_local::ImageSubmitPreparation::Existing(output) => Ok(output),
-                    // A durable idempotency record is created before any future
-                    // provider adapter. Until that reviewed adapter exists,
-                    // explicitly report non-configuration instead of emitting a
-                    // fake bitmap that looks like a customer result.
-                    creator_local::ImageSubmitPreparation::New { task_id } => creator_local::mark_image_not_configured(project_id, &task_id),
+                    // The journal is durable before this paid provider call.  Both
+                    // the regular AI-image page and the optional OpenTu canvas go
+                    // through this one generator, so model routing, billing and
+                    // image-history behaviour cannot drift.
+                    creator_local::ImageSubmitPreparation::New { task_id } => {
+                        let generated = generate_image_core(
+                            prompt.to_string(),
+                            Some(model.to_string()),
+                            Some(size.to_string()),
+                            quality.map(str::to_string),
+                        );
+                        complete_creator_image_generation(project_id, &task_id, generated)
+                    }
                 }
             },
             None,
@@ -5918,6 +5926,122 @@ fn generate_image_core(
         Err(e) => { let _ = draw::save_record(&prompt, &model, &size, None, None, Some(e)); }
     }
     r
+}
+
+/// Commit the result of the one shared image generator to a creator project.
+///
+/// The image provider is deliberately outside the canvas process: this keeps
+/// the device credential and upstream response out of the replaceable OpenTu
+/// web surface.  A failed or malformed provider result is recorded against the
+/// already-created idempotency task, so a retry never quietly becomes a second
+/// paid request for the same ActionParity execution id.
+fn complete_creator_image_generation(
+    project_id: &str,
+    task_id: &str,
+    generated: Result<providers::ImageResult, String>,
+) -> Result<serde_json::Value, String> {
+    let outcome = match generated {
+        Ok(image) => match image.b64.as_deref() {
+            Some(raw) => creator_local::complete_image_submit(project_id, task_id, raw, &image.model),
+            None => Err("provider_error: 作图服务没有返回可保存的图片字节".into()),
+        },
+        Err(error) => Err(error),
+    };
+    if let Err(error) = &outcome {
+        creator_local::fail_image_submit(project_id, task_id, error);
+    }
+    outcome
+}
+
+#[cfg(test)]
+mod creator_canvas_image_bridge_tests {
+    use super::*;
+
+    const PNG_1X1: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+    fn image_result(b64: Option<&str>) -> providers::ImageResult {
+        providers::ImageResult {
+            b64: b64.map(str::to_string),
+            url: None,
+            model: "gpt-image-2".into(),
+            revised_prompt: None,
+            fallback_from: None,
+        }
+    }
+
+    fn create_project_id() -> String {
+        creator_local::create_project(None)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn creator_image_completion_uses_shared_result_and_persists_asset() {
+        crate::testsandbox::with_sandbox("creator-image-provider-bridge", &[], |_| {
+            let project_id = create_project_id();
+            let task_id = match creator_local::prepare_image_submit(
+                &project_id, "provider-bridge-exec", "a blue rabbit", "gpt-image-2", "1024x1024", Some("medium"),
+            ).unwrap() {
+                creator_local::ImageSubmitPreparation::New { task_id } => task_id,
+                other => panic!("expected new task, received {other:?}"),
+            };
+
+            let completed = complete_creator_image_generation(
+                &project_id, &task_id, Ok(image_result(Some(PNG_1X1))),
+            ).unwrap();
+            assert_eq!(completed["status"], "completed");
+            assert_eq!(completed["actual_model"], "gpt-image-2");
+            let inspected = creator_local::inspect_task(&project_id, &task_id).unwrap();
+            assert_eq!(inspected["task"]["status"], "completed");
+            assert!(inspected["task"]["result"]["asset"]["url"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("/__uking/v1/assets/{project_id}/")));
+        });
+    }
+
+    #[test]
+    fn creator_image_failure_is_durable_and_never_reports_success() {
+        crate::testsandbox::with_sandbox("creator-image-provider-failure", &[], |_| {
+            let project_id = create_project_id();
+            let task_id = match creator_local::prepare_image_submit(
+                &project_id, "provider-failure-exec", "a blue rabbit", "gpt-image-2", "1024x1024", None,
+            ).unwrap() {
+                creator_local::ImageSubmitPreparation::New { task_id } => task_id,
+                other => panic!("expected new task, received {other:?}"),
+            };
+
+            let error = complete_creator_image_generation(
+                &project_id, &task_id, Err("network_error: upstream unavailable".into()),
+            ).unwrap_err();
+            assert!(error.starts_with("network_error:"));
+            let inspected = creator_local::inspect_task(&project_id, &task_id).unwrap();
+            assert_eq!(inspected["task"]["status"], "failed");
+            assert_eq!(inspected["task"]["error"], error);
+        });
+    }
+
+    #[test]
+    fn creator_image_missing_bytes_is_durable_failure() {
+        crate::testsandbox::with_sandbox("creator-image-provider-no-bytes", &[], |_| {
+            let project_id = create_project_id();
+            let task_id = match creator_local::prepare_image_submit(
+                &project_id, "provider-no-bytes-exec", "a blue rabbit", "gpt-image-2", "1024x1024", None,
+            ).unwrap() {
+                creator_local::ImageSubmitPreparation::New { task_id } => task_id,
+                other => panic!("expected new task, received {other:?}"),
+            };
+
+            assert!(complete_creator_image_generation(
+                &project_id, &task_id, Ok(image_result(None)),
+            ).unwrap_err().starts_with("provider_error:"));
+            let inspected = creator_local::inspect_task(&project_id, &task_id).unwrap();
+            assert_eq!(inspected["task"]["status"], "failed");
+        });
+    }
 }
 
 /// AI 图生图 / 图片编辑：带参考图调虾盘云 edits 端点。images 为 base64（可带 data: 前缀）。

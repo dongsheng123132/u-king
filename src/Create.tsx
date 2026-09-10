@@ -1,11 +1,11 @@
 /**
- * AI 创作 —— 创作画布 / AI 作图 / 视频片段 / 海报二维码四合一入口。
+ * AI 创作 —— AI 作图 / 视频片段 / 创作画布 / 海报二维码四合一入口。
  *
- * 信息架构梳理：创作画布是本地选装组件；作图、视频片段和海报二维码是可直接使用的
- * 创作能力。四项统一放在核心入口「AI 创作」，不再散落在侧栏其它位置。
+ * 信息架构梳理：作图、视频片段和海报二维码是可直接使用的创作能力；创作画布是紧接
+ * 视频片段的本地选装组件。四项统一放在核心入口「AI 创作」，不再散落在侧栏其它位置。
  *
  * 本页只是壳：内部标签切换 + 懒挂载保活（访问过的 tab 用 display 切换不卸载，
- * 作图历史/视频轮询等页内状态不丢）。创作画布与三个原页面（Draw/Video/QrMerge）保持独立模块、
+ * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）与创作画布保持独立模块、
  * 原路由不动（AI 专家页等深链仍可直达）。删除本页只需动 App.tsx + Sidebar（铁律④）。
  */
 import { lazy, Suspense, useState } from "react";
@@ -23,10 +23,10 @@ const CreatorCanvas = lazy(() => import("./CreatorCanvas").then((m) => ({ defaul
 type SubTab = "canvas" | "draw" | "video" | "qrmerge";
 
 const SUBS: { id: SubTab; label: string; icon: typeof ImageIcon }[] = [
-  { id: "canvas", label: "创作画布", icon: PanelTopOpen },
   { id: "draw", label: "AI 作图", icon: ImageIcon },
   // 视频是可被创作画布和 CLI 编排复用的原子片段；这里直接提供视频片段入口。
   { id: "video", label: "视频片段", icon: Clapperboard },
+  { id: "canvas", label: "创作画布", icon: PanelTopOpen },
   { id: "qrmerge", label: "AI 海报二维码", icon: QrCode },
 ];
 

@@ -5821,7 +5821,7 @@
           "target": "cli:action run runtime.creator.image.submit --json --no-input"
         }
       ],
-      "description": "Record one idempotent image request. This safety build has no real provider adapter and returns not_configured without contacting any network service.",
+      "description": "Generate one image through U-King's configured image provider, then atomically store the verified result in the local project. The canvas never receives a provider key.",
       "effects": {
         "audit_required": true,
         "class": "write",
