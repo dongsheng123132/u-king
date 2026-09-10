@@ -406,6 +406,19 @@ pub const CREATOR_REEL_SUBMIT: &str = "runtime.creator.reel.submit";
 pub const CREATOR_REEL_INSPECT: &str = "runtime.creator.reel.inspect";
 /// 把一条已完成的成片转成不受历史裁剪影响的项目资产（拷进 `~/.uking/projects/<id>/exports/`）。
 pub const CREATOR_REEL_KEEP: &str = "runtime.creator.reel.keep";
+// 本地创作画布：画布本身是可替换 Web surface，这六个 Action 才是稳定契约。
+pub const CREATOR_CANVAS_INSPECT: &str = "runtime.creator.canvas.inspect";
+pub const CREATOR_COMPONENT_INSPECT: &str = "runtime.creator.component.inspect";
+pub const CREATOR_COMPONENT_INSTALL: &str = "runtime.creator.component.install";
+pub const CREATOR_COMPONENT_UNINSTALL: &str = "runtime.creator.component.uninstall";
+pub const CREATOR_CANVAS_START: &str = "runtime.creator.canvas.start";
+pub const CREATOR_CANVAS_STOP: &str = "runtime.creator.canvas.stop";
+pub const CREATOR_PROJECT_CREATE: &str = "runtime.creator.project.create";
+pub const CREATOR_PROJECT_LIST: &str = "runtime.creator.project.list";
+pub const CREATOR_PROJECT_INSPECT: &str = "runtime.creator.project.inspect";
+pub const CREATOR_PROJECT_SAVE: &str = "runtime.creator.project.save";
+pub const CREATOR_IMAGE_SUBMIT: &str = "runtime.creator.image.submit";
+pub const CREATOR_IMAGE_INSPECT: &str = "runtime.creator.image.inspect";
 
 /// `manifest().state.queries` 用：全部只读查询动作。加动作时别忘了这里 ——
 /// 影核清单里少一个，远端影子就看不见它。
@@ -418,7 +431,9 @@ pub const READ_ACTIONS: &[&str] = &[
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
-    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT, CREATOR_REEL_INSPECT,
+    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT, CREATOR_REEL_INSPECT, CREATOR_CANVAS_INSPECT, CREATOR_COMPONENT_INSPECT,
+    CREATOR_PROJECT_LIST, CREATOR_PROJECT_INSPECT,
+    CREATOR_IMAGE_INSPECT,
 ];
 
 // —— 写动作（会改这台机器）——

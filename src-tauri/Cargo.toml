@@ -44,6 +44,13 @@ blake3 = { version = "1", default-features = false, features = ["std", "pure"] }
 # 对齐 blake3 pure）；tar 亦纯 Rust。仅 Windows 兜底路径用到，Mac 走系统 tar。
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 tar = "0.4"
+# Loopback canvas capabilities need real entropy; this crate is already in the
+# transitive tree and avoids treating timestamps as a security boundary.
+getrandom = "0.3"
+# Static OpenTu resources are packaged with a SHA-256 manifest.  This small,
+# pure-Rust digest implementation lets the runtime reject a corrupted package
+# without shelling out to a customer machine.
+sha2 = { version = "0.10", default-features = false }
 
 [profile.release]
 # 体积优先：U 盘版要小。LTO + strip + opt-z 把 exe 压到最小。

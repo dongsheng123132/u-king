@@ -1,0 +1,265 @@
+diff --git a/apps/web/src/app/app.tsx b/apps/web/src/app/app.tsx
+index 536ed6b..e7e9c92 100644
+--- a/apps/web/src/app/app.tsx
++++ b/apps/web/src/app/app.tsx
+@@ -68,4 +68,34 @@ type BoardCloseSnapshot = BoardPersistencePayload & {
+   updatedAt: number;
+ };
+
++type UkingBridgeInit = {
++  type?: string;
++  projectId?: string;
++};
++
++type UkingBridgeResult = {
++  type?: string;
++  request_id?: string;
++  ok?: boolean;
++  result?: {
++    canvas?: BoardPersistencePayload;
++    state_version?: string;
++  };
++  asset?: { url?: string };
++};
++
++// This is a mode switch only. The host still delivers the project ID and
++// every persistence capability over postMessage after the iframe has loaded.
++const isUkingHostMode =
++  typeof window !== 'undefined' &&
++  new URLSearchParams(window.location.search).get('uking_host') === '1';
++
++function isUkingBoardPayload(value: unknown): value is BoardPersistencePayload {
++  return Boolean(
++    value &&
++      typeof value === 'object' &&
++      Array.isArray((value as BoardPersistencePayload).children)
++  );
++}
++
+ type BootController = {
+@@ -239,4 +263,43 @@ export function App() {
+   const localDirtyRef = useRef<boolean>(false);
+   // 标记当前标签页是否还有未落盘的本地变更（含元素与 viewport）
+   const hasPendingPersistenceRef = useRef<boolean>(false);
++  // U-King owns this optional local-first persistence. The regular OpenTu
++  // IndexedDB remains available for upstream use, but is never authoritative
++  // once this host bridge has supplied a project.
++  const ukingRef = useRef<{
++    parentOrigin: string;
++    projectId: string;
++    stateVersion: string;
++    ready: boolean;
++    snapshot: BoardPersistencePayload | null;
++    sequence: number;
++    saves: Promise<void>;
++    pendingSaves: number;
++    pending: Map<string, (value: UkingBridgeResult) => void>;
++  } | null>(null);
++
++  const requestUking = useCallback(
++    (type: string, input: Record<string, unknown>) =>
++      new Promise<UkingBridgeResult>((resolve, reject) => {
++        const bridge = ukingRef.current;
++        if (!bridge) {
++          reject(new Error('U-King local project is not initialized'));
++          return;
++        }
++        const requestId = `canvas-${Date.now().toString(36)}-${++bridge.sequence}`;
++        const timer = window.setTimeout(() => {
++          bridge.pending.delete(requestId);
++          reject(new Error('U-King local project request timed out'));
++        }, 10_000);
++        bridge.pending.set(requestId, (message) => {
++          window.clearTimeout(timer);
++          resolve(message);
++        });
++        window.parent.postMessage(
++          { type, request_id: requestId, input },
++          bridge.parentOrigin
++        );
++      }),
++    []
++  );
+
+@@ -247,4 +306,109 @@ export function App() {
+     currentBoardIdRef.current = currentBoardId;
+   }, [currentBoardId]);
+
++  useEffect(() => {
++    const receive = (event: MessageEvent<UkingBridgeInit & UkingBridgeResult>) => {
++      const message = event.data;
++      if (!message || event.source !== window.parent) return;
++      if (message.type === 'uking:bridge:init') {
++        const projectId = message.projectId;
++        if (!projectId || ukingRef.current) return;
++        // `window.parent` is the embedding Tauri UI; retain its actual origin
++        // and require it for every subsequent response. No capability/key is
++        // persisted in localStorage or copied into the board document.
++        ukingRef.current = {
++          parentOrigin: event.origin,
++          projectId,
++          stateVersion: '',
++          ready: false,
++          snapshot: null,
++          sequence: 0,
++          saves: Promise.resolve(),
++          pendingSaves: 0,
++          pending: new Map(),
++        };
++        void requestUking('uking:bridge:project.inspect', { project_id: projectId })
++          .then(async (reply) => {
++            const result = reply.result;
++            if (!reply.ok || !result || !isUkingBoardPayload(result.canvas) || typeof result.state_version !== 'string') {
++              throw new Error('U-King local project returned an invalid canvas');
++            }
++            const bridge = ukingRef.current;
++            if (!bridge) return;
++            // Restore only after upstream bootstrap has finished, otherwise
++            // its IndexedDB load can overwrite the host project on screen.
++            const deadline = Date.now() + 15000;
++            while (!isDataReadyRef.current && Date.now() < deadline) {
++              await new Promise(resolve => window.setTimeout(resolve, 25));
++            }
++            if (!isDataReadyRef.current) throw new Error('Canvas bootstrap timed out');
++            bridge.stateVersion = result.state_version;
++            bridge.snapshot = result.canvas;
++            bridge.ready = true;
++            setValue(result.canvas);
++            latestViewportRef.current = result.canvas.viewport;
++            hasPendingPersistenceRef.current = false;
++          })
++          .catch((error) => {
++            window.parent.postMessage({ type: 'uking:bridge:save-error' }, event.origin);
++            console.error('[U-King] local canvas restore failed:', error);
++          });
++        return;
++      }
++      const bridge = ukingRef.current;
++      if (!bridge || event.origin !== bridge.parentOrigin) return;
++      if (message.type === 'uking:bridge:result' && message.request_id) {
++        const resolve = bridge.pending.get(message.request_id);
++        if (resolve) {
++          bridge.pending.delete(message.request_id);
++          resolve(message);
++        }
++        return;
++      }
++      if (message.type === 'uking:bridge:image.insert' && message.asset?.url && boardRef.current) {
++        void import('@drawnix/drawnix').then(async ({ insertImageFromUrl }) => {
++          await insertImageFromUrl(boardRef.current!, message.asset!.url!);
++        }).catch((error) => console.error('[U-King] image insertion failed:', error));
++      }
++    };
++    window.addEventListener('message', receive);
++    // The parent may have loaded before the React bridge. Ready is not an
++    // authorization signal; it simply lets the host send its in-memory init.
++    window.parent.postMessage({ type: 'uking:bridge:ready' }, '*');
++    return () => window.removeEventListener('message', receive);
++  }, [requestUking]);
++
++  const enqueueUkingSave = useCallback(
++    (snapshot: BoardPersistencePayload) => {
++      const uking = ukingRef.current;
++      if (!uking || !uking.ready || !uking.stateVersion) return false;
++      // A viewport update may arrive while an element update is pending. Take
++      // one immutable, full-canvas snapshot so both kinds of edit share the
++      // host version queue and cannot write separate persistence channels.
++      const immutableSnapshot = JSON.parse(JSON.stringify(snapshot));
++      uking.pendingSaves += 1;
++      window.parent.postMessage({ type: 'uking:bridge:saving' }, uking.parentOrigin);
++      uking.saves = uking.saves.then(async () => {
++        const reply = await requestUking('uking:bridge:project.save', {
++          project_id: uking.projectId,
++          canvas: immutableSnapshot,
++          expected_state_version: uking.stateVersion,
++        });
++        const version = reply.result?.state_version;
++        if (!reply.ok || typeof version !== 'string') {
++          throw new Error('U-King local project rejected this save');
++        }
++        uking.stateVersion = version;
++        if (uking.pendingSaves === 1) {
++          window.parent.postMessage({ type: 'uking:bridge:saved' }, uking.parentOrigin);
++        }
++      }).catch((error) => {
++        window.parent.postMessage({ type: 'uking:bridge:save-error' }, uking.parentOrigin);
++        console.error('[U-King] local canvas save failed:', error);
++      }).finally(() => { uking.pendingSaves -= 1; });
++      return true;
++    },
++    [requestUking]
++  );
++
+   const updateLatestBoardData = useCallback(
+@@ -592,3 +766,4 @@ export function App() {
+   const handleBoardSwitch = useCallback(
+     async (board: Board, skipUrlUpdate: boolean = false) => {
++      if (isUkingHostMode) return;
+       try {
+@@ -643,3 +818,4 @@ export function App() {
+   useEffect(() => {
+     const handlePopState = async () => {
++      if (isUkingHostMode) return;
+       if (isHandlingPopStateRef.current) {
+@@ -680,3 +856,4 @@ export function App() {
+   // Handle tab sync (when other tab modified data)
+   const handleTabSyncNeeded = useCallback(async () => {
++    if (isUkingHostMode) return;
+     // 设置同步标志，防止同步期间的 onChange 触发保存（保存旧数据覆盖新数据）
+@@ -787,4 +904,19 @@ export function App() {
+
+       updateLatestBoardData(currentBoard.id, data);
+
++      if (isUkingHostMode) {
++        const uking = ukingRef.current;
++        // Drop all upstream bootstrap/switch callbacks until the host has
++        // restored its project. Once active, no WorkspaceService write is
++        // allowed to accompany an element change.
++        if (!uking || !uking.ready) return;
++        uking.snapshot = {
++          children: data.children,
++          viewport: data.viewport,
++          theme: data.theme,
++        };
++        enqueueUkingSave(uking.snapshot);
++        return;
++      }
++
+       workspaceService
+@@ -799,5 +932,5 @@ export function App() {
+           console.error('[App] Failed to save board:', err);
+         });
+     },
+-    [updateLatestBoardData]
++    [enqueueUkingSave, updateLatestBoardData]
+   );
+@@ -806,3 +998,14 @@ export function App() {
+   const handleViewportChange = useCallback(
+     (viewport: Viewport) => {
++      if (isUkingHostMode) {
++        const uking = ukingRef.current;
++        if (!uking || !uking.ready || !uking.snapshot) return;
++        uking.snapshot = {
++          ...uking.snapshot,
++          viewport,
++        };
++        enqueueUkingSave(uking.snapshot);
++        return;
++      }
++
+       // 更新最新 viewport
+@@ -855,3 +1058,3 @@ export function App() {
+     },
+-    [updateLatestBoardData]
++    [enqueueUkingSave, updateLatestBoardData]
+   );
+diff --git a/packages/drawnix/src/index.ts b/packages/drawnix/src/index.ts
+index 5c68f6f..6dfd411 100644
+--- a/packages/drawnix/src/index.ts
++++ b/packages/drawnix/src/index.ts
+@@ -1,2 +1,5 @@
+ export * from './drawnix';
++// Narrow host integration hook: U-King feeds only a locally served image URL
++// through the same insertion code used by the regular image tool.
++export { insertImageFromUrl } from './data/image';
+ export * from './utils';

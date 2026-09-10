@@ -9,7 +9,7 @@
  * 原路由不动（AI 专家页等深链仍可直达）。删除本页只需动 App.tsx + Sidebar（铁律④）。
  */
 import { lazy, Suspense, useState } from "react";
-import { Clapperboard, History, Image as ImageIcon, QrCode } from "lucide-react";
+import { Clapperboard, History, Image as ImageIcon, PanelTopOpen, QrCode } from "lucide-react";
 import { cn } from "./lib/cn";
 import { useI18n } from "./i18n";
 import type { DeviceKey } from "./lib/types";
@@ -19,11 +19,13 @@ const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const Reel = lazy(() => import("./Reel").then((m) => ({ default: m.Reel })));
 const MediaTasks = lazy(() => import("./Reel").then((m) => ({ default: m.MediaTasks })));
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
+const CreatorCanvas = lazy(() => import("./CreatorCanvas").then((m) => ({ default: m.CreatorCanvas })));
 
 /** 与 App.tsx 的 DeviceKey 同构（透传，不加工）。 */
-type SubTab = "draw" | "video" | "reel" | "qrmerge" | "tasks";
+type SubTab = "canvas" | "draw" | "video" | "reel" | "qrmerge" | "tasks";
 
 const SUBS: { id: SubTab; label: string; icon: typeof ImageIcon }[] = [
+  { id: "canvas", label: "创作画布（选装）", icon: PanelTopOpen },
   { id: "draw", label: "AI 作图", icon: ImageIcon },
   // 两层能力不能同名并列：视频是可被成片复用的原子片段；成片才是多镜头编排。
   { id: "video", label: "视频片段", icon: Clapperboard },
@@ -94,6 +96,11 @@ export function Create({
 
       {/* 子页内容：访问过即挂载，display 切换保活 */}
       <div className="flex min-h-0 flex-1 flex-col">
+      {mounted.has("canvas") && (
+        <div className="flex-1 min-h-0" style={{ display: sub === "canvas" ? undefined : "none" }}>
+          <Suspense fallback={<Fallback />}><CreatorCanvas onToast={onToast} /></Suspense>
+        </div>
+      )}
       {mounted.has("draw") && (
         <div className="flex-1 min-h-0" style={{ display: sub === "draw" ? undefined : "none" }}>
           <Suspense fallback={<Fallback />}>
