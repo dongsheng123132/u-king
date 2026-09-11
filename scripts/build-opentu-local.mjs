@@ -21,7 +21,9 @@ const source = path.resolve(configuredSource);
 // Keep release artifacts outside the frontend `dist/` tree: Vite may clean
 // that directory and Tauri treats it as web assets.
 const releaseDir = path.join(root, "outputs", "creator-components");
-const bundleId = "opentu-1.1.6-uking.2";
+// Increment for every U-King-only patch. Existing customer archives stay
+// immutable so the trusted catalogue can always identify the exact bytes.
+const bundleId = "opentu-1.1.6-uking.3";
 const archivePath = path.join(releaseDir, `${bundleId}.tar.gz`);
 const catalogueCandidate = path.join(releaseDir, `${bundleId}.json`);
 const patches = path.join(root, "third_party", "opentu", "patches");
