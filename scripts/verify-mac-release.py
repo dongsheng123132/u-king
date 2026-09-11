@@ -72,6 +72,29 @@ def app_metadata(app: Path, expected_version: str) -> tuple[str, str]:
     return version, sha256(executable_path)
 
 
+def signing_mode(app: Path) -> str:
+    try:
+        completed = subprocess.run(
+            ["codesign", "-dvv", str(app)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as error:
+        raise VerificationError("required tool is unavailable: codesign") from error
+    except subprocess.TimeoutExpired as error:
+        raise VerificationError(f"codesign inspection timed out after {COMMAND_TIMEOUT_SECONDS}s") from error
+    except subprocess.CalledProcessError as error:
+        raise VerificationError(f"codesign inspection failed ({error.returncode})") from error
+    details = completed.stdout + completed.stderr
+    if b"Authority=Developer ID Application:" in details:
+        return "developer-id"
+    if b"Signature=adhoc" in details:
+        return "ad-hoc"
+    raise VerificationError(f"unrecognized {APP_NAME} signing mode")
+
+
 def attach_readonly(dmg: Path) -> Path:
     raw = run(["hdiutil", "attach", "-readonly", "-nobrowse", "-plist", str(dmg)])
     try:
@@ -96,21 +119,23 @@ def artifact(path: Path, app_version: str, executable_sha256: str) -> dict[str, 
     }
 
 
-def verify_zip(zip_path: Path, expected_version: str) -> tuple[str, str]:
+def verify_zip(zip_path: Path, expected_version: str) -> tuple[str, str, str]:
     with tempfile.TemporaryDirectory(prefix="uking-mac-zip-") as temporary:
         root = Path(temporary)
         run(["ditto", "-x", "-k", str(zip_path), str(root)])
         app = app_at(root)
         run(["codesign", "--verify", "--deep", "--strict", str(app)])
-        return app_metadata(app, expected_version)
+        version, executable_sha256 = app_metadata(app, expected_version)
+        return version, executable_sha256, signing_mode(app)
 
 
-def verify_dmg(dmg_path: Path, expected_version: str) -> tuple[str, str]:
+def verify_dmg(dmg_path: Path, expected_version: str) -> tuple[str, str, str]:
     mount_point = attach_readonly(dmg_path)
     try:
         app = app_at(mount_point)
         run(["codesign", "--verify", "--deep", "--strict", str(app)])
-        return app_metadata(app, expected_version)
+        version, executable_sha256 = app_metadata(app, expected_version)
+        return version, executable_sha256, signing_mode(app)
     finally:
         try:
             run(["hdiutil", "detach", str(mount_point)])
@@ -124,21 +149,27 @@ def main() -> int:
     parser.add_argument("--dmg", required=True, type=Path)
     parser.add_argument("--version", required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--signing-mode", required=True, choices=("developer-id", "ad-hoc"))
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
     if not args.version.strip() or not args.source_commit or any(char not in "0123456789abcdef" for char in args.source_commit.lower()) or len(args.source_commit) != 40:
         raise VerificationError("version or source commit is invalid")
 
-    zip_version, zip_executable_sha256 = verify_zip(args.zip, args.version)
-    dmg_version, dmg_executable_sha256 = verify_dmg(args.dmg, args.version)
+    zip_version, zip_executable_sha256, zip_signing_mode = verify_zip(args.zip, args.version)
+    dmg_version, dmg_executable_sha256, dmg_signing_mode = verify_dmg(args.dmg, args.version)
     if zip_version != dmg_version or zip_executable_sha256 != dmg_executable_sha256:
         raise VerificationError("ZIP and DMG app contents do not match")
+    if zip_signing_mode != dmg_signing_mode:
+        raise VerificationError("ZIP and DMG app signing modes do not match")
+    if zip_signing_mode != args.signing_mode:
+        raise VerificationError(f"artifact signing mode is {zip_signing_mode}, expected {args.signing_mode}")
 
     proof = {
         "schema": 1,
         "version": args.version,
         "sourceCommit": args.source_commit,
+        "signingMode": zip_signing_mode,
         "zip": artifact(args.zip, zip_version, zip_executable_sha256),
         "dmg": artifact(args.dmg, dmg_version, dmg_executable_sha256),
     }

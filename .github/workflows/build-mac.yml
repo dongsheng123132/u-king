@@ -31,6 +31,65 @@ jobs:
       - run: npm i -g pnpm@9
       - run: pnpm install
 
+      # 空 Secret 也会成为一个存在但为空的环境变量，Tauri 会把它当证书导入并失败。
+      # 所以先明确选择签名模式：证书与身份均空保留既有 ad-hoc 发布路径；部分配置则拒绝，
+      # 防止把拼错的签名材料悄悄降级成 ad-hoc。
+      - name: Select signing mode
+        id: signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          NOTARIZE: ${{ inputs.notarize }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_CERTIFICATE" && -z "$APPLE_SIGNING_IDENTITY" && -z "$APPLE_CERTIFICATE_PASSWORD" ]]; then
+            if [[ "$NOTARIZE" == "true" ]]; then
+              echo "::error::公证需要完整的 Developer ID 签名材料，不能使用 ad-hoc 签名"
+              exit 1
+            fi
+            echo "mode=ad-hoc" >> "$GITHUB_OUTPUT"
+            echo "未配置签名材料：将使用既有 ad-hoc 签名路径，并先检查现网包没有更高的 Developer ID 签名。"
+          elif [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_SIGNING_IDENTITY" ]]; then
+            echo "::error::Apple 签名配置不完整；Developer ID 模式需要 APPLE_CERTIFICATE 与 APPLE_SIGNING_IDENTITY。证书密码可以为空，APPLE_TEAM_ID 仅在公证时必需。"
+            exit 1
+          else
+            if [[ "$NOTARIZE" == "true" && ( -z "$APPLE_ID" || -z "$APPLE_PASSWORD" || -z "$APPLE_TEAM_ID" ) ]]; then
+              echo "::error::公证需要 APPLE_ID、APPLE_PASSWORD 与 APPLE_TEAM_ID。"
+              exit 1
+            fi
+            echo "mode=developer-id" >> "$GITHUB_OUTPUT"
+            echo "已配置完整签名材料：将使用 Developer ID Application 签名。"
+          fi
+
+      # 无证书发布只能维持现网签名等级，绝不能把现有 Developer ID 包降为 ad-hoc。
+      - name: Refuse Developer ID downgrade
+        if: ${{ steps.signing.outputs.mode == 'ad-hoc' }}
+        run: |
+          set -euo pipefail
+          STAGE="$(mktemp -d)"
+          trap 'rm -rf "$STAGE"' EXIT
+          curl --fail --location --retry 2 --connect-timeout 15 --max-time 120 \
+            --output "$STAGE/U-King-Mac.zip" \
+            "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/U-King-Mac.zip"
+          ditto -x -k "$STAGE/U-King-Mac.zip" "$STAGE/unpacked"
+          APP="$STAGE/unpacked/U-King.app"
+          [[ -d "$APP" ]] || { echo "::error::现网 Mac ZIP 不是预期的 U-King.app 包。"; exit 1; }
+          codesign --verify --deep --strict "$APP"
+          DETAILS="$(codesign -dvv "$APP" 2>&1)"
+          if grep -q 'Authority=Developer ID Application:' <<< "$DETAILS"; then
+            echo "::error::现网 Mac ZIP 已是 Developer ID 签名；拒绝生成 ad-hoc 降级包。"
+            exit 1
+          fi
+          if ! grep -q 'Signature=adhoc' <<< "$DETAILS"; then
+            echo "::error::无法确认现网 Mac ZIP 是 ad-hoc 签名；拒绝改变其签名等级。"
+            exit 1
+          fi
+          echo "现网 Mac ZIP 为 ad-hoc 签名；允许生成同等级的 ad-hoc 包。"
+
       # 用 Developer ID Application 证书签名（hardened runtime）。两个互斥步骤：
       #  - 默认（notarize=false）：只注入签名 secret，绝不设 APPLE_ID/PASSWORD ——
       #    Tauri 据此只签名、不公证（curl 安装已完美；浏览器下载只剩可一键跳过的提示）。
@@ -39,7 +98,7 @@ jobs:
       #  - 勾选 notarize=true：额外注入 APPLE_ID/PASSWORD，Tauri 提交 Apple 公证 + staple。
       #    公证服务器偶尔很慢（实测卡 45min+），故加 35min 超时。
       - name: Build (signed only, no notarize)
-        if: ${{ inputs.notarize != 'true' }}
+        if: ${{ steps.signing.outputs.mode == 'developer-id' && !inputs.notarize }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -48,7 +107,7 @@ jobs:
         run: pnpm tauri build --target universal-apple-darwin --bundles app
 
       - name: Build (signed + notarized)
-        if: ${{ inputs.notarize == 'true' }}
+        if: ${{ steps.signing.outputs.mode == 'developer-id' && inputs.notarize }}
         timeout-minutes: 35
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -59,16 +118,29 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm tauri build --target universal-apple-darwin --bundles app
 
-      # 兜底：若没正式签名（secret 缺失，Tauri 给的是 rustc linker ad-hoc 签名，
-      # 资源封印缺失，macOS 15/26 会判「已损坏」），用 --force --deep 重建封印。
-      # 已 Developer ID 签名时跳过——否则会覆盖正式签名、毁掉公证 staple（客户实测 2026-06-18）。
-      - name: Fallback ad-hoc re-sign (only if not Developer ID signed)
+      - name: Build (ad-hoc only)
+        if: ${{ steps.signing.outputs.mode == 'ad-hoc' }}
         run: |
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_TEAM_ID APPLE_ID APPLE_PASSWORD
+          pnpm tauri build --target universal-apple-darwin --bundles app
+
+      # 只按上面显式选出的模式处理签名：Developer ID 不会被 ad-hoc 重签覆盖；
+      # ad-hoc 模式重建资源封印，使 ZIP 与 DMG 都来自同一份可验证的 .app。
+      - name: Verify selected signing mode
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          set -euo pipefail
           APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/U-King.app
-          if codesign -dvv "$APP" 2>&1 | grep -q "Developer ID Application"; then
-            echo "已 Developer ID 正式签名，跳过 ad-hoc 重签（保留公证）"
+          if [[ "$SIGNING_MODE" == "developer-id" ]]; then
+            DETAILS="$(codesign -dvv "$APP" 2>&1)"
+            if ! grep -q "Authority=Developer ID Application:" <<< "$DETAILS"; then
+              echo "::error::Developer ID 模式没有生成 Developer ID Application 签名。"
+              exit 1
+            fi
+            echo "Developer ID Application 签名已验证。"
           else
-            echo "未正式签名，ad-hoc 重建资源封印兜底"
+            echo "ad-hoc 模式：重建资源封印。"
             codesign --force --deep --sign - "$APP"
           fi
           codesign --verify --deep --strict -vv "$APP"
@@ -80,6 +152,8 @@ jobs:
           cat selfcheck-mac.json
 
       - name: Package and verify matching ZIP and DMG
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
         run: |
           APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/U-King.app
           MACOS_DIR=src-tauri/target/universal-apple-darwin/release/bundle/macos
@@ -95,7 +169,7 @@ jobs:
           ln -s /Applications "$STAGE/Applications"
           hdiutil create -volname "U-King" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           VERSION="$(node -p "require('./package.json').version")"
-          python3 scripts/verify-mac-release.py --zip "$ZIP" --dmg "$DMG" --version "$VERSION" --source-commit "$GITHUB_SHA" --output "$MACOS_DIR/mac-release-proof.json"
+          python3 scripts/verify-mac-release.py --zip "$ZIP" --dmg "$DMG" --version "$VERSION" --source-commit "$GITHUB_SHA" --signing-mode "$SIGNING_MODE" --output "$MACOS_DIR/mac-release-proof.json"
 
       - uses: actions/upload-artifact@v4
         with:

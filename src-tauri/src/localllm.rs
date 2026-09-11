@@ -36,7 +36,11 @@
 //! `OLLAMA_MODELS` 改到别的盘。
 
 use serde::Serialize;
+use std::io::Read;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 /// OllamaSetup.exe 下载源（依次尝试，第一个把文件下到 >100MB 的算成功）。
 /// **不走自己服务器** —— 官方直链 + 国内第三方 GitHub 加速代理混排：
@@ -105,25 +109,87 @@ pub fn ollama_installed() -> bool {
     ollama_exe().is_some() || crate::installer::tool_installed("ollama")
 }
 
-/// 跑 ollama 子命令收 stdout（CREATE_NO_WINDOW；失败返回 None）。
+/// 单次 Ollama CLI 查询的上限。`list` 和 `--version` 都只读本机服务；超过这段时间
+/// 说明 CLI 已经不能及时回答。`status` 最多两次查询，留足 `runtime.localllm.inspect`
+/// 自己声明的 15 秒动作死线。
+const OLLAMA_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// 在死线内收一条子进程 stdout。
+///
+/// `Command::output()` 会无期限等子进程退出，恰好会让一个卡住的 `ollama list` 把整个
+/// 只读 inspect 动作钉死。stdout 由独立线程持续排空，避免管道写满造成假死；超时后只
+/// 终止这一次 CLI child，绝不碰已经在跑的 Ollama serve。特别地，超时路径不 join 读线程：
+/// 有异常后代继承管道时，join 本身也可能永远等不到 EOF。
+fn capture_stdout_before(command: &mut Command, timeout: Duration) -> Option<String> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        // 旧实现从不使用 stderr；不建第二条无人排空的管道。
+        .stderr(Stdio::null());
+    let mut child = command.spawn().ok()?;
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+    };
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout
+            .take(u64::MAX)
+            .read_to_end(&mut bytes)
+            .ok()
+            .map(|_| String::from_utf8_lossy(&bytes).to_string());
+        let _ = sender.send(result);
+    });
+
+    let started = Instant::now();
+    let succeeded = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.success(),
+            Ok(None) if started.elapsed() < timeout => {
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            Ok(None) | Err(_) => {
+                // 只杀本次 `ollama list` / `ollama --version` 的 CLI 进程；不能按镜像名或
+                // 进程树杀，否则会伤到客户正在使用的后台 Ollama 服务。
+                if child.kill().is_ok() {
+                    let _ = child.wait();
+                }
+                return None;
+            }
+        }
+    };
+
+    // 子进程已退出，读线程应该立即收到 EOF；仍只等本次调用的剩余预算，不让异常继承的
+    // stdout 句柄把 inspect 拖过动作死线。
+    if !succeeded {
+        return None;
+    }
+    receiver
+        .recv_timeout(timeout.saturating_sub(started.elapsed()))
+        .ok()
+        .flatten()
+}
+
+/// 跑 ollama 子命令收 stdout（CREATE_NO_WINDOW；失败或超时返回 None）。
 fn run_ollama(args: &[&str]) -> Option<String> {
     let exe = ollama_exe()?;
-    let mut c = std::process::Command::new(exe);
-    c.args(args).stdin(std::process::Stdio::null());
+    let mut c = Command::new(exe);
+    c.args(args);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000);
     }
-    let out = c.output().ok()?;
-    Some(String::from_utf8_lossy(&out.stdout).to_string())
+    capture_stdout_before(&mut c, OLLAMA_QUERY_TIMEOUT)
 }
 
 /// 已 pull 的本地模型列表（`ollama list` 首列）。
-fn local_models() -> Vec<String> {
-    let Some(out) = run_ollama(&["list"]) else {
-        return Vec::new();
-    };
+fn parse_ollama_models(out: &str) -> Vec<String> {
     out.lines()
         .skip(1) // 表头 NAME ID SIZE MODIFIED
         .filter_map(|l| l.split_whitespace().next())
@@ -199,9 +265,9 @@ pub fn import_gguf(path: &str, name: &str) -> Result<String, String> {
 }
 
 /// 本地服务是否在跑（`ollama list` 能通就说明 serve 活着）。
-fn serving() -> bool {
+fn serving_from_list(out: Option<&str>) -> bool {
     // `ollama list` 在 serve 没起时会报错/空；用它探活最省事（不另起 http 依赖）
-    run_ollama(&["list"]).map(|o| o.contains("NAME") || !o.trim().is_empty()).unwrap_or(false)
+    out.map(|o| o.contains("NAME") || !o.trim().is_empty()).unwrap_or(false)
 }
 
 /// 完整状态（前端板块用）。
@@ -219,13 +285,16 @@ pub fn status() -> OllamaStatus {
     let version = run_ollama(&["--version"])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let serving = serving();
-    let models = local_models();
+    // 过去这里分别给 `serving` 和 `models` 再跑了一次 `ollama list`。复用同一次输出，
+    // 避免本机服务迟缓时把只读 inspect 的 15 秒预算叠加耗尽。
+    let list = run_ollama(&["list"]);
+    let serving = serving_from_list(list.as_deref());
+    let models = list.as_deref().map(parse_ollama_models).unwrap_or_default();
     // 「装了」和「能用」是两回事：引擎没在跑、或一个模型都没拉，
     // 用户点「开始对话」照样是空的。如实说清楚卡在哪。
     let mut blockers = Vec::new();
     if !serving {
-        blockers.push("引擎没在跑（本地 11434 端口没人服务）".to_string());
+        blockers.push("未能连接本地服务（可能未运行或响应超时）".to_string());
     } else if models.is_empty() {
         blockers.push("引擎在跑，但一个模型都没下载".to_string());
     }
@@ -1664,4 +1733,78 @@ pub fn logs(engine: &str, lines: usize) -> String {
     let all: Vec<&str> = s.lines().collect();
     let start = all.len().saturating_sub(lines.max(1));
     all[start..].join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_ollama_list_once_output() {
+        assert_eq!(
+            parse_ollama_models("NAME ID SIZE MODIFIED\nqwen3:8b abc 5 GB now\nllama3 def 4 GB now\n"),
+            vec!["qwen3:8b", "llama3"]
+        );
+        assert!(serving_from_list(Some("NAME ID SIZE MODIFIED\n")));
+        assert!(!serving_from_list(None));
+    }
+
+    fn hide_test_command(command: &mut Command) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+    }
+
+    #[test]
+    fn command_capture_keeps_short_success_output() {
+        let mut command = if cfg!(windows) {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "echo ready"]);
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", "printf ready"]);
+            c
+        };
+        hide_test_command(&mut command);
+        let expected = if cfg!(windows) { "ready\r\n" } else { "ready" };
+        assert_eq!(
+            capture_stdout_before(&mut command, Duration::from_secs(1)).as_deref(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn command_capture_stops_at_deadline() {
+        let mut command = if cfg!(windows) {
+            let mut c = Command::new("ping");
+            c.args(["-n", "3", "127.0.0.1"]);
+            c
+        } else {
+            let mut c = Command::new("ping");
+            c.args(["-c", "3", "127.0.0.1"]);
+            c
+        };
+        hide_test_command(&mut command);
+        let started = Instant::now();
+        assert!(capture_stdout_before(&mut command, Duration::from_millis(25)).is_none());
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn command_capture_rejects_error_exit() {
+        let mut command = if cfg!(windows) {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "echo not-ready & exit /B 1"]);
+            c
+        } else {
+            let mut c = Command::new("sh");
+            c.args(["-c", "printf not-ready; exit 1"]);
+            c
+        };
+        hide_test_command(&mut command);
+        assert!(capture_stdout_before(&mut command, Duration::from_secs(1)).is_none());
+    }
 }
