@@ -338,15 +338,15 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
       <PanelTopOpen size={16} className="text-accent" />
       <span className="mr-auto text-sm font-medium">{projectTitle ? `本地创作画布 · ${projectTitle}` : "本地创作画布"}</span>
-      {component?.state === "installed" &&
+      {component?.state === "installed" && !isFullscreen &&
       <select aria-label="打开本地项目" value={projectId || ""} disabled={busy || saving || Boolean(saveError)} onChange={event => void start({ openId: event.target.value })} className="rounded-lg border border-white/[0.1] bg-black/20 px-2 py-2 text-sm"><option value="" disabled>选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title} · {project.id.slice(-6)}</option>)}</select>
       }
-      {component?.state === "installed" &&
+      {component?.state === "installed" && !isFullscreen &&
       <button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Plus size={15} />新建项目</button>
       }
       {component?.state === "installed" && <button type="button" onClick={() => void toggleFullscreen()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">{isFullscreen ? <Minimize size={15} /> : <Expand size={15} />}{isFullscreen ? "退出大屏" : "大屏创作"}</button>}
       {component?.state === "installed" && <button type="button" onClick={() => setMaterialGeneratorOpen((open) => !open)} aria-expanded={materialGeneratorOpen} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1 disabled:opacity-50"><ImagePlus size={15} />生成素材</button>}
-      {(component?.state === "installed" || component?.state === "damaged") && !checkingComponent && <button ref={managementButton} type="button" onClick={() => setManagementOpen((open) => !open)} aria-expanded={managementOpen} aria-label="画布管理" title="画布管理" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"><MoreHorizontal size={16} />画布管理</button>}
+      {(component?.state === "installed" || component?.state === "damaged") && !checkingComponent && !isFullscreen && <button ref={managementButton} type="button" onClick={() => setManagementOpen((open) => !open)} aria-expanded={managementOpen} aria-label="画布管理" title="画布管理" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"><MoreHorizontal size={16} />画布管理</button>}
     </div>
     {managementOpen && <AnchoredMenu anchorRef={managementButton} onClose={() => setManagementOpen(false)} minWidth={356}>
       <section className="space-y-3 p-3 text-sm text-ink-2">
@@ -375,7 +375,7 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
         </div>
       </section>
     </AnchoredMenu>}
-    {hasAvailableUpdate && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/25 bg-accent/[0.06] px-3 py-2.5 text-sm">
+    {hasAvailableUpdate && !isFullscreen && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/25 bg-accent/[0.06] px-3 py-2.5 text-sm">
       <span className="text-ink-2">画布有可用更新：<strong className="font-medium text-ink-1">{offer?.bundle_id}</strong><span className="ml-1 text-xs text-ink-4">更新不会删除创作项目。</span></span>
       <button type="button" onClick={() => void installComponent({ replacing: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />更新画布</button>
     </div>}
