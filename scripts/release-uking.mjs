@@ -77,7 +77,7 @@ function parseArgs(argv) {
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    execFile(command, args, {
+    const child = execFile(command, args, {
       cwd: ROOT,
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024,
@@ -93,6 +93,9 @@ function run(command, args, options = {}) {
       }
       resolve(String(stdout));
     });
+    // execFile 默认建 stdin 管道。发布命令没有交互输入；立即 EOF，避免 ssh 或远端 shell
+    // 偶发等待读端而保持 TCP 连接。保留 child 句柄，不能只把 execFile 当 fire-and-forget。
+    child.stdin?.end();
   });
 }
 
@@ -356,7 +359,7 @@ function remoteJoin(prefix, name) {
 }
 
 function sshArgs(target, script) {
-  return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=20", target.host, script];
+  return ["-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", target.host, script];
 }
 
 function remoteCommand(target, command) {
