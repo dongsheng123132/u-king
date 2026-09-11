@@ -1,0 +1,57 @@
+diff --git a/packages/drawnix/src/drawnix.tsx b/packages/drawnix/src/drawnix.tsx
+--- a/packages/drawnix/src/drawnix.tsx
++++ b/packages/drawnix/src/drawnix.tsx
+@@ -234,0 +235,46 @@
++
++const UkingManagedSettingsNotice = () => {
++  const { setAppState } = useDrawnix();
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="U-King"
++      style={{
++        position: 'fixed',
++        inset: 0,
++        zIndex: 10000,
++        display: 'grid',
++        placeItems: 'center',
++        padding: 24,
++        background: 'rgba(0, 0, 0, 0.32)',
++      }}
++    >
++      <div
++        style={{
++          width: 'min(420px, 100%)',
++          padding: 24,
++          borderRadius: 12,
++          background: '#fff',
++          color: '#1f2937',
++          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.24)',
++        }}
++      >
++        <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>U-King</h2>
++        <p style={{ margin: '0 0 20px', lineHeight: 1.6 }}>
++          此画布的生成服务由 U-King/虾盘云托管，请在外层 U-King 中使用生成图片。
++        </p>
++        <button
++          type="button"
++          onClick={() =>
++            setAppState((prev) => ({ ...prev, openSettings: false }))
++          }
++          style={{ float: 'right', padding: '8px 16px' }}
++        >
++          知道了
++        </button>
++      </div>
++    </div>
++  );
++};
+@@ -1811 +1857,5 @@
+-              <SettingsDialog container={containerRef.current}></SettingsDialog>
++              {isUkingHostMode() ? (
++                <UkingManagedSettingsNotice />
++              ) : (
++                <SettingsDialog container={containerRef.current}></SettingsDialog>
++              )}

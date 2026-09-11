@@ -896,11 +896,11 @@ mod tests {
             // never an Action, GUI, CLI, or replaceable resource path.
             let offer = inspect_opentu_offer().unwrap();
             assert!(offer.available);
-            assert_eq!(offer.bundle_id.as_deref(), Some("opentu-1.1.6-uking.3"));
-            assert_eq!(offer.archive_bytes, Some(18_546_242));
+            assert_eq!(offer.bundle_id.as_deref(), Some("opentu-1.1.6-uking.4"));
+            assert_eq!(offer.archive_bytes, Some(18_561_152));
             let (manifest, _) = trusted_offer().unwrap().unwrap();
-            assert_eq!(manifest.bundle_id, "opentu-1.1.6-uking.3");
-            assert_eq!(manifest.archive_bytes, 18_546_242);
+            assert_eq!(manifest.bundle_id, "opentu-1.1.6-uking.4");
+            assert_eq!(manifest.archive_bytes, 18_561_152);
             assert!(active_opentu_static_root()
                 .unwrap_err()
                 .starts_with("not_installed:"));

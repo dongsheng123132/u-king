@@ -4,7 +4,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Clapperboard, Download, Expand, ExternalLink, ImagePlus, LoaderCircle, Minimize, PanelTopOpen, Plus, Trash2 } from "lucide-react";
+import { Clapperboard, Download, Expand, ExternalLink, ImagePlus, LoaderCircle, Minimize, MoreHorizontal, PanelTopOpen, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AnchoredMenu } from "./components/AnchoredMenu";
 
 type Envelope = { ok: boolean; result?: Record<string, unknown>; error?: { message?: string } };
 type BridgeRequest = {
@@ -56,6 +57,11 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
   const [offer, setOffer] = useState<ComponentOffer>();
   const [checkingComponent, setCheckingComponent] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [managementOpen, setManagementOpen] = useState(false);
+  const [advancedMaintenanceOpen, setAdvancedMaintenanceOpen] = useState(false);
+  const [maintenanceConfirmation, setMaintenanceConfirmation] = useState<"reinstall" | "uninstall">();
+  const [materialGeneratorOpen, setMaterialGeneratorOpen] = useState(false);
+  const managementButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const syncFullscreen = () => setIsFullscreen(document.fullscreenElement === canvasContainer.current);
@@ -63,14 +69,17 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     return () => document.removeEventListener("fullscreenchange", syncFullscreen);
   }, []);
 
-  const refreshComponent = async () => {
+  const refreshComponent = async (): Promise<{ component: ComponentStatus; offer: ComponentOffer } | undefined> => {
     setCheckingComponent(true);
     try {
       const inspected = await action("runtime.creator.component.inspect");
-      setComponent((inspected.component || {}) as ComponentStatus);
-      setOffer((inspected.offer || {}) as ComponentOffer);
+      const nextComponent = (inspected.component || {}) as ComponentStatus;
+      const nextOffer = (inspected.offer || {}) as ComponentOffer;
+      setComponent(nextComponent);
+      setOffer(nextOffer);
       const blockers = inspected.blockers as string[] | undefined;
       if (blockers?.length) setStartupError(blockers[0]);
+      return { component: nextComponent, offer: nextOffer };
     } catch (error) {
       setStartupError(error instanceof Error ? error.message : String(error));
     } finally { setCheckingComponent(false); }
@@ -204,13 +213,38 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     finally { setBusy(false); }
   };
 
-  const installComponent = async () => {
+  const hasAvailableUpdate = component?.state === "installed"
+    && offer?.available === true
+    && Boolean(component.bundle_id)
+    && Boolean(offer.bundle_id)
+    && component.bundle_id !== offer.bundle_id;
+
+  const clearCanvasSurface = () => {
+    setUrl(undefined);
+    setCapability(undefined);
+    setProjectId(undefined);
+    setProjectTitle(undefined);
+  };
+
+  const installComponent = async ({ replacing = false }: { replacing?: boolean } = {}) => {
+    if (busy || saving || saveError) {
+      if (saveError) onToast("画布尚未保存，请先修复保存问题后再更新组件。");
+      return;
+    }
     setBusy(true);
     setStartupError(undefined);
     try {
+      if (replacing) {
+        // A running listener has already resolved the old static root. Stop it
+        // before promoting a new version so the restarted iframe uses exactly
+        // the verified catalogue entry that the user selected.
+        await action("runtime.creator.canvas.stop", {}, true);
+        clearCanvasSurface();
+      }
       await action("runtime.creator.component.install", {}, true);
-      await refreshComponent();
+      const refreshed = await refreshComponent();
       await start();
+      if (replacing) onToast(`画布已更新${refreshed?.component.bundle_id ? `为 ${refreshed.component.bundle_id}` : ""}；创作项目已保留。`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStartupError(message);
@@ -227,12 +261,57 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     }
     setBusy(true);
     try {
+      // The component action refuses to delete while the loopback service is
+      // serving this version. Stop it first; an already-stopped service is a
+      // safe no-op, and the project data remains outside the component root.
+      await action("runtime.creator.canvas.stop", {}, true);
+      clearCanvasSurface();
       await action("runtime.creator.component.uninstall", {}, true);
-      setUrl(undefined); setCapability(undefined); setProjectId(undefined); setProjectTitle(undefined);
       await refreshComponent();
+      setManagementOpen(false);
+      setMaintenanceConfirmation(undefined);
       onToast("本地画布组件已卸载；你的创作项目仍保留在本机。");
     } catch (error) { onToast(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
+  };
+
+  const reinstallComponent = async () => {
+    if (busy || saving || saveError) {
+      if (saveError) onToast("画布尚未保存，请先修复保存问题后再重新安装组件。");
+      return;
+    }
+    setBusy(true);
+    setStartupError(undefined);
+    try {
+      // Reinstall is the same maintenance sequence: release the listener
+      // before replacing the optional component, never the customer project.
+      await action("runtime.creator.canvas.stop", {}, true);
+      clearCanvasSurface();
+      await action("runtime.creator.component.uninstall", {}, true);
+      await action("runtime.creator.component.install", {}, true);
+      const refreshed = await refreshComponent();
+      await start();
+      setManagementOpen(false);
+      setMaintenanceConfirmation(undefined);
+      onToast(`画布已重新安装${refreshed?.component.bundle_id ? `：${refreshed.component.bundle_id}` : ""}；创作项目已保留。`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStartupError(message);
+      onToast(message);
+    } finally { setBusy(false); }
+  };
+
+  const checkForComponentUpdate = async () => {
+    const refreshed = await refreshComponent();
+    if (!refreshed?.offer.available || !refreshed.offer.bundle_id) {
+      onToast("当前没有可用的画布更新。");
+    } else if (refreshed.component.state === "installed" && refreshed.component.bundle_id === refreshed.offer.bundle_id) {
+      onToast("画布已经是最新版本。");
+    } else if (refreshed.component.state === "installed") {
+      onToast(`发现画布更新：${refreshed.offer.bundle_id}`);
+    } else {
+      onToast(`可安装画布版本：${refreshed.offer.bundle_id}`);
+    }
   };
 
   const toggleFullscreen = async () => {
@@ -259,26 +338,71 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
       <PanelTopOpen size={16} className="text-accent" />
       <span className="mr-auto text-sm font-medium">{projectTitle ? `本地创作画布 · ${projectTitle}` : "本地创作画布"}</span>
-      {component?.state === "installed" && <button type="button" onClick={() => void toggleFullscreen()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">{isFullscreen ? <Minimize size={15} /> : <Expand size={15} />}{isFullscreen ? "退出大屏" : "大屏创作"}</button>}
-      {component?.state === "installed" && <button onClick={() => void uninstallComponent()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Trash2 size={15} />卸载画布</button>}
       {component?.state === "installed" &&
       <select aria-label="打开本地项目" value={projectId || ""} disabled={busy || saving || Boolean(saveError)} onChange={event => void start({ openId: event.target.value })} className="rounded-lg border border-white/[0.1] bg-black/20 px-2 py-2 text-sm"><option value="" disabled>选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title} · {project.id.slice(-6)}</option>)}</select>
       }
       {component?.state === "installed" &&
       <button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Plus size={15} />新建项目</button>
       }
-      {component?.state === "installed" && <>
-      <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} placeholder="描述想生成的图片…" className="min-w-48 flex-1 rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2 text-sm outline-none focus:border-accent" disabled={busy} />
-      <button onClick={() => void generate()} disabled={busy || !prompt.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><ImagePlus size={15} />生成图片</button>
-      </>}
-      {taskStatus && <span className="text-xs text-ink-3">任务：{taskStatus}</span>}
+      {component?.state === "installed" && <button type="button" onClick={() => void toggleFullscreen()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">{isFullscreen ? <Minimize size={15} /> : <Expand size={15} />}{isFullscreen ? "退出大屏" : "大屏创作"}</button>}
+      {component?.state === "installed" && <button type="button" onClick={() => setMaterialGeneratorOpen((open) => !open)} aria-expanded={materialGeneratorOpen} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1 disabled:opacity-50"><ImagePlus size={15} />生成素材</button>}
+      {(component?.state === "installed" || component?.state === "damaged") && !checkingComponent && <button ref={managementButton} type="button" onClick={() => setManagementOpen((open) => !open)} aria-expanded={managementOpen} aria-label="画布管理" title="画布管理" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"><MoreHorizontal size={16} />画布管理</button>}
     </div>
+    {managementOpen && <AnchoredMenu anchorRef={managementButton} onClose={() => setManagementOpen(false)} minWidth={356}>
+      <section className="space-y-3 p-3 text-sm text-ink-2">
+        <div>
+          <h2 className="font-medium text-ink-1">画布管理</h2>
+          <p className="mt-1 text-xs leading-5 text-ink-4">这里只维护本机画布运行组件；你的项目、已保存画布和图片不在组件目录内。</p>
+        </div>
+        <dl className="space-y-1 rounded-lg bg-white/[0.04] p-2 text-xs">
+          <div className="flex gap-3"><dt className="w-16 shrink-0 text-ink-4">当前状态</dt><dd className="min-w-0 break-all text-ink-2">{component?.state === "installed" ? "已安装并已校验" : component?.state === "damaged" ? "需要维护" : "未安装"}</dd></div>
+          <div className="flex gap-3"><dt className="w-16 shrink-0 text-ink-4">已装版本</dt><dd className="min-w-0 break-all text-ink-2">{component?.bundle_id || "—"}</dd></div>
+          <div className="flex gap-3"><dt className="w-16 shrink-0 text-ink-4">可用版本</dt><dd className="min-w-0 break-all text-ink-2">{offer?.available ? offer.bundle_id || "已发布" : "暂未发布"}</dd></div>
+        </dl>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void checkForComponentUpdate()} disabled={busy || checkingComponent} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-2.5 py-1.5 text-xs text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><RefreshCw size={14} className={checkingComponent ? "animate-spin" : ""} />检查更新</button>
+          {hasAvailableUpdate && <button type="button" onClick={() => { setManagementOpen(false); void installComponent({ replacing: true }); }} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50"><Download size={14} />更新画布</button>}
+        </div>
+        <div className="border-t border-white/[0.08] pt-3">
+          <button type="button" onClick={() => setAdvancedMaintenanceOpen((open) => !open)} aria-expanded={advancedMaintenanceOpen} className="text-xs text-ink-4 hover:text-ink-2">{advancedMaintenanceOpen ? "收起高级维护" : "高级维护"}</button>
+          {advancedMaintenanceOpen && <div className="mt-2 space-y-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.04] p-2.5 text-xs">
+            <p className="leading-5 text-ink-3">重新安装或卸载只影响画布运行组件；创作项目会保留在本机。</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => { setManagementOpen(false); setMaintenanceConfirmation("reinstall"); }} disabled={busy || saving || Boolean(saveError)} className="rounded-md border border-white/[0.1] px-2.5 py-1.5 text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">重新安装画布</button>
+              <button type="button" onClick={() => { setManagementOpen(false); setMaintenanceConfirmation("uninstall"); }} disabled={busy || saving || Boolean(saveError)} className="rounded-md border border-red-400/35 px-2.5 py-1.5 text-red-300 hover:bg-red-400/10 disabled:opacity-50"><Trash2 size={13} className="mr-1 inline" />卸载画布</button>
+            </div>
+          </div>}
+        </div>
+      </section>
+    </AnchoredMenu>}
+    {hasAvailableUpdate && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/25 bg-accent/[0.06] px-3 py-2.5 text-sm">
+      <span className="text-ink-2">画布有可用更新：<strong className="font-medium text-ink-1">{offer?.bundle_id}</strong><span className="ml-1 text-xs text-ink-4">更新不会删除创作项目。</span></span>
+      <button type="button" onClick={() => void installComponent({ replacing: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />更新画布</button>
+    </div>}
+    {component?.state === "installed" && materialGeneratorOpen && <section aria-label="生成素材" className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+      <div className="mr-auto min-w-36"><p className="text-sm font-medium text-ink-2">生成素材</p><p className="mt-0.5 text-xs text-ink-4">图片会插入当前画布。</p></div>
+      <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} placeholder="描述想生成的图片…" className="min-w-52 flex-1 rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2 text-sm outline-none focus:border-accent" disabled={busy} />
+      <button type="button" onClick={() => void generate()} disabled={busy || !prompt.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><ImagePlus size={15} />生成并插入</button>
+      {taskStatus && <span className="w-full text-xs text-ink-4">任务：{taskStatus}</span>}
+    </section>}
     {isFullscreen && <p className="text-center text-xs text-ink-3">按 Esc 返回普通视图</p>}
     {saving && <span className="text-xs text-ink-3">正在保存…</span>}
     {saveError && <div role="alert" className="text-sm text-amber-400">{saveError}</div>}
     {checkingComponent ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在检查本地画布组件…</div>
-      : component?.state === "damaged" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地画布组件已损坏。</p><p className="mt-1 text-xs">{component.detail || "请先卸载损坏组件，再重新下载安装；你的创作项目会保留。"}</p></div><button onClick={() => void uninstallComponent()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Trash2 size={15} />卸载损坏组件，保留项目</button>{saveError && <p role="alert" className="text-xs text-amber-400">请先修复保存问题后再卸载。</p>}{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
+      : component?.state === "damaged" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地画布组件需要维护。</p><p className="mt-1 text-xs">{component.detail || "请在画布管理中重新安装组件；你的创作项目会保留。"}</p></div><button type="button" onClick={() => setManagementOpen(true)} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><MoreHorizontal size={15} />打开画布管理</button>{saveError && <p role="alert" className="text-xs text-amber-400">请先修复保存问题后再维护。</p>}{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
       : component?.state !== "installed" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地创作画布是可选下载组件，安装后仅在本机运行。</p><p className="mt-1 text-xs">{offer?.available ? `下载大小：${Math.ceil((offer.archive_bytes || 0) / 1024 / 1024)} MB` : "组件发布包尚未就绪，请等待 U-King 更新组件目录。"}</p></div>{offer?.available && <button onClick={() => void installComponent()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />下载并安装本地画布</button>}<div className="flex flex-wrap justify-center gap-2"><button type="button" onClick={onGoDraw} disabled={!onGoDraw} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><ImagePlus size={15} />AI 作图</button><button type="button" onClick={onGoVideo} disabled={!onGoVideo} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Clapperboard size={15} />视频片段</button></div>{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
       : busy && !url ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在启动本地画布…</div> : canvasUrl && projectId ? <iframe key={projectId} ref={frame} onLoad={initializeBridge} title="OpenTu 本地创作画布" src={canvasUrl} className="min-h-0 flex-1 rounded-xl border border-white/[0.08] bg-white" sandbox="allow-scripts allow-same-origin allow-downloads" /> : <div className="grid flex-1 place-items-center gap-2 text-ink-3">{startupError ? `无法打开上次项目：${startupError}` : "本地画布尚未启动。"}<div className="flex gap-2"><button onClick={() => void start()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><ExternalLink size={14} />打开本地画布</button><button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><Plus size={14} />新建项目</button></div></div>}
+    {maintenanceConfirmation && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/60 p-4" onClick={() => !busy && setMaintenanceConfirmation(undefined)}>
+      <div className="w-full max-w-md space-y-4 rounded-xl border border-white/[0.12] bg-bg-2 p-5 shadow-card" onClick={(event) => event.stopPropagation()}>
+        <div>
+          <h2 className="text-sm font-medium text-ink-1">{maintenanceConfirmation === "uninstall" ? "卸载本地画布？" : "重新安装本地画布？"}</h2>
+          <p className="mt-2 text-sm leading-6 text-ink-3">{maintenanceConfirmation === "uninstall" ? "这会删除本机的画布运行组件。创作项目、已保存画布和图片会保留；再次使用画布时可重新下载安装。" : "这会停止并替换本机的画布运行组件。创作项目、已保存画布和图片会保留。"}</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setMaintenanceConfirmation(undefined)} disabled={busy} className="rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">取消</button>
+          <button type="button" onClick={() => void (maintenanceConfirmation === "uninstall" ? uninstallComponent() : reinstallComponent())} disabled={busy} className={`rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50 ${maintenanceConfirmation === "uninstall" ? "bg-red-500 hover:bg-red-400" : "bg-accent hover:brightness-110"}`}>{maintenanceConfirmation === "uninstall" ? "确认卸载" : "确认重新安装"}</button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
