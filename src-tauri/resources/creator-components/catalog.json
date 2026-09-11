@@ -6,15 +6,15 @@
       "component": "opentu",
       "upstream_version": "1.1.6",
       "upstream_commit": "48802871554c5b8221b4c5d70baff0b68d00df46",
-      "bundle_id": "opentu-1.1.6-uking.4",
+      "bundle_id": "opentu-1.1.6-uking.7",
       "bridge_schema": 1,
       "archive_format": "tar.gz",
-      "archive_bytes": 18561152,
-      "archive_sha256": "9dd72713baa5f433c0ae77e7484a507510003df0cb8889f0f759bad0c5445604",
-      "integrity_manifest_sha256": "15fc7b090a7c2d2ab8a1b823b4b11f7f436976658f9245b44a3ff214b8fd7aa9",
-      "unpacked_bytes": 37253651,
+      "archive_bytes": 18559802,
+      "archive_sha256": "ee944e80cd38831ed6067d8f1cf3bbf0522166dbd417bd3a820a15869c989e88",
+      "integrity_manifest_sha256": "4c4a50d530495ceca322531d692b8333759252310313e4dcf7cc1b6e7aecdd79",
+      "unpacked_bytes": 37253860,
       "file_count": 249,
-      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/components/opentu/1.1.6-uking.4/opentu-1.1.6-uking.4.tar.gz"
+      "url": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/components/opentu/1.1.6-uking.7/opentu-1.1.6-uking.7.tar.gz"
     }
   ]
 }

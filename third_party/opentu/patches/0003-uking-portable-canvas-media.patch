@@ -1,0 +1,46 @@
+diff --git a/apps/web/src/app/app.tsx b/apps/web/src/app/app.tsx
+index 12a20a4..e12c5b0 100644
+--- a/apps/web/src/app/app.tsx
++++ b/apps/web/src/app/app.tsx
+@@ -35 +35,4 @@ import { collectAndDownloadErrorLog } from '../utils/error-log-exporter';
+-import { applyUkingProviderCredentials } from '@drawnix/drawnix';
++import {
++  applyUkingProviderCredentials,
++  unifiedCacheService,
++} from '@drawnix/drawnix';
+@@ -116,0 +120,29 @@ function isUkingBoardPayload(value: unknown): value is BoardPersistencePayload {
++const UKING_CACHE_IMAGE_PREFIX = '/__aitu_cache__/image/';
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
++}
++
++async function makeUkingCanvasMediaPortable(
++  value: unknown
++): Promise<unknown> {
++  if (typeof value === 'string') {
++    if (!value.startsWith(UKING_CACHE_IMAGE_PREFIX)) return value;
++    const image = await unifiedCacheService.getImageForAI(value);
++    if (image.type !== 'base64' || !image.value.startsWith('data:image/')) {
++      throw new Error('U-King image cache is unavailable');
++    }
++    return image.value;
++  }
++  if (Array.isArray(value)) {
++    return Promise.all(value.map(makeUkingCanvasMediaPortable));
++  }
++  if (!isRecord(value)) return value;
++
++  const result: Record<string, unknown> = {};
++  for (const [key, item] of Object.entries(value)) {
++    result[key] = await makeUkingCanvasMediaPortable(item);
++  }
++  return result;
++}
++
+@@ -423,0 +456,2 @@ export function App() {
++        const portableCanvas =
++          (await makeUkingCanvasMediaPortable(immutableSnapshot)) as BoardPersistencePayload;
+@@ -426 +460 @@ export function App() {
+-          canvas: immutableSnapshot,
++          canvas: portableCanvas,

@@ -1,6 +1,7 @@
 /**
- * Local OpenTu host.  The iframe is intentionally only a canvas surface: all
- * state and paid work goes through the narrow ActionParity bridge below.
+ * Local OpenTu host. Project state uses the narrow ActionParity bridge; the
+ * configured provider reaches only the current iframe through origin-locked
+ * postMessage, so native canvas generation keeps its original interaction.
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -16,40 +17,25 @@ type BridgeRequest = {
 type ComponentStatus = { state?: "not_installed" | "installed" | "damaged"; detail?: string; bundle_id?: string };
 type ComponentOffer = { available?: boolean; archive_bytes?: number; bundle_id?: string; error?: string };
 const LAST_PROJECT_KEY = "uking.creator.last_project_id";
-async function readLocalAssetAsDataUrl(assetUrl: string, baseUrl: string, sessionCapability: string): Promise<string> {
-  const response = await fetch(new URL(assetUrl, baseUrl).toString(), {
-    headers: { "X-Uking-Capability": sessionCapability },
-  });
-  if (!response.ok) throw new Error("本地图片素材读取失败");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("本地图片素材转换失败"));
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("本地图片素材为空"));
-    reader.readAsDataURL(blob);
-  });
-}
 async function action(id: string, input: Record<string, unknown> = {}, confirmed = false): Promise<Record<string, unknown>> {
   const response = await invoke<Envelope>("action_parity_call", { request: { action_id: id, input, confirmed, surface: "gui" } });
   if (!response.ok) throw new Error(response.error?.message || "本地画布操作失败");
   return response.result || {};
 }
 
-export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
+export function CreatorCanvas({ apiKey, onToast, onGoDraw, onGoVideo }: {
+  apiKey?: string;
   onToast: (message: string) => void;
   onGoDraw?: () => void;
   onGoVideo?: () => void;
 }) {
   const [url, setUrl] = useState<string>();
-  const [capability, setCapability] = useState<string>();
   const [projectId, setProjectId] = useState<string>();
   const [projectTitle, setProjectTitle] = useState<string>();
   const [startupError, setStartupError] = useState<string>();
   const frame = useRef<HTMLIFrameElement>(null);
   const canvasContainer = useRef<HTMLDivElement>(null);
-  const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
-  const [taskStatus, setTaskStatus] = useState<string>();
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
   const [saveError, setSaveError] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -60,7 +46,6 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
   const [managementOpen, setManagementOpen] = useState(false);
   const [advancedMaintenanceOpen, setAdvancedMaintenanceOpen] = useState(false);
   const [maintenanceConfirmation, setMaintenanceConfirmation] = useState<"reinstall" | "uninstall">();
-  const [materialGeneratorOpen, setMaterialGeneratorOpen] = useState(false);
   const managementButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -90,8 +75,9 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     setStartupError(undefined);
     try {
       const started = await action("runtime.creator.canvas.start", {}, true);
-      setUrl(String(started.url));
-      setCapability(String(started.capability));
+      const canvasUrl = new URL(String(started.url));
+      canvasUrl.hostname = "localhost";
+      setUrl(canvasUrl.toString());
       const listed = await action("runtime.creator.project.list");
       setProjects(listed.projects as { id: string; title: string }[] || []);
       const remembered = openId || (createNew ? undefined : window.localStorage.getItem(LAST_PROJECT_KEY));
@@ -120,11 +106,16 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     finally { setBusy(false); }
   };
   useEffect(() => { void refreshComponent(); }, []);
+
+  const initializeProvider = () => {
+    if (!url || !apiKey) return;
+    frame.current?.contentWindow?.postMessage({ type: "uking:provider:init", apiKey }, new URL(url).origin);
+  };
+
   const initializeBridge = () => {
-    if (!url || !capability || !projectId) return;
-    // The capability lives only in this React state and this one postMessage;
-    // it is not an URL parameter, log line, or browser-storage value.
+    if (!url || !projectId) return;
     frame.current?.contentWindow?.postMessage({ type: "uking:bridge:init", projectId }, new URL(url).origin);
+    initializeProvider();
   };
 
   useEffect(() => {
@@ -150,6 +141,10 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
         initializeBridge();
         return;
       }
+      if (request?.type === "uking:provider:ready") {
+        initializeProvider();
+        return;
+      }
       const actionId = request?.type === "uking:bridge:project.inspect"
         ? "runtime.creator.project.inspect"
         : request?.type === "uking:bridge:project.save"
@@ -163,55 +158,12 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [url, projectId, capability]);
+  }, [url, projectId, apiKey]);
 
-  const waitForTask = async (taskId: string) => {
-    if (!projectId) return;
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 300));
-      const inspected = await action("runtime.creator.image.inspect", { project_id: projectId, task_id: taskId });
-      const task = inspected.task as { status?: string; error?: string; result?: { asset?: { url?: string } } } | undefined;
-      const status = task?.status || "unknown";
-      setTaskStatus(status);
-      if (status === "completed") {
-        const asset = task?.result?.asset;
-        if (asset?.url && url && capability) {
-          // The asset route requires the session header. Convert it to an
-          // in-memory data URL in the trusted host so the iframe never learns
-          // the capability and the saved canvas survives a reload.
-          const dataUrl = await readLocalAssetAsDataUrl(asset.url, url, capability);
-          frame.current?.contentWindow?.postMessage({ type: "uking:bridge:image.insert", asset: { url: dataUrl } }, new URL(url).origin);
-        }
-        onToast("图片已写入本地项目并插入画布");
-        return;
-      }
-      if (status === "failed" || status === "pending-verify" || status === "not_configured") {
-        onToast(task?.error || `图片任务处于 ${status}，未自动重投`);
-        return;
-      }
-    }
-    setTaskStatus("pending-verify");
-    onToast("图片任务等待超时；请检查任务，未自动重投");
-  };
-
-  const generate = async () => {
-    if (!projectId || !prompt.trim()) return;
-    setBusy(true);
-    try {
-      const result = await action("runtime.creator.image.submit", { project_id: projectId, prompt, model: "gpt-image-2", size: "1024x1024", quality: "medium" }, true);
-      const taskId = String(result.task_id || "");
-      setTaskStatus(String(result.status || "pending"));
-      if (!taskId) throw new Error("本地图片任务未返回 task_id");
-      if (result.status === "not_configured") {
-        onToast(String(result.error || "图片生成尚未配置"));
-        return;
-      }
-      onToast(`图片任务已排队：${taskId}`);
-      setPrompt("");
-      void waitForTask(taskId);
-    } catch (error) { onToast(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
-  };
+  useEffect(() => {
+    if (!url || !projectId) return;
+    initializeProvider();
+  }, [url, projectId, apiKey]);
 
   const hasAvailableUpdate = component?.state === "installed"
     && offer?.available === true
@@ -221,7 +173,6 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
 
   const clearCanvasSurface = () => {
     setUrl(undefined);
-    setCapability(undefined);
     setProjectId(undefined);
     setProjectTitle(undefined);
   };
@@ -334,19 +285,18 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
     return localCanvasUrl.toString();
   })() : undefined;
 
-  return <div ref={canvasContainer} className={`flex min-h-0 flex-1 flex-col gap-3 ${isFullscreen ? "h-screen w-screen bg-[#161616] p-4" : ""}`}>
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-      <PanelTopOpen size={16} className="text-accent" />
-      <span className="mr-auto text-sm font-medium">{projectTitle ? `本地创作画布 · ${projectTitle}` : "本地创作画布"}</span>
+  return <div ref={canvasContainer} className={`relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 ${isFullscreen ? "h-screen w-screen bg-[#161616] p-4" : ""}`}>
+    <div className="flex min-w-0 items-center gap-2 overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.03] p-2">
+      <PanelTopOpen size={16} className="shrink-0 text-accent" />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">{projectTitle ? `本地创作画布 · ${projectTitle}` : "本地创作画布"}</span>
       {component?.state === "installed" && !isFullscreen &&
-      <select aria-label="打开本地项目" value={projectId || ""} disabled={busy || saving || Boolean(saveError)} onChange={event => void start({ openId: event.target.value })} className="rounded-lg border border-white/[0.1] bg-black/20 px-2 py-2 text-sm"><option value="" disabled>选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title} · {project.id.slice(-6)}</option>)}</select>
+      <select aria-label="打开本地项目" value={projectId || ""} disabled={busy || saving || Boolean(saveError)} onChange={event => void start({ openId: event.target.value })} className="max-w-40 shrink-0 rounded-lg border border-white/[0.1] bg-black/20 px-2 py-1.5 text-sm"><option value="" disabled>选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title} · {project.id.slice(-6)}</option>)}</select>
       }
       {component?.state === "installed" && !isFullscreen &&
-      <button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Plus size={15} />新建项目</button>
+      <button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.1] px-2.5 py-1.5 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Plus size={15} />新建项目</button>
       }
-      {component?.state === "installed" && <button type="button" onClick={() => void toggleFullscreen()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">{isFullscreen ? <Minimize size={15} /> : <Expand size={15} />}{isFullscreen ? "退出大屏" : "大屏创作"}</button>}
-      {component?.state === "installed" && <button type="button" onClick={() => setMaterialGeneratorOpen((open) => !open)} aria-expanded={materialGeneratorOpen} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1 disabled:opacity-50"><ImagePlus size={15} />生成素材</button>}
-      {(component?.state === "installed" || component?.state === "damaged") && !checkingComponent && !isFullscreen && <button ref={managementButton} type="button" onClick={() => setManagementOpen((open) => !open)} aria-expanded={managementOpen} aria-label="画布管理" title="画布管理" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"><MoreHorizontal size={16} />画布管理</button>}
+      {component?.state === "installed" && <button type="button" onClick={() => void toggleFullscreen()} disabled={busy || saving || Boolean(saveError)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.1] px-2.5 py-1.5 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50">{isFullscreen ? <Minimize size={15} /> : <Expand size={15} />}{isFullscreen ? "退出大屏" : "大屏创作"}</button>}
+      {(component?.state === "installed" || component?.state === "damaged") && !checkingComponent && !isFullscreen && <button ref={managementButton} type="button" onClick={() => setManagementOpen((open) => !open)} aria-expanded={managementOpen} aria-label="画布管理" title="画布管理" className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/[0.1] p-1.5 text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"><MoreHorizontal size={16} /></button>}
     </div>
     {managementOpen && <AnchoredMenu anchorRef={managementButton} onClose={() => setManagementOpen(false)} minWidth={356}>
       <section className="space-y-3 p-3 text-sm text-ink-2">
@@ -379,19 +329,12 @@ export function CreatorCanvas({ onToast, onGoDraw, onGoVideo }: {
       <span className="text-ink-2">画布有可用更新：<strong className="font-medium text-ink-1">{offer?.bundle_id}</strong><span className="ml-1 text-xs text-ink-4">更新不会删除创作项目。</span></span>
       <button type="button" onClick={() => void installComponent({ replacing: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />更新画布</button>
     </div>}
-    {component?.state === "installed" && materialGeneratorOpen && <section aria-label="生成素材" className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-      <div className="mr-auto min-w-36"><p className="text-sm font-medium text-ink-2">生成素材</p><p className="mt-0.5 text-xs text-ink-4">图片会插入当前画布。</p></div>
-      <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} placeholder="描述想生成的图片…" className="min-w-52 flex-1 rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2 text-sm outline-none focus:border-accent" disabled={busy} />
-      <button type="button" onClick={() => void generate()} disabled={busy || !prompt.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><ImagePlus size={15} />生成并插入</button>
-      {taskStatus && <span className="w-full text-xs text-ink-4">任务：{taskStatus}</span>}
-    </section>}
     {isFullscreen && <p className="text-center text-xs text-ink-3">按 Esc 返回普通视图</p>}
-    {saving && <span className="text-xs text-ink-3">正在保存…</span>}
-    {saveError && <div role="alert" className="text-sm text-amber-400">{saveError}</div>}
+    {(saving || saveError) && <div role={saveError ? "alert" : "status"} aria-live="polite" className={`pointer-events-none absolute bottom-3 right-3 z-10 max-w-72 rounded-md border px-2.5 py-1.5 text-xs shadow-card ${saveError ? "border-amber-400/30 bg-bg-2/95 text-amber-400" : "border-white/[0.12] bg-bg-2/90 text-ink-3"}`}>{saveError || "正在保存…"}</div>}
     {checkingComponent ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在检查本地画布组件…</div>
       : component?.state === "damaged" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地画布组件需要维护。</p><p className="mt-1 text-xs">{component.detail || "请在画布管理中重新安装组件；你的创作项目会保留。"}</p></div><button type="button" onClick={() => setManagementOpen(true)} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><MoreHorizontal size={15} />打开画布管理</button>{saveError && <p role="alert" className="text-xs text-amber-400">请先修复保存问题后再维护。</p>}{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
       : component?.state !== "installed" ? <div className="grid flex-1 place-items-center gap-3 rounded-xl border border-dashed border-white/[0.12] p-8 text-center text-ink-3"><div><p className="text-sm text-ink-2">本地创作画布是可选下载组件，安装后仅在本机运行。</p><p className="mt-1 text-xs">{offer?.available ? `下载大小：${Math.ceil((offer.archive_bytes || 0) / 1024 / 1024)} MB` : "组件发布包尚未就绪，请等待 U-King 更新组件目录。"}</p></div>{offer?.available && <button onClick={() => void installComponent()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Download size={15} />下载并安装本地画布</button>}<div className="flex flex-wrap justify-center gap-2"><button type="button" onClick={onGoDraw} disabled={!onGoDraw} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><ImagePlus size={15} />AI 作图</button><button type="button" onClick={onGoVideo} disabled={!onGoVideo} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06] disabled:opacity-50"><Clapperboard size={15} />视频片段</button></div>{startupError && <p role="alert" className="text-xs text-amber-400">{startupError}</p>}</div>
-      : busy && !url ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在启动本地画布…</div> : canvasUrl && projectId ? <iframe key={projectId} ref={frame} onLoad={initializeBridge} title="OpenTu 本地创作画布" src={canvasUrl} className="min-h-0 flex-1 rounded-xl border border-white/[0.08] bg-white" sandbox="allow-scripts allow-same-origin allow-downloads" /> : <div className="grid flex-1 place-items-center gap-2 text-ink-3">{startupError ? `无法打开上次项目：${startupError}` : "本地画布尚未启动。"}<div className="flex gap-2"><button onClick={() => void start()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><ExternalLink size={14} />打开本地画布</button><button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><Plus size={14} />新建项目</button></div></div>}
+      : busy && !url ? <div className="grid flex-1 place-items-center text-ink-3"><LoaderCircle className="animate-spin" />正在启动本地画布…</div> : canvasUrl && projectId ? <iframe key={projectId} ref={frame} onLoad={initializeBridge} title="OpenTu 本地创作画布" src={canvasUrl} className="block min-h-0 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white" sandbox="allow-scripts allow-same-origin allow-downloads" /> : <div className="grid flex-1 place-items-center gap-2 text-ink-3">{startupError ? `无法打开上次项目：${startupError}` : "本地画布尚未启动。"}<div className="flex gap-2"><button onClick={() => void start()} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><ExternalLink size={14} />打开本地画布</button><button onClick={() => void start({ createNew: true })} disabled={busy || saving || Boolean(saveError)} className="inline-flex items-center gap-1 text-accent disabled:opacity-50"><Plus size={14} />新建项目</button></div></div>}
     {maintenanceConfirmation && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/60 p-4" onClick={() => !busy && setMaintenanceConfirmation(undefined)}>
       <div className="w-full max-w-md space-y-4 rounded-xl border border-white/[0.12] bg-bg-2 p-5 shadow-card" onClick={(event) => event.stopPropagation()}>
         <div>

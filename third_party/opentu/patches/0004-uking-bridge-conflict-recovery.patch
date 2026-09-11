@@ -1,0 +1,157 @@
+diff --git a/apps/web/src/app/app.tsx b/apps/web/src/app/app.tsx
+index e12c5b0..04574e6 100644
+--- a/apps/web/src/app/app.tsx
++++ b/apps/web/src/app/app.tsx
+@@ -87,0 +88 @@ type UkingBridgeResult = {
++    canvas_state_version?: string;
+@@ -88,0 +90 @@ type UkingBridgeResult = {
++  error?: string | { message?: string };
+@@ -91,0 +94,14 @@ type UkingBridgeResult = {
++type UkingBridgeState = {
++  parentOrigin: string;
++  projectId: string;
++  stateVersion: string;
++  canvasStateVersion: string;
++  uncertainCanvasFingerprint?: string;
++  ready: boolean;
++  snapshot: BoardPersistencePayload | null;
++  sequence: number;
++  saves: Promise<void>;
++  pendingSaves: number;
++  pending: Map<string, (value: UkingBridgeResult) => void>;
++};
++
+@@ -119,0 +136,23 @@ function isUkingBoardPayload(value: unknown): value is BoardPersistencePayload {
++function getUkingBridgeError(reply: UkingBridgeResult): string {
++  if (typeof reply.error === 'string') return reply.error;
++  if (typeof reply.error?.message === 'string') return reply.error.message;
++  return 'U-King local project rejected this save';
++}
++
++function isUkingConflict(reply: UkingBridgeResult): boolean {
++  return !reply.ok && getUkingBridgeError(reply).startsWith('conflict:');
++}
++
++function fingerprintUkingCanvas(value: unknown): string {
++  if (Array.isArray(value)) {
++    return `[${value.map(fingerprintUkingCanvas).join(',')}]`;
++  }
++  if (isRecord(value)) {
++    return `{${Object.keys(value)
++      .sort()
++      .map(key => `${JSON.stringify(key)}:${fingerprintUkingCanvas(value[key])}`)
++      .join(',')}}`;
++  }
++  return JSON.stringify(value) ?? 'null';
++}
++
+@@ -323,11 +362 @@ export function App() {
+-  const ukingRef = useRef<{
+-    parentOrigin: string;
+-    projectId: string;
+-    stateVersion: string;
+-    ready: boolean;
+-    snapshot: BoardPersistencePayload | null;
+-    sequence: number;
+-    saves: Promise<void>;
+-    pendingSaves: number;
+-    pending: Map<string, (value: UkingBridgeResult) => void>;
+-  } | null>(null);
++  const ukingRef = useRef<UkingBridgeState | null>(null);
+@@ -385,0 +415 @@ export function App() {
++          canvasStateVersion: '',
+@@ -396 +426 @@ export function App() {
+-            if (!reply.ok || !result || !isUkingBoardPayload(result.canvas) || typeof result.state_version !== 'string') {
++            if (!reply.ok || !result || !isUkingBoardPayload(result.canvas) || typeof result.state_version !== 'string' || typeof result.canvas_state_version !== 'string') {
+@@ -408,0 +439 @@ export function App() {
++            bridge.canvasStateVersion = result.canvas_state_version;
+@@ -458,8 +489,79 @@ export function App() {
+-        const reply = await requestUking('uking:bridge:project.save', {
+-          project_id: uking.projectId,
+-          canvas: portableCanvas,
+-          expected_state_version: uking.stateVersion,
+-        });
+-        const version = reply.result?.state_version;
+-        if (!reply.ok || typeof version !== 'string') {
+-          throw new Error('U-King local project rejected this save');
++        const canvasFingerprint = fingerprintUkingCanvas(portableCanvas);
++        const acknowledge = (result: UkingBridgeResult['result']) => {
++          if (
++            !result ||
++            typeof result.state_version !== 'string' ||
++            typeof result.canvas_state_version !== 'string'
++          ) {
++            throw new Error('U-King local project returned an invalid save result');
++          }
++          uking.stateVersion = result.state_version;
++          uking.canvasStateVersion = result.canvas_state_version;
++          uking.uncertainCanvasFingerprint = undefined;
++        };
++        const sendSave = async () => {
++          try {
++            return await requestUking('uking:bridge:project.save', {
++              project_id: uking.projectId,
++              canvas: portableCanvas,
++              expected_state_version: uking.stateVersion,
++            });
++          } catch (error) {
++            if (error instanceof Error && error.message.endsWith('request timed out')) {
++              // The host may have committed this request after the iframe timeout.
++              // A later queued save may advance only when inspect proves that state.
++              uking.uncertainCanvasFingerprint = canvasFingerprint;
++            }
++            throw error;
++          }
++        };
++
++        const reply = await sendSave();
++        if (reply.ok) {
++          acknowledge(reply.result);
++        } else if (!isUkingConflict(reply)) {
++          throw new Error(getUkingBridgeError(reply));
++        } else {
++          const conflictError = getUkingBridgeError(reply);
++          const inspectedReply = await requestUking('uking:bridge:project.inspect', {
++            project_id: uking.projectId,
++          });
++          const inspected = inspectedReply.result;
++          if (
++            !inspectedReply.ok ||
++            !inspected ||
++            !isUkingBoardPayload(inspected.canvas) ||
++            typeof inspected.state_version !== 'string' ||
++            typeof inspected.canvas_state_version !== 'string'
++          ) {
++            throw new Error(
++              `U-King local project conflict recovery inspect failed: ${getUkingBridgeError(inspectedReply)}`
++            );
++          }
++
++          const inspectedFingerprint = fingerprintUkingCanvas(inspected.canvas);
++          if (inspectedFingerprint === canvasFingerprint) {
++            // The save reached disk but its response was lost. Adopt the host state.
++            acknowledge(inspected);
++          } else {
++            const onlyAnotherProjectChanged =
++              inspected.canvas_state_version === uking.canvasStateVersion;
++            const priorTimedOutSaveReachedHost =
++              inspectedFingerprint === uking.uncertainCanvasFingerprint;
++            if (!onlyAnotherProjectChanged && !priorTimedOutSaveReachedHost) {
++              throw new Error(conflictError);
++            }
++
++            // Refresh the global version and retry exactly once. A second conflict
++            // remains a real concurrent change and is never overwritten.
++            uking.stateVersion = inspected.state_version;
++            uking.canvasStateVersion = inspected.canvas_state_version;
++            if (priorTimedOutSaveReachedHost) {
++              uking.uncertainCanvasFingerprint = undefined;
++            }
++            const retriedReply = await sendSave();
++            if (!retriedReply.ok) {
++              throw new Error(getUkingBridgeError(retriedReply));
++            }
++            acknowledge(retriedReply.result);
++          }
+@@ -467 +568,0 @@ export function App() {
+-        uking.stateVersion = version;

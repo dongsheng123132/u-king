@@ -20,7 +20,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const MAX_CANVAS_BYTES: usize = 2 * 1024 * 1024;
+const MAX_CANVAS_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PROMPT_CHARS: usize = 8_000;
 const ALLOWED_SIZES: &[&str] = &["1024x1024", "1024x1536", "1536x1024"];
 const ALLOWED_QUALITIES: &[&str] = &["low", "medium", "high"];
@@ -395,7 +395,7 @@ pub fn save_project(id: &str, canvas: &Value, expected: Option<&str>) -> Result<
     }
     let bytes = serde_json::to_vec(canvas).map_err(|e| format!("画布序列化失败: {e}"))?;
     if bytes.len() > MAX_CANVAS_BYTES {
-        return Err("invalid_input: 画布超过 2MB 上限".into());
+        return Err("invalid_input: 画布超过 32MB 上限".into());
     }
     let raw = String::from_utf8(bytes).map_err(|_| "画布不是 UTF-8 JSON".to_string())?;
     manifest.updated_at = now_ms();
@@ -673,7 +673,7 @@ fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
 
 struct LocalServer {
     stop: Arc<AtomicBool>,
-    thread: thread::JoinHandle<()>,
+    threads: Vec<thread::JoinHandle<()>>,
     url: String,
     capability: String,
 }
@@ -795,25 +795,34 @@ pub fn start_server() -> Result<Value, String> {
     // Ask the OS for a free loopback port. A fixed port made the optional
     // canvas unusable whenever another app already listened on 17778. The
     // trusted desktop Action returns this exact origin; we never kill that app.
-    let listener = bind_loopback_listener()?;
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("读取本地创作画布端口失败: {e}"))?
-        .port();
-    listener
+    let (ipv4_listener, ipv6_listener, port) = bind_loopback_listeners()?;
+    ipv4_listener
         .set_nonblocking(true)
         .map_err(|e| format!("配置本地画布端口失败: {e}"))?;
+    if let Some(listener) = ipv6_listener.as_ref() {
+        listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("配置 IPv6 本地创作画布端口失败: {e}"))?;
+    }
     let stop = Arc::new(AtomicBool::new(false));
-    let thread_stop = stop.clone();
     let capability = random_capability()?;
-    let thread_capability = capability.clone();
     let origin = format!("http://127.0.0.1:{port}");
+    let mut threads = Vec::with_capacity(usize::from(ipv6_listener.is_some()) + 1);
+    if let Some(listener) = ipv6_listener {
+        let thread_stop = stop.clone();
+        let thread_capability = capability.clone();
+        let thread_origin = origin.clone();
+        let thread_root = root.clone();
+        threads.push(thread::spawn(move || serve_loop(listener, thread_root, thread_capability, thread_origin, thread_stop)));
+    }
+    let thread_stop = stop.clone();
+    let thread_capability = capability.clone();
     let thread_origin = origin.clone();
-    let server_thread = thread::spawn(move || serve_loop(listener, root, thread_capability, thread_origin, thread_stop));
+    threads.push(thread::spawn(move || serve_loop(ipv4_listener, root, thread_capability, thread_origin, thread_stop)));
     let url = format!("{origin}/");
     *slot = Some(LocalServer {
         stop,
-        thread: server_thread,
+        threads,
         url: url.clone(),
         capability: capability.clone(),
     });
@@ -826,18 +835,70 @@ pub fn stop_server() -> Result<Value, String> {
     let mut slot = server_slot().lock().map_err(|_| "本地画布服务锁损坏")?;
     if let Some(server) = slot.take() {
         server.stop.store(true, Ordering::Release);
-        // `serve_loop` owns the listener. Waiting for its exit proves port
-        // The loopback port has been released before an uninstall can delete
-        // the current component version.
-        server.thread.join().map_err(|_| "本地画布服务停止异常".to_string())?;
+        // The serving loops own both loopback listeners. Waiting for every
+        // exit proves their shared port is released before component removal.
+        let mut clean_exit = true;
+        for thread in server.threads {
+            clean_exit &= thread.join().is_ok();
+        }
+        if !clean_exit {
+            return Err("本地画布服务停止异常".to_string());
+        }
         return Ok(json!({ "stopped": true }));
     }
     Ok(json!({ "stopped": false }))
 }
 
-fn bind_loopback_listener() -> Result<TcpListener, String> {
-    TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| format!("network_error: 无法启动本地创作画布服务: {e}"))
+fn bind_loopback_listeners() -> Result<(TcpListener, Option<TcpListener>, u16), String> {
+    const PORT_ATTEMPTS: usize = 8;
+    for _ in 0..PORT_ATTEMPTS {
+        let ipv4_listener = TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("network_error: 无法启动本地创作画布服务: {e}"))?;
+        let port = ipv4_listener
+            .local_addr()
+            .map_err(|e| format!("读取本地创作画布端口失败: {e}"))?
+            .port();
+        match TcpListener::bind(format!("[::1]:{port}")) {
+            Ok(ipv6_listener) => return Ok((ipv4_listener, Some(ipv6_listener), port)),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                // A separate IPv6 service owns this same port. Drop the IPv4
+                // listener and ask the OS for another port instead of letting
+                // `localhost` resolve to somebody else's service.
+                continue;
+            }
+            Err(error) if ipv6_loopback_unavailable(&error) => {
+                if localhost_resolves_ipv6()? {
+                    return Err(format!(
+                        "network_error: localhost 会解析到 IPv6，但无法监听 ::1: {error}"
+                    ));
+                }
+                // An IPv6-disabled machine resolves localhost only to IPv4;
+                // serving the IPv4 listener remains the exact localhost path.
+                return Ok((ipv4_listener, None, port));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "network_error: 无法在同一端口监听 IPv6 本地创作画布服务: {error}"
+                ));
+            }
+        }
+    }
+    Err("network_error: 无法找到同时可供 IPv4 与 IPv6 回环使用的本地创作画布端口".into())
+}
+
+fn ipv6_loopback_unavailable(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::Unsupported
+    )
+}
+
+fn localhost_resolves_ipv6() -> Result<bool, String> {
+    use std::net::ToSocketAddrs;
+    ("localhost", 0)
+        .to_socket_addrs()
+        .map(|mut addresses| addresses.any(|address| address.ip().is_ipv6()))
+        .map_err(|error| format!("network_error: 无法解析 localhost: {error}"))
 }
 
 fn random_capability() -> Result<String, String> {
@@ -1219,11 +1280,11 @@ fn reply_with_headers(
         404 => "Not Found",
         _ => "Error",
     };
-    // The bundled upstream UI is a replaceable canvas surface. Even if it has
-    // dormant provider code, this local server must not let it open a direct
-    // network path that bypasses U-King's fake-generator safety gate.
-    const LOCAL_ONLY_CSP: &str = "default-src 'self' data: blob:; connect-src 'self'; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:";
-    let mut response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nContent-Security-Policy: {LOCAL_ONLY_CSP}\r\n", body.len());
+    // The verified local bundle keeps executable code local. Its native
+    // generation calls the configured U-King provider endpoint, while returned
+    // image and media URLs may be HTTPS resources.
+    const CREATOR_CANVAS_CSP: &str = "default-src 'self' data: blob:; connect-src 'self' data: blob: https://api.u-claw.org.cn; img-src 'self' https: data: blob:; media-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:";
+    let mut response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nContent-Security-Policy: {CREATOR_CANVAS_CSP}\r\n", body.len());
     for (name, value) in extra_headers {
         // All values here are server constants or a validated exact Origin.
         // Keep the defensive check so a later caller cannot smuggle a header.
@@ -1369,11 +1430,140 @@ mod tests {
     }
 
     #[test]
-    fn loopback_server_uses_an_os_selected_port() {
-        let listener = bind_loopback_listener().unwrap();
+    fn inline_media_canvas_is_bounded_at_32mb_without_overwriting_saved_work() {
+        crate::testsandbox::with_sandbox("creator-inline-media-limit", &[], |_| {
+            let made = create_project_with_id("media-canvas", None).unwrap();
+            let initial_version = made["state_version"].as_str().unwrap().to_owned();
+            // Three MiB is representative of one inlined generated image: it
+            // exceeds the previous 2 MiB limit but stays below the new bound.
+            let medium_src = format!("data:image/png;base64,{}", "a".repeat(3 * 1024 * 1024));
+            let medium_canvas = json!({ "elements": [{ "type": "image", "src": medium_src }] });
+            let saved = save_project("media-canvas", &medium_canvas, Some(&initial_version)).unwrap();
+            let saved_version = saved["state_version"].as_str().unwrap().to_owned();
+            let saved_canvas_version = saved["canvas_state_version"].clone();
+            let medium_len = medium_canvas["elements"][0]["src"].as_str().unwrap().len();
+            let reopened = inspect_project("media-canvas").unwrap();
+            assert_eq!(reopened["canvas_state_version"], saved_canvas_version);
+            assert_eq!(reopened["canvas"]["elements"][0]["src"].as_str().unwrap().len(), medium_len);
+
+            // JSON overhead makes this definitively larger than 32 MiB. A
+            // rejected replacement must leave the prior, valid canvas intact.
+            let oversized_canvas = json!({
+                "elements": [{
+                    "type": "image",
+                    "src": format!("data:image/png;base64,{}", "b".repeat(MAX_CANVAS_BYTES + 1)),
+                }]
+            });
+            assert_eq!(
+                save_project("media-canvas", &oversized_canvas, Some(&saved_version)).unwrap_err(),
+                "invalid_input: 画布超过 32MB 上限"
+            );
+            let after_rejection = inspect_project("media-canvas").unwrap();
+            assert_eq!(after_rejection["canvas_state_version"], saved_canvas_version);
+            assert_eq!(
+                after_rejection["canvas"]["elements"][0]["src"]
+                    .as_str()
+                    .unwrap()
+                    .len(),
+                medium_len
+            );
+        });
+    }
+
+    #[test]
+    fn canvas_response_allows_only_the_configured_provider_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
-        assert!(address.ip().is_loopback());
-        assert_ne!(address.port(), 0);
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            reply(&mut stream, 200, "text/plain", b"ok").unwrap();
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        server.join().unwrap();
+
+        let connect_src = response
+            .lines()
+            .find_map(|header| header.strip_prefix("Content-Security-Policy: "))
+            .and_then(|csp| {
+                csp.split(';')
+                    .map(str::trim)
+                    .find(|directive| directive.starts_with("connect-src "))
+            });
+        assert_eq!(
+            connect_src,
+            Some("connect-src 'self' data: blob: https://api.u-claw.org.cn")
+        );
+        assert!(response.contains("img-src 'self' https: data: blob:; media-src 'self' https: data: blob:"));
+    }
+
+    #[test]
+    fn loopback_server_uses_an_os_selected_port() {
+        let (ipv4_listener, _, port) = bind_loopback_listeners().unwrap();
+        let address = ipv4_listener.local_addr().unwrap();
+        assert_eq!(address.ip().to_string(), "127.0.0.1");
+        assert_eq!(address.port(), port);
+        assert_ne!(port, 0);
+    }
+
+    #[test]
+    fn dual_loopback_listeners_serve_health_on_the_same_port() {
+        let (ipv4_listener, ipv6_listener, port) = bind_loopback_listeners().unwrap();
+        let ipv4_address = ipv4_listener.local_addr().unwrap();
+        ipv4_listener.set_nonblocking(true).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let root = PathBuf::from(".");
+        let capability = "test-capability".to_string();
+        let origin = format!("http://127.0.0.1:{port}");
+        let ipv4_stop = stop.clone();
+        let ipv4_thread = thread::spawn(move || {
+            serve_loop(ipv4_listener, root, capability, origin, ipv4_stop)
+        });
+
+        let ipv6_thread = ipv6_listener.map(|listener| {
+            let ipv6_address = listener.local_addr().unwrap();
+            assert_eq!(ipv6_address.port(), port);
+            listener.set_nonblocking(true).unwrap();
+            let ipv6_stop = stop.clone();
+            thread::spawn(move || {
+                serve_loop(
+                    listener,
+                    PathBuf::from("."),
+                    "test-capability".to_string(),
+                    format!("http://127.0.0.1:{port}"),
+                    ipv6_stop,
+                )
+            })
+        });
+
+        let health = |address: std::net::SocketAddr| {
+            let mut client = TcpStream::connect_timeout(&address, Duration::from_secs(2)).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            client
+                .write_all(b"GET /__uking/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            let mut response = String::new();
+            client.read_to_string(&mut response).unwrap();
+            response
+        };
+        assert!(health(ipv4_address).contains("200 OK"));
+        if let Some(ipv6_thread) = ipv6_thread {
+            let ipv6_address = std::net::SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], port));
+            assert!(health(ipv6_address).contains("200 OK"));
+            stop.store(true, Ordering::Release);
+            ipv4_thread.join().unwrap();
+            ipv6_thread.join().unwrap();
+        } else {
+            assert!(!localhost_resolves_ipv6().unwrap());
+            stop.store(true, Ordering::Release);
+            ipv4_thread.join().unwrap();
+        }
     }
 
     #[test]

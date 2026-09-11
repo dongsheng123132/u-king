@@ -23,7 +23,7 @@ const source = path.resolve(configuredSource);
 const releaseDir = path.join(root, "outputs", "creator-components");
 // Increment for every U-King-only patch. Existing customer archives stay
 // immutable so the trusted catalogue can always identify the exact bytes.
-const bundleId = "opentu-1.1.6-uking.4";
+const bundleId = "opentu-1.1.6-uking.7";
 const archivePath = path.join(releaseDir, `${bundleId}.tar.gz`);
 const catalogueCandidate = path.join(releaseDir, `${bundleId}.json`);
 const patches = path.join(root, "third_party", "opentu", "patches");

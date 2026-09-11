@@ -93,8 +93,8 @@ export function Create({
       {/* 子页内容：访问过即挂载，display 切换保活 */}
       <div className="flex min-h-0 flex-1 flex-col">
       {mounted.has("canvas") && (
-        <div className="flex-1 min-h-0" style={{ display: sub === "canvas" ? undefined : "none" }}>
-          <Suspense fallback={<Fallback />}><CreatorCanvas onToast={onToast} onGoDraw={() => go("draw")} onGoVideo={() => go("video")} /></Suspense>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ display: sub === "canvas" ? undefined : "none" }}>
+          <Suspense fallback={<Fallback />}><CreatorCanvas apiKey={deviceKey?.key} onToast={onToast} onGoDraw={() => go("draw")} onGoVideo={() => go("video")} /></Suspense>
         </div>
       )}
       {mounted.has("draw") && (
