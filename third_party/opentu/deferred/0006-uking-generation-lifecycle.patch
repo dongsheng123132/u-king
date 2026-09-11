@@ -1,0 +1,94 @@
+diff --git a/apps/web/src/app/app.tsx b/apps/web/src/app/app.tsx
+index 04574e6..66eb358 100644
+--- a/apps/web/src/app/app.tsx
++++ b/apps/web/src/app/app.tsx
+@@ -34,0 +35,2 @@ import { collectAndDownloadErrorLog } from '../utils/error-log-exporter';
++import { taskQueueService } from '../../../../packages/drawnix/src/services/task-queue';
++import { TaskStatus, type Task } from '../../../../packages/drawnix/src/types/task.types';
+@@ -112,0 +115,24 @@ const isUkingHostMode =
++const UKING_TASK_STORAGE_READY_EVENT = 'uking:task-storage-ready';
++
++// uking-generation-lifecycle:publisher-begin
++function isUkingGenerationTaskActive(task: Task): boolean {
++  return (
++    task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING
++  );
++}
++
++export function getUkingGenerationState(
++  tasks: Task[],
++  taskStorageReady: boolean
++): boolean | undefined {
++  if (!taskStorageReady) return undefined;
++  return tasks.some(isUkingGenerationTaskActive);
++}
++// uking-generation-lifecycle:publisher-end
++
++function isUkingTaskStorageReady(): boolean {
++  return Boolean(
++    (window as Window & { __UKING_TASK_STORAGE_READY__?: boolean })
++      .__UKING_TASK_STORAGE_READY__
++  );
++}
+@@ -362,0 +389,3 @@ export function App() {
++  const ukingTaskStorageReadyRef = useRef(
++    !isUkingHostMode || isUkingTaskStorageReady()
++  );
+@@ -388,0 +418,13 @@ export function App() {
++  const publishUkingGenerationState = useCallback(() => {
++    const bridge = ukingRef.current;
++    const active = getUkingGenerationState(
++      taskQueueService.getAllTasks(),
++      ukingTaskStorageReadyRef.current
++    );
++    if (!isUkingHostMode || !bridge?.ready || typeof active !== 'boolean') return;
++    window.parent.postMessage(
++      { type: 'uking:bridge:generation-state', active },
++      bridge.parentOrigin
++    );
++  }, []);
++
+@@ -444,0 +487 @@ export function App() {
++            publishUkingGenerationState();
+@@ -471 +514 @@ export function App() {
+-    window.parent.postMessage({ type: 'uking:bridge:ready' }, '*');
++    window.parent.postMessage({ type: 'uking:bridge:ready', capabilities: { generationState: true } }, '*');
+@@ -474 +517,20 @@ export function App() {
+-  }, [requestUking]);
++  }, [publishUkingGenerationState, requestUking]);
++
++  useEffect(() => {
++    if (!isUkingHostMode) return;
++    const markTaskStorageReady = () => {
++      ukingTaskStorageReadyRef.current = true;
++      publishUkingGenerationState();
++    };
++    window.addEventListener(UKING_TASK_STORAGE_READY_EVENT, markTaskStorageReady);
++    if (isUkingTaskStorageReady()) markTaskStorageReady();
++    return () => window.removeEventListener(UKING_TASK_STORAGE_READY_EVENT, markTaskStorageReady);
++  }, [publishUkingGenerationState]);
++
++  useEffect(() => {
++    if (!isUkingHostMode) return;
++    const subscription = taskQueueService
++      .observeTaskUpdates()
++      .subscribe(() => publishUkingGenerationState());
++    return () => subscription.unsubscribe();
++  }, [publishUkingGenerationState]);
+diff --git a/packages/drawnix/src/components/startup/DrawnixDeferredRuntime.tsx b/packages/drawnix/src/components/startup/DrawnixDeferredRuntime.tsx
+index 2485ac2..506f0a0 100644
+--- a/packages/drawnix/src/components/startup/DrawnixDeferredRuntime.tsx
++++ b/packages/drawnix/src/components/startup/DrawnixDeferredRuntime.tsx
+@@ -20,0 +21,4 @@ const FRESH_WORKZONE_GRACE_MS = 60_000;
++const isUkingHostMode =
++  typeof window !== 'undefined' &&
++  new URLSearchParams(window.location.search).get('uking_host') === '1';
++const UKING_TASK_STORAGE_READY_EVENT = 'uking:task-storage-ready';
+@@ -54,0 +59,7 @@ export function DrawnixDeferredRuntime({
++  useEffect(() => {
++    if (!isUkingHostMode || !isTaskStorageReady) return;
++    (window as Window & { __UKING_TASK_STORAGE_READY__?: boolean })
++      .__UKING_TASK_STORAGE_READY__ = true;
++    window.dispatchEvent(new Event(UKING_TASK_STORAGE_READY_EVENT));
++  }, [isTaskStorageReady]);
++

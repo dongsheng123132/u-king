@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use crate::installer::curl;
@@ -6588,12 +6589,36 @@ fn parse_key_issue(v: &Value) -> Result<DeviceKeyIssue, String> {
 /// 用 `-w '\n%{http_code}'` 把状态码追在响应体后面，再从**最后一个换行**切开 ——
 /// 不能用 `split('\n').last()` 之外的切法：JSON 体里带换行是常态，从前面切会把
 /// 响应体截断成半截 JSON，然后报一个「响应不是 JSON」的假故障。
+/// 同一进程里可能同时有多条试连/测速请求。临时正文文件不能只带 PID：并发调用的
+/// PID 相同，会互相覆盖请求体，造成「A 卡片实际发的是 B 的模型」这种串位。
+static REQUEST_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+fn request_temp_path(kind: &str) -> PathBuf {
+    let sequence = REQUEST_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "uking-{kind}-{}-{sequence}.json",
+        std::process::id()
+    ))
+}
+
+#[cfg(test)]
+mod request_temp_path_tests {
+    use super::request_temp_path;
+
+    #[test]
+    fn concurrent_requests_cannot_share_a_body_file() {
+        let first = request_temp_path("req");
+        let second = request_temp_path("req");
+        assert_ne!(first, second, "每条请求必须有自己的临时正文文件");
+    }
+}
+
 fn curl_post_json_status(
     url: &str,
     headers: &[String],
     body: &Value,
 ) -> Result<(u16, Value), String> {
-    let tmp = std::env::temp_dir().join(format!("uking-devreq-{}.json", std::process::id()));
+    let tmp = request_temp_path("devreq");
     std::fs::write(&tmp, serde_json::to_vec(body).unwrap())
         .map_err(|e| format!("写请求临时文件失败: {e}"))?;
     let data = format!("@{}", tmp.display());
@@ -6630,10 +6655,7 @@ fn curl_post_json_timeout(
     body: &Value,
     timeout_s: u32,
 ) -> Result<Value, String> {
-    let tmp = std::env::temp_dir().join(format!(
-        "uking-req-{}.json",
-        std::process::id()
-    ));
+    let tmp = request_temp_path("req");
     std::fs::write(&tmp, serde_json::to_vec(body).unwrap())
         .map_err(|e| format!("写请求临时文件失败: {e}"))?;
     let data = format!("@{}", tmp.display());

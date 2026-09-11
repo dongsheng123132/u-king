@@ -24,6 +24,12 @@ const MAX_FILE_COUNT: u64 = 4_096;
 const MAX_PATH_DEPTH: usize = 32;
 const MAX_RELATIVE_PATH_BYTES: usize = 240;
 
+/// The built-in OpenTu component remains archived until its release path is
+/// ready. Keep its trusted catalogue parsing and existing on-disk projects
+/// intact so this single switch can be revisited without changing data.
+pub(crate) const CANVAS_AVAILABLE: bool = false;
+pub(crate) const CANVAS_COMING_SOON: &str = "coming_soon: 创作画布待上线";
+
 /// Metadata must come from U-King's built-in trusted release catalogue.  It is
 /// not parsed from the archive and every field is deliberately non-optional.
 ///
@@ -146,7 +152,7 @@ fn trusted_offer() -> Result<Option<(ComponentManifest, String)>, String> {
 
 pub fn inspect_opentu_offer() -> Result<ComponentOffer, String> {
     Ok(match trusted_offer()? {
-        Some((manifest, _)) => ComponentOffer { available: true, bundle_id: Some(manifest.bundle_id), archive_bytes: Some(manifest.archive_bytes) },
+        Some((manifest, _)) => ComponentOffer { available: CANVAS_AVAILABLE, bundle_id: Some(manifest.bundle_id), archive_bytes: Some(manifest.archive_bytes) },
         None => ComponentOffer { available: false, bundle_id: None, archive_bytes: None },
     })
 }
@@ -651,6 +657,9 @@ pub fn install_opentu_archive(archive_path: &Path, manifest: &ComponentManifest)
 /// the temp file to the same hash-checked transactional installer.  The caller
 /// cannot provide a URL, manifest, or destination.
 pub fn install_catalogued_opentu() -> Result<ComponentInspection, String> {
+    if !CANVAS_AVAILABLE {
+        return Err(CANVAS_COMING_SOON.into());
+    }
     let Some((manifest, url)) = trusted_offer()? else {
         return Err("not_installed: OpenTu 本地画布组件尚未发布；请等待 U-King 更新组件目录".into());
     };
@@ -895,7 +904,7 @@ mod tests {
             // only the `include_str!` catalogue compiled into this binary,
             // never an Action, GUI, CLI, or replaceable resource path.
             let offer = inspect_opentu_offer().unwrap();
-            assert!(offer.available);
+            assert!(!offer.available);
             assert_eq!(offer.bundle_id.as_deref(), Some("opentu-1.1.6-uking.7"));
             assert_eq!(offer.archive_bytes, Some(18_559_802));
             let (manifest, _) = trusted_offer().unwrap().unwrap();
@@ -904,6 +913,7 @@ mod tests {
             assert!(active_opentu_static_root()
                 .unwrap_err()
                 .starts_with("not_installed:"));
+            assert_eq!(install_catalogued_opentu().unwrap_err(), CANVAS_COMING_SOON);
 
             // Keep strict trusted-catalogue parsing covered without making a
             // test delivery URL part of the compiled-in release catalogue.

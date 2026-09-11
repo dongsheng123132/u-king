@@ -781,6 +781,9 @@ fn verify_static_file(root: &Path, file: &Path) -> bool {
 }
 
 pub fn start_server() -> Result<Value, String> {
+    if !component::CANVAS_AVAILABLE {
+        return Err(component::CANVAS_COMING_SOON.into());
+    }
     // An uninstall holds this same gate while it stops the listener and removes
     // the component. Without it a second surface could restart the server in
     // the narrow gap after `stop_server()` and before component deletion.
@@ -1311,6 +1314,18 @@ pub fn inspect_canvas() -> Value {
         .map(serde_json::to_value)
         .and_then(|value| value.map_err(|e| e.to_string()));
     let installed = component::inspect_opentu();
+    if !component::CANVAS_AVAILABLE {
+        return json!({
+            "ready": false,
+            "release_status": "coming_soon",
+            "project_root": root.display().to_string(),
+            "static_bundle": false,
+            "integrity": "unavailable",
+            "component": installed,
+            "offer": offer.unwrap_or_else(|error| json!({ "available": false, "error": error })),
+            "blockers": ["创作画布待上线"],
+        });
+    }
     match verified_static_root() {
         Ok(_) => json!({
             "ready": true,
@@ -1336,6 +1351,9 @@ pub fn inspect_canvas() -> Value {
 /// Install only the pinned catalogue entry.  It intentionally does not start
 /// the iframe service: UI and CLI can inspect the completed state first.
 pub fn install_canvas_component() -> Result<Value, String> {
+    if !component::CANVAS_AVAILABLE {
+        return Err(component::CANVAS_COMING_SOON.into());
+    }
     let _operation = component_operation_lock()
         .lock()
         .map_err(|_| "OpenTu 组件操作锁损坏".to_string())?;
@@ -1357,6 +1375,25 @@ pub fn uninstall_canvas_component() -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn held_canvas_cannot_start_or_install_and_keeps_projects_available() {
+        crate::testsandbox::with_sandbox("creator-canvas-hold", &[], |_| {
+            let project = create_project_with_id("held-project", Some("已归档项目")).unwrap();
+            let state = uking_home();
+            assert_eq!(start_server().unwrap_err(), component::CANVAS_COMING_SOON);
+            assert_eq!(install_canvas_component().unwrap_err(), component::CANVAS_COMING_SOON);
+            assert!(!state.join("components").exists(), "hold must not create a component root");
+
+            let inspection = inspect_canvas();
+            assert_eq!(inspection["ready"], false);
+            assert_eq!(inspection["release_status"], "coming_soon");
+            assert_eq!(inspection["offer"]["available"], false);
+            assert_eq!(inspection["blockers"][0], "创作画布待上线");
+            assert_eq!(inspect_project("held-project").unwrap()["id"], project["id"]);
+            assert_eq!(stop_server().unwrap()["stopped"], false);
+        });
+    }
 
     #[test]
     fn projects_are_atomic_and_reject_stale_writes() {

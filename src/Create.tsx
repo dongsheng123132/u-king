@@ -1,11 +1,11 @@
 /**
  * AI 创作 —— AI 作图 / 视频片段 / 创作画布 / 海报二维码四合一入口。
  *
- * 信息架构梳理：作图、视频片段和海报二维码是可直接使用的创作能力；创作画布是紧接
- * 视频片段的本地选装组件。四项统一放在核心入口「AI 创作」，不再散落在侧栏其它位置。
+ * 信息架构梳理：作图、视频片段和海报二维码是可直接使用的创作能力；创作画布暂存为
+ * 待上线入口。四项统一放在核心入口「AI 创作」，不再散落在侧栏其它位置。
  *
  * 本页只是壳：内部标签切换 + 懒挂载保活（访问过的 tab 用 display 切换不卸载，
- * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）与创作画布保持独立模块、
+ * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）与创作画布入口保持独立、
  * 原路由不动（AI 专家页等深链仍可直达）。删除本页只需动 App.tsx + Sidebar（铁律④）。
  */
 import { lazy, Suspense, useState } from "react";
@@ -17,7 +17,6 @@ import type { DeviceKey } from "./lib/types";
 const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
-const CreatorCanvas = lazy(() => import("./CreatorCanvas").then((m) => ({ default: m.CreatorCanvas })));
 
 /** 与 App.tsx 的 DeviceKey 同构（透传，不加工）。 */
 type SubTab = "canvas" | "draw" | "video" | "qrmerge";
@@ -90,11 +89,26 @@ export function Create({
         })}
       </nav>
 
-      {/* 子页内容：访问过即挂载，display 切换保活 */}
+      {/* 子页内容：可用页面访问过即挂载，display 切换保活。 */}
       <div className="flex min-h-0 flex-1 flex-col">
       {mounted.has("canvas") && (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ display: sub === "canvas" ? undefined : "none" }}>
-          <Suspense fallback={<Fallback />}><CreatorCanvas apiKey={deviceKey?.key} onToast={onToast} onGoDraw={() => go("draw")} onGoVideo={() => go("video")} /></Suspense>
+          <section className="grid flex-1 place-items-center rounded-xl border border-dashed border-white/[0.12] p-8 text-center">
+            <div className="max-w-sm space-y-3">
+              <div className="flex items-center justify-center gap-2">
+                <PanelTopOpen size={18} className="text-accent" />
+                <span className="rounded-full border border-accent/30 bg-accent/[0.08] px-2 py-0.5 text-xs font-medium text-accent">{t("待上线")}</span>
+              </div>
+              <div>
+                <h2 className="text-base font-medium text-ink-1">{t("创作画布")}</h2>
+                <p className="mt-2 text-sm leading-6 text-ink-3">{t("功能完善中，可先使用 AI 作图或视频片段。")}</p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button type="button" onClick={() => go("draw")} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06]"><ImageIcon size={15} />{t("AI 作图")}</button>
+                <button type="button" onClick={() => go("video")} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06]"><Clapperboard size={15} />{t("视频片段")}</button>
+              </div>
+            </div>
+          </section>
         </div>
       )}
       {mounted.has("draw") && (

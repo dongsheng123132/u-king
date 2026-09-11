@@ -25,6 +25,7 @@ import { localllm } from "./en/localllm";
 import { deviceWallet } from "./en/device-wallet";
 import { englishUi } from "./en/english-ui";
 import { reel } from "./en/reel";
+import { canvas } from "./en/canvas";
 
 export const EN: Record<string, string> = {
   // 🔴 backfill 必须**第一个** spread：它是机器批量补的历史欠账，
@@ -48,6 +49,7 @@ export const EN: Record<string, string> = {
   ...identity,
   ...deviceWallet,
   ...reel,
+  ...canvas,
 
   // Dynamic data-table strings and compact English copy intentionally win last.
   ...englishUi,

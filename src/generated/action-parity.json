@@ -5927,7 +5927,7 @@
   "application": {
     "id": "org.u-king.desktop",
     "name": "U-King",
-    "version": "1.3.0"
+    "version": "1.3.2"
   },
   "conformance_targets": [
     "AP-1",
@@ -5935,7 +5935,7 @@
   ],
   "generated_from": {
     "generator": "U-King Action Registry host projection",
-    "revision": "1.3.0"
+    "revision": "1.3.2"
   },
   "spec_version": "0.5.0",
   "state": {

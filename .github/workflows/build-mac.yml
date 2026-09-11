@@ -45,7 +45,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+        run: pnpm tauri build --target universal-apple-darwin --bundles app
 
       - name: Build (signed + notarized)
         if: ${{ inputs.notarize == 'true' }}
@@ -57,7 +57,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+        run: pnpm tauri build --target universal-apple-darwin --bundles app
 
       # 兜底：若没正式签名（secret 缺失，Tauri 给的是 rustc linker ad-hoc 签名，
       # 资源封印缺失，macOS 15/26 会判「已损坏」），用 --force --deep 重建封印。
@@ -79,10 +79,23 @@ jobs:
           ./src-tauri/target/universal-apple-darwin/release/u-king-mini --selfcheck selfcheck-mac.json
           cat selfcheck-mac.json
 
-      - name: Zip .app
+      - name: Package and verify matching ZIP and DMG
         run: |
-          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
-          ditto -c -k --keepParent U-King.app U-King-Mac.zip
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/U-King.app
+          MACOS_DIR=src-tauri/target/universal-apple-darwin/release/bundle/macos
+          DMG_DIR=src-tauri/target/universal-apple-darwin/release/bundle/dmg
+          ZIP="$MACOS_DIR/U-King-Mac.zip"
+          DMG="$DMG_DIR/U-King-Mac.dmg"
+          STAGE="$(mktemp -d)"
+          trap 'rm -rf "$STAGE"' EXIT
+          rm -f "$ZIP" "$DMG"
+          ditto -c -k --keepParent "$APP" "$ZIP"
+          mkdir -p "$DMG_DIR"
+          ditto "$APP" "$STAGE/U-King.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "U-King" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          VERSION="$(node -p "require('./package.json').version")"
+          python3 scripts/verify-mac-release.py --zip "$ZIP" --dmg "$DMG" --version "$VERSION" --source-commit "$GITHUB_SHA" --output "$MACOS_DIR/mac-release-proof.json"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -90,4 +103,5 @@ jobs:
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/universal-apple-darwin/release/bundle/macos/U-King-Mac.zip
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/mac-release-proof.json
           retention-days: 14

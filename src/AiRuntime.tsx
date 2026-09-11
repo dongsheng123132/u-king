@@ -17,6 +17,7 @@ import { ACTION, createTauriActionClient } from "./generated/action-client";
 // 使用数据面板（metrics.rs 的 GUI 投影）。同样是独立组件，删它只动本文件。
 import { MetricsPanel } from "./components/MetricsPanel";
 import { buildDoctorPrompt } from "./airuntime/doctorPrompt";
+import { copyToClipboard } from "./lib/clipboard";
 
 const callAction = createTauriActionClient(invoke, {
   command: "action_parity_call",
@@ -321,6 +322,21 @@ export function AiRuntime({ onToast, onGoSetup, onAskAI }: { onToast?: (msg: str
     }
   };
 
+  const askAI = async () => {
+    if (!report || busy !== null) return;
+    setBusy("ask-ai");
+    try {
+      const prompt = buildDoctorPrompt(report);
+      const copied = await copyToClipboard(prompt);
+      onAskAI?.(prompt);
+      onToast?.(copied
+        ? t("已复制体检结果和提示词，正在打开 AI 工作台")
+        : t("剪贴板复制失败，体检结果仍已交给 AI 工作台"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const undo = async () => {
     setBusy("undo");
     setDelta(null);
@@ -419,8 +435,9 @@ export function AiRuntime({ onToast, onGoSetup, onAskAI }: { onToast?: (msg: str
             </button>
             <button
               className="px-3.5 py-2 rounded-card border border-accent/40 bg-accent/[0.08] text-[12px] font-medium text-accent hover:bg-accent/[0.16] disabled:opacity-40"
-              disabled={busy !== null}
-              onClick={() => { onAskAI?.(buildDoctorPrompt(report)); onToast?.(t("已把体检结果交给 AI，正在打开工作台")); }}
+              disabled={busy !== null || !onAskAI}
+              title={t("复制体检结果和提示词，并打开 AI 工作台自动发送")}
+              onClick={() => void askAI()}
             >
               {t("让 AI 给优化建议")}
             </button>

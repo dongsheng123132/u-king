@@ -377,7 +377,9 @@ export const codex: Record<string, string> = {
   已是最佳状态: "Already optimal",
   一键优化: "One-click optimize",
   "让 AI 给优化建议": "Ask AI for advice",
-  "已把体检结果交给 AI，正在打开工作台": "Handed the health-check report to AI — opening the workspace",
+  "已复制体检结果和提示词，正在打开 AI 工作台": "Copied the health-check report and prompt — opening the AI workspace",
+  "剪贴板复制失败，体检结果仍已交给 AI 工作台": "Clipboard copy failed; the health-check report was still sent to the AI workspace",
+  "复制体检结果和提示词，并打开 AI 工作台自动发送": "Copy the health-check report and prompt, then open the AI workspace and send automatically",
   一键复原: "One-click revert",
   "把 AI 工具目录加进 Windows Defender 排除，npm/装机不再被实时扫描拖慢（需管理员，可一键复原）":
     "Add the AI tool directories to the Windows Defender exclusions so npm / installs are no longer slowed by real-time scanning (requires admin, one-click revert available)",
