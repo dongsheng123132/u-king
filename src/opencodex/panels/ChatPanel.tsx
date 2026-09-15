@@ -121,6 +121,14 @@ function fmtDur(sec: number): string {
   return s ? `${m} 分 ${s} 秒` : `${m} 分钟`;
 }
 
+/** 45600 → "45.6k"；1200000 → "1.2M"。对话里 token 数动辄几十万，原样打出来没人读得出量级。
+ *  没复用 Meter.tsx 的 fmtTokens：那个用「万/亿」且中文写死在函数里，进不了 i18n。 */
+function fmtTok(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return String(n);
+}
+
 /** 「看命令」：后端 agent/cmdline.rs 每轮发来的真实命令 + 终端交互式等价写法。 */
 type CmdInfo = { display: string; teach: string; program: string; prompt_inlined: boolean };
 
@@ -134,9 +142,7 @@ type ToolItem = {
   done: boolean;
 };
 type TextItem = { kind: "text"; role: "user" | "assistant"; text: string };
-/** 这一轮的账。`cny` 是**我们自己按水电表那份价表算的**，不是上游 CLI 报的 $ ——
- *  上游拿它认得的官方价算 deepseek，出来的数跟真实扣费无关（详见 lib.rs::chat_cost_cny）。 */
-type UsageItem = { kind: "usage"; inTok: number; outTok: number; cacheRead: number; cacheWrite: number; costUsd: number; cny: number; ms: number };
+type UsageItem = { kind: "usage"; inTok: number; outTok: number; cacheRead: number; cacheWrite: number; costUsd: number; ms: number };
 type Item = TextItem | ToolItem | UsageItem;
 
 /**
@@ -354,9 +360,10 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 模型覆盖（空 = 跟着驱动配置走）。按大脑各记各的：claude 和 codex 认的模型名根本不是一套。
-  /** 本会话累计花费（¥，我们自己的口径）。客户原话「10 元很快就用完了」——
-   *  他缺的不是省钱手段，是**知道钱花在哪一轮**。 */
-  const [spentCny, setSpentCny] = useState(0);
+  /** 本会话累计 token 用量。客户原话「10 元很快就用完了」——他缺的不是省钱手段，
+   *  是**看得见自己用到哪儿了**；以前拿写死的价表折算成 ¥，跟真实账单对不上，
+   *  改成直接报 token（CLI usage 事件的原始数字，无需换算，不会漂）。 */
+  const [spentTok, setSpentTok] = useState(0);
   const [model, setModel] = useState(() => {
     try {
       return localStorage.getItem(MODEL_KEY + agent) ?? "";
@@ -551,28 +558,19 @@ export function ChatPanel({
           }
         } else if (kind === "usage") {
           streamingIdx.current = null;
-          next.push({
-            kind: "usage",
-            inTok: ev.input_tokens ?? 0,
-            outTok: ev.output_tokens ?? 0,
-            cacheRead: ev.cache_read_input_tokens ?? ev.cache_read_tokens ?? 0,
-            cacheWrite: ev.cache_creation_input_tokens ?? ev.cache_write_tokens ?? 0,
-            costUsd: ev.cost_usd ?? 0,
-            cny: 0, // 下面异步问后端按统一口径算，算回来再填
-            ms: ev.duration_ms ?? 0,
-          });
-          // 按我们自己的口径折人民币（异步，算回来再填那一条 + 累进会话总账）
           const inTok = ev.input_tokens ?? 0, outTok = ev.output_tokens ?? 0;
           const cr = ev.cache_read_input_tokens ?? ev.cache_read_tokens ?? 0;
           const cw = ev.cache_creation_input_tokens ?? ev.cache_write_tokens ?? 0;
-          const at = next.length - 1;
-          void invoke<number>("chat_cost_cny", { model: model || agent, input: inTok, output: outTok, cacheRead: cr, cacheWrite: cw })
-            .then((cny) => {
-              if (!cny) return;
-              setItems((cur) => cur.map((x, i) => (i === at && x.kind === "usage" ? { ...x, cny } : x)));
-              setSpentCny((v) => v + cny);
-            })
-            .catch(() => {});
+          next.push({
+            kind: "usage",
+            inTok,
+            outTok,
+            cacheRead: cr,
+            cacheWrite: cw,
+            costUsd: ev.cost_usd ?? 0,
+            ms: ev.duration_ms ?? 0,
+          });
+          setSpentTok((v) => v + inTok + outTok + cr + cw);
         }
         return next;
       });
@@ -854,12 +852,13 @@ export function ChatPanel({
         {/* 🔴 输入框上方那句小 slogan **删了**：空态主区已经是「U-King / 更多 AI，你来指挥」
             两行大字（照 WorkBuddy 那张），同一句话在一屏上说两遍不会更响，只会更挤。
             slogan 该有一个完整、够大的位置 —— 那个位置在上面，不是这儿。 */}
-        {/* 本会话累计花费：只在真花过钱之后才出现，一行、极轻。
-            客户原话「10 元很快就用完了」—— 他缺的不是省钱手段，是**看得见自己花到哪儿了**。 */}
+        {/* 本会话累计用量：只在真产生过用量之后才出现，一行、极轻。
+            客户原话「10 元很快就用完了」—— 他缺的不是省钱手段，是**看得见自己用到哪儿了**。
+            2026-09-15：改用真实 token 数取代写死价表折算的 ¥ —— 那个估算跟真实账单对不上。 */}
         {/* 2026-09-06 Astra UI 规格 A1：12px / ink-3，保留原位置（右对齐、输入框正上方） */}
-        {spentCny > 0 && (
+        {spentTok > 0 && (
           <div className="max-w-2xl mx-auto mb-1 text-right text-[12px] text-ink-3 font-mono">
-            {t("本会话累计 ≈¥{v}", { v: spentCny < 0.01 ? spentCny.toFixed(4) : spentCny.toFixed(2) })}
+            {t("本会话累计 {n} tokens", { n: fmtTok(spentTok) })}
           </div>
         )}
         {/* 输入框卡片（WorkBuddy / Codex 式）：左下角是能力，右下角是动作。
@@ -1160,20 +1159,23 @@ function Bubble({ item, onDismiss, onPreview, onRunInTerminal }: { item: Item; o
 
 /**
  * 轮次尾注（2026-09-06 Astra UI 规格 A1）：以前是一行 10.5px/ink-5 的裸 token 数字，
- * 客户很难扫读。默认只留一句「本轮估算 ≈¥x · N 秒 · 用量详情」，费用 ink-2、耗时和
+ * 客户很难扫读。默认只留一句「本轮 N tokens · N 秒 · 用量详情」，用量 ink-2、耗时和
  * 详情入口 ink-3；点「用量详情」才展开输入/输出/缓存读写的等宽明细。
  * 模型徽章那段规格标了「需拍板」，本轮不做 —— 这里只整理既有的消耗行。
+ *
+ * 2026-09-15：规格原文这里是「本轮估算 ≈¥x」，改成纯 token —— 那个 ¥ 是拿写死的价表
+ * （usage_local.rs::price_per_million）折算出来的估算，不是上游真实扣费，客户实测发现
+ * 跟账单对不上。token 数直接来自 CLI usage 事件，是可核对的原始事实，不需要换算。
  */
 function UsageFooter({ item }: { item: Extract<Item, { kind: "usage" }> }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  // 沿用现有精度规则：低于 1 分钱显示 4 位小数，否则 2 位。费用未知（<=0）就不显示 ¥0。
-  const costText = item.cny > 0 ? `≈¥${item.cny < 0.01 ? item.cny.toFixed(4) : item.cny.toFixed(2)}` : "";
+  const totalTok = item.inTok + item.outTok + item.cacheRead + item.cacheWrite;
   const secText = item.ms > 0 ? fmtDur(Math.round(item.ms / 1000)) : "";
   return (
     <div className="mt-2 mb-4 text-[12px] leading-[20px]">
       <div className="flex items-center gap-1 flex-wrap">
-        {costText && <span className="text-ink-2">{t("本轮估算 {c}", { c: costText })}</span>}
+        {totalTok > 0 && <span className="text-ink-2">{t("本轮 {n} tokens", { n: fmtTok(totalTok) })}</span>}
         {secText && <span className="text-ink-3">· {secText}</span>}
         <button type="button" onClick={() => setOpen((v) => !v)} className="text-ink-3 hover:text-ink-1">
           · {t("用量详情")}
