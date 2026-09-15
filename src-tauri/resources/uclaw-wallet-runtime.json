@@ -1,0 +1,9 @@
+{
+  "_todo": "clients/uclaw-wallet has not cut its first release yet (see plan picoclaw-u-eventual-noodle.md, change 1). Once it tags a release, replace asset_url/sha256/archive_bytes below with real values, following the exact shape of picoclaw-runtime.json (schema_version stays 1, platform stays windows-x64, sha256 is the lowercase 64-hex digest of the downloaded file, archive_bytes is its exact byte length). Until then usb_genie.rs's stage_and_commit_wallet_binary() detects the PENDING_FIRST_RELEASE placeholder and skips bundling with a warning instead of failing deploy.",
+  "schema_version": 1,
+  "version": "0.0.0-unreleased",
+  "platform": "windows-x64",
+  "asset_url": "PENDING_FIRST_RELEASE",
+  "sha256": "PENDING_FIRST_RELEASE",
+  "archive_bytes": 0
+}

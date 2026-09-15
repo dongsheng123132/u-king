@@ -98,6 +98,120 @@ fn cached_archive(m: &RuntimeManifest, progress: &crate::actions::ProgressSink) 
     Ok(archive)
 }
 
+/// Manifest for the optional `uclaw-wallet.exe` bundled alongside PicoClaw.
+/// Mirrors `RuntimeManifest`'s shape so it can be pinned and verified the
+/// same way, but it is deliberately a *separate* type: unlike PicoClaw there
+/// is no `VERSION` constant to hard-check against (the wallet has not cut a
+/// release yet — see `resources/uclaw-wallet-runtime.json`'s `_todo`), and it
+/// must tolerate the `PENDING_FIRST_RELEASE` placeholder without treating
+/// that as a manifest-shape violation.
+#[derive(Deserialize)]
+struct WalletManifest {
+    schema_version: u32,
+    #[allow(dead_code)]
+    version: String,
+    platform: String,
+    sha256: String,
+    asset_url: String,
+    archive_bytes: u64,
+}
+
+const WALLET_ASSET_PENDING: &str = "PENDING_FIRST_RELEASE";
+
+fn wallet_manifest() -> Result<WalletManifest, String> {
+    let m: WalletManifest =
+        serde_json::from_str(include_str!("../resources/uclaw-wallet-runtime.json"))
+            .map_err(|e| format!("uclaw-wallet runtime 清单无效: {e}"))?;
+    if m.schema_version != 1 || m.platform != "windows-x64" {
+        return Err("uclaw-wallet runtime 清单不符合固定 Windows x64 版本契约".into());
+    }
+    Ok(m)
+}
+
+/// Download (with the same pinned-cache-then-verify discipline as
+/// `cached_archive`) the bundled `uclaw-wallet.exe` and commit it into
+/// `<AI-Genie>/uclaw-wallet.exe`. Callers must check for the
+/// `PENDING_FIRST_RELEASE` placeholder first — this function assumes a real
+/// `asset_url` and will treat the placeholder as a download failure like any
+/// other bad URL.
+fn cached_wallet_binary(m: &WalletManifest, progress: &crate::actions::ProgressSink) -> Result<PathBuf, String> {
+    let cache_dir = std::env::temp_dir().join("u-king-usb-genie").join("wallet-cache");
+    let binary = cache_dir.join(format!("uclaw-wallet-{}-windows-x64.exe", m.version));
+    if binary.is_file()
+        && fs::metadata(&binary).map(|meta| meta.len() == m.archive_bytes).unwrap_or(false)
+        && sha256_file(&binary).ok().as_deref() == Some(m.sha256.as_str())
+    {
+        return Ok(binary);
+    }
+    fs::create_dir_all(&cache_dir).map_err(|error| format!("创建 uclaw-wallet 下载缓存失败: {error}"))?;
+    let partial = cache_dir.join(format!(".uclaw-wallet-{}-{}.part", std::process::id(), now_nanos()));
+    progress("下载并校验固定 uclaw-wallet 二进制…");
+    let mut child = Command::new(crate::installer::system_tool("curl"))
+        .args(["-fL", "--connect-timeout", "20", "--max-time", "600", "--retry", "2", "--retry-delay", "2", "-o"])
+        .arg(&partial)
+        .arg(&m.asset_url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("启动 uclaw-wallet 下载失败: {error}"))?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(610);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&partial);
+                return Err("下载 uclaw-wallet 二进制超时，U 盘未被写入".into());
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = fs::remove_file(&partial);
+                return Err(format!("等待 uclaw-wallet 下载失败: {error}"));
+            }
+        }
+    };
+    if !status.success() {
+        let _ = fs::remove_file(&partial);
+        return Err("下载 uclaw-wallet 二进制失败；请检查网络后重试，U 盘未被写入".into());
+    }
+    let bytes_ok = fs::metadata(&partial).map(|meta| meta.len() == m.archive_bytes).unwrap_or(false);
+    let hash_ok = sha256_file(&partial).ok().as_deref() == Some(m.sha256.as_str());
+    if !bytes_ok || !hash_ok {
+        let _ = fs::remove_file(&partial);
+        return Err("下载的 uclaw-wallet 二进制未通过固定大小和 SHA-256 校验，U 盘未被写入".into());
+    }
+    if binary.exists() { let _ = fs::remove_file(&binary); }
+    fs::rename(&partial, &binary).map_err(|error| format!("提交 uclaw-wallet 下载缓存失败: {error}"))?;
+    Ok(binary)
+}
+
+/// Stage and commit `uclaw-wallet.exe` into `<AI-Genie>/uclaw-wallet.exe`.
+/// Mirrors `stage_and_commit_runtime`'s "verify then commit" shape but is
+/// intentionally its own function rather than a branch inside that one:
+/// `stage_and_commit_runtime`/`extract_runtime` hard-check PicoClaw's pinned
+/// `VERSION` and unzip a multi-file archive, neither of which applies here
+/// (the wallet is a single already-executable file, and has no pinned
+/// version yet at all). While `clients/uclaw-wallet` has not cut its first
+/// release, `resources/uclaw-wallet-runtime.json` carries the
+/// `PENDING_FIRST_RELEASE` placeholder; deploy must degrade gracefully
+/// (skip + warn) rather than fail the whole disk over a binary that does not
+/// exist yet.
+fn stage_and_commit_wallet_binary(root: &Path, progress: &crate::actions::ProgressSink) -> Result<(), String> {
+    let m = wallet_manifest()?;
+    if m.asset_url == WALLET_ASSET_PENDING || m.sha256 == WALLET_ASSET_PENDING {
+        progress("uclaw-wallet 尚未发布，跳过随盘打包，本盘将直接以 picoclaw agent 启动，无设备钱包");
+        return Ok(());
+    }
+    let binary = cached_wallet_binary(&m, progress)?;
+    progress("提交 uclaw-wallet 到 AI Genie…");
+    fs::copy(&binary, genie(root).join("uclaw-wallet.exe"))
+        .map_err(|error| format!("提交 uclaw-wallet 二进制失败: {error}"))?;
+    Ok(())
+}
+
 fn genie(root: &Path) -> PathBuf {
     root.join("U-King").join("AI-Genie")
 }
@@ -345,12 +459,25 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 }
 
 fn artifact_hashes(root: &Path) -> Result<Value, String> {
-    Ok(json!({
+    let mut map = json!({
         "runtime/current/picoclaw.exe": sha256_file(&current(root).join("picoclaw.exe"))?,
         "runtime/current/LICENSE": sha256_file(&current(root).join("LICENSE"))?,
         "runtime/current/README.md": sha256_file(&current(root).join("README.md"))?,
         "launcher": sha256_file(&launcher(root))?,
-    }))
+    });
+    // `uclaw-wallet.exe` is optional: while `resources/uclaw-wallet-runtime.json`
+    // still carries the `PENDING_FIRST_RELEASE` placeholder, `deploy()` skips
+    // bundling it entirely and no disk (old or new) will have this file. Only
+    // require + record its hash when it is actually present, so its absence
+    // never fails `verify()` for disks made before (or during) the pending
+    // window, while still catching tampering/corruption once it is bundled.
+    let wallet = genie(root).join("uclaw-wallet.exe");
+    if wallet.is_file() {
+        map.as_object_mut()
+            .expect("artifact_hashes builds a JSON object")
+            .insert("uclaw-wallet.exe".into(), Value::String(sha256_file(&wallet)?));
+    }
+    Ok(map)
 }
 
 fn artifacts_match(root: &Path, expected: &Value) -> bool {
@@ -522,7 +649,15 @@ fn credential_plan(root: &Path, credential_ref: &str, official_device_key: Optio
     match credential_ref {
         "none" => Ok((None, if data(root).join(".security.yml").is_file() { "preserved_existing" } else { "none" })),
         "official_device" => Ok((Some(official_device_key.ok_or("credential_unavailable: 当前设备钱包不可用")?), "official_device")),
-        _ => Err("invalid_input: credential_ref 目前只能是 none 或 official_device".into()),
+        // No credential is written at manufacturing time on purpose: the
+        // customer's own `.security.yml` is written later, on first boot, by
+        // the bundled `uclaw-wallet.exe` self-binding against the device
+        // wallet service — not by U-King at deploy time. `credential_mode`
+        // is still recorded as `self_bind` (not `none`) so `verify()` can
+        // tell "no credential by design, file may legitimately appear later"
+        // apart from "no credential, and none is ever expected".
+        "self_bind" => Ok((None, "self_bind")),
+        _ => Err("invalid_input: credential_ref 目前只能是 none、official_device 或 self_bind".into()),
     }
 }
 
@@ -605,6 +740,7 @@ fn deploy(
         // broken archive / extraction can never be mistaken for a half-ready
         // AI data tree.
         stage_and_commit_runtime(root, zip, progress)?;
+        stage_and_commit_wallet_binary(root, progress)?;
         for dir in [data(root).join("workspace"), data(root).join("logs"), data(root).join("tmp")] {
             fs::create_dir_all(dir).map_err(|e| format!("创建 AI Genie 目录失败: {e}"))?;
         }
@@ -675,12 +811,29 @@ fn verify(root: &Path) -> Result<Value, String> {
     // second drift is exactly what a bare `fs::remove_file` in
     // `action_credential_remove` used to leave behind — a disk that verifies
     // green on the workbench and then 401s at runtime once plugged in).
+    //
+    // `self_bind` is a third, deliberately looser case: at manufacturing time
+    // `credential_plan()` never writes `.security.yml` for it (see the
+    // comment there), so the file is absent on every freshly deployed disk.
+    // The file only comes into existence later, on the customer's own
+    // machine, when the bundled `uclaw-wallet.exe` self-binds against the
+    // device wallet service on first boot and writes it — an event this
+    // U-King process is never present for. So neither "file absent" (fresh
+    // off the line) nor "file present" (already self-bound) is a drift for
+    // `self_bind`; both are expected states across the disk's lifetime.
     let credential_state_consistent = current_meta
         .as_ref()
         .map(|v| {
-            let mode_is_none = v["credential_mode"] == "none";
             let security_file_exists = data(root).join(".security.yml").exists();
-            mode_is_none == !security_file_exists
+            match v["credential_mode"].as_str() {
+                Some("none") => !security_file_exists,
+                Some("self_bind") => true,
+                // "official_device" and any other non-`none` mode (e.g. the
+                // deploy-time `"preserved_existing"` alias for `none` with a
+                // pre-existing file — see `credential_plan`) keep the
+                // original expectation: a credential file must be present.
+                _ => security_file_exists,
+            }
         })
         .unwrap_or(false);
     let files_ok = exe.is_file()
@@ -1245,6 +1398,106 @@ mod tests {
         assert!(credential_plan(&p, "provider:not-ready", None).unwrap_err().contains("invalid_input"));
         let _ = fs::remove_dir_all(p);
     }
+    #[test]
+    fn wallet_manifest_placeholder_skips_bundling_without_failing_deploy() {
+        // clients/uclaw-wallet 还没打出第一个 release：resources/uclaw-wallet-runtime.json
+        // 目前必须是 PENDING_FIRST_RELEASE 占位值，stage_and_commit_wallet_binary
+        // 遇到占位值必须优雅跳过（Ok(())，不下载、不落盘、不让 deploy 失败），
+        // 而不是 panic 或把整块盘的制作拖下水。
+        let m = wallet_manifest().unwrap();
+        assert_eq!(m.schema_version, 1);
+        assert_eq!(m.platform, "windows-x64");
+        assert_eq!(m.asset_url, WALLET_ASSET_PENDING, "占位期间 asset_url 必须仍是占位值");
+        assert_eq!(m.sha256, WALLET_ASSET_PENDING, "占位期间 sha256 必须仍是占位值");
+
+        let p = root();
+        let noop: &crate::actions::ProgressSink = &|_msg: &str| {};
+        let result = stage_and_commit_wallet_binary(&p, noop);
+        assert!(result.is_ok(), "占位 manifest 不应让 deploy 失败: {result:?}");
+        assert!(
+            !genie(&p).join("uclaw-wallet.exe").exists(),
+            "占位 manifest 不应落盘任何 uclaw-wallet.exe"
+        );
+        let _ = fs::remove_dir_all(p);
+    }
+
+    #[test]
+    fn artifact_hashes_omit_wallet_binary_when_absent_but_include_it_when_present() {
+        // artifact_hashes 里的 uclaw-wallet.exe 条目是可选的：占位期间任何盘都不
+        // 会有这个文件，verify() 不能因为它不存在就判红；一旦文件确实存在（未来
+        // 真正打包进去后），它的哈希必须被记录和校验，防篡改/损坏检测不能因为
+        // 「可选」就被整体豁免。
+        let p = root();
+        fs::create_dir_all(current(&p)).unwrap();
+        for name in ["picoclaw.exe", "LICENSE", "README.md"] { fs::write(current(&p).join(name), name).unwrap(); }
+        fs::write(launcher(&p), "known launcher").unwrap();
+        let without_wallet = artifact_hashes(&p).unwrap();
+        assert!(without_wallet.get("uclaw-wallet.exe").is_none());
+
+        fs::create_dir_all(genie(&p)).unwrap();
+        fs::write(genie(&p).join("uclaw-wallet.exe"), "fake wallet binary").unwrap();
+        let with_wallet = artifact_hashes(&p).unwrap();
+        assert!(with_wallet.get("uclaw-wallet.exe").is_some());
+        assert!(artifacts_match(&p, &with_wallet));
+
+        fs::write(genie(&p).join("uclaw-wallet.exe"), "tampered").unwrap();
+        assert!(!artifacts_match(&p, &with_wallet), "篡改 uclaw-wallet.exe 后哈希必须不再匹配");
+
+        let _ = fs::remove_dir_all(p);
+    }
+
+    #[test]
+    fn self_bind_credential_plan_writes_no_credential_but_marks_mode() {
+        // 出厂盘 credential_ref=self_bind：制盘阶段不写任何凭据文件（key 由随盘
+        // 的 uclaw-wallet.exe 在客户首启联网时才签发），但 mode 必须记成
+        // "self_bind" 而不是 "none"，供 verify() 区分「设计上无凭据」与
+        // 「以后可能出现凭据」两种情况。
+        let p = root();
+        let (replacement, mode) = credential_plan(&p, "self_bind", None).unwrap();
+        assert!(replacement.is_none(), "self_bind 制盘阶段不应产出任何 key");
+        assert_eq!(mode, "self_bind");
+        assert!(
+            !data(&p).join(".security.yml").exists(),
+            "self_bind 制盘阶段不应写 .security.yml"
+        );
+    }
+
+    #[test]
+    fn self_bind_verify_is_consistent_whether_or_not_the_wallet_has_bound_yet() {
+        // self_bind 下 .security.yml 「首启前不在 / 首启后在」都合法：文件是
+        // 客户插盘联网首启时由随盘的 uclaw-wallet.exe 事后写入的，不是 U-King
+        // 制盘那一刻写的。verify() 的 credential_template 检查两种情况都必须判
+        // 一致（ok=true），不能像 official_device 那样强制要求文件存在。
+        let p = root();
+        atomic_write(
+            &current_json(&p),
+            serde_json::to_vec_pretty(&json!({
+                "schema_version": 1,
+                "version": VERSION,
+                "archive_sha256": "0".repeat(64),
+                "runtime_dir": format!("picoclaw-{VERSION}"),
+                "credential_mode": "self_bind",
+                "artifact_hashes": {}
+            })).unwrap().as_slice(),
+        ).unwrap();
+        assert!(!data(&p).join(".security.yml").exists());
+        let before_first_boot = verify(&p).unwrap();
+        assert_eq!(
+            before_first_boot["checks"]["credential_template"]["ok"], true,
+            "self_bind + 文件尚不存在（首启前）必须一致: {before_first_boot}"
+        );
+
+        fs::create_dir_all(data(&p)).unwrap();
+        fs::write(data(&p).join(".security.yml"), "written by uclaw-wallet.exe on first boot").unwrap();
+        let after_first_boot = verify(&p).unwrap();
+        assert_eq!(
+            after_first_boot["checks"]["credential_template"]["ok"], true,
+            "self_bind + 文件已存在（首启后）也必须一致: {after_first_boot}"
+        );
+
+        let _ = fs::remove_dir_all(p);
+    }
+
     #[test]
     fn ownership_preflight_refuses_unknown_same_name_content() {
         let p = root();
