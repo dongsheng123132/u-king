@@ -472,7 +472,7 @@ export const backfill: Record<string, string> = {
   "直播流连接失败 —— 浏览器会话可能被关掉了，正在重连": "Live stream connection failed — browser session may have closed, reconnecting...",
   "浏览器会话没起来 —— 看下方错误信息，或装好 agent-browser 后刷新": "Browser session failed to start — check error below, or refresh after installing agent-browser",
   "浏览器运行时安装没有完成": "Browser runtime installation did not complete",
-  "本会话累计 ≈¥{v}": "Session total ≈¥{v}",
+  "本会话累计 {n} tokens": "Session total {n} tokens",
   "路径已复制": "Path copied",
   "内容已复制": "Content copied",
   "打开方式 / 复制": "Open with / Copy",

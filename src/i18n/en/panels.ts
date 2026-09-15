@@ -180,7 +180,7 @@ export const panels: Record<string, string> = {
   "GPT-5.3 Codex · 更强（约 6 倍价）": "GPT-5.3 Codex · stronger (~6× the price)",
 
   // ChatPanel.tsx —— A1 轮次尾注 / A2 工具行状态 / A3 本轮文件（2026-09-06 Astra UI 规格）
-  "本轮估算 {c}": "This turn ≈{c}",
+  "本轮 {n} tokens": "This turn {n} tokens",
   "用量详情": "Usage details",
   "输入 {n} tokens": "Input {n} tokens",
   "输出 {n} tokens": "Output {n} tokens",

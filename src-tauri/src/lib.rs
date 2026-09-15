@@ -5376,7 +5376,12 @@ async fn save_identity(patch: serde_json::Value) -> Result<serde_json::Value, St
     run_write_action(actions::IDENTITY_SAVE, patch).await
 }
 
-/// 一轮对话的花费（¥）—— 对话里那行「这轮花了多少」用它。
+/// 一轮对话的花费（¥）——以前对话里那行「这轮花了多少」用它。
+///
+/// 🔴 **当前无调用方**（2026-09-15 起）：对话终端改成直接显示真实 token 数
+/// （ChatPanel.tsx），不再显示这个估算 ¥ —— 客户实测发现它跟真实账单对不上。
+/// 没删这个命令：水电表/管理页的口径推导仍参考它，删了要重新走一遍全量构建，
+/// 收益不匹配。别指望它还在被对话面板调用。
 ///
 /// 🔴 **为什么不用上游 CLI 自己报的 `cost_usd`**：那是按它认得的那家官方价算的。
 /// 客户走虾盘云跑 `deepseek-v4-flash` 时，Claude Code 拿 Anthropic 的价目表算，
