@@ -47,6 +47,10 @@ pub struct VideoRecord {
     /// running | ready（上游完成、待下载）| done | failed
     pub status: String,
     pub ts: i64,
+    /// 预留：哪个供应商出的这条视频。当前只有虾盘云，`None` 视作虾盘云；只加字段不加路由——
+    /// 未来接兔子/302 时旧任务能回原渠道查询，晚加要迁移历史，早加成本只有几行。
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
 /// 回前端的列表项（**不含视频字节**；have_video 标记是否可播放）。
@@ -146,6 +150,7 @@ pub fn create_record(prompt: &str, model: &str, task_id: &str) -> Result<i64, St
             error: None,
             status: "running".into(),
             ts: id,
+            provider: None,
         },
     );
     prune(&mut f);
@@ -705,6 +710,16 @@ fn b64_encode(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 迁移兼容：旧版 history.json（没有 `provider` 字段）必须仍能反序列化，`provider`
+    /// 落到 `None`（视作虾盘云），不能让老客户一升级就读不出历史。
+    #[test]
+    fn legacy_video_record_without_provider_deserializes_with_none() {
+        let legacy = r#"{"version":1,"items":[{"id":1,"prompt":"旧记录","model":"m","task_id":"t","status":"done","file":"1.mp4","ts":1}]}"#;
+        let f: HistoryFile = serde_json::from_str(legacy).expect("legacy history.json must still parse");
+        assert_eq!(f.items.len(), 1);
+        assert_eq!(f.items[0].provider, None);
+    }
 
     #[test]
     fn ready_video_stays_recoverable_instead_of_becoming_failed() {
