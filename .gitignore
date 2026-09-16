@@ -66,3 +66,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# 本地 UI 预览沙箱运行目录（.agents/ .uking/），不入库
+.ui-preview-sandbox/
