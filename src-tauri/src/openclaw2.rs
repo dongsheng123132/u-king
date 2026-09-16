@@ -21,6 +21,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const PROFILE: &str = "uking-openclaw2";
 const GATEWAY_STARTUP_TIMEOUT: Duration = Duration::from_secs(180);
 const GATEWAY_STATUS_TIMEOUT: Duration = Duration::from_secs(30);
+const DESKTOP_MODEL_CONFIG_VALIDATION_TIMEOUT: Duration = Duration::from_secs(30);
+const PORTABLE_MODEL_CONFIG_VALIDATION_TIMEOUT: Duration = Duration::from_secs(120);
 const CONFIG_NAME: &str = "openclaw.json";
 const PROFILE_NAME: &str = "profile.json";
 const SUPERVISOR_NAME: &str = "supervisor.json";
@@ -77,6 +79,18 @@ pub(crate) use crate::model_route::OpenClaw2ModelRoute as ModelRoute;
 fn model_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// A fresh portable OpenClaw runtime can spend tens of seconds loading its
+/// bundled Node modules before config validation runs. Keep desktop's historic
+/// fast failure while giving the isolated portable child one bounded cold-start
+/// window.
+fn model_config_validation_timeout(portable: bool) -> Duration {
+    if portable {
+        PORTABLE_MODEL_CONFIG_VALIDATION_TIMEOUT
+    } else {
+        DESKTOP_MODEL_CONFIG_VALIDATION_TIMEOUT
+    }
 }
 
 #[cfg(test)]
@@ -1961,7 +1975,7 @@ fn configure_model_at_with_probe(
             &candidate,
             &txn_state,
             &["config", "validate", "--json"],
-            Duration::from_secs(30),
+            model_config_validation_timeout(portable),
             Some(&staged_marker),
             portable,
         )?;
@@ -4600,6 +4614,11 @@ const server = net.createServer(); server.listen(port, '127.0.0.1'); setInterval
             fixture["agents"]["defaults"]["model"]["primary"],
             "uking-oc2-fixture/fixture-model"
         );
+    }
+    #[test]
+    fn portable_cold_config_validation_budget_is_bounded_without_changing_desktop() {
+        assert_eq!(model_config_validation_timeout(false), Duration::from_secs(30));
+        assert_eq!(model_config_validation_timeout(true), Duration::from_secs(120));
     }
     #[test]
     fn validation_diagnostic_is_actionable_without_echoing_candidate_secrets() {

@@ -1634,7 +1634,11 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             actions::DOC_EDIT,
             "Edit text in an existing Word / PowerPoint / Excel file without touching its formatting",
             "Replace text inside an existing .docx/.pptx/.xlsx. Untouched parts keep their original compressed bytes, so formatting, headers, fonts and numbering survive byte-for-byte.",
-            180_000,
+            // Portable cold config validation is bounded at 120s. The paid
+            // path additionally performs two capability checks and the
+            // explicit model probe, so this Action budget must cover all four
+            // bounded subprocesses.
+            270_000,
             "required",
             serde_json::json!({
                 "file": { "type": "string", "description": "Absolute path of the document to edit." },
@@ -2027,7 +2031,9 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             actions::OPENCLAW2_CONFIGURE_MODEL_NO_PROBE,
             "Configure an isolated OpenClaw 2 model without paid probe",
             "Validate and commit one OpenAI-compatible model without calling it. runtime.openclaw2.configure_model is the separate, explicit potentially chargeable probe.",
-            60_000,
+            // Portable cold config validation is one bounded 120s subprocess;
+            // leave room for transaction commit and rollback without probing.
+            180_000,
             "required",
             serde_json::json!({
                 "provider_id": { "type": "string", "minLength": 1 },
