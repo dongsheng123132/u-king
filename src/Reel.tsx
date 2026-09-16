@@ -4,8 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { AlertTriangle, Clapperboard, Film, Loader2, Play, RotateCcw, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, Bookmark, Clapperboard, Film, Loader2, Play, RotateCcw, Trash2, Wallet } from "lucide-react";
 import type { DeviceKey } from "./lib/types";
 import { useI18n } from "./i18n";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
@@ -13,10 +12,10 @@ import { ACTION, createTauriActionClient } from "./generated/action-client";
 type ReelItem = {
   id: number; prompt: string; shots: string[]; narration?: string | null; voice?: string | null;
   bgm_prompt?: string | null; resolution?: string | null; preset_id?: string | null;
-  status: "running" | "done" | "failed" | "degraded" | string; have_video: boolean;
+  status: "running" | "done" | "failed" | "degraded" | "pending-verify" | string; have_video: boolean;
   error?: string | null; degraded: boolean; warnings: string[]; ts: number;
+  kept?: boolean; project_id?: string | null; provider?: string | null; phase?: string | null; detail?: string | null;
 };
-type ReelProgress = { id: number; phase: string; detail: string };
 type ReelPreset = { schema_version: number; id: string; title: string; description: string };
 type MediaTask = { id: number; prompt: string; status?: string; ts: number; error?: string | null; have_video?: boolean; src?: string | null };
 
@@ -50,13 +49,21 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
       setPresets(Array.isArray(list) ? list.filter((preset): preset is ReelPreset => typeof preset === "object" && preset !== null && (preset as ReelPreset).schema_version === 1 && /^[a-z0-9-]{1,48}$/.test((preset as ReelPreset).id)) : []);
     }).catch((e) => onToast(String(e)));
   }, []);
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    void listen<ReelProgress>("uking:reel_progress", (event) => {
-      if (event.payload.id === reelState.currentId) { reelState.progress = event.payload.detail; notify(); }
-    }).then((fn) => { unlisten = fn; });
-    return () => unlisten?.();
-  }, []);
+  // 两段式：submit/resume 的 Action 几乎立刻返回一个本地记录 id，真正的生成跑在
+  // 后台线程里，没有 AppHandle 可以 emit 事件——进度只能落盘，这里改轮询 inspect 代替
+  // 原来的 "uking:reel_progress" 事件监听。
+  const pollUntilSettled = async (id: number): Promise<ReelItem> => {
+    for (;;) {
+      const envelope = await actionClient(ACTION.RUNTIME_CREATOR_REEL_INSPECT, { id });
+      if (!envelope.ok) throw new Error(envelope.error.message);
+      const item = ((envelope.result as { items?: ReelItem[] }).items ?? [])[0];
+      if (!item) throw new Error(t("找不到该成片任务"));
+      if (item.status !== "running") return item;
+      reelState.progress = item.detail || phaseLabel(item.phase || "", t);
+      notify();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  };
 
   const submit = async () => {
     if (reelState.busy) return;
@@ -65,14 +72,20 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
     const shots = reelState.shotsText.split("\n").map((shot) => shot.trim()).filter(Boolean);
     reelState.busy = true; reelState.progress = t("正在提交一键成片任务…"); notify();
     try {
-      const id = await invoke<number>("submit_reel", { params: {
-        prompt, shots, narration: reelState.narration.trim() || null, voice: "Cherry",
-        bgm_prompt: reelState.bgm ? reelState.bgmPrompt.trim() || prompt : null, resolution: reelState.resolution, preset_id: reelState.presetId,
-      }});
-      reelState.currentId = id; reelState.prompt = ""; reelState.shotsText = ""; reelState.narration = ""; onToast(t("一键成片完成"));
-      await reload(); await play(id);
-    } catch (e) { onToast(t("一键成片失败：") + String(e)); await reload(); }
-    finally { reelState.busy = false; reelState.currentId = null; reelState.progress = ""; notify(); }
+      const envelope = await actionClient(ACTION.RUNTIME_CREATOR_REEL_SUBMIT, {
+        prompt, shots, narration: reelState.narration.trim() || undefined, voice: "Cherry",
+        bgm_prompt: reelState.bgm ? reelState.bgmPrompt.trim() || prompt : undefined, resolution: reelState.resolution, preset_id: reelState.presetId ?? undefined,
+      }, { confirmed: true });
+      if (!envelope.ok) throw new Error(envelope.error.message);
+      const id = (envelope.result as { id: number }).id;
+      reelState.currentId = id; reelState.prompt = ""; reelState.shotsText = ""; reelState.narration = "";
+      await reload();
+      const final = await pollUntilSettled(id);
+      if (final.status === "done" || final.status === "degraded") { onToast(t("一键成片完成")); await play(id); }
+      else if (final.status === "pending-verify") onToast(t("提交结果未知，请核实是否已扣费"));
+      else if (final.status === "failed") onToast(t("一键成片失败：") + (final.error || ""));
+    } catch (e) { onToast(t("一键成片失败：") + String(e)); }
+    finally { await reload(); reelState.busy = false; reelState.currentId = null; reelState.progress = ""; notify(); }
   };
   const play = async (id: number) => {
     try { setPlaying(convertFileSrc(await invoke<string>("read_reel_file", { id }))); }
@@ -81,11 +94,43 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
   const regenerate = async (id: number) => {
     if (!window.confirm(t("重新生成将产生新费用，是否继续？"))) return;
     reelState.busy = true; reelState.currentId = id; reelState.progress = t("正在按原参数重新生成（将产生新费用）…"); notify();
-    try { await invoke("resume_reel", { id }); onToast(t("重新生成完成")); await reload(); await play(id); }
-    catch (e) { onToast(t("重新生成失败：") + String(e)); await reload(); }
-    finally { reelState.busy = false; reelState.currentId = null; reelState.progress = ""; notify(); }
+    try {
+      const envelope = await actionClient(ACTION.RUNTIME_CREATOR_REEL_SUBMIT, { resume_id: id }, { confirmed: true });
+      if (!envelope.ok) throw new Error(envelope.error.message);
+      const final = await pollUntilSettled(id);
+      if (final.status === "done" || final.status === "degraded") { onToast(t("重新生成完成")); await play(id); }
+      else if (final.status === "pending-verify") onToast(t("提交结果未知，请核实是否已扣费"));
+      else if (final.status === "failed") onToast(t("重新生成失败：") + (final.error || ""));
+    } catch (e) { onToast(t("重新生成失败：") + String(e)); }
+    finally { await reload(); reelState.busy = false; reelState.currentId = null; reelState.progress = ""; notify(); }
   };
   const remove = async (id: number) => { await invoke("delete_reel", { id }); if (playing) setPlaying(null); await reload(); };
+  const keep = async (id: number) => {
+    try {
+      const envelope = await actionClient(ACTION.RUNTIME_CREATOR_REEL_KEEP, { id }, { confirmed: true });
+      if (!envelope.ok) throw new Error(envelope.error.message);
+      onToast(t("已保留为项目资产，不再受历史裁剪影响"));
+      await reload();
+    } catch (e) { onToast(String(e)); }
+  };
+  // "查一次"：只读核实本地运行状态，绝不重投。
+  const recheckPending = async (id: number) => {
+    try { const status = await invoke<string>("reel_recheck_pending", { id }); onToast(t("当前状态：") + status); await reload(); }
+    catch (e) { onToast(String(e)); }
+  };
+  // "确认没扣费后重投"：唯一能让 pending-verify 任务重新开始生成的入口，必须客户显式点击。
+  const confirmResubmit = async (id: number) => {
+    if (!window.confirm(t("确认这条任务尚未产生扣费，要重新提交吗？重投会产生新费用。"))) return;
+    reelState.busy = true; reelState.currentId = id; reelState.progress = t("正在确认后重投…"); notify();
+    try {
+      const newId = await invoke<number>("reel_confirm_resubmit", { id });
+      const final = await pollUntilSettled(newId);
+      if (final.status === "done" || final.status === "degraded") { onToast(t("重新生成完成")); await play(newId); }
+      else if (final.status === "pending-verify") onToast(t("提交结果未知，请核实是否已扣费"));
+      else if (final.status === "failed") onToast(t("重新生成失败：") + (final.error || ""));
+    } catch (e) { onToast(String(e)); }
+    finally { await reload(); reelState.busy = false; reelState.currentId = null; reelState.progress = ""; notify(); }
+  };
   const balance = deviceKey?.balance?.cny;
   const busy = reelState.busy;
 
@@ -97,9 +142,10 @@ export function Reel({ deviceKey, onToast, onRecharge }: { deviceKey: DeviceKey 
     <div className="min-h-0 flex-1 overflow-y-auto space-y-3 pr-1">
       {busy && <section className="rounded-card border border-accent/25 bg-accent/[0.06] p-4"><div className="flex items-center gap-2 text-sm font-medium text-ink-1"><Loader2 size={16} className="animate-spin text-accent" />{phaseLabel((reelState.progress.match(/【(\d)\/5/)?.[1] === "1" ? "dialogue" : reelState.progress.match(/【(\d)\/5/)?.[1] === "2" ? "storyboard" : reelState.progress.match(/【(\d)\/5/)?.[1] === "3" ? "video" : reelState.progress.match(/【(\d)\/5/)?.[1] === "4" ? "voice" : "stitch"), t)}</div><p className="mt-2 text-xs text-ink-3">{reelState.progress || t("处理中")}</p><p className="mt-2 text-xs text-ink-4">{t("切换页面不会中断；生成过程可能需要几分钟")}</p></section>}
       {playing && <section className="rounded-card border border-ink-6 bg-bg-1 p-3 shadow-card"><video src={playing} controls autoPlay className="max-h-[52vh] w-full rounded-lg bg-black" /></section>}
-      <section className="rounded-card border border-ink-6 bg-bg-1 p-4 shadow-card"><div className="mb-3 flex items-center gap-2"><Film size={17} className="text-accent"/><h2 className="font-medium text-ink-0">{t("最近成片")}</h2></div>{items.length === 0 ? <p className="py-5 text-center text-sm text-ink-4">{t("还没有成片，先在下方写一个画面")}</p> : <div className="space-y-2">{items.map((item) => <article key={item.id} className="rounded-lg border border-ink-6 bg-bg-0 p-3"><div className="flex flex-wrap items-start gap-2"><span className={`rounded-full px-2 py-0.5 text-[11px] ${item.status === "done" ? "bg-emerald-500/10 text-emerald-600" : item.status === "degraded" ? "bg-warning-500/15 text-warning-700" : item.status === "failed" ? "bg-danger-500/10 text-danger-500" : "bg-accent/10 text-accent"}`}>{item.status === "degraded" ? t("已降级交付") : item.status === "done" ? t("已完成") : item.status === "failed" ? t("失败") : t("处理中")}</span><p className="min-w-0 flex-1 text-sm text-ink-1">{item.prompt || item.shots[0] || t("分镜成片")}</p><time className="text-[11px] text-ink-4">{fmt(item.ts)}</time></div>
+      <section className="rounded-card border border-ink-6 bg-bg-1 p-4 shadow-card"><div className="mb-3 flex items-center gap-2"><Film size={17} className="text-accent"/><h2 className="font-medium text-ink-0">{t("最近成片")}</h2></div>{items.length === 0 ? <p className="py-5 text-center text-sm text-ink-4">{t("还没有成片，先在下方写一个画面")}</p> : <div className="space-y-2">{items.map((item) => <article key={item.id} className="rounded-lg border border-ink-6 bg-bg-0 p-3"><div className="flex flex-wrap items-start gap-2"><span className={`rounded-full px-2 py-0.5 text-[11px] ${item.status === "done" ? "bg-emerald-500/10 text-emerald-600" : item.status === "degraded" ? "bg-warning-500/15 text-warning-700" : item.status === "failed" ? "bg-danger-500/10 text-danger-500" : item.status === "pending-verify" ? "bg-warning-500/15 text-warning-700" : "bg-accent/10 text-accent"}`}>{item.status === "degraded" ? t("已降级交付") : item.status === "done" ? t("已完成") : item.status === "failed" ? t("失败") : item.status === "pending-verify" ? t("提交结果未知") : t("处理中")}</span>{item.kept && <span className="rounded-full bg-ink-6/60 px-2 py-0.5 text-[11px] text-ink-2">{t("已保留")}</span>}<p className="min-w-0 flex-1 text-sm text-ink-1">{item.prompt || item.shots[0] || t("分镜成片")}</p><time className="text-[11px] text-ink-4">{fmt(item.ts)}</time></div>
         {(item.degraded || item.warnings.length > 0 || item.error) && <div className={`mt-2 flex gap-1.5 rounded-lg px-2.5 py-2 text-xs ${item.status === "failed" ? "bg-danger-500/[0.08] text-danger-600" : "bg-warning-500/[0.10] text-warning-700"}`}><AlertTriangle size={14} className="shrink-0"/><span>{item.error || (item.degraded ? t("旁白失败，成片无声") : item.warnings.join("；"))}{item.warnings.length > 0 && item.degraded ? ` · ${item.warnings.join("；")}` : ""}</span></div>}
-        <div className="mt-3 flex flex-wrap gap-2"><button disabled={!item.have_video} onClick={() => void play(item.id)} className="inline-flex items-center gap-1 rounded border border-ink-5 px-2.5 py-1.5 text-xs text-ink-2 disabled:opacity-40"><Play size={13}/>{t("播放")}</button>{(item.status === "failed" || item.status === "running") && <button onClick={() => void regenerate(item.id)} className="inline-flex items-center gap-1 rounded border border-warning-500/30 px-2.5 py-1.5 text-xs text-warning-700"><RotateCcw size={13}/>{t("重新生成")}</button>}<button onClick={() => void remove(item.id)} className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs text-ink-4 hover:text-danger-500"><Trash2 size={13}/>{t("删除")}</button></div>
+        {item.status === "pending-verify" && <div className="mt-2 flex gap-1.5 rounded-lg bg-warning-500/[0.10] px-2.5 py-2 text-xs text-warning-700"><AlertTriangle size={14} className="shrink-0"/><span>{t("上次提交结果未知（可能没扣费，也可能已经在跑），请先核实再决定是否重投")}</span></div>}
+        <div className="mt-3 flex flex-wrap gap-2"><button disabled={!item.have_video} onClick={() => void play(item.id)} className="inline-flex items-center gap-1 rounded border border-ink-5 px-2.5 py-1.5 text-xs text-ink-2 disabled:opacity-40"><Play size={13}/>{t("播放")}</button>{item.have_video && !item.kept && <button onClick={() => void keep(item.id)} className="inline-flex items-center gap-1 rounded border border-ink-5 px-2.5 py-1.5 text-xs text-ink-2"><Bookmark size={13}/>{t("保留")}</button>}{(item.status === "failed" || item.status === "running") && <button onClick={() => void regenerate(item.id)} className="inline-flex items-center gap-1 rounded border border-warning-500/30 px-2.5 py-1.5 text-xs text-warning-700"><RotateCcw size={13}/>{t("重新生成")}</button>}{item.status === "pending-verify" && <><button onClick={() => void recheckPending(item.id)} className="inline-flex items-center gap-1 rounded border border-ink-5 px-2.5 py-1.5 text-xs text-ink-2">{t("查一次")}</button><button onClick={() => void confirmResubmit(item.id)} className="inline-flex items-center gap-1 rounded border border-warning-500/30 px-2.5 py-1.5 text-xs text-warning-700"><RotateCcw size={13}/>{t("确认没扣费后重投")}</button></>}<button onClick={() => void remove(item.id)} className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs text-ink-4 hover:text-danger-500"><Trash2 size={13}/>{t("删除")}</button></div>
       </article>)}</div>}</section>
     </div>
     <section className="shrink-0 rounded-card border border-ink-6 bg-bg-1 p-3 shadow-card space-y-2"><textarea value={reelState.prompt} onChange={(e) => { reelState.prompt = e.target.value; notify(); }} placeholder={t("短片主题，例如：赛博朋克城市夜景") } rows={2} className="w-full resize-none rounded-lg border border-ink-6 bg-bg-0 px-3 py-2 text-sm text-ink-1 outline-none focus:border-accent/50"/>
