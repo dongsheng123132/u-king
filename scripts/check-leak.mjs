@@ -40,7 +40,18 @@ function isValidIp(v) {
   return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 }
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'dist-usb', 'gen']);
+// 🔴 只放**跨层级都安全**的目录名。这里按 entry.name 精确匹配，任何通用名
+// （resources / opencodex / v2 …）都会顺带跳掉本仓源码目录，把闸门变成摆设：
+// 2026-09-16 核查时 `resources` 和 `opencodex` 就正在遮蔽 src/opencodex/（34 个跟踪文件）
+// 与 src-tauri/resources/（13 个，含 uclaw-wallet-runtime.json 这种最该扫的文件）。
+// 要跳工作区里的实验/产物目录，写到下面的 SKIP_PATHS，按路径锚定。
+const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'dist-usb', 'gen', '.pnpm-store']);
+// 相对扫描根的路径（posix 风格），只跳这一处，不影响同名的深层目录。
+const SKIP_PATHS = new Set(['.scratch', 'outputs', '.tmp-opentu-local', '.hermes', '花瑶花开-MV', '花瑶花开-发布资料包']);
+// 前缀匹配的一次性批处理产物目录（uking-batch-1788789545121 这类带时间戳的）。
+const SKIP_PATH_PREFIXES = ['uking-batch-'];
+// 只排除**运行时产物**。未跟踪的临时文档归 .gitignore 管，不靠安全闸门闭眼放行。
+const SKIP_FILES = new Set(['uking-selfcheck.json', 'debug.log']);
 const BINARY_EXTENSIONS = new Set(['.7z', '.avi', '.bin', '.bmp', '.class', '.dll', '.dmg', '.doc', '.docx', '.eot', '.exe', '.gif', '.gz', '.ico', '.icns', '.jar', '.jpeg', '.jpg', '.lock', '.map', '.mp3', '.mp4', '.otf', '.pdf', '.png', '.rar', '.so', '.tar', '.ttf', '.wasm', '.webm', '.webp', '.woff', '.woff2', '.xls', '.xlsx', '.zip', '.svg', '.d.ts']);
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -65,12 +76,22 @@ function scanText(source, text) {
   });
 }
 
+let scanRoot = null;
+
+/// 相对扫描根的 posix 路径；只有从根数起的那一处才跳，深层同名目录照扫。
+function isSkippedPath(full) {
+  if (!scanRoot) return false;
+  const rel = path.relative(scanRoot, full).split(path.sep).join('/');
+  return SKIP_PATHS.has(rel) || SKIP_PATH_PREFIXES.some((p) => rel.startsWith(p));
+}
+
 function walk(root) {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const full = path.join(root, entry.name);
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) walk(full);
+      if (!SKIP_DIRS.has(entry.name) && !isSkippedPath(full)) walk(full);
     } else if (entry.isFile()) {
+      if (SKIP_FILES.has(entry.name)) continue;
       const ext = path.extname(entry.name).toLowerCase();
       if (BINARY_EXTENSIONS.has(ext)) continue;
       if (entry.name === 'check-leak.mjs') continue; // 闸门不扫自己（规则字面量自匹配）
@@ -102,7 +123,8 @@ if (stdinMode) {
   try {
     const stat = fs.statSync(root);
     if (!stat.isDirectory()) throw new Error('scan root must be a directory');
-    walk(path.resolve(root));
+    scanRoot = path.resolve(root);
+    walk(scanRoot);
     if (hits === 0) console.log('LEAK CHECK PASSED (0 hits)');
     process.exitCode = hits ? 1 : 0;
   } catch (e) {
