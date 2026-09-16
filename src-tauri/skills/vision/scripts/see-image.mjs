@@ -38,7 +38,7 @@ const TIMEOUT_MS = 180000; // 单棒上限。长截图实测中位 29s，给足�
 // （「卡住」是我们最常收到的 bug 描述之一，pc-***）。剩不下 15s 就不再起新的一棒。
 const CHAIN_BUDGET_MS = 240000;
 
-const BOOL = new Set(["json", "quiet", "ocr"]);
+const BOOL = new Set(["json", "quiet", "ocr", "no-tile"]);
 function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -132,6 +132,31 @@ function cropToFile(src, box) {
   return { file: out, dir };
 }
 
+function hasFfmpeg() {
+  const probe = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+  return !(probe.error || probe.status !== 0);
+}
+
+// 长图分块（2026-09-16 跑道实测，见 SKILL.md「长图分块」一节）：
+// `qwen3.7-flash` 整图读 2400×2908 的长截图，12 次只有 4 次找全 4 个标记（随机漏读，不是问法问题）；
+// 切成 2 条重叠带分别读再合并，9 次全中 9 次。触发线卡在「高 > 2000」而不是「大 > 2000」——
+// 同一批夹具里 2400×1180 的宽图切了反而从 4/4 掉到 3/4，所以按高不按面积/长边。
+// 切法：每条带高 ≲1550px，相邻重叠 150px（步进 1400px）。这组数字（1550/150/1400）来自实测的
+// [0,1550]/[1400,2908] 两条带；高度 > 3100px 会按同一规则继续外推出第 3、4…条带 ——
+// **这段外推没有实测过**，只是把已验证的步进规则往上套。
+function computeTileBoxes(w, h) {
+  const bandH = 1550, step = 1400;
+  const boxes = [];
+  let y = 0;
+  while (true) {
+    const y2 = Math.min(y + bandH, h);
+    boxes.push([0, y, w, y2]);
+    if (y2 >= h) break;
+    y += step;
+  }
+  return boxes;
+}
+
 // 本地文件 → data URL；http(s) 链接原样透传给 image_url。
 function toImageUrl(src) {
   if (/^https?:\/\//i.test(src) || /^data:image\//i.test(src)) return src;
@@ -207,7 +232,10 @@ const TEXT_ONLY = [
   /^qwen-(?:plus|turbo)$/i,              // 实测：一个装懂、一个编名字
   /^qwen3\.7-max$/i,                     // catalog text-only；同族 qwen3.7-plus 才收图
   /^qwen3-coder/i,
-  /^(?:[\w.-]+\/)?deepseek(?!.*ocr)/i,   // 全系纯文本（deepseek-ocr 例外，那是识图的）
+  /^(?:[\w.-]+\/)?deepseek(?!.*ocr)/i,   // 拦截结论仍对（deepseek-ocr 例外，那是识图的），但「全系纯文本」这句
+                                          // 理由已过期：2026-09-16 跑道实测 v4-flash 其实能收图，只是弱且抖
+                                          // （合计 62%、长截图 4 次全 0）；v4-pro 才是真收不了图，但老实拒答不编。
+                                          // 拦的理由不是「看不见」，是「看不准/不值得当识图主力」，见 whyBlocked()。
   /^(?:z-ai\/)?glm-5(?:\.\d+)?$/i,       // glm-5/5.1/5.2 纯文本；带 v 的 glm-5v-turbo 才收图
   /^(?:[\w.-]+\/)?minimax-m[12]/i,       // M3 才收图
 ];
@@ -289,6 +317,22 @@ function catalogSaysTextOnly(id) {
 
 const textOnlyModel = (id) => textOnlyRegex(id) || catalogSaysTextOnly(id);
 
+// 按模型给准确的拦截理由（2026-09-16 跑道实测），取代过去写死的「全系纯文本」一句话。
+// deepseek 系两个成员失败模式完全不同，不能用同一句话描述：
+//   v4-flash：**能**收图，只是弱且抖（合计 62%，长截图 0/4，带意图问法大图小字跨度 0~6）；
+//   v4-pro  ：**收不了图**（三种问法全回「我无法查看这张图片」），好在老实拒答、不编。
+// 其余名单（qwen-plus/turbo、qwen3.7-max、qwen3-coder、glm-5 系、minimax-m1/m2）维持原判词：
+// 收图不报错、会给一个编出来的答案。
+function whyBlocked(id) {
+  const s = String(id || "").trim();
+  if (/^(?:[\w.-]+\/)?deepseek-v4-flash/i.test(s))
+    return `${s} 其实收得了图，但 2026-09-16 实测很弱且抖（证照/大图合计 62%，长截图 4 次全 0，`
+      + `带意图问法在大图小字上跨度 0~6）——别当识图主力，请换视觉模型。`;
+  if (/^(?:[\w.-]+\/)?deepseek-v4-pro/i.test(s))
+    return `${s} 收不了图（三种问法全回「我无法查看这张图片」），好在它老实拒答、不编 —— 但结果里不会有图片内容，请换视觉模型。`;
+  return `${s} 是纯文本模型，看不了图 —— 但它收下图片后**不会报错**，会给你一个编出来的答案。`;
+}
+
 // 「收下了图但没看」—— 纯文本模型拿到 image_url **不报错**：HTTP 200、choices 齐全，
 // 正文是一句人话「我看不了图」。只认 HTTP 状态或 ok 位的调用方会把这句当成识图结果
 // 交给下游 DeepSeek，比报错难查得多。2026-08-16 实测（虾盘云同一张营业执照夹具）：
@@ -345,6 +389,53 @@ function extractJson(text) {
   try { return JSON.parse(body.slice(s, e + 1)); } catch { return null; }
 }
 
+// 跑一条模型链（主力 + 替补）直到拿到可信回答，抽出来是因为分块要对每条带各跑一遍、并发。
+// `t0`/`chain` 在分块场景下由调用方共享 —— 这样 CHAIN_BUDGET_MS 总预算是「整个请求」的，
+// 不会因为并发几条带就意外翻倍。`tag` 只用来在 stderr 里区分是哪条带在说话。
+// 失败时 throw（不是 fail()/process.exit）：分块要在 Promise.all 里跑多个，调用方统一处理。
+async function runChain(key, chain, mode, imageUrl, prompt, t0, tag) {
+  const bodyFor = (m) => ({
+    model: m,
+    messages: [{ role: "user", content: [
+      { type: "text", text: prompt },
+      { type: "image_url", image_url: { url: imageUrl } },
+    ] }],
+    max_tokens: mode === "locate" ? 800 : 1500,
+    temperature: 0,
+  });
+  let model = null, text = null, fallbackFrom = null, lastErr = "";
+  for (const m of chain) {
+    // 总预算：剩不下 15s 就别再起新的一棒了 —— 与其让用户对着一个「还在跑」的界面
+    // 再等三分钟，不如现在就把上一棒的真实错误告诉他。单棒仍受 TIMEOUT_MS 上限约束。
+    const left = CHAIN_BUDGET_MS - (Date.now() - t0);
+    if (m !== chain[0] && left < 15000) {
+      logE(`  ⏱ ${tag}总预算 ${CHAIN_BUDGET_MS / 1000}s 用尽，不再试 ${chain.slice(chain.indexOf(m)).join(" / ")}。`);
+      break;
+    }
+    logE(`${tag}看图中（模型 ${m}，${mode} 模式）…`);
+    let resp;
+    try { resp = await postChat(key, bodyFor(m), Math.min(TIMEOUT_MS, Math.max(15000, left))); }
+    catch (err) { lastErr = `${m}：${String((err && err.message) || err)}`; logE(`  ✖ ${tag}` + lastErr); continue; }
+    const e = errOf(resp);
+    if (e) { lastErr = `${m}：${e}`; logE(`  ✖ ${tag}` + lastErr); continue; }
+    const c = resp && resp.choices && resp.choices[0] && resp.choices[0].message && resp.choices[0].message.content;
+    if (typeof c !== "string" || !c.trim()) {
+      lastErr = `${m}：模型没返回文字（${JSON.stringify(resp).slice(0, 160)}）`;
+      logE(`  ✖ ${tag}` + lastErr); continue;
+    }
+    const refused = refusalOf(c);
+    if (refused) {
+      lastErr = `${m} 收下了图但没看：「${refused}」—— 它多半是纯文本模型（qwen-plus / qwen3.7-max / deepseek-* 都是），换带视觉的（qwen3.7-flash / qwen3.7-plus / qwen3-vl-flash）再试。`;
+      logE(`  ✖ ${tag}${m}：拒答（收图不报错，已判失败）`); continue;
+    }
+    model = m; text = c.trim();
+    if (m !== chain[0]) { fallbackFrom = chain[0]; logE(`  ↳ ${tag}主力 ${chain[0]} 不可用，已换替补 ${m}。`); }
+    break;
+  }
+  if (!model) throw new Error(lastErr || "识图失败：没有可用的模型。");
+  return { model, text, fallbackFrom };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   QUIET = !!args.quiet; JSONMODE = !!args.json;
@@ -386,7 +477,7 @@ async function main() {
   // 而不是无声无息开始编答案（实测 qwen-plus 带具体问题时把「张示例」答成「张三」，全程 ok:true）。
   const banned = chain.find(textOnlyModel);
   if (banned)
-    fail(`${banned} 是纯文本模型，看不了图 —— 但它收下图片后**不会报错**，会给你一个编出来的答案。`
+    fail(`${whyBlocked(banned)}\n`
        + `请改用带视觉的：${DEFAULT_MODEL}（默认，最准）/ ${DEFAULT_MODEL_FALLBACKS.join(" / ")}（替补）/ `
        + `qwen3-vl-flash（更快）/ qwen-vl-max。`
        // 说清是哪一源拦的 —— 万一拦错了，才知道该去改哪份名单（手写清单在本文件；catalog 由 dsh 装）
@@ -395,53 +486,50 @@ async function main() {
   const key = resolveKey(args);
   if (!key) fail("找不到 API Key（--key / 环境变量 XIAPAN_API_KEY / ~/.uking/device.json）。请先在 U-King 里领取或配置。", 2);
 
-  const imageUrl = toImageUrl(shown);
-  const bodyFor = (m) => ({
-    model: m,
-    messages: [{ role: "user", content: [
-      { type: "text", text: prompt },
-      { type: "image_url", image_url: { url: imageUrl } },
-    ] }],
-    max_tokens: mode === "locate" ? 800 : 1500,
-    temperature: 0,
-  });
+  // 长图分块：只在 --ask / 默认描述模式启用，且不跟 --region 叠加（那条路已经在裁了），
+  // 且只对本地文件生效（分块要裁图，裁图要有本地文件）。触发线见 computeTileBoxes 上的注释。
+  const noTile = !!args["no-tile"];
+  const wantTile = (mode === "ask" || mode === "describe") && !region && !isRemote && !noTile
+    && size && size.h > 2000;
 
   const t0 = Date.now();
-  let model = null, text = null, fallbackFrom = null, lastErr = "";
+  let out, text;
+  const tileCropDirs = [];
   try {
-    for (const m of chain) {
-      // 总预算：剩不下 15s 就别再起新的一棒了 —— 与其让用户对着一个「还在跑」的界面
-      // 再等三分钟，不如现在就把上一棒的真实错误告诉他。单棒仍受 TIMEOUT_MS 上限约束。
-      const left = CHAIN_BUDGET_MS - (Date.now() - t0);
-      if (m !== chain[0] && left < 15000) {
-        logE(`  ⏱ 总预算 ${CHAIN_BUDGET_MS / 1000}s 用尽，不再试 ${chain.slice(chain.indexOf(m)).join(" / ")}。`);
-        break;
-      }
-      logE(`看图中（模型 ${m}，${mode} 模式）…`);
-      let resp;
-      try { resp = await postChat(key, bodyFor(m), Math.min(TIMEOUT_MS, Math.max(15000, left))); }
-      catch (err) { lastErr = `${m}：${String((err && err.message) || err)}`; logE("  ✖ " + lastErr); continue; }
-      const e = errOf(resp);
-      if (e) { lastErr = `${m}：${e}`; logE("  ✖ " + lastErr); continue; }
-      const c = resp && resp.choices && resp.choices[0] && resp.choices[0].message && resp.choices[0].message.content;
-      if (typeof c !== "string" || !c.trim()) {
-        lastErr = `${m}：模型没返回文字（${JSON.stringify(resp).slice(0, 160)}）`;
-        logE("  ✖ " + lastErr); continue;
-      }
-      const refused = refusalOf(c);
-      if (refused) {
-        lastErr = `${m} 收下了图但没看：「${refused}」—— 它多半是纯文本模型（qwen-plus / qwen3.7-max / deepseek-* 都是），换带视觉的（qwen3.7-flash / qwen3.7-plus / qwen3-vl-flash）再试。`;
-        logE(`  ✖ ${m}：拒答（收图不报错，已判失败）`); continue;
-      }
-      model = m; text = c.trim();
-      if (m !== chain[0]) { fallbackFrom = chain[0]; logE(`  ↳ 主力 ${chain[0]} 不可用，已换替补 ${m}。`); }
-      break;
+    if (wantTile && !hasFfmpeg()) {
+      // 铁律：想分块但没有 ffmpeg 时不静默降级——整图读，但必须说清楚（stderr + --json 都要）。
+      logE(`图高 ${size.h}px > 2000，想分块但本机没有 ffmpeg，这次是整图读的（装 ffmpeg 后可用，或加 --no-tile 消音）。`);
+      const single = await runChain(key, chain, mode, toImageUrl(shown), prompt, t0, "");
+      text = single.text;
+      out = { ok: true, text, model: single.model, mode, elapsed: ((Date.now() - t0) / 1000).toFixed(1) + "s" };
+      if (single.fallbackFrom) out.fallback_from = single.fallbackFrom;
+      out.tile_fallback_reason = "想分块但没有 ffmpeg，这次是整图读的。";
+    } else if (wantTile) {
+      const boxes = computeTileBoxes(size.w, size.h);
+      logE(`图高 ${size.h}px > 2000，切 ${boxes.length} 条带并发读（每条 ≲1550px，重叠 150px）。`);
+      const crops = boxes.map((box) => cropToFile(src, box));
+      for (const c of crops) tileCropDirs.push(c.dir);
+      const results = await Promise.all(crops.map((c, i) =>
+        runChain(key, chain, mode, toImageUrl(c.file), prompt, t0, `[带${i + 1}/${boxes.length}] `)));
+      text = results.map((r) => r.text).join("\n\n");
+      const models = [...new Set(results.map((r) => r.model))];
+      const fallbackFrom = results.map((r) => r.fallbackFrom).find(Boolean) || null;
+      out = { ok: true, text, model: models.join(" + "), mode, elapsed: ((Date.now() - t0) / 1000).toFixed(1) + "s" };
+      if (fallbackFrom) out.fallback_from = fallbackFrom;
+      out.tiles = { count: boxes.length, boxes };
+    } else {
+      const single = await runChain(key, chain, mode, toImageUrl(shown), prompt, t0, "");
+      text = single.text;
+      out = { ok: true, text, model: single.model, mode, elapsed: ((Date.now() - t0) / 1000).toFixed(1) + "s" };
+      if (single.fallbackFrom) out.fallback_from = single.fallbackFrom;
     }
-  } finally { if (cropDir) rmSync(cropDir, { recursive: true, force: true }); }
-  if (!model) fail(lastErr || "识图失败：没有可用的模型。");
-
-  const out = { ok: true, text, model, mode, elapsed: ((Date.now() - t0) / 1000).toFixed(1) + "s" };
-  if (fallbackFrom) out.fallback_from = fallbackFrom; // 报告里说清用的不是主力，别让降级隐身
+  } catch (err) {
+    fail(err);
+    return;
+  } finally {
+    if (cropDir) rmSync(cropDir, { recursive: true, force: true });
+    for (const d of tileCropDirs) rmSync(d, { recursive: true, force: true });
+  }
   if (region) out.region = region.map(Number);
   if (size) out.size = size;
 
