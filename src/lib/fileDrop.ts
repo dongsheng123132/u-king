@@ -12,10 +12,16 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 export type DropHandler = (paths: string[]) => void;
 
-/** 把拖入的文件/文件夹路径拼成可插入输入框/终端的一段文本：含空格的路径加引号，
- *  末尾留一个空格便于接着敲。终端、工作台对话共用同一套（复用不复制）。 */
+/** 把拖入的文件/文件夹路径拼成可插入输入框/终端的一段文本：含空白或 shell 特殊字符
+ *  （引号/反引号/`$&()|<>^`）的路径整体加双引号（内部 `"` 转义），末尾留一个空格便于接着敲。
+ *  终端、工作台对话共用同一套（复用不复制）。 */
 export function pathsToText(paths: string[]): string {
-  return paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
+  const needsQuote = /[\s"'`$&()|<>^]/;
+  return (
+    paths
+      .map((p) => (needsQuote.test(p) ? `"${p.replace(/"/g, '\\"')}"` : p))
+      .join(" ") + " "
+  );
 }
 
 type Zone = {

@@ -15,11 +15,14 @@
  */
 import { useEffect, useState } from "react";
 import { TerminalPage } from "./TerminalPage";
+import { startFileDrop } from "./lib/fileDrop";
 
 export function TerminalWindow() {
   const [cmd, setCmd] = useState<string | null>(null);
 
   useEffect(() => {
+    // 这个独立窗口不走 App.tsx，没人替它装全局拖放监听，这里补装一份（幂等、自带短路）。
+    startFileDrop();
     // 起手命令由开窗方经 URL 带进来（如「在这个目录开个终端并跑 claude」）。
     // 只取一次：跑完就清，避免刷新窗口又跑一遍。
     const q = new URLSearchParams(location.search);
