@@ -12,7 +12,7 @@ export type LaunchPlan = {
   route: string | null;
   launch_cmd: string;
   cmd_allowed: boolean;
-  status: "ready" | "not_installed" | "not_found_in_path" | "rejected_cmd" | "no_launcher";
+  status: "ready" | "not_installed" | "not_found_in_path" | "broken" | "rejected_cmd" | "no_launcher";
   blockers: string[];
 };
 
@@ -42,6 +42,30 @@ export function LaunchBlocked({ plan, onInstall, onFeedback }: LaunchBlockedProp
             className="mt-2 h-7 px-2.5 rounded-md bg-accent text-[11px] font-medium text-white hover:bg-accent-600"
           >
             {t("去安装")}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (plan.status === "broken") {
+    // Rust 的 blocker 带着坏的路径、报错首行和（若有）后面那份好的副本——细节原样展示，
+    // 标题走 i18n。
+    return (
+      <div className="rounded-lg border border-danger-400/30 bg-danger-400/[0.06] px-3 py-2.5 text-[12px] leading-relaxed">
+        <div className="text-ink-2">
+          {t("「{name}」的安装已损坏：{path} 一运行就报错。", {
+            name: plan.tool_id,
+            path: plan.resolved_path ?? plan.cmd,
+          })}
+        </div>
+        {blocker && <div className="mt-1 break-all text-[11px] text-ink-3">{blocker}</div>}
+        {onInstall && (
+          <button
+            onClick={onInstall}
+            className="mt-2 h-7 px-2.5 rounded-md bg-accent text-[11px] font-medium text-white hover:bg-accent-600"
+          >
+            {t("重新安装")}
           </button>
         )}
       </div>

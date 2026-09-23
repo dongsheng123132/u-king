@@ -139,7 +139,7 @@ export const ACTION = {
   RUNTIME_LOCALLLM_START: "runtime.localllm.start",
   /** Stop the process U-King started for that engine. Idempotent: succeeds when nothing is running. Only ever kills the recorded PID, and only after re-checking that PID still carries the image name we launched — never by bare process name, which would take down a customer's own identically-named server. */
   RUNTIME_LOCALLLM_STOP: "runtime.localllm.stop",
-  /** Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine. */
+  /** Read system proxy, process and terminal-shell proxy variables and WSL bridge settings, and check whether local loopback proxy ports are actually listening. Never contacts an external network or changes the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
   /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
   RUNTIME_OPENCLAW2_CONFIGURE_MODEL: "runtime.openclaw2.configure_model",
@@ -199,7 +199,7 @@ export const ACTION = {
   RUNTIME_SKILLPACK_UNINSTALL: "runtime.skillpack.uninstall",
   /** Probe node / npm / claude / codex / git plus desktop apps and the portable runtime. Reads only. */
   RUNTIME_STACK_INSPECT: "runtime.stack.inspect",
-  /** For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing. */
+  /** For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing — except on macOS, where each Ready tool is also probed with a spawned `<tool> --version` to catch installs that resolve on PATH but are actually broken. */
   RUNTIME_TOOL_INSPECT: "runtime.tool.inspect",
   /** Judge whether a tool (by tools::TOOL_SPECS id) can launch, reusing the same plan() used by runtime.tool.inspect. If blocked, launches nothing and returns why. If it launches a GUI app or needs its own terminal window, this action does it. If it needs an embedded terminal or a dedicated tab, it returns an instruction for the caller instead of executing anything. */
   RUNTIME_TOOL_LAUNCH: "runtime.tool.launch",
