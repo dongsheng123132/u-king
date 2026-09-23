@@ -114,6 +114,9 @@ pub enum LaunchStatus {
     /// 终端里会跑到的那份可执行文件在，但跑 `--version` 就失败（平台二进制没装上、
     /// shebang 指向的 node 不在了……）。不由 `plan()` 判，由 [`apply_health`] 在 `Ready`
     /// 之上追加——`plan()` 保持纯函数，健康探测要真 spawn 进程，放在生产路径 `plan_for` 里。
+    /// 生产路径的健康探测只在 macOS 上跑（见 `plan_for`），非 macOS 平台这个变体只在单元测试里
+    /// 直接构造，不算死代码。
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Broken,
     RejectedCmd,
     NoLauncher,
@@ -248,7 +251,15 @@ pub fn plan_for(tool_id: &str) -> Result<LaunchPlan, String> {
     let on_terminal_path = resolved_path.is_some();
     let source = if on_terminal_path { "terminal_path".to_string() } else { String::new() };
     let cmd_allowed = launch_cmd.is_empty() || crate::term::validate_cmd(&launch_cmd);
+    // 非 macOS 平台下面的健康探测整块被 cfg 掉，`p` 就不会再被改——允许这里的 `mut` 在那些
+    // 平台上看起来多余，避免 unused_mut 警告随 cfg 平台切换而时有时无。
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut p = plan(tool_id, spec, installed, on_terminal_path, cmd_allowed, resolved_path, &source)?;
+    // 健康探测（真跑一次 `--version`）只在 macOS 上做：Windows 上一次全量 `runtime.tool.inspect`
+    // 会把 TOOL_SPECS 里每个 Ready 工具都探一遍、串行执行，实测 hermes 5.1s + gemini 6.1s +
+    // opencode 2.3s……单次面板切页就能拖到 15s。这个坏壳问题是 Mac 上 npm optionalDependency
+    // 被镜像静默跳过导致的（见下面 `probe_health` 的注释），Windows 没这个成因，别陪它扛超时。
+    #[cfg(target_os = "macos")]
     if p.status == LaunchStatus::Ready {
         if let Some(path) = p.resolved_path.clone() {
             let prog = launch_cmd.split_whitespace().next().unwrap_or("");
@@ -267,6 +278,9 @@ pub fn plan_for(tool_id: &str) -> Result<LaunchPlan, String> {
 /// `verify_cmd` 都是这个形状，已逐个实测过；耗时都在 1s 内）。
 /// 返回 `Some(原因)` = 确定坏了；`None` = 正常，**或者超时/无法判断**——
 /// 宁可漏报也不能把一个慢启动的好工具判成坏的挡住客户。
+// 非 macOS 平台上，`plan_for` 不再调用这个函数（见上面调用点的 cfg 注释）；它仍被
+// `installer.rs::warn_if_shadowed` 在 macOS 分支下调用——在别的平台上确实没人用，别报死代码。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn probe_health(path: &str) -> Option<String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
@@ -329,6 +343,7 @@ pub(crate) fn probe_health(path: &str) -> Option<String> {
 
 /// PATH 上排在后面的同名副本里，有没有一份是好的（常见：U-King 装在 `~/.local/bin` 的是好的，
 /// 用户 rc 把坏掉的 `/opt/homebrew/bin` 顶到了前面）。有就告诉客户，比「坏了」多给一条出路。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn healthy_alternative(prog: &str, broken: &str) -> Option<String> {
     crate::term::terminal_path_candidates(prog)
         .into_iter()
@@ -337,7 +352,9 @@ fn healthy_alternative(prog: &str, broken: &str) -> Option<String> {
 }
 
 /// 纯函数：把健康探测结果叠到一个已判 `Ready` 的计划上。`alternative` 只在确实坏了时才调用
-/// （它要再 spawn 进程）。
+/// （它要再 spawn 进程）。生产路径 `plan_for` 只在 macOS 上调用它；非 macOS 平台仅单元测试
+/// 直接调用，不算死代码。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn apply_health(
     p: &mut LaunchPlan,
     health: Option<String>,

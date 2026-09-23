@@ -1820,7 +1820,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
         actions::readonly(
             actions::TOOL_INSPECT,
             "Inspect tool launch plans",
-            "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing.",
+            "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing — except on macOS, where each Ready tool is also probed with a spawned `<tool> --version` to catch installs that resolve on PATH but are actually broken.",
             // 每个工具都要 spawn 一次终端探测 PATH，串行累加；1.3.0 发版冒烟在真机实测 24.5s，
             // 15s 预算直接超时。磁盘忙 / 杀软扫描时更慢，留足余量。
             45_000,

@@ -485,7 +485,7 @@
           "target": "cli:action run runtime.tool.inspect --json --no-input"
         }
       ],
-      "description": "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing.",
+      "description": "For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing — except on macOS, where each Ready tool is also probed with a spawned `<tool> --version` to catch installs that resolve on PATH but are actually broken.",
       "effects": {
         "audit_required": false,
         "class": "read",

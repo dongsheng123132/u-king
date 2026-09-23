@@ -199,7 +199,7 @@ export const ACTION = {
   RUNTIME_SKILLPACK_UNINSTALL: "runtime.skillpack.uninstall",
   /** Probe node / npm / claude / codex / git plus desktop apps and the portable runtime. Reads only. */
   RUNTIME_STACK_INSPECT: "runtime.stack.inspect",
-  /** For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing. */
+  /** For every tool in TOOL_SPECS, judge whether/how it can launch right now (installed? resolvable on a spawned terminal's PATH? command whitelisted? which UI should drive it). Reads only, launches nothing — except on macOS, where each Ready tool is also probed with a spawned `<tool> --version` to catch installs that resolve on PATH but are actually broken. */
   RUNTIME_TOOL_INSPECT: "runtime.tool.inspect",
   /** Judge whether a tool (by tools::TOOL_SPECS id) can launch, reusing the same plan() used by runtime.tool.inspect. If blocked, launches nothing and returns why. If it launches a GUI app or needs its own terminal window, this action does it. If it needs an embedded terminal or a dedicated tab, it returns an instruction for the caller instead of executing anything. */
   RUNTIME_TOOL_LAUNCH: "runtime.tool.launch",
