@@ -1123,17 +1123,31 @@ fn backup_once(path: &PathBuf) {
 }
 
 /// 清理某文件的轮换备份，按时间戳保留最近 BACKUP_RETAIN 份（不动原始锚点 `*.uking-bak`）。
+///
+/// 🔴 前缀必须跟 `backup_once` 落盘轮换文件时用的**同一套 `with_extension` 规则**推出来，
+/// 不能自己另拼一遍。旧实现拿 `file_name() + ".uking-bak."` 当前缀——对 `config.yaml` 这类
+/// 正常带扩展名的文件凑巧对得上，但对 `.env` 这种“文件名本身就是扩展名”的点开头文件，
+/// `path.with_extension(...)` 吐出来的真实文件名是 `.env.cfg.uking-bak.<ts>`（`file_stem`
+/// 是整个 `.env`，`cfg` 兜底 ext 被接在后面），而旧前缀拼出来是 `.env.uking-bak.`——
+/// 永远匹配不上，于是 `.env` 的轮换备份从不清理（BACKUP_RETAIN=5 形同虚设，实测某客户机上
+/// 已堆积 359 份）。改成从 `path.with_extension(format!("{ext}.uking-bak"))`（跟锚点
+/// 完全一样的构造）反推文件名再加一个点，两处规则不可能再分叉。
 fn prune_rolling_backups(path: &PathBuf, ext: &str) {
     let Some(dir) = path.parent() else { return };
-    let Some(stem) = path.file_name().and_then(|f| f.to_str()) else { return };
-    let prefix = format!("{stem}.uking-bak."); // 注意带点，排除锚点 *.uking-bak 本身
+    let Some(anchor_name) = path
+        .with_extension(format!("{ext}.uking-bak"))
+        .file_name()
+        .and_then(|f| f.to_str().map(str::to_string))
+    else {
+        return;
+    };
+    let prefix = format!("{anchor_name}."); // 锚点文件名 + 点 + 时间戳 = 轮换文件名，注意带点排除锚点本身
     let Ok(rd) = std::fs::read_dir(dir) else { return };
     let mut rolls: Vec<(u64, PathBuf)> = rd
         .filter_map(|e| e.ok())
         .filter_map(|e| {
             let name = e.file_name().to_str()?.to_string();
             let ts: u64 = name.strip_prefix(&prefix)?.parse().ok()?;
-            let _ = ext; // 后缀已包含在 prefix 里
             Some((ts, e.path()))
         })
         .collect();
@@ -1144,6 +1158,81 @@ fn prune_rolling_backups(path: &PathBuf, ext: &str) {
     let drop = rolls.len() - BACKUP_RETAIN;
     for (_, p) in rolls.into_iter().take(drop) {
         let _ = std::fs::remove_file(p);
+    }
+}
+
+#[cfg(test)]
+mod rolling_backup_tests {
+    use super::*;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("uking-rollbak-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// `.env` 这类点开头、无扩展名的文件：真实落盘的轮换文件名是 `.env.cfg.uking-bak.<ts>`
+    /// （`path.with_extension` 对这种文件名的行为），旧实现拿 `file_name() + ".uking-bak."`
+    /// 当前缀永远匹配不上，BACKUP_RETAIN 形同虚设。这里直接预先造 8 份假的轮换备份
+    /// （时间戳同秒会撞名，测试里就不再依赖真实时间），再调一次 `backup_once`，
+    /// 断言清理到只剩 5 份、锚点 `*.uking-bak` 仍在。
+    #[test]
+    fn env_dotfile_rolling_backups_are_pruned_to_retain_limit() {
+        let dir = temp_dir("dotenv");
+        let path = dir.join(".env");
+        std::fs::write(&path, "OPENAI_API_KEY=sk-live\n").unwrap();
+
+        // 锚点先手工造好（模拟“早就接管过”），避免第 9 次调用把它当成首次接管又拷一份。
+        let anchor = dir.join(".env.cfg.uking-bak");
+        std::fs::write(&anchor, "OPENAI_API_KEY=sk-original\n").unwrap();
+        for ts in 1..=8u64 {
+            std::fs::write(dir.join(format!(".env.cfg.uking-bak.{ts}")), format!("stamp-{ts}")).unwrap();
+        }
+
+        backup_once(&path); // 触发一次真正的清理
+
+        let rolling: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_str().unwrap().to_string())
+            .filter(|n| n.starts_with(".env.cfg.uking-bak.") )
+            .collect();
+        assert_eq!(
+            rolling.len(),
+            BACKUP_RETAIN,
+            "8 份手工造的 + 1 份 backup_once 自己写的 = 9 份，必须清理到只剩 {BACKUP_RETAIN} 份: {rolling:?}"
+        );
+        assert!(anchor.exists(), "原始锚点 *.uking-bak 永远不清理");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 对照组：带扩展名的普通文件（`config.yaml`）行为不变——证明这次修复没有引入回归。
+    #[test]
+    fn extensioned_file_rolling_backups_are_pruned_to_retain_limit() {
+        let dir = temp_dir("configyaml");
+        let path = dir.join("config.yaml");
+        std::fs::write(&path, "model:\n  provider: custom\n").unwrap();
+
+        let anchor = dir.join("config.yaml.uking-bak");
+        std::fs::write(&anchor, "model:\n  provider: original\n").unwrap();
+        for ts in 1..=8u64 {
+            std::fs::write(dir.join(format!("config.yaml.uking-bak.{ts}")), format!("stamp-{ts}")).unwrap();
+        }
+
+        backup_once(&path);
+
+        let rolling: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_str().unwrap().to_string())
+            .filter(|n| n.starts_with("config.yaml.uking-bak.") )
+            .collect();
+        assert_eq!(rolling.len(), BACKUP_RETAIN, "带扩展名文件的清理行为不能被这次修复改坏: {rolling:?}");
+        assert!(anchor.exists(), "原始锚点 *.uking-bak 永远不清理");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -2393,7 +2482,7 @@ pub fn migrate_hermes_config_from_legacy() -> Option<String> {
     }
     // ③ 留底后写。用的就是 apply_hermes 那两个写入器，不另起一套。
     backup_once(&live_cfg);
-    let new_cfg = set_yaml_model_block(
+    let mut new_cfg = set_yaml_model_block(
         &live_cfg_text,
         &model,
         &provider,
@@ -2402,6 +2491,8 @@ pub fn migrate_hermes_config_from_legacy() -> Option<String> {
         &key,
         api_mode_value,
     );
+    // 搬家目标同样要套一层——旧落点若是接的 opencode Zen，端点搬过来后请求头也得跟着搬。
+    new_cfg = set_hermes_route_headers(&new_cfg, &base);
     atomic_write(&live_cfg, new_cfg.as_bytes()).ok()?;
 
     backup_once(&live_env_file);
@@ -2567,6 +2658,10 @@ fn apply_hermes(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String
         key,
         api_mode_value,
     );
+    // ⚠️ opencode Zen（`opencode.ai/zen/*`）不带 `x-opencode-session` 请求头一律 400
+    // `MissingSessionID`（2026-09-23 实测）。按 base 决定要不要维护这条托管的路由请求头——
+    // 切到别的供应商时会自动清掉，不会带着这个头去打别家端点。
+    text = set_hermes_route_headers(&text, &base);
     atomic_write(&cfg, text.as_bytes()).map_err(|e| format!("写 hermes config.yaml 失败: {e}"))?;
 
     // 1.5) .env：**真正的凭据路径**，命门所在。provider=custom 时 Hermes 就吃 `.env` 的
@@ -2764,6 +2859,172 @@ fn set_env_var(text: &str, key: &str, value: &str) -> String {
     s
 }
 
+/// Hermes 接 opencode Zen（`opencode.ai/zen/*`）今天实测的线上故障：不带
+/// `x-opencode-session` 请求头一律 400 `{"type":"MissingSessionID", ...}`。
+/// pi 能通是因为它自己发这个头；Hermes 走原生 OpenAI SDK，不带，得由我们补。
+/// 付费 Zen（`/zen/v1`，不带 `/go`）目前不强制这个头，但带上无害，判据只按
+/// host + 路径前缀，不区分 `/zen` 和 `/zen/go`。
+///
+/// 只按 host + 路径前缀判断，不做整串子串匹配——防止
+/// `https://evil.com/opencode.ai/zen` 这种把关键字塞进路径的假阳性。
+/// host/authority 的剥离规则跟 `is_xiapan_endpoint`（1189 行）同一套，
+/// 容忍客户粘贴 base_url 带前导空格 / 大小写混杂（见 596/676/4312 附近的坑）。
+fn hermes_route_headers_for(base: &str) -> Option<Vec<(&'static str, String)>> {
+    let input = base.trim();
+    let (scheme, rest) = input.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return None;
+    }
+    let mut parts = rest.splitn(2, '/');
+    let authority = parts.next().unwrap_or("");
+    let path = parts.next().unwrap_or("");
+    let hostport = authority.rsplit_once('@').map(|(_, h)| h).unwrap_or(authority);
+    let host = hostport.rsplit_once(':').map(|(h, _)| h).unwrap_or(hostport);
+    let host = host.strip_suffix('.').unwrap_or(host).to_ascii_lowercase();
+    if host != "opencode.ai" {
+        return None;
+    }
+    if path.to_ascii_lowercase().starts_with("zen") {
+        Some(vec![("x-opencode-session", "uking-hermes".to_string())])
+    } else {
+        None
+    }
+}
+
+/// 在 Hermes `config.yaml` 里维护**一条**我们自己的按 base_url 路由的额外请求头条目
+/// （`custom_providers` 列表，`name` 固定 `uking-route-headers`）。
+///
+/// `uking-` 是 U-King 在外部工具配置里的保留命名空间（同 `is_managed_provider_id`
+/// 3999 行那条约定），只认自己那一条，用户其它 `custom_providers` 条目一个字节不碰。
+/// 幂等写法：每次调用先整条删掉旧的 `uking-route-headers`，再按 `hermes_route_headers_for`
+/// 的结果决定要不要插回去——`base` 从 opencode 切到别的供应商时，旧头必须被清掉，
+/// 否则会带着一个不该发的 `x-opencode-session` 打别家端点。
+///
+/// 朴素行处理（同 `set_yaml_model_block`），不引 yaml crate；块序列缩进跟随文件里已有
+/// 列表项的缩进（Hermes 自己写的是两空格 `  - name:`，但也可能是零缩进 `- name:`）。
+fn set_hermes_route_headers(text: &str, base: &str) -> String {
+    const NAME: &str = "uking-route-headers";
+    let headers = hermes_route_headers_for(base);
+
+    // 🔴 零缩进列表风格下，块序列项（`- name: ...`）跟它的父键同一列，也不以空白开头 ——
+    // 不能直接照抄 `set_yaml_model_block` 那条 `is_top_key`（它管的 `model:` 值永远是
+    // 缩进过的 mapping，没有这个坑）。这里必须额外排除 `-` 开头的行，否则零缩进列表的
+    // 第一条就被误判成「下一个顶层键」，body 收集提前截断，后面几行散落进外层输出。
+    let is_top_key = |l: &str| {
+        !l.starts_with(char::is_whitespace) && !l.trim().is_empty() && !l.trim_start().starts_with('-')
+    };
+    let is_list_item = |l: &str| l.trim_start().starts_with("- ");
+    let indent_of = |l: &str| l.len() - l.trim_start().len();
+    let item_name = |l: &str| -> Option<String> {
+        let rest = l.trim_start().strip_prefix("- ")?.trim_start();
+        rest.strip_prefix("name:").map(|v| v.trim().to_string())
+    };
+    let build_item = |pad: &str, headers: &[(&'static str, String)]| -> Vec<String> {
+        let mut v = vec![
+            format!("{pad}- name: {NAME}"),
+            format!("{pad}  base_url: {base}"),
+            format!("{pad}  extra_headers:"),
+        ];
+        for (k, val) in headers {
+            v.push(format!("{pad}    {k}: {val}"));
+        }
+        v
+    };
+
+    let lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+    let mut out: Vec<String> = Vec::with_capacity(lines.len() + 6);
+    let mut i = 0;
+    let mut saw_key = false;
+
+    while i < lines.len() {
+        let line = strip_bom(&lines[i]);
+        if is_top_key(line) && line.trim_start().starts_with("custom_providers:") {
+            saw_key = true;
+            // 行内 flow 写法（`custom_providers: [{name: x, ...}]`）朴素行处理吃不下——
+            // 原样保留，宁可不加头也不能把用户条目丢掉。只认空值和我们自己写的 `[]`。
+            let inline = line.trim_start()["custom_providers:".len()..]
+                .split('#')
+                .next()
+                .unwrap_or("")
+                .trim();
+            if !inline.is_empty() && inline != "[]" {
+                out.push(line.to_string());
+                i += 1;
+                continue;
+            }
+            i += 1;
+            let mut body: Vec<String> = Vec::new();
+            while i < lines.len() && !is_top_key(strip_bom(&lines[i])) {
+                body.push(lines[i].clone());
+                i += 1;
+            }
+            // 已有列表项的缩进 —— 我们插入的新条目要跟它对齐，没有就用默认两空格。
+            let item_indent = body
+                .iter()
+                .map(|b| strip_bom(b))
+                .find(|bl| is_list_item(bl))
+                .map(indent_of)
+                .unwrap_or(2);
+            let pad = " ".repeat(item_indent);
+
+            // 删掉已有的 uking-route-headers 那一整条列表项：从它的 "- name: ..." 行开始，
+            // 消耗到下一条同级列表项（缩进相同）或缩进回落到父级为止。
+            let mut kept: Vec<String> = Vec::new();
+            let mut j = 0;
+            while j < body.len() {
+                let bl = strip_bom(&body[j]).to_string();
+                if is_list_item(&bl) && indent_of(&bl) == item_indent && item_name(&bl).as_deref() == Some(NAME) {
+                    j += 1;
+                    while j < body.len() {
+                        let nl = strip_bom(&body[j]);
+                        if nl.trim().is_empty() {
+                            j += 1;
+                            continue;
+                        }
+                        let ni = indent_of(nl);
+                        if ni <= item_indent {
+                            break;
+                        }
+                        j += 1;
+                    }
+                    continue;
+                }
+                kept.push(body[j].clone());
+                j += 1;
+            }
+
+            let mut new_body: Vec<String> = Vec::with_capacity(kept.len() + 4);
+            if let Some(h) = &headers {
+                new_body.extend(build_item(&pad, h));
+            }
+            new_body.extend(kept);
+
+            if new_body.is_empty() {
+                out.push("custom_providers: []".to_string());
+            } else {
+                out.push("custom_providers:".to_string());
+                out.extend(new_body);
+            }
+            continue;
+        }
+        out.push(line.to_string());
+        i += 1;
+    }
+
+    if !saw_key {
+        if let Some(h) = &headers {
+            out.push("custom_providers:".to_string());
+            out.extend(build_item("  ", h));
+        }
+    }
+
+    let mut s = out.join("\n");
+    if !s.ends_with('\n') {
+        s.push('\n');
+    }
+    s
+}
+
 /// 还原 Hermes：优先回滚 config.yaml / auth.json / .env 备份；无备份则删我们写的凭据。
 fn reset_hermes() -> Result<(), String> {
     let dir = hermes_dir();
@@ -2776,6 +3037,15 @@ fn reset_hermes() -> Result<(), String> {
         ));
         if bak.exists() {
             let _ = std::fs::copy(&bak, &f);
+        }
+    }
+    // config.yaml 的备份若没能整份回滚（首次接管前就没有 *.uking-bak），至少把我们自己写的
+    // opencode 路由头条目清掉——否则回滚后仍带着一个不该发的 x-opencode-session。
+    let cfg = dir.join("config.yaml");
+    if let Ok(text) = std::fs::read_to_string(&cfg) {
+        if text.contains("uking-route-headers") {
+            let cleaned = set_hermes_route_headers(&text, "");
+            let _ = atomic_write(&cfg, cleaned.as_bytes());
         }
     }
     // 没备份的话，至少把 auth.json 里我们注入的 uking 凭据删掉
@@ -8661,6 +8931,119 @@ mod hermes_home_tests {
                 "BOM 文件里 anthropic 模式同样要配 Anthropic 兼容端点"
             );
         });
+    }
+
+    /// opencode Zen（`/zen` 或 `/zen/go`）必须命中；host 不对或路径只是碰巧含关键字的
+    /// 一律不命中。容忍前导空格、大小写混杂（客户粘贴 baseUrl 的老毛病）。
+    #[test]
+    fn hermes_route_headers_for_matches_only_opencode_zen() {
+        assert_eq!(
+            hermes_route_headers_for("https://opencode.ai/zen/go/v1"),
+            Some(vec![("x-opencode-session", "uking-hermes".to_string())]),
+        );
+        assert_eq!(
+            hermes_route_headers_for(" HTTPS://OpenCode.ai/zen/v1/ "),
+            Some(vec![("x-opencode-session", "uking-hermes".to_string())]),
+            "前导空格 + 大小写混杂也要命中"
+        );
+        assert_eq!(hermes_route_headers_for("https://openrouter.ai/api/v1"), None);
+        assert_eq!(hermes_route_headers_for("https://api.u-claw.org.cn/v1"), None);
+        assert_eq!(
+            hermes_route_headers_for("https://evil.com/opencode.ai/zen"),
+            None,
+            "关键字出现在路径里、host 不是 opencode.ai，不能算命中"
+        );
+    }
+
+    /// ① 无 custom_providers → 末尾追加一个合法的块，且 serde_yaml 能正常解析出来。
+    #[test]
+    fn set_hermes_route_headers_appends_when_absent() {
+        let out = set_hermes_route_headers("model:\n  provider: custom\n", "https://opencode.ai/zen/go/v1");
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&out).expect("必须是合法 YAML");
+        let header = parsed["custom_providers"][0]["extra_headers"]["x-opencode-session"]
+            .as_str()
+            .expect("拿不到我们写的会话头");
+        assert_eq!(header, "uking-hermes");
+        assert_eq!(
+            parsed["custom_providers"][0]["name"].as_str(),
+            Some("uking-route-headers")
+        );
+    }
+
+    /// ② 已有两空格缩进的用户条目 → 我们的条目插在前面，用户条目原样保留。
+    #[test]
+    fn set_hermes_route_headers_keeps_user_entry_two_space_indent() {
+        let src = "model:\n  provider: custom\ncustom_providers:\n  - name: openrouter\n    base_url: https://openrouter.ai/api/v1\n";
+        let out = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        assert!(out.contains("  - name: openrouter\n    base_url: https://openrouter.ai/api/v1\n"), "用户条目那几行必须原样保留:\n{out}");
+        let ours_idx = out.find("uking-route-headers").unwrap();
+        let user_idx = out.find("name: openrouter").unwrap();
+        assert!(ours_idx < user_idx, "我们的条目要插在用户条目前面:\n{out}");
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&out).expect("必须是合法 YAML");
+        assert_eq!(parsed["custom_providers"].as_sequence().unwrap().len(), 2);
+    }
+
+    /// ③ 零缩进列表风格同样合法：跟随已有列表项缩进，而不是硬写死两空格。
+    #[test]
+    fn set_hermes_route_headers_follows_zero_indent_style() {
+        let src = "custom_providers:\n- name: openrouter\n  base_url: https://openrouter.ai/api/v1\n";
+        let out = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&out).expect("必须是合法 YAML");
+        assert_eq!(parsed["custom_providers"].as_sequence().unwrap().len(), 2);
+        assert!(
+            out.contains("- name: uking-route-headers\n  base_url:"),
+            "零缩进风格下我们的条目也该是零缩进:\n{out}"
+        );
+    }
+
+    /// ④ 幂等：连续调用两次结果与一次相同。
+    #[test]
+    fn set_hermes_route_headers_is_idempotent() {
+        let src = "model:\n  provider: custom\n";
+        let once = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        let twice = set_hermes_route_headers(&once, "https://opencode.ai/zen/go/v1");
+        assert_eq!(once, twice);
+    }
+
+    /// ⑤ 切到非 opencode base → 我们的条目被删除，用户条目保留。
+    #[test]
+    fn set_hermes_route_headers_removes_entry_when_switching_away() {
+        let src = "custom_providers:\n  - name: openrouter\n    base_url: https://openrouter.ai/api/v1\n";
+        let with_ours = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        assert!(with_ours.contains("uking-route-headers"));
+        let switched = set_hermes_route_headers(&with_ours, "https://api.deepseek.com/v1");
+        assert!(!switched.contains("uking-route-headers"), "切走后旧头必须被清掉:\n{switched}");
+        assert!(switched.contains("name: openrouter"), "用户条目不能被连带删掉:\n{switched}");
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&switched).expect("必须是合法 YAML");
+        assert_eq!(parsed["custom_providers"].as_sequence().unwrap().len(), 1);
+    }
+
+    /// ⑥ 只有我们一条时切走 → 输出仍是合法 YAML（空列表要写成 `custom_providers: []`）。
+    #[test]
+    fn set_hermes_route_headers_leaves_valid_yaml_when_list_becomes_empty() {
+        let src = "model:\n  provider: custom\n";
+        let with_ours = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        let switched = set_hermes_route_headers(&with_ours, "https://api.deepseek.com/v1");
+        assert!(switched.contains("custom_providers: []"), "空列表要写成合法内联空数组:\n{switched}");
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&switched).expect("必须是合法 YAML");
+        assert!(parsed["custom_providers"].as_sequence().unwrap().is_empty());
+    }
+
+    /// 行内 flow 写法的用户列表原样保留，不能被截掉。
+    #[test]
+    fn set_hermes_route_headers_keeps_inline_flow_list_untouched() {
+        let src = "custom_providers: [{name: mine, base_url: https://x.example/v1}]\n";
+        let out = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        assert_eq!(out, src);
+    }
+
+    /// ⑦ model 块及其它顶层段不受影响。
+    #[test]
+    fn set_hermes_route_headers_does_not_touch_other_top_level_sections() {
+        let src = "model:\n  provider: custom\n  base_url: https://opencode.ai/zen/go/v1\n  default: gpt-5.1\nother_section:\n  foo: bar\n";
+        let out = set_hermes_route_headers(src, "https://opencode.ai/zen/go/v1");
+        assert!(out.contains("model:\n  provider: custom\n  base_url: https://opencode.ai/zen/go/v1\n  default: gpt-5.1\n"));
+        assert!(out.contains("other_section:\n  foo: bar\n"));
     }
 }
 
