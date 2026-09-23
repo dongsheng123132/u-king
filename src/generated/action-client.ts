@@ -139,7 +139,7 @@ export const ACTION = {
   RUNTIME_LOCALLLM_START: "runtime.localllm.start",
   /** Stop the process U-King started for that engine. Idempotent: succeeds when nothing is running. Only ever kills the recorded PID, and only after re-checking that PID still carries the image name we launched — never by bare process name, which would take down a customer's own identically-named server. */
   RUNTIME_LOCALLLM_STOP: "runtime.localllm.stop",
-  /** Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine. */
+  /** Read system proxy, process and terminal-shell proxy variables and WSL bridge settings, and check whether local loopback proxy ports are actually listening. Never contacts an external network or changes the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
   /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
   RUNTIME_OPENCLAW2_CONFIGURE_MODEL: "runtime.openclaw2.configure_model",

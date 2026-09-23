@@ -2837,12 +2837,18 @@ fn run_repair(
     spec: &ToolSpec,
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> InstallToolResult {
+    // 失败结论也要落进安装日志：此前只回给调用方，install.log 停在最后一句「验证：…」，
+    // 事后看日志分不清是成功了、失败了还是进程半路没了。
+    let fail = |attempts: u32, err: String| {
+        on_log("error", &format!("{} 安装失败：{err}", spec.name));
+        fail(tool_id, attempts, err)
+    };
     if spec.repair.is_empty() {
-        return fail(tool_id, 1, "安装未通过验证，且无修复步骤".into());
+        return fail(1, "安装未通过验证，且无修复步骤".into());
     }
     on_log("repair", "开始自动修复重装…");
     if let Err(e) = run_steps(skill, &spec.repair, on_log) {
-        return fail(tool_id, 2, format!("修复步骤失败：{e}"));
+        return fail(2, format!("修复步骤失败：{e}"));
     }
     match verify(spec, on_log) {
         Ok(v) => {
@@ -2856,7 +2862,7 @@ fn run_repair(
                 error: None,
             }
         }
-        Err(e) => fail(tool_id, 2, format!("修复后仍未通过验证：{e}")),
+        Err(e) => fail(2, format!("修复后仍未通过验证：{e}")),
     }
 }
 
@@ -3080,17 +3086,73 @@ fn looks_like_transient_lock(err: &str) -> bool {
     MARKERS.iter().any(|m| lower.contains(&m.to_lowercase()))
 }
 
+/// Mac 上 npm 装的 CLI 被钉到 `~/.local`（见 `npm_install_command`）。验证必须验**这一份**：
+/// 按 PATH 跑裸命令时 `search_paths()` 把 `/opt/homebrew/bin` 排在 `~/.local/bin` 前面，
+/// 客户机上 brew 那边若残留一份坏的同名 CLI，验证验的就是它——实锤：刚装好的
+/// `~/.local/bin/claude` 完好，验证却一直跑 `/opt/homebrew/bin/claude` 报「native binary not
+/// installed」，修复重装两轮都判失败。只改写首 token 等于 `spec.bin` 的简单形状，其余原样。
+fn verify_cmdline(spec: &ToolSpec) -> String {
+    #[cfg(target_os = "macos")]
+    if let Some(installed) = local_bin_copy(&spec.bin) {
+        if let Some(rest) = spec.verify_cmd.strip_prefix(spec.bin.as_str()) {
+            if rest.is_empty() || rest.starts_with(' ') {
+                return format!("'{}'{rest}", installed.display().to_string().replace('\'', "'\\''"));
+            }
+        }
+    }
+    spec.verify_cmd.clone()
+}
+
+/// `~/.local/bin/<bin>`（U-King 在 Mac 上的 npm 全局 prefix）存在就返回它。
+#[cfg(target_os = "macos")]
+fn local_bin_copy(bin: &str) -> Option<PathBuf> {
+    if bin.is_empty() || bin.contains('/') {
+        return None;
+    }
+    let home = std::env::var("HOME").ok()?;
+    let p = Path::new(&home).join(".local/bin").join(bin);
+    p.is_file().then_some(p)
+}
+
+/// 装好 ≠ 终端里能用：用户 rc 文件排出来的 PATH 里，同名命令可能先命中别处一份坏掉的。
+/// 装机本身是成功的（不改结果），但必须明说，否则客户看到「安装成功」、点开却立刻报错。
+#[cfg(target_os = "macos")]
+fn warn_if_shadowed(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) {
+    let Some(installed) = local_bin_copy(&spec.bin) else { return };
+    let Some(first) = crate::term::resolve_on_terminal_path(&spec.bin) else { return };
+    let same = std::fs::canonicalize(&first).ok() == std::fs::canonicalize(&installed).ok();
+    if same {
+        return;
+    }
+    if let Some(reason) = crate::tools::probe_health(&first) {
+        on_log(
+            "verify",
+            &format!(
+                "⚠ 注意：终端里敲 `{bin}` 会先跑到 {first}，它是另一份已损坏的安装（{reason}）。\
+                 U-King 刚装好的是 {installed}。请删掉/重装 {first}，或在 ~/.zshrc 里把 ~/.local/bin 排到 PATH 前面。",
+                bin = spec.bin,
+                installed = installed.display()
+            ),
+        );
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn warn_if_shadowed(_spec: &ToolSpec, _on_log: &(dyn Fn(&str, &str) + Send + Sync)) {}
+
 fn verify(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<String, String> {
-    on_log("verify", &format!("验证：{}", spec.verify_cmd));
+    let cmdline = verify_cmdline(spec);
+    on_log("verify", &format!("验证：{cmdline}"));
     let mut last_err = String::new();
     // 杀软瞬时锁重试：6 次、退避递增到 ~10s 总时长（issue #136 实锤——原来 4×1s≈4s
     // 顶不住某些客户机杀软对刚落盘 claude.exe 的持锁，验证被误判失败进而误报装机失败）。
     // 跨平台放在这里，别塞进单字段 verify_cmd（那会在 Mac 上崩，见 skill v32→v33 回滚 #143）。
     for attempt in 0..6u64 {
-        match run_capture(&spec.verify_cmd, portable_node_dir().as_deref()) {
+        match run_capture(&cmdline, portable_node_dir().as_deref()) {
             Ok((0, out)) => {
                 let v = out.lines().next().unwrap_or("ok").trim().to_string();
                 on_log("verify", &format!("验证通过：{v}"));
+                warn_if_shadowed(spec, on_log);
                 return Ok(v);
             }
             Ok((code, out)) => last_err = format!("退出码 {code}：{}", tail(&out, 200)),
@@ -4564,14 +4626,35 @@ pub struct WslProxyBridge {
     pub mirrored_networking: Option<bool>,
 }
 
-/// 影核协议 `runtime.network.inspect` 的规范状态：只检查配置形状，绝不拨号、测速或改代理。
+/// 影核协议 `runtime.network.inspect` 的规范状态：只检查配置形状，绝不访问外网、测速或改代理。
+/// 唯一的连接动作是对**本机回环**代理端口做一次 TCP 握手，确认代理软件真的在监听。
 #[derive(Serialize)]
 pub struct RuntimeNetworkInspection {
     pub platform: String,
     pub system_proxy: Option<String>,
     pub environment_proxies: Vec<ProxyEnvironmentEntry>,
+    /// 终端标签里登录 shell 实际拿到的代理变量（rc 文件设的）。AI CLI 全跑在终端里，
+    /// 它们走的是这一份，不是 U-King 本进程那份。Windows 上恒为空。
+    pub terminal_proxies: Vec<ProxyEnvironmentEntry>,
     pub wsl: WslProxyBridge,
     pub warnings: Vec<String>,
+}
+
+/// 代理地址是本机回环时取出端口（`http://127.0.0.1:7890` → 7890）。非回环地址返回 None——
+/// 远端代理通不通属于「拨号测速」，不在这个只读动作的职责里。
+fn loopback_proxy_port(endpoint: &str) -> Option<u16> {
+    let hostport = comparable_proxy_endpoint(endpoint);
+    let hostport = hostport.split('/').next().unwrap_or_default();
+    let (host, port) = hostport.rsplit_once(':')?;
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    matches!(host, "127.0.0.1" | "localhost" | "::1").then_some(())?;
+    port.parse().ok()
+}
+
+/// 本机回环端口上有没有程序在监听。300ms 足够——回环握手是微秒级，拒绝是立刻返回的。
+fn loopback_port_listening(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_ok()
 }
 
 fn redact_proxy_endpoint(value: &str) -> String {
@@ -4633,9 +4716,7 @@ fn wslconfig_bool(config: &str, name: &str) -> Option<bool> {
 pub fn inspect_runtime_network() -> RuntimeNetworkInspection {
     // ── 跨平台：当前进程的代理变量（脱敏后才进结果） ──
     let mut environment_proxies = Vec::new();
-    for name in [
-        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy",
-    ] {
+    for &name in PROXY_VAR_NAMES {
         if let Ok(value) = std::env::var(name) {
             if !value.trim().is_empty() {
                 environment_proxies.push(ProxyEnvironmentEntry {
@@ -4704,6 +4785,81 @@ pub fn inspect_runtime_network() -> RuntimeNetworkInspection {
         warnings.push("`.wslconfig` 显式关闭了 autoProxy；如在 WSL 内运行 Claude/Codex，Windows 代理不会自动继承。".into());
     }
 
+    // ── macOS/Linux：终端标签实际的代理（用户 rc 文件设的） ──
+    // 实锤：`.zshrc` 写死 1082，代理软件早换到 7897；本进程和系统代理都是好的，这个动作
+    // 报「无告警」，终端里所有 AI CLI 却全部 Connection error。只看本进程等于没看。
+    let terminal_proxies: Vec<ProxyEnvironmentEntry> = crate::term::terminal_shell_env()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(k, v)| {
+            PROXY_VAR_NAMES.contains(&k.as_str()) && !v.trim().is_empty()
+        })
+        .map(|(name, value)| ProxyEnvironmentEntry { endpoint: redact_proxy_endpoint(&value), name })
+        .collect();
+    let mut terminal_endpoints = terminal_proxies
+        .iter()
+        .map(|p| comparable_proxy_endpoint(&p.endpoint))
+        .collect::<Vec<_>>();
+    terminal_endpoints.sort();
+    terminal_endpoints.dedup();
+    if let Some(system) = &system_proxy_raw {
+        let system_endpoint = comparable_proxy_endpoint(system);
+        // 只要终端里有**任何一个**代理变量跟系统代理对不上就报——实锤现场是大写的
+        // HTTPS_PROXY 继承了系统的 7897、小写的 https_proxy 被 .zshrc 改成 1082，
+        // 而 curl/Python 系工具优先读小写那个。
+        let odd: Vec<&str> = terminal_endpoints
+            .iter()
+            .filter(|e| **e != system_endpoint)
+            .map(String::as_str)
+            .collect();
+        if !odd.is_empty() {
+            warnings.push(format!(
+                "终端里的代理变量（{}）与系统代理（{}）不一致，多半是 ~/.zshrc / ~/.bash_profile 里写死了旧端口；终端里跑的 AI 工具走的是前者。",
+                odd.join("、"),
+                system_endpoint
+            ));
+        }
+    }
+
+    // ── 跨平台：本机代理端口到底有没有程序在听 ──
+    // 配置形状全对、端口上却没人 = 走这条代理的请求 100% Connection error，而且错误信息里
+    // 只有「连接失败」，客户和 AI 都会先去怀疑模型/Key/网络。这是最便宜也最确定的一条判据。
+    let mut sources: Vec<(String, String)> = Vec::new(); // (来源, 地址)
+    if let Some(s) = &system_proxy_raw {
+        sources.push(("系统代理".into(), redact_proxy_endpoint(s)));
+    }
+    for p in &environment_proxies {
+        sources.push((format!("U-King 进程 {}", p.name), p.endpoint.clone()));
+    }
+    for p in &terminal_proxies {
+        sources.push((format!("终端 {}", p.name), p.endpoint.clone()));
+    }
+    let mut checked: Vec<(u16, bool)> = Vec::new();
+    let mut dead: Vec<(u16, Vec<String>)> = Vec::new();
+    for (src, endpoint) in &sources {
+        let Some(port) = loopback_proxy_port(endpoint) else { continue };
+        let listening = match checked.iter().find(|(p, _)| *p == port) {
+            Some((_, l)) => *l,
+            None => {
+                let l = loopback_port_listening(port);
+                checked.push((port, l));
+                l
+            }
+        };
+        if !listening {
+            match dead.iter_mut().find(|(p, _)| *p == port) {
+                Some((_, srcs)) => srcs.push(src.clone()),
+                None => dead.push((port, vec![src.clone()])),
+            }
+        }
+    }
+    for (port, srcs) in dead {
+        warnings.push(format!(
+            "代理指向本机 127.0.0.1:{port}，但这个端口上没有程序在监听（{}）——走这条代理的请求会全部 Connection error。请打开代理软件，或把配置改成它实际监听的端口。",
+            srcs.join("、")
+        ));
+    }
+
     RuntimeNetworkInspection {
         platform: if cfg!(windows) {
             "windows"
@@ -4715,10 +4871,14 @@ pub fn inspect_runtime_network() -> RuntimeNetworkInspection {
         .into(),
         system_proxy: system_proxy_raw.as_deref().map(redact_proxy_endpoint),
         environment_proxies,
+        terminal_proxies,
         wsl,
         warnings,
     }
 }
+
+const PROXY_VAR_NAMES: &[&str] =
+    &["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"];
 
 // ———————————————— AI 进程健康取证（runtime.ai_process.inspect） ————————————————
 
@@ -6267,6 +6427,27 @@ pub fn proxy_env_for(delegated: bool) -> Vec<(String, String)> {
 #[cfg(test)]
 mod sysproxy_tests {
     use super::*;
+
+    #[test]
+    fn loopback_proxy_port_only_for_local_endpoints() {
+        assert_eq!(loopback_proxy_port("http://127.0.0.1:1082"), Some(1082));
+        assert_eq!(loopback_proxy_port("socks5://127.0.0.1:7897/"), Some(7897));
+        assert_eq!(loopback_proxy_port("http://***@localhost:8080"), Some(8080));
+        assert_eq!(loopback_proxy_port("127.0.0.1:7890"), Some(7890));
+        // 远端代理不做连通判断（那是拨号测速，不属于只读体检）
+        assert_eq!(loopback_proxy_port("http://proxy.example.com:3128"), None);
+        assert_eq!(loopback_proxy_port("http://127.0.0.1"), None);
+    }
+
+    /// 端口判活：开着的监听判 true，关掉后判 false。用系统随机分配的端口，不撞客户机上的真代理。
+    #[test]
+    fn loopback_port_listening_tracks_real_listener() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        assert!(loopback_port_listening(port));
+        drop(l);
+        assert!(!loopback_port_listening(port));
+    }
 
     /// 委托轮（国内镜像）永远不该带代理 —— 这是老行为的正确半边，别回退。
     #[test]

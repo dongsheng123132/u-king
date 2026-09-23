@@ -1520,9 +1520,10 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
         actions::readonly(
             actions::NETWORK_INSPECT,
             "Inspect runtime network and WSL proxy handoff",
-            "Read Windows proxy, process proxy variables and WSL bridge settings without contacting a network or changing the machine.",
-            5_000,
-            &["platform", "environment_proxies", "wsl", "warnings"],
+            "Read system proxy, process and terminal-shell proxy variables and WSL bridge settings, and check whether local loopback proxy ports are actually listening. Never contacts an external network or changes the machine.",
+            // 读终端登录 shell 的环境最多 8s（rc 里有慢命令时），加上系统代理读取留余量。
+            15_000,
+            &["platform", "environment_proxies", "terminal_proxies", "wsl", "warnings"],
             |_, _, _| action_json(installer::inspect_runtime_network()),
         ),
         actions::readonly(

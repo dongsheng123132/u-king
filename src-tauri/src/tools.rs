@@ -111,6 +111,10 @@ pub enum LaunchStatus {
     Ready,
     NotInstalled,
     NotFoundInPath,
+    /// 终端里会跑到的那份可执行文件在，但跑 `--version` 就失败（平台二进制没装上、
+    /// shebang 指向的 node 不在了……）。不由 `plan()` 判，由 [`apply_health`] 在 `Ready`
+    /// 之上追加——`plan()` 保持纯函数，健康探测要真 spawn 进程，放在生产路径 `plan_for` 里。
+    Broken,
     RejectedCmd,
     NoLauncher,
 }
@@ -244,7 +248,118 @@ pub fn plan_for(tool_id: &str) -> Result<LaunchPlan, String> {
     let on_terminal_path = resolved_path.is_some();
     let source = if on_terminal_path { "terminal_path".to_string() } else { String::new() };
     let cmd_allowed = launch_cmd.is_empty() || crate::term::validate_cmd(&launch_cmd);
-    plan(tool_id, spec, installed, on_terminal_path, cmd_allowed, resolved_path, &source)
+    let mut p = plan(tool_id, spec, installed, on_terminal_path, cmd_allowed, resolved_path, &source)?;
+    if p.status == LaunchStatus::Ready {
+        if let Some(path) = p.resolved_path.clone() {
+            let prog = launch_cmd.split_whitespace().next().unwrap_or("");
+            apply_health(&mut p, probe_health(&path), || healthy_alternative(prog, &path));
+        }
+    }
+    Ok(p)
+}
+
+/// 「PATH 里找得到」≠「跑得起来」。实锤：Mac 上 `/opt/homebrew/bin/claude` 是 npm 装的空壳
+/// （平台二进制那个 optionalDependency 被镜像静默跳过），`--version` 直接报
+/// 「claude native binary not installed」——而这里此前只查文件在不在，照报 `ready`，
+/// 客户点开是一个立刻退出的终端。
+///
+/// 所以对走终端的工具真跑一次 `--version`（安装清单 `install-windows.json` 里所有 CLI 的
+/// `verify_cmd` 都是这个形状，已逐个实测过；耗时都在 1s 内）。
+/// 返回 `Some(原因)` = 确定坏了；`None` = 正常，**或者超时/无法判断**——
+/// 宁可漏报也不能把一个慢启动的好工具判成坏的挡住客户。
+pub(crate) fn probe_health(path: &str) -> Option<String> {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    const TIMEOUT: Duration = Duration::from_secs(10);
+
+    let mut c = Command::new(path);
+    c.arg("--version")
+        .env("PATH", crate::term::terminal_path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = match c.spawn() {
+        Ok(ch) => ch,
+        Err(e) => return Some(format!("无法启动：{e}")),
+    };
+    let mut stderr = child.stderr.take();
+    let reader = std::thread::spawn(move || {
+        let mut s = String::new();
+        if let Some(e) = stderr.as_mut() {
+            use std::io::Read;
+            let _ = e.take(64 * 1024).read_to_string(&mut s);
+        }
+        s
+    });
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) if start.elapsed() < TIMEOUT => std::thread::sleep(Duration::from_millis(30)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    if status.success() {
+        return None;
+    }
+    let err = reader.join().unwrap_or_default();
+    let first = err
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .chars()
+        .take(160)
+        .collect::<String>();
+    Some(match status.code() {
+        Some(code) if first.is_empty() => format!("退出码 {code}"),
+        Some(code) => format!("退出码 {code}：{first}"),
+        None => "被信号终止".to_string(),
+    })
+}
+
+/// PATH 上排在后面的同名副本里，有没有一份是好的（常见：U-King 装在 `~/.local/bin` 的是好的，
+/// 用户 rc 把坏掉的 `/opt/homebrew/bin` 顶到了前面）。有就告诉客户，比「坏了」多给一条出路。
+fn healthy_alternative(prog: &str, broken: &str) -> Option<String> {
+    crate::term::terminal_path_candidates(prog)
+        .into_iter()
+        .filter(|c| c != broken)
+        .find(|c| probe_health(c).is_none())
+}
+
+/// 纯函数：把健康探测结果叠到一个已判 `Ready` 的计划上。`alternative` 只在确实坏了时才调用
+/// （它要再 spawn 进程）。
+fn apply_health(
+    p: &mut LaunchPlan,
+    health: Option<String>,
+    alternative: impl FnOnce() -> Option<String>,
+) {
+    let Some(reason) = health else { return };
+    if p.status != LaunchStatus::Ready {
+        return;
+    }
+    let path = p.resolved_path.clone().unwrap_or_default();
+    let prog = p.launch_cmd.split_whitespace().next().unwrap_or(&p.cmd).to_string();
+    let mut msg = format!(
+        "终端里的「{prog}」实际指向 {path}，但它运行 `{prog} --version` 就失败（{reason}），这份安装已损坏。"
+    );
+    match alternative() {
+        Some(good) => msg.push_str(&format!(
+            "同名的 {good} 是好的——删掉或重装坏的那份，或把 {good} 所在目录在 PATH 里排到前面即可。"
+        )),
+        None => msg.push_str("请重新安装这个工具。"),
+    }
+    p.status = LaunchStatus::Broken;
+    p.blockers = vec![msg];
 }
 
 /// [`plan_for`] 遍历全部 `TOOL_SPECS`——`runtime.tool.inspect` 用。已知 id 一定命中
@@ -641,6 +756,50 @@ mod launch_plan_tests {
         let s = spec(LaunchMode::RouteTab, Some("dsh"), "dsh");
         let p = plan("dsh", Some(s), true, false, true, None, "").unwrap();
         assert_eq!(p.status, LaunchStatus::NotFoundInPath);
+    }
+
+    fn ready_claude() -> LaunchPlan {
+        let s = spec(LaunchMode::EmbeddedPty, None, "claude");
+        plan("claude-code", Some(s), true, true, true, Some("/opt/demo/bin/claude".into()), "terminal_path")
+            .unwrap()
+    }
+
+    /// 健康探测通过 → 原样 Ready，且不去找替代品（找替代品要 spawn 进程，不能白跑）。
+    #[test]
+    fn healthy_stays_ready_and_skips_alternative_lookup() {
+        let mut p = ready_claude();
+        apply_health(&mut p, None, || panic!("健康时不该查替代品"));
+        assert_eq!(p.status, LaunchStatus::Ready);
+        assert!(p.blockers.is_empty());
+    }
+
+    /// 在 PATH 上但 `--version` 失败 → Broken，提示里带上坏的路径和原因。
+    #[test]
+    fn failing_version_is_broken() {
+        let mut p = ready_claude();
+        apply_health(&mut p, Some("退出码 1：claude native binary not installed.".into()), || None);
+        assert_eq!(p.status, LaunchStatus::Broken);
+        assert!(p.blockers[0].contains("/opt/demo/bin/claude"));
+        assert!(p.blockers[0].contains("native binary"));
+        assert!(p.blockers[0].contains("重新安装"));
+    }
+
+    /// 后面有好的同名副本 → 提示里给出它，而不是只说「重装」。
+    #[test]
+    fn broken_points_to_healthy_alternative() {
+        let mut p = ready_claude();
+        apply_health(&mut p, Some("退出码 1".into()), || Some("/home/user1/.local/bin/claude".into()));
+        assert_eq!(p.status, LaunchStatus::Broken);
+        assert!(p.blockers[0].contains("/home/user1/.local/bin/claude"));
+    }
+
+    /// 已经因为别的原因不能起（没装/不在 PATH）→ 健康结果不覆盖原判定。
+    #[test]
+    fn health_does_not_override_earlier_blockers() {
+        let s = spec(LaunchMode::EmbeddedPty, None, "claude");
+        let mut p = plan("claude-code", Some(s), false, true, true, None, "").unwrap();
+        apply_health(&mut p, Some("退出码 1".into()), || None);
+        assert_eq!(p.status, LaunchStatus::NotInstalled);
     }
 }
 

@@ -458,17 +458,29 @@ fn build_path() -> String {
 /// 上（`tool_installed` 的 ① 分支能兜到），但 `build_path()` 理论上也含系统 `PATH`，只有当
 /// 系统 `PATH` 本身缺失/异常时两者才会分叉——分叉出现就正是这个函数存在的意义。
 pub fn resolve_on_terminal_path(prog: &str) -> Option<String> {
+    terminal_path_candidates(prog).into_iter().next()
+}
+
+/// 终端 PATH 上所有同名候选，按 PATH 顺序（第一个就是终端里敲 `prog` 会跑到的那个）。
+/// 后面几个用来回答「排在前面的坏了，后面有没有好的」。同一文件经不同目录出现只留一次。
+///
+/// macOS/Linux：终端起的是登录 shell，用户的 .zprofile/.zshrc 会把 PATH 重排
+/// （brew shellenv 把 /opt/homebrew/bin 顶到最前）。按 build_path() 算出来的「第一个」
+/// 未必是用户真正会跑到的那一份——以登录 shell 实际的 PATH 为准，读不到才退回 build_path()。
+pub fn terminal_path_candidates(prog: &str) -> Vec<String> {
     let prog = prog.trim();
     if prog.is_empty() {
-        return None;
+        return Vec::new();
     }
-    let path = build_path();
+    let path = terminal_path();
     let sep = if cfg!(windows) { ';' } else { ':' };
     let exts: &[&str] = if cfg!(windows) {
         &["", ".cmd", ".exe", ".bat", ".ps1"]
     } else {
         &[""]
     };
+    let mut found: Vec<String> = Vec::new();
+    let mut seen: Vec<std::path::PathBuf> = Vec::new();
     for dir in path.split(sep) {
         if dir.is_empty() {
             continue;
@@ -476,11 +488,120 @@ pub fn resolve_on_terminal_path(prog: &str) -> Option<String> {
         for ext in exts {
             let candidate = Path::new(dir).join(format!("{prog}{ext}"));
             if candidate.is_file() {
-                return Some(candidate.display().to_string());
+                let canon = std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());
+                if !seen.contains(&canon) {
+                    seen.push(canon);
+                    found.push(candidate.display().to_string());
+                }
+                break;
             }
         }
     }
+    found
+}
+
+/// 终端标签里的登录 shell **实际**拿到的环境变量（macOS/Linux）。
+///
+/// 为什么不能只看 `build_path()` / 本进程环境：终端是 `$SHELL -l`，用户的 rc 文件会改 PATH、
+/// 设代理。实锤案例：`.zshrc` 写死 `https_proxy=127.0.0.1:1082`，而代理软件早换到了 7897 ——
+/// U-King 本进程的代理是好的，`runtime.network.inspect` 报「无告警」，终端里所有 AI 工具却全部
+/// Connection error；同一台机器上 `/opt/homebrew/bin/claude` 坏了而 `~/.local/bin/claude`
+/// 是好的，`runtime.tool.inspect` 按 build_path() 判「就绪」，终端里跑到的却是坏的那份。
+///
+/// 做法：用跟 `shell_builder()` 一样的方式起一次交互登录 shell（同一份 PATH 注入），
+/// 打个标记后 dump `env`。rc 文件可能打印横幅，所以只取标记之后的部分。
+/// 8s 超时（rc 里有卡住的命令时宁可读不到，也不能拖死调用方），结果缓存 30s——
+/// `runtime.tool.inspect` 一次要解析十几个工具，不能每个都起一遍 shell。
+/// Windows 返回 `None`（PowerShell profile 不在这条链路上，调用方退回原逻辑）。
+#[cfg(not(windows))]
+pub fn terminal_shell_env() -> Option<Vec<(String, String)>> {
+    use std::process::{Command, Stdio};
+    type Cache = Option<(Instant, Option<Vec<(String, String)>>)>;
+    static CACHE: Mutex<Cache> = Mutex::new(None);
+    const TTL: Duration = Duration::from_secs(30);
+    const TIMEOUT: Duration = Duration::from_secs(8);
+    const MARK: &str = "__UKING_ENV_BEGIN__";
+
+    if let Ok(g) = CACHE.lock() {
+        if let Some((at, v)) = g.as_ref() {
+            if at.elapsed() < TTL {
+                return v.clone();
+            }
+        }
+    }
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let script = format!("printf '\\n{MARK}\\n'; /usr/bin/env");
+    let child = Command::new(&shell)
+        .args(["-l", "-i", "-c", &script])
+        .env("PATH", build_path())
+        .env("TERM", "dumb")
+        .current_dir(home_dir())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let result = child.ok().and_then(|mut child| {
+        let mut stdout = child.stdout.take()?;
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout.read_to_end(&mut buf);
+            buf
+        });
+        let start = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if start.elapsed() < TIMEOUT => {
+                    std::thread::sleep(Duration::from_millis(30))
+                }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+            }
+        }
+        let out = String::from_utf8_lossy(&reader.join().ok()?).to_string();
+        parse_env_dump(&out, MARK)
+    });
+    if let Ok(mut g) = CACHE.lock() {
+        *g = Some((Instant::now(), result.clone()));
+    }
+    result
+}
+
+#[cfg(windows)]
+pub fn terminal_shell_env() -> Option<Vec<(String, String)>> {
     None
+}
+
+/// 终端标签里实际生效的 PATH：登录 shell 读得到就用它，读不到退回注入给 PTY 的 `build_path()`。
+pub fn terminal_path() -> String {
+    terminal_shell_var("PATH").unwrap_or_else(build_path)
+}
+
+/// `terminal_shell_env()` 里取单个变量（空值当没有）。
+pub fn terminal_shell_var(name: &str) -> Option<String> {
+    terminal_shell_env()?
+        .into_iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v)
+        .filter(|v| !v.is_empty())
+}
+
+/// 解析「标记行之后的 `KEY=VALUE` 行」。标记前的 rc 横幅丢掉；没有标记 = 这次输出不可信，返回 None。
+#[cfg_attr(windows, allow(dead_code))]
+fn parse_env_dump(out: &str, mark: &str) -> Option<Vec<(String, String)>> {
+    let (_, after) = out.split_once(mark)?;
+    let vars: Vec<(String, String)> = after
+        .lines()
+        .filter_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            let ok = !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            ok.then(|| (k.to_string(), v.to_string()))
+        })
+        .collect();
+    (!vars.is_empty()).then_some(vars)
 }
 
 fn home_dir() -> String {
@@ -1713,8 +1834,24 @@ pub fn openclaw_webui_url() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{term_open_pty, validate_cmd};
+    use super::{parse_env_dump, term_open_pty, validate_cmd};
     use tauri::ipc::Channel;
+
+    /// rc 文件在标记前打印的横幅（含 `=`）不能混进环境变量；标记后才是 env 输出。
+    #[test]
+    fn env_dump_ignores_banner_before_marker() {
+        let out = "Welcome user1! load=0.3\n\n__MK__\nPATH=/opt/demo/bin:/usr/bin\nhttps_proxy=http://127.0.0.1:1082\nnot a var line\n";
+        let vars = parse_env_dump(out, "__MK__").unwrap();
+        assert_eq!(vars.len(), 2);
+        assert_eq!(vars[0], ("PATH".into(), "/opt/demo/bin:/usr/bin".into()));
+        assert_eq!(vars[1].1, "http://127.0.0.1:1082");
+    }
+
+    /// 没有标记 = shell 半路挂了，这份输出不可信。
+    #[test]
+    fn env_dump_without_marker_is_none() {
+        assert!(parse_env_dump("PATH=/usr/bin\n", "__MK__").is_none());
+    }
 
     #[test]
     fn allows_plain_and_parametered() {

@@ -5,6 +5,20 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 未发布
+
+**用户可感知**
+
+- 工具「能不能启动」的判断改为真跑一次 `--version`：终端里实际会用到的那份坏了（平台二进制缺失等）时，不再显示「就绪」，而是提示已损坏，并指出 PATH 后面有没有一份好的副本。
+- 网络体检会读终端标签实际拿到的代理（`~/.zshrc` 等设置的），并检查本机代理端口有没有程序在监听；代理软件换了端口、rc 文件里还写着旧端口时会直接告警。
+- macOS 装机验证改为检查 U-King 刚装进 `~/.local/bin` 的那份，不再被 PATH 前面 Homebrew 里残留的坏副本误判为失败；如果终端里会先用到那份坏的，装完会明确提示。
+- 装机修复后仍失败时，失败原因会写进安装日志（此前日志停在「验证：…」，看不出结局）。
+
+**开发者**
+
+- 新增 `term::terminal_shell_env()`：按终端标签同样的方式起一次登录 shell，读取实际生效的环境变量（缓存 30s，8s 超时）；`resolve_on_terminal_path` 改为以它的 PATH 为准。
+- `runtime.tool.inspect` / `runtime.tool.launch` 新增 `broken` 状态；`runtime.network.inspect` 新增 `terminal_proxies` 字段，时限 5s → 15s。
+
 ## 1.3.2（2026-09-11）
 
 **用户可感知**

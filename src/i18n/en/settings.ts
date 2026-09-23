@@ -134,6 +134,8 @@ export const settings: Record<string, string> = {
   "检测到已安装，但终端里找不到它，需要重新装到默认位置 / 修复 PATH。":
     "It is installed, but the terminal can't find it — reinstall to the default location or fix PATH.",
   "反馈问题": "Report a problem",
+  "「{name}」的安装已损坏：{path} 一运行就报错。": "The \"{name}\" install is broken: {path} fails as soon as it runs.",
+  "重新安装": "Reinstall",
   "启动命令「{cmd}」被安全校验拒绝，这是我们的 bug，请反馈。":
     "The launch command \"{cmd}\" was rejected by the safety check — this is our bug, please report it.",
   "从开始菜单 / 桌面图标打开，这里帮不了。": "Open it from the Start menu / desktop icon — it can't be launched from here.",
