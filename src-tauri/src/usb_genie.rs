@@ -194,7 +194,7 @@ fn cached_wallet_binary(m: &WalletManifest, progress: &crate::actions::ProgressS
 /// `stage_and_commit_runtime`/`extract_runtime` hard-check PicoClaw's pinned
 /// `VERSION` and unzip a multi-file archive, neither of which applies here
 /// (the wallet is a single already-executable file, and has no pinned
-/// version yet at all). While `clients/uclaw-wallet` has not cut its first
+/// version yet at all). While the wallet client has not cut its first
 /// release, `resources/uclaw-wallet-runtime.json` carries the
 /// `PENDING_FIRST_RELEASE` placeholder; deploy must degrade gracefully
 /// (skip + warn) rather than fail the whole disk over a binary that does not
@@ -1400,7 +1400,7 @@ mod tests {
     }
     #[test]
     fn wallet_manifest_placeholder_skips_bundling_without_failing_deploy() {
-        // clients/uclaw-wallet 还没打出第一个 release：resources/uclaw-wallet-runtime.json
+        // 钱包客户端还没打出第一个 release：resources/uclaw-wallet-runtime.json
         // 目前必须是 PENDING_FIRST_RELEASE 占位值，stage_and_commit_wallet_binary
         // 遇到占位值必须优雅跳过（Ok(())，不下载、不落盘、不让 deploy 失败），
         // 而不是 panic 或把整块盘的制作拖下水。
