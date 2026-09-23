@@ -28,14 +28,15 @@ if not exist "%PICOCLAW_BINARY%" (
   pause
   exit /b 1
 )
-if exist "%GENIE_ROOT%\uclaw-wallet.exe" (
-  "%GENIE_ROOT%\uclaw-wallet.exe" run
-  set "EXIT_CODE=%ERRORLEVEL%"
-) else (
-  cd /d "%PICOCLAW_HOME%\workspace"
-  "%PICOCLAW_BINARY%" agent
-  set "EXIT_CODE=%ERRORLEVEL%"
-)
+if not exist "%GENIE_ROOT%\uclaw-wallet.exe" goto run_picoclaw
+"%GENIE_ROOT%\uclaw-wallet.exe" run
+set "EXIT_CODE=%ERRORLEVEL%"
+goto after_run
+:run_picoclaw
+cd /d "%PICOCLAW_HOME%\workspace"
+"%PICOCLAW_BINARY%" agent
+set "EXIT_CODE=%ERRORLEVEL%"
+:after_run
 if not "%EXIT_CODE%"=="0" pause
 cd /d "%SystemDrive%\"
 exit /b %EXIT_CODE%
