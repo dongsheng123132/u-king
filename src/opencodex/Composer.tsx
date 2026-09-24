@@ -20,7 +20,7 @@
  *    Claude Code 是写死的 bypassPermissions（`agent/claude.rs`），后者只能只读展示，不能做成下拉 ——
  *    给一个改不动的下拉 = 骗。
  */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ArrowUp, Check, ChevronDown, ChevronRight, Cpu, FilePlus2, FolderOpen, FolderPlus, Plus, ShieldCheck, Slash as SlashIcon, Square, Users } from "lucide-react";
 import { cn } from "../lib/cn";
@@ -42,6 +42,7 @@ export function Composer({
   textareaRef,
   menu,
   onKeyDown,
+  onPaste,
   onBlur,
   left,
   right,
@@ -62,6 +63,8 @@ export function Composer({
   menu?: ReactNode;
   /** 返回 true = 这一下键已被菜单吃掉，别再当发送处理。 */
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => boolean;
+  /** 剪贴板里有图片时宿主接管（落盘转路径）；不传或不拦（未 preventDefault）则交给浏览器默认粘贴。 */
+  onPaste?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   onBlur?: () => void;
   /** 卡内底部**左**槽：能力（+ 附件 / 模型 / 权限）。 */
   left?: ReactNode;
@@ -101,6 +104,7 @@ export function Composer({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
+          onPaste={onPaste}
           onKeyDown={(e) => {
             // 菜单开着时 Enter 归菜单（选中项），否则才是发送 —— 不然挑个文件把半截话发出去了
             if (onKeyDown?.(e)) return;

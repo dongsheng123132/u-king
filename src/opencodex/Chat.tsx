@@ -12,7 +12,7 @@
  * 右侧面板直接复用同目录 panels（TermPanel/FilesPanel），display 切换保活（切面板不杀 PTY）。
  * 自包含，删掉只动 App.tsx + Sidebar.tsx。
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type ReactNode } from "react";
 import { invoke, Channel, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -493,6 +493,37 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
   const { ref: dropRef, over: dragOver } = useDropZone<HTMLDivElement>(insertPaths);
+
+  // 粘贴图片（Ctrl+V 截图）= 落盘转路径、走跟拖图片一样的 insertPaths（同一套 pendingImages/识图流程），
+  // 跟内嵌终端的「粘贴图片进终端」同一个落盘命令（`save_pasted_image`），只是终端贴纯文本路径，
+  // 这里走 insertPaths 好让图片进 pendingImages 参与识图。只拦剪贴板里真有图片的粘贴，
+  // 没有图片就什么都不做，交给 textarea 默认的文本粘贴。
+  const handleComposerPaste = useCallback(
+    (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItems = items.filter((it) => it.kind === "file" && it.type.startsWith("image/"));
+      if (!imageItems.length) return; // 没图片：不拦，让文本粘贴照常走
+      e.preventDefault();
+      void (async () => {
+        const paths: string[] = [];
+        for (const it of imageItems) {
+          const file = it.getAsFile();
+          if (!file) continue;
+          try {
+            const buf = new Uint8Array(await file.arrayBuffer());
+            const mime = (file.type.split("/")[1] || "png").toLowerCase();
+            const ext = mime === "jpeg" ? "jpg" : ["png", "jpg", "gif", "webp", "bmp"].includes(mime) ? mime : "png";
+            const path = await invoke<string>("save_pasted_image", { bytes: Array.from(buf), ext });
+            paths.push(path);
+          } catch (err) {
+            onToast?.(t("粘贴图片失败: {e}", { e: String(err) }));
+          }
+        }
+        if (paths.length) insertPaths(paths);
+      })();
+    },
+    [insertPaths, onToast, t],
+  );
 
   /**
    * 把一个产出文件送进右侧预览。**轻助手和 Claude/Codex 共用这一个** ——
@@ -1359,6 +1390,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
               textareaRef={inputRef}
               menu={composer.menu}
               onKeyDown={composer.onKeyDown}
+              onPaste={handleComposerPaste}
               onBlur={composer.onBlur}
               /* 🔴 **一句话，别再往里塞快捷键**（2026-08-18 按 DSH 收）。原来是
                  「让它读写文件、跑命令、画图… @ 引用文件，/ 调指令，Enter 发送」——
