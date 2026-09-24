@@ -7,17 +7,31 @@
 
 ## 未发布
 
+## 1.3.3（2026-09-24）
+
 **用户可感知**
 
+- U-Chat 对话框支持直接 Ctrl+V 粘贴截图/图片，不必再手动拖入；剪贴板同时有文字时文字优先粘贴（应对 Office 复制带位图的情况）。
+- 识图默认改用 DeepSeek 原生 deepseek-v4-flash（虾盘云），qwen3.7-flash 降为可选项。
+- ClawX / OpenClaw 走虾盘云时，deepseek-v4-flash 在供应商路由里声明原生收图；主模型不收图（如 deepseek-v4-pro）时自动兜底 imageModel 到 deepseek-v4-flash，不再只存图片引用不分析；用户自己配置的 imageModel 不受影响（该逻辑在 `apply_openclaw_agent_to_home` 写配置时生效，已装机器需在 AI 设置里重切一次驱动或更换 Key 触发一次配置重写才会生效）。
+- 长图自动分块识图，提升识别准确率，并修正 deepseek 闸门判词。
+- 对话工作台的终端不再显示估算金额，改为展示真实 token 数。
+- 拉出的独立终端窗口补装全局拖放监听，支持拖放文件；路径含特殊字符时自动加引号。
+- 一键成片：提交结果未知时先核实再重投，不静默重复扣费。
 - 工具「能不能启动」的判断改为真跑一次 `--version`：终端里实际会用到的那份坏了（平台二进制缺失等）时，不再显示「就绪」，而是提示已损坏，并指出 PATH 后面有没有一份好的副本。
 - 网络体检会读终端标签实际拿到的代理（`~/.zshrc` 等设置的），并检查本机代理端口有没有程序在监听；代理软件换了端口、rc 文件里还写着旧端口时会直接告警。
 - macOS 装机验证改为检查 U-King 刚装进 `~/.local/bin` 的那份，不再被 PATH 前面 Homebrew 里残留的坏副本误判为失败；如果终端里会先用到那份坏的，装完会明确提示。
 - 装机修复后仍失败时，失败原因会写进安装日志（此前日志停在「验证：…」，看不出结局）。
+- U 盘工具盘：支持 self_bind 凭据模式；launch-agent.cmd 返回真实退出码。
 
 **开发者**
 
 - 新增 `term::terminal_shell_env()`：按终端标签同样的方式起一次登录 shell，读取实际生效的环境变量（缓存 30s，8s 超时）；`resolve_on_terminal_path` 改为以它的 PATH 为准。
 - `runtime.tool.inspect` / `runtime.tool.launch` 新增 `broken` 状态；`runtime.network.inspect` 新增 `terminal_proxies` 字段，时限 5s → 15s。
+- 泄漏闸门路径锚定规则修复，恢复被通用目录名遮蔽的扫描覆盖。
+- Hermes：补 opencode 会话头，清理 .env 滚动备份。
+- 本地引擎探测改为有界超时；Mac 发版保持签名级别；DeepSeek Harness 安装器更新到 0.1.5-rc.2；官网新增英文落地页。
+- 发版脚本 SSH 子进程关闭 stdin，避免非交互场景挂起。
 
 ## 1.3.2（2026-09-11）
 
