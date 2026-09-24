@@ -496,10 +496,16 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
 
   // 粘贴图片（Ctrl+V 截图）= 落盘转路径、走跟拖图片一样的 insertPaths（同一套 pendingImages/识图流程），
   // 跟内嵌终端的「粘贴图片进终端」同一个落盘命令（`save_pasted_image`），只是终端贴纯文本路径，
-  // 这里走 insertPaths 好让图片进 pendingImages 参与识图。只拦剪贴板里真有图片的粘贴，
-  // 没有图片就什么都不做，交给 textarea 默认的文本粘贴。
+  // 这里走 insertPaths 好让图片进 pendingImages 参与识图。
+  // 🔴 必须先看有没有文本、且文本优先：Excel/Word/网页复制会**同时**把纯文本和一张渲染位图
+  // 塞进剪贴板（表格截了张图当兜底），如果只看"有没有图片项"就拦截，会把「复制 Excel 单元格 →
+  // 粘贴」错判成贴图片，文本整段丢了——这是真实存在的粘贴场景，不是边缘案例。所以只在
+  // 剪贴板**没有文本、只有图片**时才当成"贴图片"（截图 / 图片查看器里复制图片这类场景）；
+  // 只要有文本就整个不拦，交给 textarea 默认的文本粘贴。
   const handleComposerPaste = useCallback(
     (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (text.trim()) return; // 有文本：不拦，文本粘贴赢（即使剪贴板里还带了张位图）
       const items = Array.from(e.clipboardData?.items ?? []);
       const imageItems = items.filter((it) => it.kind === "file" && it.type.startsWith("image/"));
       if (!imageItems.length) return; // 没图片：不拦，让文本粘贴照常走
