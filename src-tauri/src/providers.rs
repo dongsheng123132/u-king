@@ -3657,6 +3657,141 @@ mod managed_provider_identity_tests {
             },
         );
     }
+
+    /// 虾盘云路由主模型是 **收不了图** 的 `deepseek-v4-pro` 时：
+    ///  ① provider 的 models 数组里必须补声明 `deepseek-v4-flash`（带 `input:["text","image"]`），
+    ///     否则 `imageModel` 引用的模型 openclaw 引擎解析不到；
+    ///  ② `agents.defaults.imageModel.primary` 必须兜底指到它；
+    ///  ③ 主模型自己（v4-pro）不该被声明成能收图。
+    #[test]
+    fn xiapan_route_with_non_vision_primary_gets_image_model_fallback() {
+        crate::testsandbox::with_sandbox(
+            "xiapan-image-model-fallback",
+            &["ClawX", ".openclaw", ".uking"],
+            |root| {
+                let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
+                apply_clawx(&xiapan, "sk-xp", "deepseek-v4-pro").unwrap();
+
+                let oc_path = root.join(".openclaw").join("openclaw.json");
+                let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                let prov = "custom-ukingxia"; // clawx_agent_provider_key("uking-xiapan")
+
+                assert_eq!(
+                    oc["agents"]["defaults"]["model"]["primary"],
+                    format!("{prov}/deepseek-v4-pro"),
+                    "主模型不该被这次改动动到"
+                );
+                assert_eq!(
+                    oc["agents"]["defaults"]["imageModel"]["primary"],
+                    format!("{prov}/deepseek-v4-flash"),
+                    "收不了图的主模型必须有 imageModel 兜底到 deepseek-v4-flash"
+                );
+
+                let models = oc["models"]["providers"][prov]["models"].as_array().unwrap();
+                let flash = models
+                    .iter()
+                    .find(|m| m["id"] == "deepseek-v4-flash")
+                    .expect("deepseek-v4-flash 必须在 provider models 数组里声明，否则 imageModel 引用解析不到");
+                assert_eq!(flash["input"], json!(["text", "image"]), "必须声明能收图");
+                let pro = models
+                    .iter()
+                    .find(|m| m["id"] == "deepseek-v4-pro")
+                    .expect("主模型自己也要在数组里");
+                assert!(pro.get("input").is_none(), "v4-pro 收不了图，不该被声明 input");
+            },
+        );
+    }
+
+    /// 虾盘云路由主模型**就是** `deepseek-v4-flash`（原生能收图）时：不需要写 `imageModel`，
+    /// 且主模型自己要被声明 `input:["text","image"]`。
+    #[test]
+    fn xiapan_route_with_vision_primary_needs_no_image_model() {
+        crate::testsandbox::with_sandbox(
+            "xiapan-image-model-native",
+            &["ClawX", ".openclaw", ".uking"],
+            |root| {
+                let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
+                apply_clawx(&xiapan, "sk-xp", "deepseek-v4-flash").unwrap();
+
+                let oc_path = root.join(".openclaw").join("openclaw.json");
+                let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                let prov = "custom-ukingxia";
+
+                assert!(
+                    oc["agents"]["defaults"].get("imageModel").is_none(),
+                    "主模型原生能收图，不该额外写 imageModel"
+                );
+                let models = oc["models"]["providers"][prov]["models"].as_array().unwrap();
+                let flash = models
+                    .iter()
+                    .find(|m| m["id"] == "deepseek-v4-flash")
+                    .expect("主模型自己必须在数组里");
+                assert_eq!(flash["input"], json!(["text", "image"]));
+            },
+        );
+    }
+
+    /// 客户自己在 openclaw.json 里配过 `imageModel`（指向非托管 provider）——
+    /// 我们接管虾盘云路由时绝不能覆盖它（宪法第 10 条：不碰用户真实状态）。
+    #[test]
+    fn xiapan_route_preserves_customer_own_non_managed_image_model() {
+        crate::testsandbox::with_sandbox(
+            "xiapan-image-model-preserve-customer",
+            &["ClawX", ".openclaw", ".uking"],
+            |root| {
+                let oc_path = root.join(".openclaw").join("openclaw.json");
+                std::fs::create_dir_all(oc_path.parent().unwrap()).unwrap();
+                std::fs::write(
+                    &oc_path,
+                    r#"{"agents":{"defaults":{"imageModel":{"primary":"customer-provider/vision-model"}}}}"#,
+                )
+                .unwrap();
+
+                let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
+                apply_clawx(&xiapan, "sk-xp", "deepseek-v4-pro").unwrap();
+
+                let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                assert_eq!(
+                    oc["agents"]["defaults"]["imageModel"]["primary"],
+                    "customer-provider/vision-model",
+                    "客户自己配的非托管 imageModel 必须原样保留"
+                );
+            },
+        );
+    }
+
+    /// 切离虾盘云（切到别的供应商，如 OpenRouter）后：如果之前是我们写的托管 imageModel，
+    /// 必须清掉，不能留一个指向已被摘掉的托管 provider 的悬空引用；
+    /// `model.primary` 已经无条件跟着新路由改写，这里的 imageModel 效果等价——非虾盘云路由上
+    /// 我们没有把握声明谁能收图，所以「改写」在这里体现为清空。
+    #[test]
+    fn switching_away_from_xiapan_clears_dangling_managed_image_model() {
+        crate::testsandbox::with_sandbox(
+            "xiapan-image-model-switch-away",
+            &["ClawX", ".openclaw", ".uking"],
+            |root| {
+                let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
+                apply_clawx(&xiapan, "sk-xp", "deepseek-v4-pro").unwrap();
+
+                let oc_path = root.join(".openclaw").join("openclaw.json");
+                let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                assert!(oc["agents"]["defaults"]["imageModel"].is_object(), "前置条件：应已写下托管 imageModel");
+
+                let openrouter = custom(
+                    "custom-openrouter",
+                    "OpenRouter",
+                    "https://openrouter.ai/api/v1",
+                );
+                apply_clawx(&openrouter, "sk-or", "stealth/ox-alpha").unwrap();
+
+                let oc2: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                assert!(
+                    oc2["agents"]["defaults"].get("imageModel").is_none(),
+                    "切离虾盘云后不该留一个指向已摘掉的托管 provider 的 imageModel"
+                );
+            },
+        );
+    }
 }
 
 #[cfg(test)]
@@ -5151,6 +5286,32 @@ const OPENCLAW_SMALL_FAST_MODEL: &str = "deepseek-v4-flash";
 /// 虾盘云在 ClawX 账号层的托管 id（= managed_provider_id(xiapan)；slug 规则下原样保留）。
 const XIAPAN_MANAGED_ACCOUNT: &str = "uking-xiapan";
 
+/// 虾盘云路由上**原生能收图**的模型 —— 用来给 `agents.defaults.imageModel` 兜底路由，
+/// 也是唯一被声明 `input: ["text","image"]` 的那个模型 id。
+///
+/// 2026-09-16 跑道实测（`skills/vision/SKILL.md` / `see-image.mjs` 同一夹具）：
+/// `deepseek-v4-flash` 收得了图、真看了，只是偏弱且抖（证照/大图合计 62%，长截图 4 次全 0）；
+/// `deepseek-v4-pro` **收不了图**（三种问法全回「我无法查看这张图片」）。产品决策
+/// （2026-09-24）：不为识图单独切模型（保持主模型一致、不增路由复杂度），
+/// 复用 deepseek-v4-flash 的原生视觉能力即可，不引入 qwen 系列。
+const OPENCLAW_VISION_CAPABLE_MODEL: &str = OPENCLAW_SMALL_FAST_MODEL;
+
+/// 判断 `agents.defaults.imageModel`（字符串 `"provider/model"` 或对象 `{primary,...}`
+/// 两种写法，见 openclaw docs/gateway/config-agents/models.md）当前的 primary 是否指向
+/// 我们自己托管过的 provider 键。只有这种情况允许我们改写/清空它——客户自己配的
+/// 非托管 imageModel 一律不碰（宪法第 10 条：不碰用户真实状态）。
+fn openclaw_image_model_is_managed(v: &Value) -> bool {
+    let primary_ref = match v {
+        Value::String(s) => Some(s.as_str()),
+        Value::Object(o) => o.get("primary").and_then(|p| p.as_str()),
+        _ => None,
+    };
+    primary_ref
+        .and_then(|r| r.split('/').next())
+        .map(is_managed_agent_provider_key)
+        .unwrap_or(false)
+}
+
 /// 把虾盘云写进 ClawX 内嵌 OpenClaw 的 **agent 运行时配置**（参考 ClawX 官方 openclaw-auth.ts
 /// 的 saveProviderKeyToOpenClaw + updateAgentModelProvider + setOpenClawDefaultModelWithOverride
 /// 三件套，实现于 U-King 侧）。写三处，缺一不可：
@@ -5192,6 +5353,32 @@ fn apply_openclaw_agent_to_home(
         .collect();
     let mut provider_models = vec![model_entry.clone()];
     provider_models.extend(fallback_models);
+
+    // 只在虾盘云自己的路由上做识图声明 —— 别家供应商的 deepseek-v4-flash id 不一定是同一个模型，
+    // 硬声明 input:["text","image"] 就是伪能力（镜像 openclaw_fallback_chain 的同款边界判断，
+    // 但比对真正的 account_id，不是派生键 prov —— 见下方注释）。
+    let is_xiapan_managed = account_id == XIAPAN_MANAGED_ACCOUNT;
+    if is_xiapan_managed {
+        // 已在数组里的 deepseek-v4-flash（无论是主模型还是兜底）补上 input 声明。
+        let mut has_vision_model = false;
+        for entry in provider_models.iter_mut() {
+            if entry.get("id").and_then(Value::as_str) == Some(OPENCLAW_VISION_CAPABLE_MODEL) {
+                if let Some(obj) = entry.as_object_mut() {
+                    obj.insert("input".into(), json!(["text", "image"]));
+                }
+                has_vision_model = true;
+            }
+        }
+        // 主模型不是 flash 时（如 deepseek-v4-pro），imageModel 兜底要指向它，
+        // 但它得先在 provider 的 models 数组里声明，否则引擎解析不到这个引用。
+        if !has_vision_model {
+            provider_models.push(json!({
+                "id": OPENCLAW_VISION_CAPABLE_MODEL,
+                "name": OPENCLAW_VISION_CAPABLE_MODEL,
+                "input": ["text", "image"],
+            }));
+        }
+    }
 
     // ① openclaw.json —— provider 定义 + 默认模型
     let oc_path = home.join("openclaw.json");
@@ -5244,6 +5431,39 @@ fn apply_openclaw_agent_to_home(
             }),
         );
         defaults.insert("timeoutSeconds".into(), json!(OPENCLAW_MODEL_TIMEOUT_SECONDS));
+
+        // 识图路由（`agents.defaults.imageModel`，官方文档：主模型原生支持图片时引擎
+        // 直接用主模型，只有主模型收不了图才会去看这个字段）：
+        //   - 当前路由不是虾盘云、或主模型本身就是 deepseek-v4-flash（能原生收图）
+        //     → 不需要我们写的 imageModel；若这里还留着上一版托管值（比如切主模型
+        //     前指过别的托管 provider，或本次直接切到了非虾盘云供应商），清掉它，
+        //     免得指向一个已经不再声明/不再是这条路由的托管 provider（同 `model.primary`
+        //     每次都跟着当前路由整体改写的做法，只是「改写」在这里等价于「清空」，
+        //     因为非虾盘云路由上我们没有把握声明它有 image input 的模型）。
+        //   - 虾盘云路由 + 主模型是别的模型（如 deepseek-v4-pro，收不了图）→ 兜底指到
+        //     deepseek-v4-flash（上面已保证它在 provider models 数组里声明了 image input）。
+        // 两种「改写」都只在「缺失」或「上次是我们写的」时才动——客户自己配的 imageModel
+        // （指向非托管 provider）绝不覆盖（宪法第 10 条）。
+        let vision_applicable = is_xiapan_managed && model != OPENCLAW_VISION_CAPABLE_MODEL;
+        if vision_applicable {
+            let vision_ref = format!("{prov}/{OPENCLAW_VISION_CAPABLE_MODEL}");
+            let should_set = match defaults.get("imageModel") {
+                None => true,
+                Some(v) if v.is_null() => true,
+                Some(v) => openclaw_image_model_is_managed(v),
+            };
+            if should_set {
+                defaults.insert("imageModel".into(), json!({ "primary": vision_ref }));
+            }
+        } else {
+            let should_clear = defaults
+                .get("imageModel")
+                .map(openclaw_image_model_is_managed)
+                .unwrap_or(false);
+            if should_clear {
+                defaults.remove("imageModel");
+            }
+        }
 
         // 压缩预留：跟 maxTokens 对齐（见 OPENCLAW_RESERVE_TOKENS_FLOOR 的注释 / pc-***）。
         // **只放松，不收紧**：仅当现值缺失或比我们的上限还大时才改小 —— 用户若自己调到更低
