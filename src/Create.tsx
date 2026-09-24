@@ -2,14 +2,16 @@
  * AI 创作 —— AI 作图 / 视频片段 / 创作画布 / 海报二维码四合一入口。
  *
  * 信息架构梳理：作图、视频片段和海报二维码是可直接使用的创作能力；创作画布暂存为
- * 待上线入口。四项统一放在核心入口「AI 创作」，不再散落在侧栏其它位置。
+ * 待上线入口，桌面内置画布上线前先引到在线版（tu）顶替。四项统一放在核心入口「AI 创作」，
+ * 不再散落在侧栏其它位置。
  *
  * 本页只是壳：内部标签切换 + 懒挂载保活（访问过的 tab 用 display 切换不卸载，
  * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）与创作画布入口保持独立、
  * 原路由不动（AI 专家页等深链仍可直达）。删除本页只需动 App.tsx + Sidebar（铁律④）。
  */
 import { lazy, Suspense, useState } from "react";
-import { Clapperboard, Image as ImageIcon, PanelTopOpen, QrCode } from "lucide-react";
+import { Clapperboard, ExternalLink, Image as ImageIcon, PanelTopOpen, QrCode } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "./lib/cn";
 import { useI18n } from "./i18n";
 import type { DeviceKey } from "./lib/types";
@@ -17,6 +19,9 @@ import type { DeviceKey } from "./lib/types";
 const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
+
+/** 在线版创作画布（tu）—— 桌面内置画布上线前，「创作画布」子标签先引到这里顶替。 */
+const ONLINE_CANVAS_URL = "https://tu.u-claw.org.cn/?board=efd1f6dc-4864-4d91-a36d-dcefad865fe8";
 
 /** 与 App.tsx 的 DeviceKey 同构（透传，不加工）。 */
 type SubTab = "canvas" | "draw" | "video" | "qrmerge";
@@ -60,6 +65,13 @@ export function Create({
     setSub(id);
     setMounted((s) => (s.has(id) ? s : new Set(s).add(id)));
   };
+  const openOnlineCanvas = async () => {
+    try {
+      await openUrl(ONLINE_CANVAS_URL);
+    } catch (err) {
+      onToast(t("打不开在线画布：{e}", { e: String(err) }));
+    }
+  };
 
   return (
     // 高度链的一环（测试报告 #005）：外层 main 已改成不滚的 flex 容器，
@@ -101,9 +113,16 @@ export function Create({
               </div>
               <div>
                 <h2 className="text-base font-medium text-ink-1">{t("创作画布")}</h2>
-                <p className="mt-2 text-sm leading-6 text-ink-3">{t("功能完善中，可先使用 AI 作图或视频片段。")}</p>
+                <p className="mt-2 text-sm leading-6 text-ink-3">{t("桌面版画布完善中，可先用在线版画布，或使用 AI 作图、视频片段。")}</p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={openOnlineCanvas}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-600"
+                >
+                  <ExternalLink size={15} />{t("打开在线版画布")}
+                </button>
                 <button type="button" onClick={() => go("draw")} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06]"><ImageIcon size={15} />{t("AI 作图")}</button>
                 <button type="button" onClick={() => go("video")} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-2 text-sm font-medium text-ink-2 hover:bg-white/[0.06]"><Clapperboard size={15} />{t("视频片段")}</button>
               </div>
