@@ -10,14 +10,17 @@ import { join } from "node:path";
 import https from "node:https";
 
 const BASE = "https://api.u-claw.org.cn"; // 国内可达域名（.org 子域被 GFW SNI 阻断，见 CLAUDE.md）
-// 默认识图模型：**国产 qwen3.7-flash**。
-// 依据 = `node scripts/bench.mjs`（三类合成夹具、每格跑 3 遍的客观命中率）：
-//   证照字段 / 大图小字 / 长截图 三项合计 —— qwen3.7-flash 100%，qwen3-vl-flash 97%，
-//   qwen-vl-max 91%，qwen-vl-plus 86%，qwen3.5-ocr 69%，MiniMax-M3 66%。
-//   长截图（2400×2908）一项尤其分化：qwen3.7-flash 4/4，qwen3-vl-flash 44%，qwen-vl-max 13%。
-// 旧默认 MiniMax-M3 在宽截图上会**整页编造**（泛问三遍全 0/7，还编出不存在的按钮和账号），
-// 比漏读更危险 —— 换默认就是为了这条。想要更快可 `--model qwen3-vl-flash`（97%，快约 30%）。
-const DEFAULT_MODEL = "qwen3.7-flash";
+// 默认识图模型：2026-09-24 产品决定改回 **DeepSeek 原生视觉（deepseek-v4-flash）**——主力对话
+// 模型本来就是 DeepSeek，识图也走自家模型，不用来回切供应商。
+// 依据 = 2026-09-16 跑道实测（`bench/cases.json`，详见 SKILL.md「DeepSeek 自带视觉够不够用」一节）：
+//   deepseek-v4-flash 合计 62%（证照/大图小字尚可，长截图 4 次全 0——已靠下面「长图分块」缓解）；
+//   qwen3.7-flash（原默认）合计 95%，仍是更准的一档，想要更高准确率可 `--model qwen3.7-flash`
+//   显式切回（see-image.mjs 支持 --model 覆盖，选了就不自动降级）。
+// deepseek-v4-pro（收不了图）与其余非 flash 的 deepseek 聊天模型仍在下面 TEXT_ONLY 闸门里被拦。
+// 历史：旧默认曾是 MiniMax-M3，2026-08-16 因「宽截图整页编造」（泛问三遍全 0/7，还编出不存在的
+// 按钮和账号）换成 qwen3.7-flash（同批 `node scripts/bench.mjs` 实测：qwen3.7-flash 100%、
+// qwen3-vl-flash 97%、qwen-vl-max 91%、qwen-vl-plus 86%、qwen3.5-ocr 69%、MiniMax-M3 66%）。
+const DEFAULT_MODEL = "deepseek-v4-flash";
 // 替补链：主力那条路不通（报错/超时/拒答）时依次顶上，**只在没显式 --model 时才启用**。
 // 两棒各挡一类故障，别把它们看成「第二好」和「第三好」：
 //
@@ -232,10 +235,10 @@ const TEXT_ONLY = [
   /^qwen-(?:plus|turbo)$/i,              // 实测：一个装懂、一个编名字
   /^qwen3\.7-max$/i,                     // catalog text-only；同族 qwen3.7-plus 才收图
   /^qwen3-coder/i,
-  /^(?:[\w.-]+\/)?deepseek(?!.*ocr)/i,   // 拦截结论仍对（deepseek-ocr 例外，那是识图的），但「全系纯文本」这句
-                                          // 理由已过期：2026-09-16 跑道实测 v4-flash 其实能收图，只是弱且抖
-                                          // （合计 62%、长截图 4 次全 0）；v4-pro 才是真收不了图，但老实拒答不编。
-                                          // 拦的理由不是「看不见」，是「看不准/不值得当识图主力」，见 whyBlocked()。
+  // deepseek 系：deepseek-ocr（识图专用）和 deepseek-v4-flash（2026-09-24 起产品默认，弱但能看，
+  // 62% 合计）放行；其余（v4-pro、deepseek-chat、deepseek-v3.2 等纯聊天模型）仍拦——v4-pro 真收
+  // 不了图，其余没实测过、按家族默认当纯文本处理更安全。理由文案见 whyBlocked()。
+  /^(?:[\w.-]+\/)?deepseek(?!.*(?:ocr|v4-flash))/i,
   /^(?:z-ai\/)?glm-5(?:\.\d+)?$/i,       // glm-5/5.1/5.2 纯文本；带 v 的 glm-5v-turbo 才收图
   /^(?:[\w.-]+\/)?minimax-m[12]/i,       // M3 才收图
 ];
@@ -315,9 +318,25 @@ function catalogSaysTextOnly(id) {
   return false;
 }
 
-const textOnlyModel = (id) => textOnlyRegex(id) || catalogSaysTextOnly(id);
+// 显式覆盖：catalog 对 `deepseek-v4-flash` 判「纯文本」——它收录的是厂商官方基座模型的能力声明
+// （catalog 里另有 `deepseek-v4-flash-vision-exp` 才被厂商自己标 image，见 2026-09-24 跑道核实：
+// `node -e` 查 pi-ai 的 deepseek.json 等文件，`deepseek-v4-flash` 裸名各处一律 `["text"]`）。
+// 但我们不是走厂商官方接口，是走虾盘云代理，而 2026-09-16 `bench/cases.json` 直连虾盘云 v1/chat/
+// completions 实测：这个裸名**确实收图、确实读了**（合计 62%，不是「收图不报错却编答案」那类
+// 危险——弱是弱，但答案基于图内容，不是凭空编）。catalog 说的是别家渠道的能力声明，跟虾盘云这条
+// 代理实际服务的模型不是一回事，所以这一条上我们自己直连实测优先于 catalog。
+// 仅此一个例外：别在这张表上加别的 id，除非也这样先直连实测过（铁律见 catalogSaysTextOnly 上方三条）。
+const CATALOG_OVERRIDE_ALLOW = new Set(["deepseek-v4-flash"]);
+const textOnlyModel = (id) => {
+  const raw = String(id || "").trim().toLowerCase();
+  if (CATALOG_OVERRIDE_ALLOW.has(raw)) return textOnlyRegex(id); // 只让手写清单管它，catalog 管不着
+  return textOnlyRegex(id) || catalogSaysTextOnly(id);
+};
 
 // 按模型给准确的拦截理由（2026-09-16 跑道实测），取代过去写死的「全系纯文本」一句话。
+// 2026-09-24 起 deepseek-v4-flash 已从 TEXT_ONLY 正则放行（产品决定改回 DeepSeek 原生识图，
+// 见 DEFAULT_MODEL 处注释）；下面这条分支留着是防第二源（catalog，只加拦不放行）在某台机器上
+// 把它判成纯文本——真出现这句话说明是 catalog 那道防线触发的，不是这条正则又把它拦住了。
 // deepseek 系两个成员失败模式完全不同，不能用同一句话描述：
 //   v4-flash：**能**收图，只是弱且抖（合计 62%，长截图 0/4，带意图问法大图小字跨度 0~6）；
 //   v4-pro  ：**收不了图**（三种问法全回「我无法查看这张图片」），好在老实拒答、不编。
@@ -478,8 +497,8 @@ async function main() {
   const banned = chain.find(textOnlyModel);
   if (banned)
     fail(`${whyBlocked(banned)}\n`
-       + `请改用带视觉的：${DEFAULT_MODEL}（默认，最准）/ ${DEFAULT_MODEL_FALLBACKS.join(" / ")}（替补）/ `
-       + `qwen3-vl-flash（更快）/ qwen-vl-max。`
+       + `请改用带视觉的：${DEFAULT_MODEL}（默认）/ ${DEFAULT_MODEL_FALLBACKS.join(" / ")}（替补）/ `
+       + `qwen3.7-flash（更准，原默认）/ qwen3-vl-flash（更快）/ qwen-vl-max。`
        // 说清是哪一源拦的 —— 万一拦错了，才知道该去改哪份名单（手写清单在本文件；catalog 由 dsh 装）
        + `\n（判据来源：${textOnlyRegex(banned) ? "本脚本内置清单" : "dsh 的 pi-ai catalog——该模型 input 里没有 image"}）`
        + (banned === explicitModel ? "" : `\n（${banned} 来自脚本内置的默认/替补，这是配置错误，请修 see-image.mjs。）`), 2);
