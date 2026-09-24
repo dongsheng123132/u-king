@@ -54,9 +54,11 @@ const AIGC_GENERATORS: &[&str] = &[
 ];
 
 /// 看图包：给「只会文字」的模型（DeepSeek 等）当眼睛 —— 图片 OCR + 图像理解 + 定位。
-/// 默认走**国产 qwen3.7-flash**：`skills/vision/bench/` 那条跑道上它是唯一扛住长截图的
-/// （2400×2908 拿 4/4，次名 44%、再次 13%）。**旧默认 MiniMax-M3 已撤** —— 它在宽截图上
-/// 不是漏读而是**整页编造**（泛问三遍全 0/7，编出不存在的按钮和账号），confidently wrong 更危险。
+/// 默认走 **DeepSeek 原生视觉（deepseek-v4-flash）**（2026-09-24 产品决定：主力对话模型本来就是
+/// DeepSeek，识图也走自家模型）；2026-09-16 跑道实测它合计 62%（长截图 4 次全 0，已靠长图分块缓解），
+/// 比旧默认 `qwen3.7-flash`（95%）弱，`qwen3.7-flash` 仍可用 `--model` 显式切回。
+/// 更早的历史：`qwen3.7-flash` 曾取代 MiniMax-M3——后者在宽截图上不是漏读而是**整页编造**
+/// （泛问三遍全 0/7，编出不存在的按钮和账号），confidently wrong 比读不出来更危险。
 /// 脚本自读 `~/.uking/device.json` 的 Key，**不改工具的对话模型**——省钱路由不动，只在遇图时调一下。
 /// 文件夹名 = `uking-vision`。
 const VISION: Pack = Pack {

@@ -37,13 +37,16 @@ const fails = [];
 // 抄一份到跑道里最省事，但那样跑道验的是**副本**，源码改了副本不会跟着改 —— 等于没验。
 const src = readFileSync(SEE, "utf8");
 const from = src.indexOf("const TEXT_ONLY");
-const toLine = src.indexOf("const textOnlyModel");
+// 结束锚点用「按模型给准确的拦截理由」那条注释的开头——textOnlyModel 现在是多行函数
+// （见 CATALOG_OVERRIDE_ALLOW），不能再用「下一行换行」当边界，得切到它写完为止。
+const toMarker = "// 按模型给准确的拦截理由";
+const toLine = src.indexOf(toMarker);
 if (from < 0 || toLine < 0) {
-  console.error("❌ 在 see-image.mjs 里找不到闸门那一段（`const TEXT_ONLY` … `const textOnlyModel`）——");
+  console.error("❌ 在 see-image.mjs 里找不到闸门那一段（`const TEXT_ONLY` … `" + toMarker + "`）——");
   console.error("   跑道过期了，去看那个文件是不是重构过。**不要**把断言注释掉了事。");
   process.exit(1);
 }
-const section = src.slice(from, src.indexOf("\n", toLine));
+const section = src.slice(from, toLine);
 
 /** 把那一段放进给定环境里跑起来，返回闸门函数。`fakeHome` 用来制造「dsh 没装」。 */
 function gateWith(fakeHome) {
@@ -65,7 +68,7 @@ console.log(`catalog: ${catalogSize} 个裸名${catalogSize ? "" : "（🔴 本�
 
 // ── ① 手写清单：两档都必须拦（它不依赖 catalog）──
 const BY_REGEX = ["qwen-plus", "qwen-turbo", "qwen3.7-max", "qwen3-coder-plus",
-  "deepseek-v3.2", "deepseek-chat", "glm-5", "glm-5.1", "glm-5.2", "minimax-m1", "minimax-m2"];
+  "deepseek-v3.2", "deepseek-chat", "deepseek-v4-pro", "glm-5", "glm-5.1", "glm-5.2", "minimax-m1", "minimax-m2"];
 console.log("\n[1/4] 手写清单点名的，两档都必须拦…");
 for (const id of BY_REGEX) {
   if (!on.textOnlyModel(id)) fails.push(`[清单] ${id} 没被拦（catalog-on）`);
@@ -75,7 +78,8 @@ if (!fails.length) console.log(`     ✓ ${BY_REGEX.length} 个全拦住，且�
 
 // ── ② 会看图的：两档都必须放行（拦错 = 主力路径当场死）──
 const VISION = ["qwen3.7-flash", "qwen3.7-plus", "qwen3-vl-flash", "qwen3-vl-plus", "qwen-vl-max",
-  "kimi-k3", "z-ai/glm-5v-turbo", "gemini-3.5-flash", "claude-sonnet-5", "gpt-5.4", "deepseek-ocr"];
+  "kimi-k3", "z-ai/glm-5v-turbo", "gemini-3.5-flash", "claude-sonnet-5", "gpt-5.4", "deepseek-ocr",
+  "deepseek-v4-flash"]; // 2026-09-24 起产品默认，见 see-image.mjs DEFAULT_MODEL
 console.log("[2/4] 会看图的，两档都必须放行…");
 {
   const before = fails.length;
