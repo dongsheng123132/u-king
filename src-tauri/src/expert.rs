@@ -112,7 +112,7 @@ pub fn experts_dir() -> PathBuf {
 ///  1. `valid_id` —— id 同时是文件夹名，放行 `.` / `/` 就是路径逃逸
 ///  2. 删之前 `canonicalize` 比对，确认目标**真的在** `experts_dir()` 底下
 ///     （挡符号链接：有人把 `~/.uking/experts/x` 指到 `C:\Windows`）
-///  3. 只删招进来的 —— 内置那 11 位是代码里的常量，磁盘上根本没有它们的文件夹，
+///  3. 只删招进来的 —— 内置那 12 位是代码里的常量，磁盘上根本没有它们的文件夹，
 ///     所以「找不到」返回 Ok(false) 而不是报错（幂等：辞过一次再辞照样成功）
 pub fn dismiss(id: &str) -> Result<bool, String> {
     if !valid_id(id) {
