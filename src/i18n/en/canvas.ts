@@ -2,5 +2,7 @@
 export const canvas: Record<string, string> = {
   "创作画布": "Creator Canvas",
   "待上线": "Coming soon",
-  "功能完善中，可先使用 AI 作图或视频片段。": "This feature is being completed. Use AI Image or Video Clip for now.",
+  "桌面版画布完善中，可先用在线版画布，或使用 AI 作图、视频片段。": "The desktop canvas is still being completed. Use the online canvas for now, or AI Image / Video Clip.",
+  "打开在线版画布": "Open online canvas",
+  "打不开在线画布：{e}": "Couldn't open the online canvas: {e}",
 };
