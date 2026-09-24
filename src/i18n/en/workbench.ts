@@ -227,6 +227,7 @@ export const workbench: Record<string, string> = {
     "Can't find this file: {p} (the AI may not have written it yet, or the path isn't relative to this working folder)",
 
   "打不开这个网址：{e}": "Can't open this URL: {e}",
+  "粘贴图片失败: {e}": "Failed to paste image: {e}",
   "选择工作文件夹（AI 和终端都在这里面读写文件、跑命令）":
     "Select a working folder (the AI and terminal read/write files and run commands inside it)",
   "先选个工作文件夹": "Pick a working folder first",
