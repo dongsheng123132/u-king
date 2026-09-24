@@ -118,7 +118,6 @@ export function Create({
               <div className="flex flex-wrap justify-center gap-2">
                 <button
                   type="button"
-                  data-action-id="ui.create.open-online-canvas"
                   onClick={openOnlineCanvas}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-600"
                 >
