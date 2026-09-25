@@ -45,9 +45,14 @@ export const XIAPAN_MODELS: ModelGroup[] = [
         desc: "国产通用模型，写作、对话表现均衡，可作 DeepSeek 之外的备选。",
       },
       {
-        id: "glm-5.2",
-        label: "GLM-5.2 · 智谱",
-        desc: "清华系国产模型，中文理解到位，写报告、改公文比较顺手。",
+        id: "glm-5.3",
+        label: "GLM-5.3 · 智谱旗舰",
+        desc: "清华系国产旗舰，1M 超长上下文，中文理解到位，写报告、改公文比较顺手。（2026-09-12 起替代 5.2 成为主推）",
+      },
+      {
+        id: "glm-5.3-flash",
+        label: "GLM-5.3 Flash · 智谱性价比",
+        desc: "5.3 的轻量版，更快更省，日常任务够用。",
       },
       {
         id: "qwen3.7-max",
