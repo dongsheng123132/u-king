@@ -22,6 +22,24 @@ import { mergeModels, priceyModelHint, recommendedVisionModel, codexProtocolHint
 import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 
+/**
+ * 该 provider 这次切换要用哪把 Key —— 单一真相源（宪法第 8 条）：`ToolHub.tsx`
+ * （AI 工具中心）也要走同一条 `apply_provider` 调用形状，之前各写一份 `keyFor`，
+ * 这里抽成导出的纯函数，两处 import 同一份，不再各判一次。
+ *
+ * Key 来源：
+ *   - 虾盘云系（builtin_recharge）→ 设备内置 Key（deviceKey.key）
+ *   - 自定义 provider → provider 自带的 api_key
+ *   - 官方还原（id==="official"）→ "-"（后端只删配置不需要 key）
+ *   - 其它内置（DeepSeek/GLM/Kimi）→ 没填 Key 时返回空串，调用方需引导去「AI 设置」填
+ */
+export function providerKeyFor(p: ProviderPreset, deviceKey: DeviceKey | null | undefined): string {
+  if (p.id === "official") return "-";
+  if (p.builtin_recharge) return deviceKey?.key || "";
+  if (!p.builtin) return p.api_key || ""; // 自定义 provider 自带 key
+  return ""; // 其它内置（DeepSeek/GLM/Kimi）需用户在 AI 设置填
+}
+
 export function ProviderSwitch({
   targets,
   deviceKey: deviceKeyProp,
@@ -127,17 +145,10 @@ export function ProviderSwitch({
     ? codexProtocolHint(providers.find((p) => p.id === activeId) ?? { id: "xiapan", builtin_recharge: true })
     : null;
 
-  const keyFor = (p: ProviderPreset): string | null => {
-    if (p.id === "official") return "-";
-    if (p.builtin_recharge) return deviceKey?.key || "";
-    if (!p.builtin) return p.api_key || ""; // 自定义 provider 自带 key
-    return ""; // 其它内置（DeepSeek/GLM/Kimi）需用户在 AI 设置填
-  };
-
   const doSwitch = useCallback(
     async (p: ProviderPreset, modelOverride?: string) => {
       if (busy) return;
-      const key = keyFor(p);
+      const key = providerKeyFor(p, deviceKey);
       if (key === "") {
         onToast(t("{name} 需要先在「AI 设置」填 Key", { name: p.name }));
         onGoManage();

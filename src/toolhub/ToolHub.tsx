@@ -36,6 +36,7 @@ import { LAB_TOOLS, toolTargets, currentModelFor, discoveryNameFor, type ToolInf
 import type { DeviceKey, DriverStatus } from "../lib/types";
 import type { ProviderPreset } from "../Wizard";
 import { ToolIcon } from "../components/ToolIcon";
+import { providerKeyFor } from "../components/ProviderSwitch";
 import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 import { getLaunchPref, setLaunchPref } from "./launchPref";
@@ -68,13 +69,25 @@ const CATS: { id: Category; label: string }[] = [
   { id: "lab", label: "实验室" },
 ];
 
-/** 供应商这次要用哪把 Key —— 照抄 `ProviderSwitch.tsx::keyFor`，同一条 apply_provider
- *  调用形状，不重新设计一套判断。 */
-function keyFor(p: ProviderPreset, deviceKey: DeviceKey | null): string {
-  if (p.id === "official") return "-";
-  if (p.builtin_recharge) return deviceKey?.key || "";
-  if (!p.builtin) return p.api_key || "";
-  return "";
+/** 「修改模型配置」勾选记忆 —— 默认勾上（用户在右侧选了一个模型，本身就是想用它；
+ *  EchoBird 两个勾选框也是默认都开）；用户主动取消勾选后，记住这个选择，别每次都弹回默认。 */
+const APPLY_MODEL_KEY = "uking.toolhub.applyModel";
+function getApplyModelPref(): boolean {
+  try {
+    const v = localStorage.getItem(APPLY_MODEL_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch {
+    /* localStorage 不可用时按默认勾上处理 */
+  }
+  return true;
+}
+function setApplyModelPref(v: boolean): void {
+  try {
+    localStorage.setItem(APPLY_MODEL_KEY, v ? "1" : "0");
+  } catch {
+    /* ignore：写不进去只影响这一次会话的偏好 */
+  }
 }
 
 /** 接口主机名，仅用于展示——跟 `CustomProviderModal.tsx`/`Manager.tsx` 里那个
@@ -169,9 +182,14 @@ export function ToolHub({
     setSelectedProviderId(activeId);
   }, [activeId, selected?.id]);
 
-  const [applyModelOnLaunch, setApplyModelOnLaunch] = useState(false);
+  const [applyModelOnLaunch, setApplyModelOnLaunch] = useState(getApplyModelPref);
   const [launchInUcli, setLaunchInUcli] = useState(() => getLaunchPref() === "ucli");
   const [applying, setApplying] = useState(false);
+
+  const toggleApplyModelOnLaunch = (checked: boolean) => {
+    setApplyModelOnLaunch(checked);
+    setApplyModelPref(checked);
+  };
 
   const toggleLaunchInUcli = (checked: boolean) => {
     setLaunchInUcli(checked);
@@ -196,7 +214,7 @@ export function ToolHub({
     if (applyModelOnLaunch && selectedProviderId && selectedProviderId !== activeId && targets.length) {
       const p = providers.find((x) => x.id === selectedProviderId);
       if (p) {
-        const key = keyFor(p, deviceKey);
+        const key = providerKeyFor(p, deviceKey);
         if (key === "") {
           onToast(tr("{name} 需要先在「AI 设置」填 Key", { name: p.name }));
           onGoManage();
@@ -205,10 +223,13 @@ export function ToolHub({
         setApplying(true);
         try {
           await invoke("apply_provider", { providerId: p.id, apiKey: key, model: null, targets });
+          // ClawX 不热重载配置文件（运行时持有内存副本，退出会覆写）——切完必须重启 ClawX 才生效。
+          // 跟 `ProviderSwitch.tsx::doSwitch` 用同一句提示（`clawxHint`），别在这重新造一句漂移的文案。
+          const clawxHint = targets.includes("clawx") ? tr("，请重启 ClawX 生效") : "";
           onToast(
-            p.id === "official"
+            (p.id === "official"
               ? tr("已还原官方配置{hint}", { hint: "" })
-              : tr("已切到 {name}，正在启动 {tool}…", { name: p.name, tool: selected.name }),
+              : tr("已切到 {name}，正在启动 {tool}…", { name: p.name, tool: selected.name })) + clawxHint,
           );
           await onRefreshTools();
         } catch (e) {
@@ -400,7 +421,7 @@ export function ToolHub({
           <input
             type="checkbox"
             checked={applyModelOnLaunch}
-            onChange={(e) => setApplyModelOnLaunch(e.target.checked)}
+            onChange={(e) => toggleApplyModelOnLaunch(e.target.checked)}
             disabled={!selected?.installed || !targets.length}
           />
           <Settings2 size={13} className="text-ink-4" />
