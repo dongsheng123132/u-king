@@ -6,7 +6,7 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, Hammer, HardDrive, History, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, Hammer, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2, Wrench } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -17,6 +17,7 @@ import type { TuiAppId } from "../opencodex/apps";
 // TUI 应用（claude/codex-cli/openclaw/hermes）+ 工作台 + 终端页 + 管家页面 + AI 作图
 export type TabId =
   | TuiAppId
+  | "toolhub"
   | "dshplugins"
   | "terminal"
   | "setup"
@@ -69,8 +70,18 @@ type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
  *   ④ AI 设置     —— 换模型/余额（维护入口，常驻）
  *
  * **首页故意留在核心**：首页是小白唯一的装机漏斗，摘掉等于新客户开机即无路可走。
+ *
+ * 🔴 **2026-09-26 「AI 工具中心」插进最前面**（工具→模型→启动一屏走完，参照 EchoBird
+ * 应用管理器）：放在 U-Workspace 前面而不是后面，是因为它服务的场景更靠前——
+ * 「先挑今天用哪个工具、配哪个模型」发生在「进 U-Workspace 开始干活」之前。
+ * 不改默认落地页（仍是装机向导 `setup`，见 App.tsx 的 `useState<TabId>("setup")`）——
+ * 这条只影响侧栏顺序，不影响首次启动落在哪。
  */
 const CORE: NavItem[] = [
+  // 「AI 工具中心」：选工具 → 选模型 → 启动，一屏说清楚。跟下面「我的 AI」的分工——
+  // myai 是**装机漏斗**（引导装、体检、卸载），toolhub 是**日常启动台**（已经装好之后
+  // 每天用的落脚点），两者数据源相同（tools/driver），互不重实现。
+  { id: "toolhub", label: "AI 工具中心", sub: "选工具 · 选模型 · 一键启动", icon: LayoutGrid },
   // U-Workspace（AI 工作台）= 主交互面：对话 + 终端 + 作图预览，全都在 U-King 内，交互尽量不外跳。
   //
   // 🔴 **命名约定（2026-08-16 定，别再混着叫）**：

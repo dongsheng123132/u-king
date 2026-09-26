@@ -50,6 +50,7 @@ import type { LaunchPlan } from "./components/LaunchBlocked";
 import { DoctorCard } from "./components/DoctorCard";
 import { AnchoredMenu } from "./components/AnchoredMenu";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
+import { getLaunchPref } from "./toolhub/launchPref";
 
 // 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
 // （Manager 挂载点 / launchTool / ToolAppView::handleStart 三条前端路径共用这一个 client）。
@@ -86,6 +87,7 @@ const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default:
 const DshPlugins = lazy(() => import("./DshPlugins").then((m) => ({ default: m.DshPlugins })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
 const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
+const ToolHub = lazy(() => import("./toolhub/ToolHub").then((m) => ({ default: m.ToolHub })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
 import { cn } from "./lib/cn";
@@ -115,7 +117,8 @@ type InstallResult = {
 type TermSnapshotSession = { cwd: string | null; cmd: string | null; tool: string | null; resumeHint?: string | null; restoreKey?: number };
 type TermSnapshotInfo = { sessions: TermSnapshotSession[] };
 
-type ToolInfo = {
+// 导出给 `toolhub/ToolHub.tsx` 用（AI 工具中心页复用同一份类型，不重开一份平行定义）。
+export type ToolInfo = {
   id: string;
   name: string;
   summary: string;
@@ -768,14 +771,30 @@ export function App() {
         case "route_tab":
           if (result.route) setTab(result.route as TabId);
           return;
-        case "embedded_pty":
-          // 「打开终端」＝弹独立 U-CLI 终端小窗跑这条命令（open_terminal_window）。
+        case "embedded_pty": {
+          // 「打开终端」拉哪种窗口——两条路都是独立弹窗，客户能自己选（`toolhub/launchPref.ts`）：
+          //  · "ucli"   ＝ U-King 自带的 U-CLI 小窗（`open_terminal_window`，2026-09-06 起的默认行为）；
+          //  · "system" ＝ 系统原生控制台（`term::term_open_external`，ExternalTerm 模式那批工具
+          //    一直在用的同一个命令，这里只是把它也接进 EmbeddedPty 这条路径）。
+          // 系统终端万一打不开（White-list 拒绝 / 平台差异），原样回退回 U-CLI，不留死胡同。
+          const cmd = result.launch_cmd ?? t.launch_cmd ?? "";
+          if (getLaunchPref() === "system") {
+            invoke("term_open_external", { cmd, cwd: null })
+              .then(() => flash(tr("已为 {name} 打开系统终端", { name: t.name })))
+              .catch((e) => {
+                flash(tr("打开系统终端失败（{msg}），已改用 U-CLI 终端窗口", { msg: String(e) }));
+                void invoke("open_terminal_window", { cwd: null, cmd })
+                  .catch((e2) => flash(tr("拉出终端窗口失败：{msg}", { msg: String(e2) })));
+              });
+            return;
+          }
           // 2026-09-06 起不再 setTab("terminal") 塞进内嵌终端整页 —— 那页侧栏入口平时隐藏，
           // 一旦从这里落进去就没有能切回来的入口（幽灵页）。内嵌终端页现在只留给快照恢复用，
           // pendingCmd / TerminalPage 的 prop 结构不动，只是这个分支不再是它的生产者。
-          void invoke("open_terminal_window", { cwd: null, cmd: result.launch_cmd ?? t.launch_cmd ?? "" })
+          void invoke("open_terminal_window", { cwd: null, cmd })
             .catch((e) => flash(tr("拉出终端窗口失败：{msg}", { msg: String(e) })));
           return;
+        }
         case "blocked":
         default:
           // 未安装 = 走原来那条"一键安装"向导，其余状态原样把 Rust 给的引导文案 flash 出来
@@ -1310,6 +1329,23 @@ export function App() {
                 onOpen={openTool}
                 onLaunch={launchTool}
                 onGoManage={() => setTab("manage")}
+                onToast={flash}
+              />
+            ) : tab === "toolhub" ? (
+              // 「AI 工具中心」——一屏走完「选工具→选模型→启动」，参照 EchoBird 应用管理器布局。
+              // 与「我的 AI」(myai) 不是同一页：myai 是装机漏斗（大卡引导 + 已装/可装两段网格），
+              // toolhub 是给已经装过工具的人用的日常启动台，两者共用同一批 tools/driver 数据源，
+              // 互不重实现（同一个 launchTool/openTool/apply_provider 路径）。
+              <ToolHub
+                tools={tools}
+                driver={driver}
+                deviceKey={deviceKey}
+                onLaunch={launchTool}
+                onOpen={openTool}
+                onGoManage={() => setTab("manage")}
+                onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
+                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
+                onRefreshTools={refresh}
                 onToast={flash}
               />
             ) : tab === "myai" ? (
@@ -1879,8 +1915,10 @@ function XiapanGuide({
 
 /* ---------------- 我的 AI（日常态：打开已装工具）---------------- */
 
-/** 工具 id → apply_provider target（决定切驱动写哪个工具的底层配置）。 */
-function toolTargets(id: string): string[] {
+/** 工具 id → apply_provider target（决定切驱动写哪个工具的底层配置）。
+ *  导出给 `toolhub/ToolHub.tsx`：右侧「换模型」面板要用同一张映射表去查
+ *  `list_providers`/`apply_provider` 的 target，不能各写一份漂移。 */
+export function toolTargets(id: string): string[] {
   switch (id) {
     case "claude-code":
       return ["claude"];
@@ -1908,8 +1946,41 @@ function toolTargets(id: string): string[] {
  *              action:url 跳官网下载页，用自家模型不接 U-King 配置，2026-09-06 上架
  *
  * 纯展示分组：后端的检测 / 启动 / 卸载能力一个没动，存量已装用户照常使用。
+ *
+ * 导出给 `toolhub/ToolHub.tsx`：AI 工具中心的「实验室」分类标签复用同一张名单，
+ * 不在那边另起一份、又漂一次（宪法第 8 条）。
  */
-const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy"]);
+export const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy"]);
+
+/**
+ * 工具 id → 后端 `discover_tools` 用的探测名（`ToolDiscovery.name`）。
+ *
+ * 前端 `t.id` 跟后端探测名有两处不一样（claude-code→claude，codex-cli→codex），
+ * 其余 id 本来就同名。抽成函数是因为 `MyAI`（已装网格）和 `toolhub/ToolHub.tsx`
+ * （AI 工具中心）都要按同一条规则去 `driver.discovered` 里找「装在哪 / 版本号」，
+ * 两处各写一份 ternary 迟早会漂（这条本来就在 MyAI 里，这次只是抽出来给第二个
+ * 调用方用，逻辑一个字没改）。
+ */
+export function discoveryNameFor(id: string): string {
+  return id === "claude-code" ? "claude" : id === "codex-cli" ? "codex" : id;
+}
+
+/** 工具当前配的模型 —— 从 `DriverStatus` 的 *_model 字段里按工具 id 挑一个。
+ *  **不猜**：认不出的工具就返回 null，显示一个错的模型名比不显示更坏
+ *  （客户会照着它去排查一个不存在的配置）。同上，从 MyAI 抽出来给 ToolHub 复用。 */
+export function currentModelFor(t: ToolInfo, driver: DriverStatus | null): string | null {
+  return t.id === "claude-code" || t.id === "claude"
+    ? (driver?.claude_model ?? null)
+    : t.id === "codex" || t.id === "codex-cli"
+      ? (driver?.codex_model ?? null)
+      : t.id === "hermes"
+        ? (driver?.hermes_model ?? null)
+        : t.id === "dsh"
+          ? (driver?.dsh_model ?? null)
+          : t.id === "clawx"
+            ? (driver?.clawx_model ?? null)
+            : null;
+}
 
 /** 支持「一键卸载」的工具 id —— 镜像后端 cleanup::uninstall_ai_tool 的 match（改一处同步另一处）。
  *  url 型第三方工具（Obsidian / UU远程）不由我们装，不给卸载入口。 */
@@ -2235,25 +2306,12 @@ function MyAI({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {installed.map((t) => {
               const targets = toolTargets(t.id);
-              // 工具 id → DriverStatus 里对应的字段。**不猜**：认不出的工具就不显示这一行，
-              // 显示一个错的模型名比不显示更坏（客户会照着它去排查一个不存在的配置）。
-              const currentModel =
-                t.id === "claude-code" || t.id === "claude"
-                  ? driver?.claude_model
-                  : t.id === "codex" || t.id === "codex-cli"
-                    ? driver?.codex_model
-                    : t.id === "hermes"
-                      ? driver?.hermes_model
-                      : t.id === "dsh"
-                        ? driver?.dsh_model
-                        : t.id === "clawx"
-                          ? driver?.clawx_model
-                          : null;
-              // 卡片上「装在哪」——后端 `discover_tools` 用的名字跟前端 t.id 有两处不一样
-              // （claude-code→claude，codex-cli→codex），其余 id 本来就同名。同名可能有
-              // 多条（本机一条、盘上一条），后端已按 machine > portable 排好，取第一条
-              // 就是当前 search_paths/tool_installed 实际会命中的那份。
-              const discoveryName = t.id === "claude-code" ? "claude" : t.id === "codex-cli" ? "codex" : t.id;
+              // 工具 id → DriverStatus 里对应的字段（`currentModelFor`，与 ToolHub 共用一份）。
+              const currentModel = currentModelFor(t, driver);
+              // 卡片上「装在哪」——`discoveryNameFor` 同上，跟 ToolHub 共用一份，不再各写一遍。
+              // 同名可能有多条（本机一条、盘上一条），后端已按 machine > portable 排好，
+              // 取第一条就是当前 search_paths/tool_installed 实际会命中的那份。
+              const discoveryName = discoveryNameFor(t.id);
               const primaryDiscovery = driver?.discovered?.find((d) => d.name === discoveryName);
               return (
                 <div
