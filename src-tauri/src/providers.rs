@@ -1728,7 +1728,15 @@ pub fn apply_xiapan_everywhere(
         }
     }
     // DeepSeek Harness：Web / terminal 两个入口都读 `$DSH_HOME`，这里配一次即全部生效。
-    if want("dsh") && crate::installer::tool_installed("dsh") {
+    // Windows 官方桌面版没有 CLI，`installer::tool_installed("dsh")` 探不到它——那条路径只探
+    // PATH 上的可执行文件，桌面版是独立窗口程序，不上 PATH。装没装改走 `dshdesk::installed()`
+    // （注册表 + 落点探测），否则「一键配好全部」在 Windows 上永远跳过 DSH，装了也配不上模型。
+    let dsh_present = if cfg!(windows) {
+        crate::dshdesk::installed()
+    } else {
+        crate::installer::tool_installed("dsh")
+    };
+    if want("dsh") && dsh_present {
         let model = effective_model(&p, model_override);
         match apply_dsh(&p, api_key, &model) {
             Ok(()) => {
@@ -3253,6 +3261,57 @@ fn protect_dsh_credentials(_path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+/// 把 Key 写进 DSH `.credentials.yaml`（官方 0.1.7 起的 v1 格式）。官方规则：顶层只允许
+/// `version`/`refs`/`records` 三个键，多一个就拒绝启动；真正的密钥值挪进 `refs.<KEY>`。
+/// 三种输入都要归一化到这个形状：
+///  - 空文档：新建 `version: 1` + `refs`；
+///  - 已有 `version` 键（v1 或更新）：塞进 `refs`，顺手清掉老版本 U-King 直接写在顶层的裸键
+///    （升级前的 U-King 就是这么写的，留着会让新版 DSH 顶层字段超标拒绝启动）；
+///  - 无 `version` 的扁平旧格式：按官方迁移规则整体搬——已有条目原值挪进 `refs`，值不变。
+/// 别的工具/客户自己写的键（`refs` 里的、`records`、迁移前残留的其它顶层键）一律不碰。
+fn upsert_dsh_credential(credentials: &mut YamlMapping, key: &str) {
+    let version_key = yaml_key("version");
+    if !credentials.contains_key(&version_key) {
+        // 空文档 或 无 version 的扁平旧格式：整体迁移——已有条目（若有）原值搬进 refs。
+        // 空文档时这个循环没有东西可搬，结果跟「新建 version+refs」是同一个形状。
+        let mut refs = YamlMapping::new();
+        for (k, v) in credentials.iter() {
+            refs.insert(k.clone(), v.clone());
+        }
+        credentials.clear();
+        credentials.insert(version_key.clone(), YamlValue::Number(serde_yaml::Number::from(1)));
+        credentials.insert(yaml_key("refs"), YamlValue::Mapping(refs));
+    } else {
+        // 已是 v1（或更新）：老版本 U-King 可能在顶层留了一份裸键，新版 DSH 顶层字段超标
+        // 会拒绝启动——先清掉，再统一走 refs 写入。
+        credentials.remove(&yaml_key(DSH_UKING_CREDENTIAL));
+    }
+    match credentials.get_mut(&yaml_key("refs")) {
+        Some(YamlValue::Mapping(refs)) => {
+            refs.insert(yaml_key(DSH_UKING_CREDENTIAL), YamlValue::String(key.to_string()));
+        }
+        _ => {
+            // v1 文档但 refs 字段类型不对（理论不该发生的防御性兜底）：新建一份，不覆盖别的顶层键。
+            let mut refs = YamlMapping::new();
+            refs.insert(yaml_key(DSH_UKING_CREDENTIAL), YamlValue::String(key.to_string()));
+            credentials.insert(yaml_key("refs"), YamlValue::Mapping(refs));
+        }
+    }
+}
+
+/// 清掉 U-King 写进 DSH 凭据的 Key：`refs` 里那条 + 顶层可能残留的老版本裸键。
+/// 返回是否真的改动了什么（供调用方决定要不要落盘）。别的键（`refs` 里别人的、`records`、
+/// 其它顶层键）原样不动。
+fn remove_dsh_credential(credentials: &mut YamlMapping) -> bool {
+    let mut changed = credentials.remove(&yaml_key(DSH_UKING_CREDENTIAL)).is_some();
+    if let Some(YamlValue::Mapping(refs)) = credentials.get_mut(&yaml_key("refs")) {
+        if refs.remove(&yaml_key(DSH_UKING_CREDENTIAL)).is_some() {
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// 把任意拥有 OpenAI-compatible 端点的 U-King provider 写进 DSH。
 /// Web 和 terminal profile 都从同一个 `$DSH_HOME` 读 settings/credentials，所以只实现一次。
 fn apply_dsh(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
@@ -3277,7 +3336,7 @@ fn apply_dsh(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
     let (credentials_before, mut credentials) =
         read_yaml_mapping(&credentials_path, "DSH .credentials.yaml")?;
 
-    credentials.insert(yaml_key(DSH_UKING_CREDENTIAL), YamlValue::String(key.trim().to_string()));
+    upsert_dsh_credential(&mut credentials, key.trim());
 
     let llm = yaml_mapping_field_mut(&mut settings, "llm-pi-ai", "DSH settings.yaml")?;
     let providers = yaml_mapping_field_mut(llm, "providers", "DSH settings.yaml.llm-pi-ai")?;
@@ -3398,7 +3457,7 @@ fn reset_dsh() -> Result<(), String> {
         settings_changed = true;
     }
 
-    let credential_changed = credentials.remove(&yaml_key(DSH_UKING_CREDENTIAL)).is_some();
+    let credential_changed = remove_dsh_credential(&mut credentials);
     if settings_changed {
         backup_once(&settings_path);
         write_yaml_mapping(&settings_path, &settings_before, &settings, "DSH settings.yaml", false)?;
@@ -4122,6 +4181,7 @@ mod pi_provider_tests {
 #[cfg(test)]
 mod dsh_provider_tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     fn at<'a>(root: &'a YamlValue, path: &[&str]) -> Option<&'a YamlValue> {
         let mut current = root;
@@ -4225,12 +4285,19 @@ mod dsh_provider_tests {
             );
             let credentials: YamlValue =
                 serde_yaml::from_str(&std::fs::read_to_string(&credentials_path).unwrap()).unwrap();
-            assert_eq!(
-                at(&credentials, &["CUSTOMER_KEY"]).and_then(YamlValue::as_str),
-                Some("sk-customer"),
+            // 输入是无 version 的扁平旧格式——按官方迁移规则整体搬进 refs，顶层只留 version/refs。
+            assert_eq!(at(&credentials, &["version"]).and_then(YamlValue::as_i64), Some(1));
+            assert!(
+                at(&credentials, &["CUSTOMER_KEY"]).is_none(),
+                "扁平旧格式迁移后，顶层不该再留原来的裸键",
             );
             assert_eq!(
-                at(&credentials, &[DSH_UKING_CREDENTIAL]).and_then(YamlValue::as_str),
+                at(&credentials, &["refs", "CUSTOMER_KEY"]).and_then(YamlValue::as_str),
+                Some("sk-customer"),
+                "客户原有的凭据要原值搬进 refs，不能丢",
+            );
+            assert_eq!(
+                at(&credentials, &["refs", DSH_UKING_CREDENTIAL]).and_then(YamlValue::as_str),
                 Some("sk-device-secret"),
             );
 
@@ -4262,13 +4329,124 @@ mod dsh_provider_tests {
             );
             let restored_credentials: YamlValue =
                 serde_yaml::from_str(&std::fs::read_to_string(&credentials_path).unwrap()).unwrap();
+            assert!(at(&restored_credentials, &["refs", DSH_UKING_CREDENTIAL]).is_none());
             assert!(at(&restored_credentials, &[DSH_UKING_CREDENTIAL]).is_none());
             assert_eq!(
-                at(&restored_credentials, &["CUSTOMER_KEY"]).and_then(YamlValue::as_str),
+                at(&restored_credentials, &["refs", "CUSTOMER_KEY"]).and_then(YamlValue::as_str),
                 Some("sk-customer"),
+                "还原不许误删客户自己的凭据",
             );
             assert!(!dsh_driver_backup_path().exists(), "成功还原后回滚信物要清掉");
         });
+    }
+
+    /// 官方 DSH 0.1.7 起顶层只认 `version`/`refs`/`records` 三个键，多一个就拒绝启动——
+    /// `upsert_dsh_credential`/`remove_dsh_credential` 必须在三种输入形状下都落在这个形状里。
+    /// 覆盖：空文档 / 已是 v1（带 records + 一个外来的 refs 键）/ 无 version 的扁平旧格式。
+    #[test]
+    fn upsert_and_remove_normalize_credential_shape_from_all_three_inputs() {
+        // ① 空文档：新建 version:1 + refs。
+        let mut empty = YamlMapping::new();
+        upsert_dsh_credential(&mut empty, "sk-a");
+        let empty_v = YamlValue::Mapping(empty.clone());
+        assert_eq!(at(&empty_v, &["version"]).and_then(YamlValue::as_i64), Some(1));
+        assert_eq!(
+            at(&empty_v, &["refs", DSH_UKING_CREDENTIAL]).and_then(YamlValue::as_str),
+            Some("sk-a"),
+        );
+        assert_eq!(
+            empty.iter().map(|(k, _)| k.as_str().unwrap_or("").to_string()).collect::<BTreeSet<_>>(),
+            BTreeSet::from(["version".to_string(), "refs".to_string()]),
+            "顶层只该有 version/refs",
+        );
+        assert!(remove_dsh_credential(&mut empty), "应报告确实删了东西");
+        assert!(at(&YamlValue::Mapping(empty), &["refs", DSH_UKING_CREDENTIAL]).is_none());
+
+        // ② 已是 v1：带 records + 一个外来的 refs 键（别的程序/客户自己写的）—— 一律原样保留。
+        let mut v1: YamlMapping = serde_yaml::from_str(
+            "version: 1\nrefs:\n  OTHER_KEY: sk-other\nrecords:\n  some-record:\n    note: kept\n",
+        )
+        .unwrap();
+        upsert_dsh_credential(&mut v1, "sk-b");
+        let v1_after = YamlValue::Mapping(v1.clone());
+        assert_eq!(at(&v1_after, &["version"]).and_then(YamlValue::as_i64), Some(1));
+        assert_eq!(
+            at(&v1_after, &["refs", DSH_UKING_CREDENTIAL]).and_then(YamlValue::as_str),
+            Some("sk-b"),
+        );
+        assert_eq!(
+            at(&v1_after, &["refs", "OTHER_KEY"]).and_then(YamlValue::as_str),
+            Some("sk-other"),
+            "别的程序写的 refs 键不许被覆盖/删除",
+        );
+        assert_eq!(
+            at(&v1_after, &["records", "some-record", "note"]).and_then(YamlValue::as_str),
+            Some("kept"),
+            "records 原样保留",
+        );
+        assert_eq!(
+            v1.iter().map(|(k, _)| k.as_str().unwrap_or("").to_string()).collect::<BTreeSet<_>>(),
+            BTreeSet::from(["version".to_string(), "refs".to_string(), "records".to_string()]),
+            "顶层只该有 version/refs/records",
+        );
+        assert!(remove_dsh_credential(&mut v1), "应报告确实删了东西");
+        let v1_reset = YamlValue::Mapping(v1);
+        assert!(at(&v1_reset, &["refs", DSH_UKING_CREDENTIAL]).is_none());
+        assert_eq!(
+            at(&v1_reset, &["refs", "OTHER_KEY"]).and_then(YamlValue::as_str),
+            Some("sk-other"),
+            "还原不许连累别的程序的 refs 键",
+        );
+
+        // ③ 无 version 的扁平旧格式：官方迁移规则——已有条目原值整体搬进 refs。
+        let mut flat: YamlMapping =
+            serde_yaml::from_str("CUSTOMER_KEY: sk-customer\n").unwrap();
+        upsert_dsh_credential(&mut flat, "sk-c");
+        let flat_after = YamlValue::Mapping(flat.clone());
+        assert_eq!(at(&flat_after, &["version"]).and_then(YamlValue::as_i64), Some(1));
+        assert!(at(&flat_after, &["CUSTOMER_KEY"]).is_none(), "顶层不该再留原来的裸键");
+        assert_eq!(
+            at(&flat_after, &["refs", "CUSTOMER_KEY"]).and_then(YamlValue::as_str),
+            Some("sk-customer"),
+            "扁平格式的旧条目要原值搬进 refs，不能丢",
+        );
+        assert_eq!(
+            at(&flat_after, &["refs", DSH_UKING_CREDENTIAL]).and_then(YamlValue::as_str),
+            Some("sk-c"),
+        );
+        assert_eq!(
+            flat.iter().map(|(k, _)| k.as_str().unwrap_or("").to_string()).collect::<BTreeSet<_>>(),
+            BTreeSet::from(["version".to_string(), "refs".to_string()]),
+            "迁移后顶层只该有 version/refs",
+        );
+        assert!(remove_dsh_credential(&mut flat));
+        let flat_reset = YamlValue::Mapping(flat);
+        assert!(at(&flat_reset, &["refs", DSH_UKING_CREDENTIAL]).is_none());
+        assert_eq!(
+            at(&flat_reset, &["refs", "CUSTOMER_KEY"]).and_then(YamlValue::as_str),
+            Some("sk-customer"),
+            "还原不许连累客户原有的凭据",
+        );
+    }
+
+    /// 老版本 U-King 直接把 Key 写在顶层；升级后再次 apply 必须清掉那份裸键，
+    /// 只留 refs 里那份——否则顶层字段超标，新版 DSH 直接拒绝启动。
+    #[test]
+    fn upsert_cleans_up_legacy_top_level_key_left_by_old_uking_on_v1_doc() {
+        let mut doc: YamlMapping = serde_yaml::from_str(&format!(
+            "version: 1\n{DSH_UKING_CREDENTIAL}: sk-old-flat-write\nrefs: {{}}\n"
+        ))
+        .unwrap();
+        upsert_dsh_credential(&mut doc, "sk-new");
+        let after = YamlValue::Mapping(doc);
+        assert!(
+            at(&after, &[DSH_UKING_CREDENTIAL]).is_none(),
+            "老版本 U-King 留在顶层的裸键必须被清掉",
+        );
+        assert_eq!(
+            at(&after, &["refs", DSH_UKING_CREDENTIAL]).and_then(YamlValue::as_str),
+            Some("sk-new"),
+        );
     }
 
     #[test]
@@ -6150,7 +6328,13 @@ pub fn driver_status() -> DriverStatus {
     // 若只读 active-drivers.json，U-King 会在客户已经切走后仍假报「正在用虾盘云」。
     let (dsh_provider, dsh_model, dsh_base) = dsh_live_selection();
     st.dsh_model = dsh_model;
-    st.dsh_installed = crate::installer::tool_installed("dsh");
+    // 同上（apply_everywhere 那处）：Windows 官方桌面版没有 CLI，探测口径要跟着切，
+    // 否则回显会一直显示「未安装」，即便桌面版明明已经装好。
+    st.dsh_installed = if cfg!(windows) {
+        crate::dshdesk::installed()
+    } else {
+        crate::installer::tool_installed("dsh")
+    };
 
     // 当前生效记录（对齐 cc-switch is_current）：
     // - **claude / codex：以活配置为准**（读 ~/.claude/settings.json 的 base_url、~/.codex 的

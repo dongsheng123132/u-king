@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, PanelRight, PanelRightClose, Play, RefreshCw, Rocket, SquareTerminal } from "lucide-react";
 import type { TuiApp } from "./apps";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
@@ -83,6 +84,7 @@ export function ToolAppView({
   app,
   active,
   deviceKey,
+  platform,
   onToast,
   onGoManage,
   onManageProviders,
@@ -91,6 +93,9 @@ export function ToolAppView({
   app: TuiApp;
   active: boolean;
   deviceKey: DeviceKey | null;
+  /** `App.tsx` 的 `env?.platform`（"windows"/"macos"/…）。DSH 官方桌面版目前只发 Windows 包，
+   *  只有这个工具需要按平台切换整套 UI；其余工具不读它。 */
+  platform?: string;
   onToast: (s: string) => void;
   onGoManage: () => void;
   onManageProviders: (editId?: string, tool?: string) => void;
@@ -134,6 +139,10 @@ export function ToolAppView({
   const isOpenClaw = app.id === "openclaw";
   const isHermes = app.id === "hermes";
   const isDsh = app.id === "dsh";
+  // DSH 官方桌面版（Windows，2026-09-25 起）：不再嵌 iframe/PTY 跑 `dsh web`，是独立窗口程序。
+  // 保留模型配置（ProviderSwitch）部分，Web 工作台/终端模式两个入口换成一个「打开桌面版」按钮。
+  // Mac/Linux 未改，走原来的 npm CLI + Web 工作台。
+  const dshWindowsMode = isDsh && platform === "windows";
   const hasProviderConfig = app.configTargets.length > 0;
   // external 应用（如 Hermes）：启动 = 弹独立系统终端窗口，不挤内嵌终端（显示区域太窄，客户反馈）。
   const isExternal = !!app.external;
@@ -214,6 +223,14 @@ export function ToolAppView({
         if (ok) setLaunched(true);
         return;
       }
+      // DSH 官方桌面版（Windows）：跟 isExternal 一样不嵌 PTY，得在 `!termApi.current` 那道闸
+      // 之前就分流——桌面版页面根本不挂 TermPanel（见下方渲染），termApi.current 恒为 null，
+      // 落进那道闸只会永远报「终端还没就绪」。
+      if (dshWindowsMode) {
+        await ensureWebToolConfigured();
+        if (await launchDshDesktop()) setLaunched(true);
+        return;
+      }
       if (!termApi.current) {
         onToast(t("终端还没就绪，请稍候再试"));
         return;
@@ -232,6 +249,7 @@ export function ToolAppView({
       if (isOpenClaw) {
         if (await launchOpenClawWebUI()) setLaunched(true);
       } else if (isDsh) {
+        // dshWindowsMode 已在上面提前 return，走不到这里——这条分支只服务 Mac/Linux 的 Web 工作台。
         if (await launchDshWebUI()) setLaunched(true);
       } else if (startPrompt) {
         const r = await termApi.current.runCmd(startPrompt.cmd);
@@ -425,6 +443,38 @@ export function ToolAppView({
     return true;
   };
 
+  // DSH 官方桌面版（Windows）：已装直接 `launch_app("dsh-desktop")`；没装先静默装（进度复用
+  // 顶栏那行 dshPhase，装完自动打开）。跟 ToolAppView 其余「点了才启动」的哲学一致——这里不嵌
+  // PTY/iframe，是独立窗口程序，`handleStart` 只负责「把它打开」，不承载对话本身。
+  const launchDshDesktop = async (): Promise<boolean> => {
+    try {
+      const list = await invoke<{ id: string; installed: boolean }[]>("list_tools").catch(() => null);
+      const cur = list?.find((x) => x.id === "dsh");
+      if (cur?.installed) {
+        await invoke("launch_app", { app: "dsh-desktop" });
+        onToast(t("正在打开 DeepSeek Harness 桌面版…"));
+        return true;
+      }
+      onToast(t("开始安装 DeepSeek Harness 桌面版（首次安装文件较多，请耐心等待）…"));
+      const un = await listen<string>("uking:dshdesk_progress", (e) => setDshPhase(e.payload));
+      try {
+        const msg = await invoke<string>("install_dsh_desktop");
+        onToast(String(msg));
+        await invoke("launch_app", { app: "dsh-desktop" }).catch(() => {});
+        return true;
+      } catch (e) {
+        onToast(t("安装 DeepSeek Harness 失败：{e}", { e: String(e) }));
+        return false;
+      } finally {
+        un();
+        setDshPhase("");
+      }
+    } catch (e) {
+      onToast(t("打开 DeepSeek Harness 失败：{e}", { e: String(e) }));
+      return false;
+    }
+  };
+
   // 已移除「进页即 autoLaunch 自动启动」：它绕过用户点击 = 「打开页面就自动启动 / 自动接管」，
   // 与用户定的「无主动不切换、全部纯手动」冲突。现一律走遮罩大按钮 handleStart（点了才启动 + 按需配）。
 
@@ -447,7 +497,18 @@ export function ToolAppView({
               {dshPhase}
             </span>
           )}
-          {(isOpenClaw || isDsh) && (
+          {dshWindowsMode && (
+            <button
+              onClick={launchDshDesktop}
+              disabled={starting}
+              title={t("打开 DeepSeek Harness 桌面版")}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded bg-accent text-white text-[11.5px] font-semibold hover:bg-accent-600 disabled:opacity-60"
+            >
+              {starting ? <Loader2 size={13} className="animate-spin" /> : <Rocket size={13} />}
+              {t("打开桌面版")}
+            </button>
+          )}
+          {(isOpenClaw || (isDsh && !dshWindowsMode)) && (
             <button
               onClick={isDsh ? launchDshWebUI : launchOpenClawWebUI}
               disabled={isDsh && dshWaiting}
@@ -458,7 +519,7 @@ export function ToolAppView({
               {isDsh ? t(dshWaiting ? "正在启动…" : "打开工作台") : t("打开网页版")}
             </button>
           )}
-          {isDsh && (
+          {isDsh && !dshWindowsMode && (
             <button
               onClick={launchDshTerminal}
               title={t("在新终端标签启动 DeepSeek Harness 持续对话模式")}
@@ -480,7 +541,17 @@ export function ToolAppView({
           )}
         </div>
         <div className="flex-1 min-h-0 relative flex">
-          {isExternal ? (
+          {dshWindowsMode ? (
+            /* DSH 官方桌面版（Windows）：独立窗口程序，不嵌 PTY/iframe——同「运行在独立窗口」
+               的说明样式，只是打开方式是 launch_app，不是 term_open_external。 */
+            <div className="h-full flex flex-col items-center justify-center gap-4 px-6 text-center">
+              <ToolIcon tool={app.tool} size={48} active className="w-12 h-12" />
+              <div className="text-[14px] font-medium text-ink-1">{t("DeepSeek Harness 运行在独立桌面窗口")}</div>
+              <div className="max-w-[440px] text-[12px] leading-relaxed text-ink-4">
+                {t("官方桌面版是独立程序，不嵌在 U-King 窗口里。右侧可配置它使用的模型；点下面按钮打开程序（没装会先自动安装）。")}
+              </div>
+            </div>
+          ) : isExternal ? (
             /* external 应用（Hermes）：不嵌终端 —— 显示「运行在独立窗口」说明 + 各命令的再次打开按钮。
                点这些按钮/大按钮都走 term_open_external 弹独立系统终端，显示区域更大。 */
             <div className="h-full flex flex-col items-center justify-center gap-4 px-6 text-center">
@@ -571,6 +642,16 @@ export function ToolAppView({
                 <div className="w-full max-w-[440px]">
                   <LaunchBlocked plan={launchPlan} onInstall={onGoManage} />
                 </div>
+              ) : dshWindowsMode ? (
+                <button
+                  onClick={handleStart}
+                  disabled={starting}
+                  data-action-id="runtime.tool.launch"
+                  className="inline-flex items-center gap-2 h-12 px-7 rounded-xl bg-accent text-white text-[15px] font-semibold shadow-lg shadow-accent/30 hover:bg-accent-600 active:scale-[0.98] transition disabled:opacity-60"
+                >
+                  {starting ? <Loader2 size={18} className="animate-spin" /> : <Rocket size={18} />}
+                  {t("打开 DeepSeek Harness 桌面版")}
+                </button>
               ) : isDsh ? (
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
@@ -602,12 +683,16 @@ export function ToolAppView({
                 </button>
               )}
               <div className="text-[11px] text-ink-5">
-                {isExternal ? t("启动后在独立终端窗口运行，关掉那个窗口才会停止") : t("启动后会常驻运行，关掉终端标签才会停止")}
+                {dshWindowsMode
+                  ? t("已装会直接打开；没装会先自动安装，进度会显示在这里")
+                  : isExternal
+                    ? t("启动后在独立终端窗口运行，关掉那个窗口才会停止")
+                    : t("启动后会常驻运行，关掉终端标签才会停止")}
               </div>
             </div>
           )}
 
-          {isDsh && dshWebVisible && (
+          {isDsh && !dshWindowsMode && dshWebVisible && (
             <section className={dshFullWidth
               ? "flex-1 min-w-0 min-h-0 flex flex-col bg-bg-1"
               : "w-[58%] min-w-[600px] shrink-0 min-h-0 flex flex-col border-l border-white/[0.06] bg-bg-1"}

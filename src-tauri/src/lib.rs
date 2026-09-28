@@ -55,6 +55,9 @@ mod automation;
 mod awake;
 /// 浏览器子窗口导航的无头取证（需求榜 P0 #5 的硬那半边）。只在 `--browser-nav-test` 下用。
 mod browser_nav_probe;
+// DeepSeek Harness 官方桌面版（Windows）：装/检测/启动。非 Windows 下各函数直接返回
+// 「不支持」的 Err/false，不需要额外 cfg 隔离整个模块（同 `webview2` 的做法）。
+mod dshdesk;
 mod installer;
 mod journal;
 mod macopt;
@@ -442,6 +445,22 @@ async fn import_to_uuswitch(app: AppHandle) -> Result<String, String> {
     })
     .await
     .map_err(|e| format!("导入 uu-switch 异常: {e}"))?
+}
+
+/// 下载 + 静默安装 DeepSeek Harness 桌面版（Windows，NSIS `/S /currentuser`，约 280MB）。
+/// 进度走事件 `uking:dshdesk_progress`。装完不改任何模型配置——虾盘云接入仍由用户主动触发
+/// （`apply_provider` targets:["dsh"]），装/配两件事分开，跟本仓其余工具的哲学一致。
+/// 非 Windows 直接返回 `Err`（官方目前只发 Windows 包），前端据此回退官方渠道提示。
+#[tauri::command]
+async fn install_dsh_desktop(app: AppHandle) -> Result<String, String> {
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        dshdesk::install(&move |msg: &str| {
+            let _ = app2.emit("uking:dshdesk_progress", msg.to_string());
+        })
+    })
+    .await
+    .map_err(|e| format!("安装 DeepSeek Harness 异常: {e}"))?
 }
 
 /// 进阶区：下载并拉起 Hermes 桌面版安装器（下一步下一步，非静默）。
@@ -10266,6 +10285,7 @@ pub fn run() {
             get_uuswitch_download_url,
             install_uuswitch,
             import_to_uuswitch,
+            install_dsh_desktop,
             install_hermes_app,
             hermes_download_page,
             pin_to_desktop,

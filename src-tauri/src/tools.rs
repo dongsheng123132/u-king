@@ -468,18 +468,23 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         route_tab: Some("hermes"),
     },
     ToolSpec {
+        // Windows（2026-09-25 起）：官方桌面版，普通 GUI 应用，Rust 直接 `launch_app` 拉起
+        // （同 uu-switch/ClawX），不再走 RouteTab 专属页时序。`cmd`/`config_target`/
+        // `in_list_tools` 保持不动——`settings.yaml`/`.credentials.yaml` 读写口径没变，
+        // 体检/驱动切换/`tool_specs_ids_match_list_tools_ids` 这条顺序用例都还认这个 id。
+        // Mac/Linux：未改，仍是 npm 装的 CLI，RouteTab 到 ToolAppView 专属页
+        // （launchDshWebUI/launchDshTerminal 的等待就绪时序）。
         id: "dsh",
         cmd: "dsh",
         config_target: Some("dsh"),
         in_list_tools: true,
-        in_checkup: Some("DeepSeek Harness"),
-        // dsh 从来没进过 `PROBES`（人类主入口是 Web 工作台，不是一次性无头推理）。
+        // Windows 桌面版没有 CLI，`dsh --version` 探不到，走通用 `ai_checkup_item(cmd)` 会
+        // 把「已装」误报成「未装」——体检卡片在 Windows 上先关掉，别的三种 Harness 体检不受影响。
+        in_checkup: if cfg!(windows) { None } else { Some("DeepSeek Harness") },
+        // dsh 从来没进过 `PROBES`（人类主入口是 Web 工作台/桌面窗口，不是一次性无头推理）。
         probe_args: None,
-        // App.tsx::launchTool 硬编码分支：`if (t.id === "dsh") { setTab("dsh"); return; }`
-        // —— ToolAppView 的 launchDshWebUI/launchDshTerminal 有专属等待就绪时序，不能当普通
-        // EmbeddedPty。
-        launch_mode: LaunchMode::RouteTab,
-        route_tab: Some("dsh"),
+        launch_mode: if cfg!(windows) { LaunchMode::GuiApp } else { LaunchMode::RouteTab },
+        route_tab: if cfg!(windows) { None } else { Some("dsh") },
     },
     // 🔴 下面 pi/opencode/crush 在 `TOOL_SPECS` 里的相对顺序不是随意的：
     // `providers::list_tools_targets()` 按本表原有顺序过滤派生 `LIST_TOOLS`，而
@@ -1299,18 +1304,32 @@ pub fn list_tools() -> Vec<ToolInfo> {
             hidden: false,
         },
         ToolInfo {
-            // DeepSeek 官方 Harness 仍处于 Developer Preview：安装清单锁定经过验证的 rc 版本，
-            // 卡片只负责安装/检测/进入专属页。人类主入口是 Web 工作台；一次性自动化走 headless，
-            // 不把它冒充成 Claude Code/Hermes 那种持续交互 TUI。
+            // Windows（2026-09-25 起）：DeepSeek 官方桌面版，U-King 只管装/检测/启动/写模型
+            // 配置，其余交给官方——不再是「npm 装 CLI + iframe 嵌网页工作台」那条多环节的路。
+            // Mac/Linux：未改，仍是 npm 装的 CLI + Web 工作台（清单锁定已验证的 0.1.7-rc.2）。
             id: "dsh".into(),
-            name: "DeepSeek Harness（官方预览版）".into(),
-            summary: "DeepSeek 官方智能体框架。U-King 一键安装并打开本地 Web 工作台；也支持 headless 一次性任务，当前锁定已验证的 0.1.0-rc.6。".into(),
+            name: if cfg!(windows) {
+                "DeepSeek Harness（官方桌面版）"
+            } else {
+                "DeepSeek Harness（官方预览版）"
+            }
+            .into(),
+            summary: if cfg!(windows) {
+                "DeepSeek 官方桌面版智能体框架。U-King 一键安装并帮你配好模型（用本机虾盘云 Key，无需申请 DeepSeek API Key），版本随官方自动更新。"
+            } else {
+                "DeepSeek 官方智能体框架。U-King 一键安装并打开本地 Web 工作台；也支持 headless 一次性任务，当前锁定已验证的 0.1.7-rc.2。"
+            }
+            .into(),
             kind: "deep".into(),
-            installed: crate::installer::tool_installed("dsh"),
+            installed: if cfg!(windows) {
+                crate::dshdesk::installed()
+            } else {
+                crate::installer::tool_installed("dsh")
+            },
             action: "install".into(),
             target: "".into(),
-            launch_cmd: "dsh web".into(),
-            launch_app: "".into(),
+            launch_cmd: if cfg!(windows) { "" } else { "dsh web" }.into(),
+            launch_app: if cfg!(windows) { "dsh-desktop" } else { "" }.into(),
             hidden: false,
         },
         ToolInfo {
@@ -1736,6 +1755,12 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
         "hermes-app" => launch_hermes_app(),
         "uu-switch" => crate::uuswitch::launch(),
         "open365" => launch_open365(),
+        // DeepSeek Harness 官方桌面版（Windows）。两个键都指向同一实现，两条调用路径都要接上：
+        // "dsh-desktop" 是 `ToolInfo.launch_app`（前端 `doLaunchApp` 直接传这个字符串）；
+        // "dsh" 是 `TOOL_SPECS` 里的工具 id（`runtime.tool.launch` 的 GuiApp 分支传的是
+        // `plan.tool_id`，不是 `launch_app` 字段）——`config_target`/`in_list_tools`/表内
+        // 顺序有测试锁住不能改 id，只能这里两个键都接，别漏掉任何一条调用路径。
+        "dsh-desktop" | "dsh" => crate::dshdesk::launch(),
         // openclaw 网页版不在这里启动（要 AppHandle 开内嵌网页窗）；前端按 id 拦截切到 openclaw 页。
         // 万一漏拦走到这里，给条清楚指引而不是「未知应用」。
         "openclaw-webui" => Err("请在「我的 AI」点 OpenClaw 网页版打开".into()),

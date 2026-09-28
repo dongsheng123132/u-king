@@ -190,4 +190,19 @@ export const tools: Record<string, string> = {
     "Follow the on-page instructions to install the skill pack, then use it back in your AI.",
   "热门技能专题": "Popular skill topics",
   "做视频 · 炒股 · 写作 · 更多玩法": "Videos · stocks · writing · more",
+
+  // ── DeepSeek Harness 官方桌面版（Windows，2026-09-25）─────────────
+  "已检测到 DeepSeek Harness，正在打开…": "DeepSeek Harness detected, opening…",
+  "开始安装 DeepSeek Harness 桌面版（首次安装文件较多，请耐心等待）…":
+    "Installing the DeepSeek Harness desktop app (first install has a lot of files, please be patient)…",
+  "正在打开 DeepSeek Harness 桌面版…": "Opening the DeepSeek Harness desktop app…",
+  "安装 DeepSeek Harness 失败：{e}": "Failed to install DeepSeek Harness: {e}",
+  "打开 DeepSeek Harness 失败：{e}": "Failed to open DeepSeek Harness: {e}",
+  "打开 DeepSeek Harness 桌面版": "Open the DeepSeek Harness desktop app",
+  "打开桌面版": "Open desktop app",
+  "DeepSeek Harness 运行在独立桌面窗口": "DeepSeek Harness runs in its own desktop window",
+  "官方桌面版是独立程序，不嵌在 U-King 窗口里。右侧可配置它使用的模型；点下面按钮打开程序（没装会先自动安装）。":
+    "The official desktop app is a separate program, not embedded in the U-King window. Configure which model it uses on the right; click the button below to open it (it will be installed first if missing).",
+  "已装会直接打开；没装会先自动安装，进度会显示在这里":
+    "Opens directly if already installed; otherwise it installs first, with progress shown here",
 };

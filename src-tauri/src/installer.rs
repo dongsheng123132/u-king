@@ -2168,8 +2168,9 @@ fn ensure_hermes_utils_shim() -> Result<(), String> {
 }
 
 /// 临时目录所在盘的剩余空间（MB）。失败返回 None（不阻塞安装）。
+/// `pub(crate)`：`dshdesk.rs` 的桌面版安装磁盘预检复用这份，不重写一遍（模块铁律③）。
 #[cfg(windows)]
-fn temp_disk_free_mb() -> Option<u64> {
+pub(crate) fn temp_disk_free_mb() -> Option<u64> {
     // 盘符取自 temp_dir（下载落这里），PowerShell 读 Free 字节数（fsutil 输出受语言影响不好解析）
     let drive = std::env::temp_dir()
         .to_string_lossy()
@@ -2185,7 +2186,7 @@ fn temp_disk_free_mb() -> Option<u64> {
 }
 
 #[cfg(not(windows))]
-fn temp_disk_free_mb() -> Option<u64> {
+pub(crate) fn temp_disk_free_mb() -> Option<u64> {
     // df -k 输出第 2 行第 4 列 = 可用 KB
     let tmp = std::env::temp_dir();
     let (code, out) = run_capture_raw("df", &["-k", &tmp.display().to_string()], None).ok()?;
@@ -2351,6 +2352,34 @@ pub fn install_tool(
     tool_id: &str,
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> InstallToolResult {
+    // DeepSeek Harness（Windows）：不再用 npm 全局包，走官方桌面版静默安装（见 `dshdesk.rs`
+    // 模块头注释）。这样向导 / `action run` / MCP 全都走同一条实现，不在前端再写一份安装逻辑。
+    // Mac/Linux 未改，落到下面的 `install_tool_inner`（仍是 npm 清单那条路）。
+    #[cfg(windows)]
+    if tool_id == "dsh" {
+        on_log("step", "DeepSeek Harness（Windows）：改走官方桌面版安装，不再用 npm 全局包…");
+        return match crate::dshdesk::install(&|msg: &str| on_log("out", msg)) {
+            // 🔴 `Ok` 不等于「装上了」——静默安装被拦/取消时 `dshdesk::install` 会回退拉起
+            // 可视安装界面，此时也是 `Ok("已打开安装程序…")`（人话提示，不是失败），但那一刻
+            // 桌面版其实还没落地。不能拿这个 `Ok` 直接报 `ok:true`，否则向导/`action run`
+            // 会当场把「还没装完」误报成「装好了」。以 `dshdesk::installed()` 现查为准。
+            Ok(msg) => {
+                if crate::dshdesk::installed() {
+                    let version = crate::dshdesk::display_version();
+                    on_log("done", &msg);
+                    InstallToolResult { ok: true, tool: tool_id.into(), version, attempts: 1, error: None }
+                } else {
+                    on_log("out", &msg);
+                    fail(tool_id, 1, msg)
+                }
+            }
+            Err(e) => {
+                on_log("error", &e);
+                fail(tool_id, 1, e)
+            }
+        };
+    }
+
     let res = install_tool_inner(skill, tool_id, on_log);
     if res.ok || tool_id != "codex" {
         return res;

@@ -709,6 +709,52 @@ export function App() {
       }
       return;
     }
+    if (t.id === "dsh" && env?.platform === "windows") {
+      // DeepSeek Harness 官方桌面版（Windows）：GUI 应用，走后端下载 + 静默安装（不进向导），
+      // 同 uu-switch 那段的「已装直开、没装先装」模式。装完/已装还按需（未配过才配，已手动切过
+      // 的一律不碰）把虾盘云写进它的底层配置——同 ToolAppView::ensureWebToolConfigured 的口径，
+      // 这样即便用户全程只在工具卡片这里点、从没进过「DeepSeek Harness」专属页，模型也是配好的。
+      const applyXiapanIfUnconfigured = async () => {
+        try {
+          const d = await invoke<DriverStatus>("get_driver_status").catch(() => null);
+          const configured = !!d?.active?.dsh || !!d?.dsh_model;
+          if (!configured && deviceKey?.key) {
+            await invoke("apply_provider", {
+              providerId: "xiapan",
+              apiKey: deviceKey.key,
+              model: null,
+              targets: ["dsh"],
+            }).catch(() => {});
+          }
+        } catch {
+          /* 配置失败不影响启动，进「DeepSeek Harness」页右侧仍可手动配 */
+        }
+      };
+      const fresh = await refresh().catch(() => null);
+      const cur = fresh?.find((x) => x.id === "dsh");
+      if (cur?.installed) {
+        flash(tr("已检测到 DeepSeek Harness，正在打开…"));
+        await applyXiapanIfUnconfigured();
+        doLaunchApp(t);
+        return;
+      }
+      flash(tr("开始安装 DeepSeek Harness 桌面版（首次安装文件较多，请耐心等待）…"));
+      const un = await listen<string>("uking:dshdesk_progress", (e) => flash(e.payload));
+      try {
+        const msg = await invoke<string>("install_dsh_desktop");
+        un();
+        flash(msg);
+        const after = await refresh().catch(() => null);
+        if (after?.find((x) => x.id === "dsh")?.installed) {
+          await applyXiapanIfUnconfigured();
+          doLaunchApp(t);
+        }
+      } catch (e) {
+        un();
+        flash(tr("自动安装未成：") + String(e));
+      }
+      return;
+    }
     if (t.action === "url") {
       await openUrl(t.target).catch(() => flash(tr("打开链接失败")));
     } else {
@@ -1115,6 +1161,7 @@ export function App() {
                   app={a}
                   active={tab === a.id}
                   deviceKey={deviceKey}
+                  platform={env?.platform}
                   onToast={flash}
                   onGoManage={() => setTab("manage")}
                   onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
