@@ -1044,7 +1044,12 @@ fn dsh_dir() -> PathBuf {
 /// 原子写文件:写到同目录临时文件再 rename 覆盖目标。
 /// 防"写到一半进程崩/断电 → 配置半截损坏"(对齐 cc-switch 的 atomic_write，
 /// 这是它"稳"的地基)。rename 在同一文件系统上是原子操作。
-/// Windows 的 rename 不能覆盖已存在文件 → 先删目标再 rename。
+/// 2026-09 会审 medium#6 实测纠正：Rust 当前工具链（1.88，`rustc --version` 已核）在 Windows 上
+/// `std::fs::rename` **能**覆盖已存在的目标文件（底层用了 `MOVEFILE_REPLACE_EXISTING`），
+/// 不需要也不该「先删目标再 rename」。旧写法在删除和 rename 之间有一个真实的窗口：
+/// 这期间进程崩溃，或 rename 因为杀软/同步盘占用目标句柄而失败（sharing violation），
+/// 目标文件已经被删掉且没有回滚，客户机上会看到配置文件凭空消失。直接 rename，失败就是
+/// 失败（原文件还在原地，只是没被换成新内容），不会有「文件被删但换不上新的」这个中间态。
 fn atomic_write(path: &PathBuf, data: &[u8]) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {e}"))?;
@@ -1058,12 +1063,6 @@ fn atomic_write(path: &PathBuf, data: &[u8]) -> Result<(), String> {
     let fname = path.file_name().and_then(|f| f.to_str()).unwrap_or("cfg");
     let tmp = path.with_file_name(format!(".{fname}.uking-tmp.{pid}.{stamp}"));
     std::fs::write(&tmp, data).map_err(|e| format!("写临时文件失败: {e}"))?;
-    #[cfg(windows)]
-    {
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
-        }
-    }
     if let Err(e) = std::fs::rename(&tmp, path) {
         let _ = std::fs::remove_file(&tmp); // 失败别留垃圾
         return Err(format!("替换目标文件失败: {e}"));
@@ -1939,6 +1938,43 @@ pub fn apply_claude_via_bridge(
     apply_claude_to(p, key, model_override, Some(bridge_base))
 }
 
+/// 纯函数：给定文件内容判断能不能解析成 JSON 对象。拆成纯函数是为了让测试直接喂字符串，
+/// 不用真的写文件到磁盘也能覆盖「语法错误必须拒绝」这条路径（2026-09 会审 high#1 指定的写法）。
+///
+/// 只接受顶层是 JSON 对象——顶层是数组/字符串等合法 JSON 但没法当配置根节点合并，
+/// 同样拒绝，不许拿 {} 顶替。
+fn parse_json_object_or_reject(text: &str, path_for_msg: &Path) -> Result<Value, String> {
+    let v: Value = serde_json::from_str(text).map_err(|_| {
+        format!(
+            "{} 有语法错误，为防止覆盖你的设置已停止写入，请先修好或还原备份",
+            path_for_msg.display()
+        )
+    })?;
+    if v.is_object() {
+        Ok(v)
+    } else {
+        Err(format!(
+            "{} 顶层不是对象，为防止覆盖你的设置已停止写入，请先修好或还原备份",
+            path_for_msg.display()
+        ))
+    }
+}
+
+/// 读配置文件并解析成 JSON 对象；文件不存在按「从空对象开始」处理（首次接管，正常场景）。
+/// 文件**存在**但读不出来/解析不了/顶层不是对象——一律拒绝，绝不拿 {} 顶替再写回去。
+///
+/// 2026-09 会审 high#1 实锤的真实故障：旧实现遇到语法错误（比如手滑多打一个逗号）的
+/// settings.json / openclaw.json，会把它当成「空文件」处理，写完之后原来的 hooks / 权限 /
+/// 其它设置全部消失，而且没有任何报错——用户直到某个功能突然不见了才会发现。
+fn read_json_object_or_reject(path: &Path) -> Result<Value, String> {
+    if !path.exists() {
+        return Ok(json!({}));
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("{} 读取失败，为防止覆盖你的设置已停止写入: {e}", path.display()))?;
+    parse_json_object_or_reject(&text, path)
+}
+
 /// `base_override` 非空 = 走本地桥；否则用供应商自己的 Anthropic 端点。
 fn apply_claude_to(
     p: &ProviderPreset,
@@ -1966,10 +2002,9 @@ fn apply_claude_to(
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("创建 .claude 目录失败: {e}"))?;
     }
-    let mut root: Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| json!({}));
+    // 2026-09 会审 high#1：语法错误的 settings.json 绝不当空文件处理——那会把用户的
+    // hooks/permissions/其它设置全部抹掉再写回去。解析失败直接拒绝，backup_once/写盘都不做。
+    let mut root: Value = read_json_object_or_reject(&path)?;
     backup_once(&path);
 
     let model = effective_model(p, model_override);
@@ -2112,33 +2147,208 @@ fn reset_claude() -> Result<(), String> {
     Ok(())
 }
 
-/// 从一份 config.toml 原文里把 `[mcp_servers.*]` 段**原样**捞出来（含段头和段内所有行）。
+// 2026-09 会审 high#4：`apply_codex` 原来靠一个 `extract_mcp_servers` 函数把
+// `[mcp_servers.*]` 先原样捞出来，再拼回整文件覆盖后的末尾——因为那时候是**整文件覆盖**，
+// 不这样做用户自己挂的 MCP 连接器会被抹掉。改成 `rebuild_codex_toml` 的「只替换我们管的
+// 那一块，其余原样保留」之后，mcp_servers（以及用户的其它任何表）根本不需要挪动，
+// 那个函数连同它专属的测试 `extract_mcp_servers_keeps_user_connectors_and_nothing_else`
+// 一并删除，避免留一个没有调用方、纯靠 `#[allow(dead_code)]` 续命的函数
+// （跟本仓「模块独立可插拔」的原则相悖，且 `cargo clippy -- -D warnings` 会拦下来）。
+
+/// 判断某行是不是 TOML 表头（`[a.b]` / `[[a.b]]`），允许前导空格和行尾注释
+/// （`  [a.b] # 注释`）；引号内的 `.` / `]` 不计入结构字符。是表头就返回方括号内的原始文本。
 ///
-/// 为什么不引 toml crate 解析再序列化：① 守体积红线；② 更重要的是**原样保留**——
-/// 解析再写回会丢注释、改键序、把用户手写的格式重排一遍。我们的职责是「别弄丢」，
-/// 不是「帮他整理」。段的结束判据 = 下一个顶格的 `[`（TOML 里段头必须在行首）。
-pub fn extract_mcp_servers(src: &str) -> String {
-    let mut out = String::new();
-    let mut in_mcp = false;
-    for line in src.lines() {
-        let t = line.trim_start();
-        // 段头：`[mcp_servers.xxx]` 或 `[[mcp_servers.xxx]]`，且必须顶格（缩进的是数组元素/续行）
-        if line.starts_with('[') {
-            in_mcp = t.starts_with("[mcp_servers.")
-                || t.starts_with("[[mcp_servers.")
-                || t == "[mcp_servers]";
-            if in_mcp {
-                out.push_str(line);
-                out.push('\n');
+/// 已知局限：多行数组里顶格独占一行、且不带引号的 `[`（比如 `foo = [\n[1,2],\n]`）
+/// 会被误判成表头。真实的 Codex config.toml 不会这样写 model_providers/mcp_servers
+/// 之外的内容，纯 std 不引入完整 TOML 解析器的前提下这是可接受的边界。
+fn toml_header_inner(line: &str) -> Option<String> {
+    let t = line.trim_start();
+    if !t.starts_with('[') {
+        return None;
+    }
+    let double = t.starts_with("[[");
+    let rest = &t[if double { 2 } else { 1 }..];
+    let mut in_squote = false;
+    let mut in_dquote = false;
+    let mut close_at = None;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '\'' if !in_dquote => in_squote = !in_squote,
+            '"' if !in_squote => in_dquote = !in_dquote,
+            ']' if !in_squote && !in_dquote => {
+                close_at = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let close_at = close_at?;
+    let inner = rest[..close_at].to_string();
+    let after = &rest[close_at + 1..];
+    let after = if double { after.strip_prefix(']')? } else { after };
+    let after = after.trim();
+    if after.is_empty() || after.starts_with('#') {
+        Some(inner)
+    } else {
+        None
+    }
+}
+
+/// 把表头方括号内的原文按「不在引号内的 `.`」切段，去掉每段两侧的引号和空白。
+/// `model_providers."xiapan"` → `["model_providers", "xiapan"]`。
+fn toml_header_segments(inner: &str) -> Vec<String> {
+    let mut segs = Vec::new();
+    let mut cur = String::new();
+    let mut in_squote = false;
+    let mut in_dquote = false;
+    for c in inner.chars() {
+        match c {
+            '\'' if !in_dquote => in_squote = !in_squote,
+            '"' if !in_squote => in_dquote = !in_dquote,
+            '.' if !in_squote && !in_dquote => {
+                segs.push(cur.trim().to_string());
+                cur.clear();
+            }
+            _ => cur.push(c),
+        }
+    }
+    segs.push(cur.trim().to_string());
+    segs
+}
+
+/// 这个表头是不是我们管的 `[model_providers.<id>]`（含子表 `[model_providers.<id>.x]`、
+/// 带引号写法 `[model_providers."<id>"]`）——只比前两段，深层嵌套一律算在内。
+fn toml_header_is_owned_provider(inner: &str, id: &str) -> bool {
+    let segs = toml_header_segments(inner);
+    segs.len() >= 2 && segs[0] == "model_providers" && segs[1] == id
+}
+
+/// 这一行是不是顶层键 `model = ...` / `model_provider = ...`（我们唯一拥有的两个顶层键）。
+/// 只看 `=` 左边的裸键名，不管右边写了什么，避免碰到值恰好包含这两个词的其它行。
+fn toml_is_owned_top_key(line: &str) -> bool {
+    let t = line.trim_start();
+    match t.find('=') {
+        Some(idx) => matches!(t[..idx].trim(), "model" | "model_provider"),
+        None => false,
+    }
+}
+
+/// 我们自己写过的标记行/分隔注释，重写前先从「原样保留」的内容里摘掉，
+/// 不然每切一次驱动就在文件里多攒一份重复（幂等要求：同样的参数连跑两次字节级相同）。
+/// 第三条是老版本「把 mcp_servers 挪到文件末尾」时用过的分隔注释，新逻辑不再挪动，
+/// 顺手清掉旧文件里的残留。
+const CODEX_OWNED_MARKER_LINES: [&str; 3] = [
+    "# managed by U-King —— 驱动切换写入（还原请在 U-King 里选「官方直连」）",
+    "# Codex CLI 和 Codex 桌面 App 共用本文件，切一次两边生效",
+    "# —— 以下为你自己挂的 MCP 连接器，U-King 原样保留 ——",
+];
+
+/// 按表头切出来的一段：下标 0 永远是「前导区」（文件开头到第一个表头之前，没有表头行本身）；
+/// 之后每一段都以一行表头开始，`owned` = 这段是不是我们管的 provider 表。
+struct TomlSegment {
+    owned: bool,
+    lines: Vec<String>,
+}
+
+fn split_toml_segments(body: &str, id: &str) -> Vec<TomlSegment> {
+    let mut segs = vec![TomlSegment { owned: false, lines: Vec::new() }];
+    for line in body.lines() {
+        if let Some(inner) = toml_header_inner(line) {
+            let owned = toml_header_is_owned_provider(&inner, id);
+            segs.push(TomlSegment { owned, lines: vec![line.to_string()] });
+        } else {
+            segs.last_mut().expect("segs 初始化时已放了一个前导段，恒非空").lines.push(line.to_string());
+        }
+    }
+    segs
+}
+
+/// **只替换我们管的部分，其余原样保留**：顶层 `model` / `model_provider` 两个键（连同我们的
+/// 标记注释）+ `[model_providers.<id>]` 极其子表。用户自己的其它表（`[projects.*]` /
+/// `[windows]` / `[features]` / `[mcp_servers.*]` / `[tui]`……）、注释、CRLF、BOM 一律
+/// 原样带回去——这是切驱动这个动作唯一该碰的范围（2026-09 会审 high#4：旧实现整文件覆盖，
+/// 只捞 mcp_servers 一种表，用户的其它表、profiles、notify、plugins 全部被抹掉）。
+///
+/// 不变量（会审钉死，靠下面的测试盯住）：
+/// - 同样的参数连跑两次，输出字节级相同（幂等）；
+/// - 别的 provider（`[model_providers.<别的id>]`）一个字节不动；
+/// - CRLF / BOM 跟着原文件走，不强行归一化成 LF。
+fn rebuild_codex_toml(old: &str, id: &str, model: &str, owned_provider_block: &str) -> String {
+    let (bom, old) = match old.strip_prefix('\u{feff}') {
+        Some(rest) => (true, rest),
+        None => (false, old),
+    };
+    let crlf = old.contains("\r\n");
+
+    let mut segs = split_toml_segments(old, id);
+    // 前导区：摘掉我们自己的标记行 + owned 顶层键 + 空行（空行一并摘掉是为了幂等——
+    // 我们自己新写的前导区固定以一个空行收尾，留着旧的空行会导致连跑两次多出一行空行）。
+    segs[0].lines.retain(|l| {
+        !CODEX_OWNED_MARKER_LINES.contains(&l.as_str())
+            && !toml_is_owned_top_key(l)
+            && !l.trim().is_empty()
+    });
+
+    let mut out: Vec<String> = Vec::with_capacity(segs.len() + 8);
+    out.push(CODEX_OWNED_MARKER_LINES[0].to_string());
+    out.push(CODEX_OWNED_MARKER_LINES[1].to_string());
+    out.push(format!("model = \"{}\"", toml_basic_string(model)));
+    out.push(format!("model_provider = \"{}\"", toml_basic_string(id)));
+    out.push(String::new());
+    out.append(&mut segs[0].lines);
+    let fallback_insert_at = out.len();
+
+    let owned_lines: Vec<String> = owned_provider_block.lines().map(str::to_string).collect();
+    let mut inserted = false;
+    for seg in &segs[1..] {
+        if seg.owned {
+            // 只在第一次遇到 owned 段的位置插入新内容，原地替换；后续重复的 owned 段
+            // （正常流程不会出现，只有客户手改出现重复表时才可能）直接吞掉，不重复插入。
+            if !inserted {
+                out.extend(owned_lines.clone());
+                out.push(String::new());
+                inserted = true;
             }
             continue;
         }
-        if in_mcp {
-            out.push_str(line);
-            out.push('\n');
-        }
+        out.extend(seg.lines.clone());
     }
-    out
+    if !inserted {
+        // 原文件里从没出现过我们这个 id 的表（全新文件，或客户自己的配置从没提过它）——
+        // 插在前导区之后、其它表之前，跟这么多年生成出来的文件观感保持一致。
+        let mut ins = owned_lines;
+        ins.push(String::new());
+        out.splice(fallback_insert_at..fallback_insert_at, ins);
+    }
+
+    let sep = if crlf { "\r\n" } else { "\n" };
+    let mut s = out.join(sep);
+    s.push_str(sep);
+    if bom {
+        s = format!("\u{feff}{s}");
+    }
+    s
+}
+
+/// 把 `read_to_string` 的结果规整成「可以安全当基线去改写」的字符串。
+///
+/// - 文件不存在（`NotFound`）→ 空串：全新机器的正常起点，后面的重建逻辑按「从零写」处理，
+///   没有用户数据可丢。
+/// - 文件存在但读不出来（最常见是 `InvalidData`：`config.toml` 被手改成非 UTF-8 编码，
+///   比如 Windows 记事本用 GBK 保存）→ **必须是 `Err`，绝不能悄悄退化成空串**。
+///   这是本函数存在的唯一理由：`unwrap_or_default()` 会把「读不懂」和「没有」混为一谈，
+///   下游的重建逻辑拿着这个假的空文件当基线，会把用户整份配置一次性冲成只剩我们写的
+///   那几行——这正是本函数要堵的那类事故，调用方拿到 `Err` 后必须直接放弃写入，不落盘、
+///   不留备份（连备份都不该有，因为压根没做任何改动）。
+fn read_existing_text_or_empty(result: std::io::Result<String>, path: &Path) -> Result<String, String> {
+    match result {
+        Ok(s) => Ok(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(_) => Err(format!(
+            "{} 读取失败（可能不是 UTF-8 编码），为防止覆盖你的设置已停止写入",
+            path.display()
+        )),
+    }
 }
 
 fn apply_codex(p: &ProviderPreset, key: &str, model_override: Option<&str>) -> Result<(), String> {
@@ -2152,18 +2362,12 @@ fn apply_codex(p: &ProviderPreset, key: &str, model_override: Option<&str>) -> R
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建 .codex 目录失败: {e}"))?;
 
     let cfg = dir.join("config.toml");
-    let old = std::fs::read_to_string(&cfg).unwrap_or_default();
+    let old = read_existing_text_or_empty(std::fs::read_to_string(&cfg), &cfg)?;
     // 不是我们写的才备份（保住用户原始配置）
     let ours = old.contains("managed by U-King");
     if !ours {
         backup_once(&cfg);
     }
-    // 🔴 MCP 连接器必须原样带过来。`codex mcp add` 写的就是本文件的 `[mcp_servers.*]`
-    // （已用临时 CODEX_HOME 实测），而下面是**整文件覆盖** —— 不捞出来，客户每切一次驱动
-    // 就把自己挂的连接器全抹掉一次，且毫无提示。这跟「不许抢客户模型/登录态」是同一条红线：
-    // 我们只该管驱动那几个键，别的都是他的东西。
-    let kept_mcp = extract_mcp_servers(&old);
-
     let model = effective_codex_model(p, model_override);
     // 🔴 一律写 `responses`，**永远不要再写 `chat`**（Issue #364）。
     // 新版 Codex 移除了这个值，而它的失败方式是最坏的一种：不是「这个 provider 不可用」，
@@ -2182,7 +2386,8 @@ fn apply_codex(p: &ProviderPreset, key: &str, model_override: Option<&str>) -> R
     // 真正必须删的理由不是「没用」，是**它和 #364 那个 `wire_api = "chat"` 是同一种雷**：
     // 任何走 `--strict-config` 的调用路径会因为这一行**整份 config.toml 拒绝加载**，
     // 连用户自己挂的 MCP 一起废掉。上面那段注释刚讲完这个失败模式，下面一行就在犯它。
-    let extra = "";
+    // （曾经在这里插一个 `{extra}` 占位，值恒为空——2026-09 重写成 owned-block 替换后，
+    // 顶层再没有需要临时插队的键，这段注释单纯留作「为什么不加」的历史记录。）
     // 新版 Codex 对自定义 provider 的 env_key 只认环境变量、不读 auth.json（实测 0.139 报
     // Missing environment variable）。所以 responses 链路把 key 直接写进 provider 块
     // （experimental_bearer_token，Codex++ 同款手法）；chat 链路保持 env_key 兼容老 CLI。
@@ -2211,30 +2416,16 @@ fn apply_codex(p: &ProviderPreset, key: &str, model_override: Option<&str>) -> R
     // 真因在中转链路（跨境 + 上游中转），客户端配置改不动它。客户端能做、也已经做了的是
     // **别把重连状态吞掉**（见 agent/codex.rs 的 `notice` 事件）：以前吞了，客户看到的是
     // 「卡住不动」，那才是「5 次重连」被反复投诉的观感来源。
-    let toml = format!(
-        r#"# managed by U-King —— 驱动切换写入（还原请在 U-King 里选「官方直连」）
-# Codex CLI 和 Codex 桌面 App 共用本文件，切一次两边生效
-model = "{model}"
-model_provider = "{id}"
-{extra}
-[model_providers.{id}]
-name = "{name}"
-base_url = "{base}"
-{auth_line}
-wire_api = "{wire}"
-{app_imagegen_fix}"#,
+    let owned_provider_block = format!(
+        "[model_providers.{id}]\nname = \"{name}\"\nbase_url = \"{base}\"\n{auth_line}\nwire_api = \"{wire}\"\n{app_imagegen_fix}",
         id = p.id,
-        model = toml_basic_string(&model),
         name = toml_basic_string(&p.name),
         base = toml_basic_string(&p.openai_base),
     );
-    // 把客户自己挂的 MCP 连接器接回文件末尾（放最后：TOML 段一旦开始就到下一个段头为止，
-    // 插在中间会把我们后面的顶层键吃进那个段里）。
-    let toml = if kept_mcp.is_empty() {
-        toml
-    } else {
-        format!("{toml}\n# —— 以下为你自己挂的 MCP 连接器，U-King 原样保留 ——\n{kept_mcp}")
-    };
+    // 只替换我们管的部分（顶层 model/model_provider + [model_providers.<id>] 表），
+    // 用户自己的其它表（projects/windows/features/mcp_servers/tui/……）原样带回去
+    // ——不再需要单独把 mcp_servers 捞出来拼到末尾，它现在就地留在原位（见函数文档）。
+    let toml = rebuild_codex_toml(&old, &p.id, &model, &owned_provider_block);
     atomic_write(&cfg, toml.as_bytes()).map_err(|e| format!("写 config.toml 失败: {e}"))?;
 
     // auth.json：
@@ -2258,6 +2449,86 @@ wire_api = "{wire}"
             .map_err(|e| format!("写 auth.json 失败: {e}"))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod apply_codex_read_guard_tests {
+    use super::*;
+
+    /// 纯函数级用例，不碰文件系统：三种 `read_to_string` 结果各自该怎么归类。
+    #[test]
+    fn not_found_becomes_empty_string() {
+        let err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+        let got = read_existing_text_or_empty(Err(err), Path::new("C:/fake/config.toml"));
+        assert_eq!(got, Ok(String::new()), "文件不存在应当当成全新机器处理，不是错误");
+    }
+
+    #[test]
+    fn ok_passes_through_unchanged() {
+        let got = read_existing_text_or_empty(
+            Ok("model = \"gpt-5\"\n".to_string()),
+            Path::new("C:/fake/config.toml"),
+        );
+        assert_eq!(got, Ok("model = \"gpt-5\"\n".to_string()));
+    }
+
+    /// ★ 回归钉子：非 UTF-8（或其它读取失败，如权限拒绝）绝不能被当成「文件是空的」。
+    /// 老代码 `unwrap_or_default()` 会把这种情况悄悄退化成空串，下游 `rebuild_codex_toml`
+    /// 就会拿着假的空文件当基线，把用户整份配置冲成只剩我们写的那几行。
+    #[test]
+    fn other_errors_are_rejected_not_defaulted_to_empty() {
+        let err = std::io::Error::new(std::io::ErrorKind::InvalidData, "stream did not contain valid UTF-8");
+        let got = read_existing_text_or_empty(Err(err), Path::new("C:/fake/.codex/config.toml"));
+        assert!(got.is_err(), "读取失败必须是 Err，不能悄悄退化成空串");
+        let msg = got.unwrap_err();
+        assert!(msg.contains("config.toml"), "错误信息应该带上路径，方便客户定位: {msg}");
+        assert!(msg.contains("UTF-8"), "错误信息应该点出大概率是编码问题: {msg}");
+        assert!(msg.contains("已停止写入"), "错误信息应该说明我们没有写: {msg}");
+    }
+
+    /// 端到端用例：沙箱里放一份非 UTF-8 字节的 `config.toml`，调用真正的 `apply_codex`，
+    /// 断言① 返回 `Err`；② 文件字节一个都没变（没有被 rebuild_codex_toml 冲掉，也没留
+    /// `.uking-bak` 备份——压根没走到写盘那一步）。
+    #[test]
+    fn apply_codex_refuses_to_touch_non_utf8_config_toml() {
+        crate::testsandbox::with_sandbox("apply-codex-non-utf8", &[".codex"], |root| {
+            let cfg = root.join(".codex").join("config.toml");
+            // GBK 编码的中文注释「你好」（0xC4 0xE3 0xBA 0xC3），在 UTF-8 下是非法字节序列
+            // （0xC4 起头要求后续是合法的 UTF-8 续字节，0xE3 不满足，read_to_string 会报
+            // InvalidData —— 这一点由下面 apply_codex 返回 Err 间接验证，不用再囤一个
+            // `str::from_utf8` 断言：编译期就能证明这段字面量恒非法，留着只会触发
+            // `invalid_from_utf8` 这条 lint）。
+            let gbk_bytes: [u8; 8] = [b'#', b' ', 0xC4, 0xE3, 0xBA, 0xC3, b'\n', b'x'];
+            std::fs::write(&cfg, gbk_bytes).unwrap();
+
+            let preset = ProviderPreset {
+                id: "demo".into(),
+                name: "Demo".into(),
+                summary: String::new(),
+                openai_base: "https://relay.example.com/v1".into(),
+                anthropic_base: None,
+                model: "demo-model".into(),
+                small_model: "demo-model".into(),
+                codex_model: String::new(),
+                codex_wire_api: WIRE_API.into(),
+                key_url: String::new(),
+                key_hint: String::new(),
+                builtin_recharge: false,
+                recommended: false,
+                builtin: false,
+                api_key: "sk-demo".into(),
+            };
+            let result = apply_codex(&preset, "sk-demo-key", None);
+
+            assert!(result.is_err(), "非 UTF-8 的 config.toml 应当被拒绝写入，而不是被当成空文件重建");
+            let msg = result.unwrap_err();
+            assert!(msg.contains("已停止写入"), "报错应说明已停止写入: {msg}");
+
+            let after = std::fs::read(&cfg).unwrap();
+            assert_eq!(after.to_vec(), gbk_bytes.to_vec(), "拒绝写入后文件字节必须原封不动");
+            assert!(!root.join(".codex").join("config.toml.uking-bak").exists(), "拒绝写入不该留备份，压根没写");
+        });
+    }
 }
 
 /// 「一键配好全部 AI」该不该动 Codex —— 不该动就返回一句人话理由。
@@ -2475,9 +2746,15 @@ pub fn migrate_hermes_config_from_legacy() -> Option<String> {
         .or_else(|| read_hermes_model_key(&legacy_cfg_text, "api_key"))?;
 
     let live_cfg = live.join("config.yaml");
-    let live_cfg_text = std::fs::read_to_string(&live_cfg).unwrap_or_default();
+    // 读取失败（非 UTF-8 等）绝不能被当成「文件是空的」——那会让下面的
+    // `set_yaml_model_block`/`set_env_var` 拿假的空文件当基线，把客户在真 home 里的其它设置冲掉。
+    // `migrate_hermes_config_from_legacy` 返回类型是 `Option<String>`，没有 Err 通道，
+    // 读取失败时用 `.ok()?` 归入「无需迁移」（跟本函数上面 legacy 侧的 `.ok()?` 同一个写法），
+    // 关键效果一致：提前 return，不会走到下面的 backup_once/写盘。
+    let live_cfg_text = read_existing_text_or_empty(std::fs::read_to_string(&live_cfg), &live_cfg).ok()?;
     let live_env_file = live.join(".env");
-    let live_env_text = std::fs::read_to_string(&live_env_file).unwrap_or_default();
+    let live_env_text =
+        read_existing_text_or_empty(std::fs::read_to_string(&live_env_file), &live_env_file).ok()?;
     // ② 两处都已经对了 → 幂等跳过
     if read_hermes_model_key(&live_cfg_text, "base_url").as_deref() == Some(base.as_str())
         && read_env_var(&live_env_text, "OPENAI_BASE_URL").as_deref() == Some(base.as_str())
@@ -2615,7 +2892,10 @@ fn apply_hermes(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String
     // 所以读现有 api_mode 选端点：anthropic → anthropic_base（DeepSeek 官方
     // api.deepseek.com/anthropic / 虾盘云 api.u-claw.org 均提供 Anthropic 兼容路由）；
     // 其它/无 → openai_base（现状语义，openai_chat 模式）。
-    let existing_cfg_text = std::fs::read_to_string(dir.join("config.yaml")).unwrap_or_default();
+    // 读取失败（非 UTF-8 等）必须拒绝写入，不能退化成空串——否则下面 `set_yaml_model_block`
+    // 会拿假的空文件当基线，把客户 config.yaml 里其它字段冲掉（同 apply_codex 的回归钉子）。
+    let cfg_path = dir.join("config.yaml");
+    let existing_cfg_text = read_existing_text_or_empty(std::fs::read_to_string(&cfg_path), &cfg_path)?;
     let api_mode = read_hermes_model_key(&existing_cfg_text, "api_mode").unwrap_or_default();
     // 端点和 api_mode 必须成对决定 —— 只定端点、把 api_mode 留给 Hermes 猜，就是本函数
     // 头部注释里那个 `/v1/responses` 500 的成因。下面这个元组是「唯一一处」定这两件事的地方。
@@ -2680,8 +2960,10 @@ fn apply_hermes(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String
     //   无条件写，所以从不坏；Hermes 这条路被这个 exists 闸坑了，是「Hermes 一直就不是好的」的真因。
     //   atomic_write 写裸字节（无 BOM，python-dotenv 不会把首行键名连 BOM 吞掉）；只改这两个键、保留其它行。
     let env_file = dir.join(".env");
+    // 读取放在 backup_once 之前：非 UTF-8 等读取失败要整体拒绝（不写、不备份），
+    // 若先备份再发现读不了，就已经留下了一份没意义的备份、跟「不备份」的承诺不一致。
+    let mut env_text = read_existing_text_or_empty(std::fs::read_to_string(&env_file), &env_file)?;
     backup_once(&env_file); // 不存在 → no-op；存在 → 留底
-    let mut env_text = std::fs::read_to_string(&env_file).unwrap_or_default();
     env_text = set_env_var(&env_text, "OPENAI_API_KEY", key);
     env_text = set_env_var(&env_text, "OPENAI_BASE_URL", &base);
     atomic_write(&env_file, env_text.as_bytes()).map_err(|e| format!("写 hermes .env 失败: {e}"))?;
@@ -3850,6 +4132,54 @@ mod managed_provider_identity_tests {
                 );
             },
         );
+    }
+
+    /// 2026-09 会审 medium#2：跟 apply_claude_to 的 high#1 同一条红线——语法错误的
+    /// openclaw.json 不许被当成空文件处理再写回去，那会把客户的 gateway.auth / 自己挂的
+    /// providers / agents 全部换成只剩我们写的这几个键。解析失败必须直接拒绝，原文件不动。
+    #[test]
+    fn apply_openclaw_agent_rejects_instead_of_wiping_invalid_json() {
+        crate::testsandbox::with_sandbox(
+            "openclaw-invalid-json",
+            &[".openclaw", ".uking"],
+            |root| {
+                let oc_path = root.join(".openclaw").join("openclaw.json");
+                std::fs::create_dir_all(oc_path.parent().unwrap()).unwrap();
+                // 尾随逗号，serde_json 解析失败。
+                let broken = r#"{"gateway":{"auth":{"token":"real-token"}},}"#;
+                std::fs::write(&oc_path, broken).unwrap();
+
+                let r = apply_openclaw_agent("uking-xiapan", "https://x/v1", "sk-x", "m");
+                assert!(r.is_err(), "解析失败的 openclaw.json 必须拒绝写入，不能静默成功");
+                assert!(
+                    r.unwrap_err().contains("语法错误"),
+                    "错误信息应该提示语法错误，方便用户定位"
+                );
+
+                let after = std::fs::read_to_string(&oc_path).unwrap();
+                assert_eq!(after, broken, "拒绝写入后原文件必须一个字节都不变");
+            },
+        );
+    }
+
+    /// 2026-09 会审 medium#3：`ensure_openclaw_text_commands` 是个「尽力而为」的小补丁
+    /// （目录/文件不存在都静默跳过，不算错误），语法错误时维持同样的「跳过、不写」契约——
+    /// 但绝不能把跳过之前那步换成「当空文件、写回 `{"commands":{"text":true}}`」，
+    /// 那会把客户 openclaw.json 里的 gateway/providers/agents 全部抹掉。
+    #[test]
+    fn ensure_openclaw_text_commands_skips_without_wiping_invalid_json() {
+        crate::testsandbox::with_sandbox("openclaw-text-cmd-invalid", &[".openclaw"], |root| {
+            let oc_path = root.join(".openclaw").join("openclaw.json");
+            std::fs::create_dir_all(oc_path.parent().unwrap()).unwrap();
+            let broken = r#"{"gateway":{"auth":{"token":"real-token"}},}"#;
+            std::fs::write(&oc_path, broken).unwrap();
+
+            let r = ensure_openclaw_text_commands();
+            assert!(r.is_ok(), "跳过不算错误，契约不升级成硬失败");
+
+            let after = std::fs::read_to_string(&oc_path).unwrap();
+            assert_eq!(after, broken, "语法错误时必须原样跳过，不许写回 {{}} 或半份内容");
+        });
     }
 }
 
@@ -5563,15 +5893,12 @@ fn apply_openclaw_agent_to_home(
     if let Some(d) = oc_path.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    let mut oc: Value = std::fs::read_to_string(&oc_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| json!({}));
-    if !oc.is_object() {
-        oc = json!({});
-    }
+    // 2026-09 会审 medium#2：同 apply_claude_to 的 high#1——语法错误/顶层非对象的
+    // openclaw.json 不许当空文件处理，那会把用户的 gateway.auth / 自己挂的 providers / agents
+    // 全部抹掉再写回去。解析失败直接拒绝，backup_once/写盘都不做。
+    let mut oc: Value = read_json_object_or_reject(&oc_path)?;
     {
-        let root = oc.as_object_mut().unwrap();
+        let root = oc.as_object_mut().expect("read_json_object_or_reject 保证顶层是对象");
         // models.providers.uking
         let models = root.entry("models").or_insert_with(|| json!({}));
         let models = models.as_object_mut().ok_or("openclaw.json models 不是对象")?;
@@ -5722,18 +6049,23 @@ fn apply_openclaw_agent_to_home(
 ///
 /// 只在缺失时补 `true`，不覆盖用户/其它工具已写的显式值（哪怕是 false）——尊重既有选择。
 /// `.openclaw` 目录不存在（没装 OpenClaw/ClawX）静默跳过，不算错误。
+///
+/// 2026-09 会审 medium#3：本函数本就是「尽力而为的小补丁」（见上），语法错误/顶层非对象时
+/// 维持原有「静默跳过」契约不升级成硬错误——但绝不能把跳过之前那步换成「当空文件、写回 {}」，
+/// 那会把客户 openclaw.json 里的 gateway/providers/agents 全部换成只剩 `{"commands":{"text":true}}`。
+/// 判断逻辑复用 `parse_json_object_or_reject`（跟其它两处配置写入同一份解析代码），
+/// 只是这里把它的 Err 转成「跳过、不写」而不是「报错」。
 pub(crate) fn ensure_openclaw_text_commands() -> Result<(), String> {
     let oc_path = openclaw_home().join("openclaw.json");
     if !oc_path.exists() {
         return Ok(());
     }
-    let mut oc: Value = std::fs::read_to_string(&oc_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| json!({}));
-    if !oc.is_object() {
+    let Ok(text) = std::fs::read_to_string(&oc_path) else {
         return Ok(());
-    }
+    };
+    let Ok(mut oc) = parse_json_object_or_reject(&text, &oc_path) else {
+        return Ok(());
+    };
     {
         let root = oc.as_object_mut().unwrap();
         let commands = root.entry("commands").or_insert_with(|| json!({}));
@@ -9337,6 +9669,70 @@ mod hermes_home_tests {
         });
     }
 
+    /// ★ 端到端回归钉子：`config.yaml` 非 UTF-8（如误用 GBK 编码、权限问题读出乱码）时，
+    /// `apply_hermes` 必须整体拒绝写入，不能像老代码 `unwrap_or_default()` 那样把它当空文件
+    /// 重建——那会把客户 config.yaml 里我们不管的字段（temperature 等）连同整份文件一起冲掉。
+    /// 跟 `apply_codex_refuses_to_touch_non_utf8_config_toml` 是同一类钉子，这里补 Hermes 那份。
+    #[test]
+    fn apply_hermes_refuses_to_touch_non_utf8_config_yaml() {
+        with_sandbox("non-utf8-cfg", |root| {
+            let live = root.join(".hermes");
+            let cfg = live.join("config.yaml");
+            // GBK 编码的中文注释「你好」（0xC4 0xE3 0xBA 0xC3），在 UTF-8 下是非法字节序列。
+            let gbk_bytes: [u8; 8] = [b'#', b' ', 0xC4, 0xE3, 0xBA, 0xC3, b'\n', b'x'];
+            std::fs::write(&cfg, gbk_bytes).unwrap();
+
+            let p = builtin_providers().into_iter().find(|x| x.id == "deepseek").unwrap();
+            let result = apply_hermes(&p, "sk-test-123", "deepseek-v4-flash");
+
+            assert!(result.is_err(), "非 UTF-8 的 config.yaml 应当被拒绝写入，而不是被当成空文件重建");
+            let msg = result.unwrap_err();
+            assert!(msg.contains("已停止写入"), "报错应说明已停止写入: {msg}");
+
+            let after = std::fs::read(&cfg).unwrap();
+            assert_eq!(after.to_vec(), gbk_bytes.to_vec(), "拒绝写入后文件字节必须原封不动");
+            assert!(!live.join("config.yaml.uking-bak").exists(), "拒绝写入不该留备份，压根没走到写盘那一步");
+            assert!(!live.join(".env").exists(), ".env 更不该被碰——函数在读 config.yaml 那步就该已经退出");
+        });
+    }
+
+    /// ★ 端到端回归钉子（`.env` 那一半）：老代码顺序是「先 `backup_once` 再读文件」，
+    /// 如果直接照抄 config.yaml 那份写法（读→backup→写），非 UTF-8 的 `.env` 会先被
+    /// `backup_once` 留一份没意义的备份、再返回 Err —— 跟“读取失败不备份”的承诺不一致。
+    /// 这条钉死修复后的顺序：读取失败必须在 `backup_once` **之前**被拦下。
+    #[test]
+    fn apply_hermes_refuses_to_touch_non_utf8_env_without_backing_up() {
+        with_sandbox("non-utf8-env", |root| {
+            let live = root.join(".hermes");
+            // 合法的 config.yaml，这样才能真正跑到 .env 那一步（不会在 config.yaml 那步先退出）。
+            std::fs::write(
+                live.join("config.yaml"),
+                "model:\n  provider: custom\n  base_url: https://api.u-claw.org.cn/v1\n  \
+                 api_mode: chat_completions\n  default: deepseek-v4-flash\n",
+            )
+            .unwrap();
+            let env_file = live.join(".env");
+            let gbk_bytes: [u8; 8] = [b'#', b' ', 0xC4, 0xE3, 0xBA, 0xC3, b'\n', b'x'];
+            std::fs::write(&env_file, gbk_bytes).unwrap();
+
+            let p = builtin_providers().into_iter().find(|x| x.id == "deepseek").unwrap();
+            let result = apply_hermes(&p, "sk-test-123", "deepseek-v4-flash");
+
+            assert!(result.is_err(), "非 UTF-8 的 .env 应当被拒绝写入，而不是被当成空文件重建");
+            let msg = result.unwrap_err();
+            assert!(msg.contains("已停止写入"), "报错应说明已停止写入: {msg}");
+
+            let after = std::fs::read(&env_file).unwrap();
+            assert_eq!(after.to_vec(), gbk_bytes.to_vec(), "拒绝写入后 .env 字节必须原封不动");
+            assert!(
+                !live.join(".env.uking-bak").exists(),
+                "读取失败必须在 backup_once 之前被拦下，不该留下这份备份"
+            );
+            // config.yaml 这一半发生在 .env 之前，读取成功后确实走过 backup_once——
+            // 只要不写坏它的内容就行，这条钉子只关心 .env 那一半的顺序。
+        });
+    }
+
     /// opencode Zen（`/zen` 或 `/zen/go`）必须命中；host 不对或路径只是碰巧含关键字的
     /// 一律不命中。容忍前导空格、大小写混杂（客户粘贴 baseUrl 的老毛病）。
     #[test]
@@ -9453,7 +9849,7 @@ mod hermes_home_tests {
 
 #[cfg(test)]
 mod env_tests {
-    use super::{extract_mcp_servers, image_edit_ext, set_env_var};
+    use super::*;
 
     #[test]
     fn image_edit_never_passes_gif_to_azure() {
@@ -9551,45 +9947,124 @@ mod env_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 切驱动**整文件覆盖** config.toml，而 `codex mcp add` 写的正是这个文件的
-    /// `[mcp_servers.*]`（已用临时 CODEX_HOME 实测）。不捞出来带回去，客户每切一次驱动
-    /// 就把自己挂的连接器全抹一次，且毫无提示 —— 跟「不许抢客户模型/登录态」同一条红线。
+    /// 2026-09 会审 medium#6：旧实现在 Windows 上先 `remove_file` 再 `rename`，
+    /// 删除和 rename 之间有一个「目标已消失」的窗口。钉住目标文件已存在时也能覆盖成功，
+    /// 且中途不会有目标被删除的中间态（本用例只能钉「结果正确」，真正的"进程崩在窗口期"
+    /// 需要真机故障注入，这里验证的是"不再需要那个窗口"这件事本身）。
     #[test]
-    fn extract_mcp_servers_keeps_user_connectors_and_nothing_else() {
-        let src = r#"# managed by U-King
+    fn atomic_write_overwrites_existing_target_directly() {
+        let dir = std::env::temp_dir().join(format!("uking-aw-overwrite-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join("cfg.json");
+
+        std::fs::write(&p, b"old-content").unwrap();
+        assert!(p.exists());
+
+        let r = super::atomic_write(&p, b"new-content");
+        assert!(r.is_ok(), "覆盖已存在的目标文件不该失败: {r:?}");
+        assert_eq!(std::fs::read(&p).unwrap(), b"new-content".to_vec());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 2026-09 会审 high#4 钉的核心不变量：切驱动只替换我们管的那一块，用户自己的
+    /// `[projects.*]`、`[windows]`、`[mcp_servers.*]`、`[tui]`……原样带回去，一个字节不丢；
+    /// 别的 provider（`[model_providers.other]`）也不动。旧实现是整文件覆盖，只挑
+    /// `[mcp_servers.*]` 一种表捞出来重新拼接，其它表全部被抹掉。
+    #[test]
+    fn rebuild_codex_toml_preserves_unrelated_tables() {
+        let src = r#"# managed by U-King —— 驱动切换写入（还原请在 U-King 里选「官方直连」）
+# Codex CLI 和 Codex 桌面 App 共用本文件，切一次两边生效
 model = "deepseek-v4-flash-codex"
 model_provider = "xiapan"
 
 [model_providers.xiapan]
 name = "虾盘云"
 base_url = "https://api.u-claw.org.cn/v1"
+experimental_bearer_token = "sk-old"
+wire_api = "responses"
+
+[model_providers.other]
+name = "别的供应商"
+base_url = "https://example.com/v1"
+
+[projects."/home/demo/proj"]
+trust_level = "trusted"
 
 [mcp_servers.memory]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-memory"]
 # 用户自己写的注释也要留住
 
-[mcp_servers.playwright]
-command = "npx"
-args = ["-y", "@playwright/mcp@latest"]
-
 [tui]
 theme = "dark"
 "#;
-        let got = extract_mcp_servers(src);
-        assert!(got.contains("[mcp_servers.memory]"), "第一个连接器丢了: {got}");
-        assert!(got.contains("[mcp_servers.playwright]"), "第二个连接器丢了: {got}");
-        assert!(got.contains("@playwright/mcp@latest"), "段内的键值丢了: {got}");
-        assert!(got.contains("# 用户自己写的注释也要留住"), "原样保留 = 连注释一起: {got}");
-        // 只捞 mcp 段，别把别人的段也顺走（顺走 = 下面重写时出现重复段，Codex 直接解析失败）
-        assert!(!got.contains("model_provider"), "把驱动键也捞进来了: {got}");
-        assert!(!got.contains("[model_providers.xiapan]"), "把 provider 段也捞进来了: {got}");
-        assert!(!got.contains("[tui]"), "把 mcp 之后的别的段也捞进来了: {got}");
-        assert!(!got.contains("theme"), "mcp 段的结束判据没生效: {got}");
+        let block = "[model_providers.xiapan]\nname = \"虾盘云\"\nbase_url = \"https://api.u-claw.org.cn/v1\"\nexperimental_bearer_token = \"sk-new\"\nwire_api = \"responses\"\n";
+        let got = rebuild_codex_toml(src, "xiapan", "deepseek-v4-pro-codex", block);
 
-        // 没挂过连接器 → 空字符串（调用方据此决定要不要追加那段注释）
-        assert_eq!(extract_mcp_servers("model = \"x\"
-"), "");
+        // 我们管的部分确实换成了新值
+        assert!(got.contains("model = \"deepseek-v4-pro-codex\""), "model 没更新: {got}");
+        assert!(got.contains("sk-new"), "新 key 没写进去: {got}");
+        assert!(!got.contains("sk-old"), "旧 key 没清掉: {got}");
+
+        // 别人的 provider 表一个字节不动
+        assert!(got.contains("[model_providers.other]"), "别的 provider 表丢了: {got}");
+        assert!(got.contains("别的供应商"), "别的 provider 内容被改了: {got}");
+
+        // 用户自己的其它表原样保留（旧实现整文件覆盖会把这些全部抹掉）
+        assert!(got.contains(r#"[projects."/home/demo/proj"]"#), "projects 表丢了: {got}");
+        assert!(got.contains("trust_level = \"trusted\""), "projects 内容丢了: {got}");
+        assert!(got.contains("[mcp_servers.memory]"), "mcp_servers 表丢了: {got}");
+        assert!(got.contains("# 用户自己写的注释也要留住"), "mcp_servers 里的注释丢了: {got}");
+        assert!(got.contains("[tui]"), "tui 表丢了: {got}");
+        assert!(got.contains("theme = \"dark\""), "tui 内容丢了: {got}");
+    }
+
+    /// 幂等：同样的参数连跑两次，字节级相同——不许每切一次驱动就多攒一份标记注释
+    /// 或多一行空行。
+    #[test]
+    fn rebuild_codex_toml_is_idempotent() {
+        let block = "[model_providers.xiapan]\nname = \"虾盘云\"\nbase_url = \"https://api.u-claw.org.cn/v1\"\nexperimental_bearer_token = \"sk-1\"\nwire_api = \"responses\"\n";
+        let first = rebuild_codex_toml("", "xiapan", "deepseek-v4-flash-codex", block);
+        let second = rebuild_codex_toml(&first, "xiapan", "deepseek-v4-flash-codex", block);
+        assert_eq!(first, second, "连跑两次应该字节级相同:\n--- first ---\n{first}\n--- second ---\n{second}");
+
+        // 带用户自己表的场景也要幂等
+        let with_user_table = format!("{first}[tui]\ntheme = \"dark\"\n");
+        let again = rebuild_codex_toml(&with_user_table, "xiapan", "deepseek-v4-flash-codex", block);
+        let again2 = rebuild_codex_toml(&again, "xiapan", "deepseek-v4-flash-codex", block);
+        assert_eq!(again, again2, "带用户表时连跑两次也该字节级相同:\n--- again ---\n{again}\n--- again2 ---\n{again2}");
+    }
+
+    /// CRLF 文件重写后仍是 CRLF，不强行归一化成 LF。
+    #[test]
+    fn rebuild_codex_toml_preserves_crlf() {
+        let src = "[tui]\r\ntheme = \"dark\"\r\n";
+        let block = "[model_providers.xiapan]\nname = \"虾盘云\"\nbase_url = \"https://x\"\nexperimental_bearer_token = \"sk\"\nwire_api = \"responses\"\n";
+        let got = rebuild_codex_toml(src, "xiapan", "m", block);
+        assert!(got.contains("\r\n"), "CRLF 文件重写后不该变成 LF: {got:?}");
+        assert!(!got.replace("\r\n", "").contains('\n'), "不该混着两种换行: {got:?}");
+    }
+
+    /// UTF-8 BOM 保留在文件最前面。
+    #[test]
+    fn rebuild_codex_toml_preserves_bom() {
+        let src = "\u{feff}[tui]\ntheme = \"dark\"\n";
+        let block = "[model_providers.xiapan]\nname = \"虾盘云\"\nbase_url = \"https://x\"\nexperimental_bearer_token = \"sk\"\nwire_api = \"responses\"\n";
+        let got = rebuild_codex_toml(src, "xiapan", "m", block);
+        assert!(got.starts_with('\u{feff}'), "BOM 丢了: {got:?}");
+    }
+
+    /// 全新文件（没有旧 config.toml）：驱动表插在前导键之后、其它表之前，
+    /// 跟这么多年生成出来的文件观感保持一致。
+    #[test]
+    fn rebuild_codex_toml_fresh_file() {
+        let block = "[model_providers.xiapan]\nname = \"虾盘云\"\nbase_url = \"https://x\"\nexperimental_bearer_token = \"sk\"\nwire_api = \"responses\"\n";
+        let got = rebuild_codex_toml("", "xiapan", "deepseek-v4-flash-codex", block);
+        assert!(got.starts_with("# managed by U-King"), "开头该是标记注释: {got}");
+        assert!(got.contains("model = \"deepseek-v4-flash-codex\""));
+        assert!(got.contains("model_provider = \"xiapan\""));
+        assert!(got.contains("[model_providers.xiapan]"));
     }
 }
 
@@ -9613,6 +10088,48 @@ mod auto_compact_window_tests {
         let s = std::fs::read_to_string(claude_settings_path()).expect("settings.json 应该存在");
         let root: Value = serde_json::from_str(&s).expect("settings.json 应是合法 JSON");
         root.get("env").unwrap().as_object().cloned().expect("env 应是对象")
+    }
+
+    /// 2026-09 会审 high#1：语法错误的 settings.json（比如手滑多打一个逗号）绝不能被当成
+    /// 空文件处理——旧实现会把它解析失败后悄悄换成 `{}` 再写回去，用户的 hooks/permissions/
+    /// 其它设置全部消失，且没有任何报错提示。现在必须直接拒绝写入，原文件一个字节不动。
+    #[test]
+    fn apply_claude_rejects_instead_of_wiping_invalid_settings_json() {
+        with_sandbox("invalid-json", || {
+            let path = claude_settings_path();
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir).unwrap();
+            }
+            // 尾随逗号：合法 JSON 编辑器常见手滑，serde_json 会解析失败。
+            let broken = r#"{"hooks":{"PreToolUse":["guard.mjs"]},"permissions":{"allow":["Bash"]},}"#;
+            std::fs::write(&path, broken).unwrap();
+
+            let p = official_like("claude-sonnet-5");
+            let r = apply_claude(&p, "sk-official", None);
+            assert!(r.is_err(), "解析失败的 settings.json 必须拒绝写入，不能静默成功");
+            assert!(
+                r.unwrap_err().contains("语法错误"),
+                "错误信息应该提示语法错误，方便用户定位"
+            );
+
+            let after = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(after, broken, "拒绝写入后原文件必须一个字节都不变——不许先备份/先清空再报错");
+        });
+    }
+
+    /// 文件不存在（首次接管）走的是正常路径：从空对象开始，正常写入成功。
+    /// 用来跟上一条「文件存在但语法错误」区分开——这条不该被新校验误伤。
+    #[test]
+    fn apply_claude_still_works_when_settings_json_is_missing() {
+        with_sandbox("missing-json", || {
+            let path = claude_settings_path();
+            assert!(!path.exists(), "沙箱应该是干净的");
+            let p = official_like("claude-sonnet-5");
+            apply_claude(&p, "sk-official", None).unwrap();
+            assert!(path.exists());
+            let env = read_env();
+            assert!(env.contains_key("ANTHROPIC_BASE_URL"));
+        });
     }
 
     /// 非 DeepSeek 的自定义中转（官方 Anthropic 端点形状）。
