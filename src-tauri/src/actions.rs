@@ -574,6 +574,12 @@ pub const BACKUP_CREATE: &str = "runtime.backup.create";
 pub const BACKUP_RESTORE: &str = "runtime.backup.restore";
 pub const CLAWX_APPLY_MANAGED: &str = "runtime.clawx.apply_managed";
 pub const AITOOL_UNINSTALL: &str = "runtime.aitool.uninstall";
+/// 装一个 AI 工具（首页装机卡片背后那条流水线）。跟 `AITOOL_UNINSTALL` 对称：
+/// 卸载能被 GUI / CLI / MCP / U-Chat 一起调用，装也不该只留给 GUI 一家。
+/// `tool_id` 的 enum 由 `installer::embedded_tool_ids()` 现取（内嵌 `install-windows.json`
+/// 的 key），不是在这另抄一份列表；服务器热下发的新工具要等下一次内嵌清单同步才会出现在
+/// 这份 enum 里——「略保守」好过「凭空编一份」（宪法第 8 条）。
+pub const AITOOL_INSTALL: &str = "runtime.aitool.install";
 /// 把优化大师指出的**缺件真正装上**（便携 Node / Git / PowerShell 7 / CLI 命令守卫）。
 /// 幂等由 `installer::ensure_*` 自己兑现（已装就探到并秒回，不重下）。
 /// 跟 `OPTIMIZER_APPLY` 分工：那条改这台机器的**设置**，这条补这台机器**缺的东西**。

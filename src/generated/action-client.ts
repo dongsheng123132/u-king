@@ -11,6 +11,8 @@ export const ACTION = {
   RUNTIME_AI_PROCESS_INSPECT: "runtime.ai_process.inspect",
   /** List tasks from every AI on this computer — Claude Code, Codex CLI and Hermes session records plus tasks the AI logged itself on the uking-board. Reads local files only; never prompt bodies beyond the first line used as a title, never uploads. */
   RUNTIME_AI_TASKS_INSPECT: "runtime.ai_tasks.inspect",
+  /** Run the exact same install pipeline the home page installer buttons use: fetch the skill manifest (server first, embedded fallback), run its steps, verify, best-effort repair on failure. */
+  RUNTIME_AITOOL_INSTALL: "runtime.aitool.install",
   /** Remove the npm package / stub, ~/.uking/tools/<x>, shims and leftovers; GUI apps go through their own official uninstaller. */
   RUNTIME_AITOOL_UNINSTALL: "runtime.aitool.uninstall",
   /** List every scheduled automation with its next run time, plus whether automations can actually fire on this machine. Reads only. Note: the scheduler lives in this process — jobs only fire while U-King is running (tray counts). */
@@ -253,6 +255,7 @@ export type ActionInputMap = {
   "media.image.describe": { expected_state_version?: string; image: string; mode?: "describe" | "ocr"; question?: string; request_id: string; };
   "runtime.ai_process.inspect": Record<string, never>;
   "runtime.ai_tasks.inspect": { days?: number; };
+  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "claude-code" | "codex" | "codex-app" | "crush" | "dsh" | "harness-doctor" | "hermes" | "openclaw" | "opencode" | "pi" | "qwen-code"; };
   "runtime.aitool.uninstall": { expected_state_version?: string; tool_id: string; };
   "runtime.automation.inspect": Record<string, never>;
   "runtime.automation.remove": { expected_state_version?: string; id: string; };
@@ -376,6 +379,7 @@ export type ActionOutputMap = {
   "media.image.describe": Record<string, unknown>;
   "runtime.ai_process.inspect": Record<string, unknown>;
   "runtime.ai_tasks.inspect": Record<string, unknown>;
+  "runtime.aitool.install": Record<string, unknown>;
   "runtime.aitool.uninstall": Record<string, unknown>;
   "runtime.automation.inspect": Record<string, unknown>;
   "runtime.automation.remove": Record<string, unknown>;

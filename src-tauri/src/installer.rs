@@ -463,6 +463,15 @@ pub struct InstallToolResult {
 // skill 加载（服务器优先，内嵌兜底）
 // ============================================================
 
+/// **内嵌**清单能装的工具 id（不联网、不走 `load_skill` 的服务器分支）。
+/// 给 `runtime.aitool.install` 的 schema 当 enum 用：这是唯一真相源
+/// （`install-windows.json`）本身的 key，不是另抄一份 id 列表——热下发清单换了新工具，
+/// 这里要等下一次内嵌清单同步才跟上，属于「enum 略保守」而不是「凭空编了一份」。
+pub fn embedded_tool_ids() -> Vec<String> {
+    let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌 install-windows.json 解析失败");
+    skill.tools.into_keys().collect()
+}
+
 /// 加载 skill：先内嵌，再尝试服务器下发（version 更大才覆盖）。
 pub fn load_skill() -> Skill {
     let mut skill: Skill =

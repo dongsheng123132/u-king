@@ -5390,6 +5390,71 @@
       "bindings": [
         {
           "surface": "cli",
+          "target": "cli:action run runtime.aitool.install --json --no-input"
+        }
+      ],
+      "description": "Run the exact same install pipeline the home page installer buttons use: fetch the skill manifest (server first, embedded fallback), run its steps, verify, best-effort repair on failure.",
+      "effects": {
+        "audit_required": true,
+        "class": "write",
+        "confirmation": "always",
+        "reversible": true,
+        "risk": "medium"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": true,
+        "timeout_ms": 900000
+      },
+      "id": "runtime.aitool.install",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state_version": {
+            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
+            "type": "string"
+          },
+          "tool_id": {
+            "description": "Tool id from the home page cards, e.g. claude-code, codex, openclaw, hermes.",
+            "enum": [
+              "agent-browser",
+              "claude-code",
+              "codex",
+              "codex-app",
+              "crush",
+              "dsh",
+              "harness-doctor",
+              "hermes",
+              "openclaw",
+              "opencode",
+              "pi",
+              "qwen-code"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_id"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "ok",
+          "tool",
+          "version",
+          "attempts"
+        ],
+        "type": "object"
+      },
+      "title": "Install one AI tool"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
           "target": "cli:action run runtime.creator.canvas.inspect --json --no-input"
         }
       ],

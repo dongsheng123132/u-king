@@ -3912,6 +3912,35 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 Ok(serde_json::json!({ "message": cleanup::uninstall_ai_tool(&tool, log)? }))
             },
         )),
+        // 装的那一半：跟 `AITOOL_UNINSTALL` 对称，走的是 GUI 首页装机按钮同一条流水线
+        // （`install_ai_tool_shared`，真身是 `installer::install_tool`）。
+        // `tool_id` 的 enum 现取内嵌清单的 key（`installer::embedded_tool_ids`），不额外维护
+        // 一份列表；服务器热下发的新工具要等下一次内嵌清单同步才进这份 enum —— 略保守，
+        // 但不会漂出第二个真相源。
+        actions::with_progress(actions::write(
+            actions::AITOOL_INSTALL,
+            "Install one AI tool",
+            "Run the exact same install pipeline the home page installer buttons use: fetch the skill manifest (server first, embedded fallback), run its steps, verify, best-effort repair on failure.",
+            900_000,
+            "required",
+            serde_json::json!({
+                "tool_id": {
+                    "type": "string",
+                    "enum": installer::embedded_tool_ids(),
+                    "description": "Tool id from the home page cards, e.g. claude-code, codex, openclaw, hermes."
+                }
+            }),
+            &["tool_id"],
+            &["ok", "tool", "version", "attempts"],
+            |_, input, progress| {
+                let tool_id = input["tool_id"].as_str().unwrap_or_default().to_string();
+                let r = install_ai_tool_shared(&tool_id, &move |phase: &str, line: &str| {
+                    progress(&format!("{phase}: {line}"));
+                });
+                action_json(r)
+            },
+            None,
+        )),
         // ── 浏览器操作（browser.*）── 后端 agent-browser CLI（browser.rs，可替换）。
         // 填表/查资料实测（2026-08-06 Windows）：snapshot 0.45s 返回带 @ref 交互树，
         // fill/select/check/click 每动作 0.4~0.5s，6 字段表单全流程 ~3s。
@@ -4901,6 +4930,44 @@ mod action_parity_adapter_tests {
         );
     }
 
+    /// 装的那一半跟卸载对称：确认门必须在核心，不是 GUI 的礼貌；`tool_id` 的 enum 也必须
+    /// 真的执行，而不是写了没人查（`OPTIMIZER_APPLY` 那次 enum 装饰教训的第三份复验）。
+    /// 两个断言都不落到 handler：不带 confirm、或者 enum 外的 id，都得在跑安装管线之前
+    /// 被 `validate_input` 挡下 —— 不然一条就是几十 MB 下载 + 写 `~/.uking/tools/<x>`。
+    #[test]
+    fn aitool_install_refuses_to_run_without_confirmation_or_unknown_tool_id() {
+        let table = action_table();
+        let spec = table
+            .iter()
+            .map(|a| &a.spec)
+            .find(|s| s.id == actions::AITOOL_INSTALL)
+            .expect("组合根里应当登记着 aitool.install");
+        assert_eq!(spec.effect, "write");
+        assert_eq!(spec.confirmation, "required");
+        assert!(spec.progress_events, "装机是分钟级下载，声明「无进度」= 让 UI 只能干等转圈");
+
+        let known_ids = installer::embedded_tool_ids();
+        assert!(!known_ids.is_empty(), "内嵌清单应当至少能装一个工具");
+        let real_id = known_ids[0].clone();
+
+        // 缺 confirm：即便 tool_id 合法，也不许跑起来。
+        let denied = actions::run(
+            actions::AITOOL_INSTALL,
+            serde_json::json!({ "tool_id": real_id }),
+        );
+        assert!(denied.is_err(), "缺 confirm 必须被核心挡下");
+
+        // enum 外的 tool_id：带了 confirm 也不许真的走进安装管线（那条路要联网 + 落盘）。
+        let rejected = actions::run(
+            actions::AITOOL_INSTALL,
+            serde_json::json!({ "tool_id": "definitely-not-a-real-tool", "confirm": true }),
+        );
+        assert!(
+            rejected.is_err(),
+            "enum 外的 tool_id 必须被入参校验挡下，而不是落到 handler 里真跑一次安装"
+        );
+    }
+
     /// 浏览器运行时同样是写动作：没有确认时必须在进入 npm 前被 ActionParity 核心挡住。
     #[test]
     fn browser_runtime_install_refuses_to_run_without_confirmation() {
@@ -5544,39 +5611,54 @@ async fn load_free_registry() -> Option<serde_json::Value> {
         .flatten()
 }
 
+/// 装一个 AI 工具的**共享核心**：GUI 的 `install_tool` 命令和影核动作
+/// `runtime.aitool.install` 都调这一个函数，业务逻辑只有一份（四铁律第 13 条）。
+/// `on_log(phase, line)` 由调用方决定日志怎么呈现给各自的调用面
+/// （GUI 是结构化事件 `uking:wizard`，动作是拼成一行字符串的进度 sink），
+/// 落盘日志、日志尾巴留存、失败上报 bug 这三件事在这里做一次，两边都不会漏。
+fn install_ai_tool_shared(
+    tool_id: &str,
+    on_log: &(dyn Fn(&str, &str) + Send + Sync),
+) -> installer::InstallToolResult {
+    let skill = installer::load_skill();
+    let log_store = std::sync::Mutex::new(Vec::<String>::new());
+    // 装机日志同时落盘 ~/.uking/logs/install.log：客户点「技术支持」时诊断才带得上
+    // （此前日志只活在前端气泡里，采不到 —— issue #226 的客户只能手工复制粘贴）。
+    installer::install_log_header(tool_id);
+    let r = installer::install_tool(&skill, tool_id, &|phase: &str, line: &str| {
+        on_log(phase, line);
+        installer::append_install_log(tool_id, phase, line);
+        let mut l = log_store.lock().unwrap();
+        l.push(format!("[{phase}] {line}"));
+        if l.len() > 120 {
+            l.drain(..40);
+        }
+    });
+    if !r.ok {
+        let tail = log_store.lock().unwrap().join("\n");
+        report::report_bug(
+            "install_failed",
+            &format!("{tool_id} 安装失败: {}", r.error.clone().unwrap_or_default()),
+            &format!("skill v{} ({})\n{tail}", skill.version, skill.source),
+        );
+    }
+    r
+}
+
 /// 对话式安装：跑某个工具的安装流，日志走事件 `uking:wizard`。
-/// 失败自动上报 bug（采集日志尾部，定期巡视修复）。
+/// 真身是 `install_ai_tool_shared`；这层只负责把日志适配成前端原有的事件形状，
+/// 保住 `Result<installer::InstallToolResult, String>` 这个老返回类型不变。
 #[tauri::command]
 async fn install_tool(app: AppHandle, tool_id: String) -> Result<installer::InstallToolResult, String> {
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let skill = installer::load_skill();
         let tid = tool_id.clone();
-        let log_store = std::sync::Mutex::new(Vec::<String>::new());
-        // 装机日志同时落盘 ~/.uking/logs/install.log：客户点「技术支持」时诊断才带得上
-        // （此前日志只活在前端气泡里，采不到 —— issue #226 的客户只能手工复制粘贴）。
-        installer::install_log_header(&tool_id);
-        let r = installer::install_tool(&skill, &tool_id, &|phase: &str, line: &str| {
+        install_ai_tool_shared(&tool_id, &move |phase: &str, line: &str| {
             let _ = app2.emit(
                 "uking:wizard",
                 serde_json::json!({ "tool": tid, "phase": phase, "line": line }),
             );
-            installer::append_install_log(&tid, phase, line);
-            let mut l = log_store.lock().unwrap();
-            l.push(format!("[{phase}] {line}"));
-            if l.len() > 120 {
-                l.drain(..40);
-            }
-        });
-        if !r.ok {
-            let tail = log_store.lock().unwrap().join("\n");
-            report::report_bug(
-                "install_failed",
-                &format!("{tool_id} 安装失败: {}", r.error.clone().unwrap_or_default()),
-                &format!("skill v{} ({})\n{tail}", skill.version, skill.source),
-            );
-        }
-        r
+        })
     })
     .await
     .map_err(|e| format!("安装任务异常: {e}"))
