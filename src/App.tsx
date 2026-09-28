@@ -348,25 +348,16 @@ export function App() {
     setDriver(d);
     if (!landed.current) {
       landed.current = true;
-      // 安装器定位：第一次打开就落「① 装 AI」——主力推荐 ClawX + 一键全安装就在眼前，
-      // 不再落 Codex 工作站（那把新用户先带去 Codex，弱化了「这是个装机器」的第一印象）。
+      // 首页落点（2026-09-29 改，首页改版第 1 步）：不再按「首次/回访」「装没装」分流，
+      // 统一落 toolhub（现在叫「我的 AI」）——它自己的空态已经带了装机引导
+      // （见 ToolHub.tsx 的「还没装 AI 工具」区块 + 「一键装好推荐组合」按钮），
+      // 不用在这一层先猜用户是新是老再挑页面。旧的装机漏斗页（myai，现改名「装机·体检」）
+      // 仍在侧栏，找得到。uking.seenGuide 已经不影响落地页选择，但保留置位，
+      // 万一以后别处要判断「是不是第一次打开」不必再补一次埋点。
       if (localStorage.getItem("uking.seenGuide") !== "1") {
         localStorage.setItem("uking.seenGuide", "1");
-        setTab("myai");
-      } else {
-        // 回访：装过工具 → 默认进 **U-Workspace**；没装过 → 装机向导。
-        //
-        // 🔴 2026-08-16 改：原来落「终端」。那是个裸黑框，客户原话「首页那个莫名其妙的终端」——
-        // 对会敲命令的人它是首选，对我们真正的用户（不会敲命令、来这儿是为了让 AI 干活的人）
-        // 它就是一堵墙：没有任何提示说下一步该干什么。首页只该是这两个之一 ——
-        // **还没装好就带他装完**，**装好了就带他干活**。终端照旧在侧栏和工作台右侧，一点就有。
-        // open365 是系统管家（非 AI 工具），U 盘随盘带会被判「已装」——排除它，
-        // 否则只带了 Open365、没装任何 AI 的用户会被误带进 myai，跳过了装 AI 向导。
-        const hasInstalled = t.some(
-          (x) => x.installed && (x.launch_cmd || x.launch_app) && x.id !== "open365",
-        );
-        setTab(hasInstalled ? "chat" : "setup");
       }
+      setTab("toolhub");
     }
     // 返回原始（含 hidden）列表，让点击处理器能据「确认后的状态」决策（避免读到旧 state）。
     return raw;
@@ -1379,8 +1370,9 @@ export function App() {
                 onToast={flash}
               />
             ) : tab === "toolhub" ? (
-              // 「AI 工具中心」——一屏走完「选工具→选模型→启动」，参照 EchoBird 应用管理器布局。
-              // 与「我的 AI」(myai) 不是同一页：myai 是装机漏斗（大卡引导 + 已装/可装两段网格），
+              // 「我的 AI」（2026-09-29 首页改版前叫「AI 工具中心」）——已装工具卡片网格，
+              // 换模型、一键启动，也是全站默认落地页。跟侧栏「装机 · 体检」(myai，改版前
+              // 就叫「我的 AI」) 不是同一页：myai 是装机漏斗（大卡引导 + 已装/可装两段网格），
               // toolhub 是给已经装过工具的人用的日常启动台，两者共用同一批 tools/driver 数据源，
               // 互不重实现（同一个 launchTool/openTool/apply_provider 路径）。
               <ToolHub
@@ -1398,6 +1390,8 @@ export function App() {
                   setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair" });
                   setTab("chat");
                 }}
+                onGoSetup={startInstallAll}
+                onGoDoctor={() => setTab("myai")}
               />
             ) : tab === "myai" ? (
               <MyAI
