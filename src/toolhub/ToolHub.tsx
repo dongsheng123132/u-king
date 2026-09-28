@@ -31,6 +31,7 @@ import {
   Settings2,
   SquareTerminal,
   Wallet,
+  Sparkles,
 } from "lucide-react";
 import { LAB_TOOLS, toolTargets, currentModelFor, discoveryNameFor, type ToolInfo } from "../App";
 import type { DeviceKey, DriverStatus } from "../lib/types";
@@ -112,6 +113,7 @@ export function ToolHub({
   onRecharge,
   onRefreshTools,
   onToast,
+  onAskAiToFix,
 }: {
   tools: ToolInfo[];
   driver: DriverStatus | null;
@@ -125,6 +127,17 @@ export function ToolHub({
   onRecharge: () => void;
   onRefreshTools: () => Promise<ToolInfo[] | void> | void;
   onToast: (s: string) => void;
+  /**
+   * 「让 AI 帮我修」——把工具名 + 报错原样填进 U-Chat 输入框（不代发）。
+   *
+   * 🔴 **只接得住这一页自己能观测到的失败**：`onLaunch`/`onOpen`（=App.tsx 的
+   * `launchTool`/`openTool`）都是 fire-and-forget，内部失败自己 `flash` 掉，不会把
+   * rejection 抛回这里——想让「装/启动失败」也点得出这个链接，得先把那两个函数的
+   * 签名改成能报成功/失败（它们还被「我的 AI」`ToolMarket` 等好几处复用），
+   * 那是比这次改动大一圈的事，先如实说明，不在这里悄悄扩大范围。
+   * 目前这条链接接的是本组件自己 try/catch 得到的那次失败：换模型驱动时 `apply_provider` 报错。
+   */
+  onAskAiToFix?: (prompt: string) => void;
 }) {
   const { t: tr } = useI18n();
   const [category, setCategory] = useState<Category>("all");
@@ -185,6 +198,11 @@ export function ToolHub({
   const [applyModelOnLaunch, setApplyModelOnLaunch] = useState(getApplyModelPref);
   const [launchInUcli, setLaunchInUcli] = useState(() => getLaunchPref() === "ucli");
   const [applying, setApplying] = useState(false);
+  // 换模型驱动报错时留一条「让 AI 帮我修」的口子——见 `onAskAiToFix` 的注释：
+  // 这是本组件唯一自己 try/catch 得到、因此**真能观测到**的失败；切了工具就清掉，
+  // 不然选别的工具时页面上还挂着上一个工具的错误提示。
+  const [applyFailure, setApplyFailure] = useState<{ toolName: string; message: string } | null>(null);
+  useEffect(() => setApplyFailure(null), [selectedId]);
 
   const toggleApplyModelOnLaunch = (checked: boolean) => {
     setApplyModelOnLaunch(checked);
@@ -231,9 +249,11 @@ export function ToolHub({
               ? tr("已还原官方配置{hint}", { hint: "" })
               : tr("已切到 {name}，正在启动 {tool}…", { name: p.name, tool: selected.name })) + clawxHint,
           );
+          setApplyFailure(null);
           await onRefreshTools();
         } catch (e) {
           onToast(String(e));
+          setApplyFailure({ toolName: selected.name, message: String(e) });
           setApplying(false);
           return;
         }
@@ -436,6 +456,21 @@ export function ToolHub({
           <SquareTerminal size={13} className="text-ink-4" />
           {tr("在 U-CLI 终端中打开")}
         </label>
+        {applyFailure && onAskAiToFix && (
+          <button
+            onClick={() =>
+              onAskAiToFix(
+                tr("「{tool}」切换模型驱动失败，帮我看看是怎么回事：\n{err}", {
+                  tool: applyFailure.toolName,
+                  err: applyFailure.message,
+                }),
+              )
+            }
+            className="inline-flex items-center gap-1 px-2.5 h-7 rounded-full border border-accent/30 bg-accent/[0.08] text-[11.5px] text-accent hover:bg-accent/[0.14]"
+          >
+            <Sparkles size={12} /> {tr("让 AI 帮我修")}
+          </button>
+        )}
         <div className="flex-1" />
         <button
           onClick={() => void handlePrimary()}

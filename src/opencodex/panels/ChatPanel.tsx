@@ -301,6 +301,7 @@ export function ChatPanel({
   experts,
   onPreview,
   seedPrompt,
+  seedAutoSend,
   onSeedSent,
 }: {
   taskId: string;
@@ -340,7 +341,11 @@ export function ChatPanel({
   onPreview?: (path: string) => void;
   /** 宿主投进来的第一轮（护照交接）。发一次就够 —— 见下方 `seedSent`。不传＝没人交接过。 */
   seedPrompt?: string | null;
-  /** 上面那一轮真发出去了。宿主的「已送达」由它签字。 */
+  /** `seedPrompt` 到了之后要不要自动发出去。默认 `true`（护照交接原有语义）；
+   *  `false`（起手词场景，如工具中心「让 AI 帮我修」）只填进输入框，最后一下留给用户自己按。 */
+  seedAutoSend?: boolean;
+  /** 上面那一轮真发出去了（或者 `seedAutoSend:false` 时，那句话已经填进输入框）。
+   *  宿主的「已送达」由它签字。 */
   onSeedSent?: () => void;
 }) {
   const { t } = useI18n();
@@ -680,8 +685,16 @@ export function ChatPanel({
     const text = seedPrompt?.trim();
     if (!text || seedSent.current === text) return;
     seedSent.current = text;
+    // `seedAutoSend:false`（起手词场景）：只填进输入框、聚焦，不代按发送——
+    // 跟本组件自己的起手词走的是同一句 `setInput`（`onQuickPick` 那条），没有第二套「填字」逻辑。
+    if (seedAutoSend === false) {
+      setInput((v) => (v.trim() ? v : text));
+      setTimeout(() => inputRef.current?.focus(), 0);
+      onSeedSent?.();
+      return;
+    }
     void runTurn(text).then(() => onSeedSent?.());
-  }, [seedPrompt, runTurn, onSeedSent]);
+  }, [seedPrompt, seedAutoSend, runTurn, onSeedSent]);
 
   const interrupt = useCallback(() => {
     invoke(`${agent}_interrupt`, { taskId }).catch(() => {});
