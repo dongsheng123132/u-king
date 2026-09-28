@@ -428,6 +428,21 @@ export const workbench: Record<string, string> = {
   "帮我设计一个封面，标题是：": "Design a cover for me. The title is: ",
   "做头像": "Make an avatar",
   "帮我画一个头像，我想要：": "Draw me an avatar. I want: ",
+  // 「安装与修复」场景（第 4 个 tab）：跟 `runtime.aitool.install` / `runtime.tool.inspect` /
+  // `runtime.diagnostics.collect` / `runtime.env.install_tools` / `runtime.aitool.uninstall`
+  // 这几个真实存在的动作一一对应。
+  "安装与修复": "Install & repair",
+  "装 AI 工具": "Install a tool",
+  "帮我安装这个 AI 工具：": "Install this AI tool for me: ",
+  "排查打不开": "Diagnose won't-open",
+  "这个 AI 工具打不开了，帮我排查：": "This AI tool won't open — help me diagnose it: ",
+  "环境体检": "Health check",
+  "给我的电脑做个 AI 环境体检：": "Run a health check on my AI setup: ",
+  "补齐环境": "Fill in missing runtime",
+  "帮我检查一下电脑上缺不缺 Node / Git 这些运行环境，缺的话装上：":
+    "Check whether my machine is missing Node / Git and other runtime pieces, and install what's missing: ",
+  "卸载重装": "Reinstall",
+  "帮我把这个 AI 工具卸载再重新装一遍：": "Uninstall and reinstall this AI tool for me: ",
   // ── 任务看板（TaskBoard.tsx）+ 自动化·长程记忆（AutomationPanel.tsx）──────────
   看板: "Board",
   护照: "Passports",

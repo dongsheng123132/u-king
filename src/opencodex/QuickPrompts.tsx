@@ -22,6 +22,7 @@ import {
   Bug, Code2, Film, FileCode, FileSearch, FileText, Languages, LayoutTemplate,
   Image as ImageIcon, PenLine, Presentation, Save, ScrollText, Smile, Sparkles,
   Table, Terminal, Wand2, ListChecks, UserRound, ChevronDown, Users,
+  Download, Wrench, Stethoscope, RefreshCw, HardDriveDownload,
 } from "lucide-react";
 import type { Engine } from "./types";
 import { useI18n } from "../i18n";
@@ -103,6 +104,21 @@ const SCENES: { scene: string; items: Quick[] }[] = [
       { label: "找配图", template: "帮我配一张插图，风格要：", icon: Sparkles, best: BEST_DRAW },
       { label: "做封面", template: "帮我设计一个封面，标题是：", icon: ImageIcon, best: BEST_DRAW },
       { label: "做头像", template: "帮我画一个头像，我想要：", icon: Smile, best: BEST_DRAW },
+    ],
+  },
+  {
+    // 每一条都对应 `uking_action` 里真实存在的动作（体检/安装/修复），不是随口一句客服话术：
+    // 装 → runtime.aitool.install，排查 → runtime.tool.inspect + runtime.optimizer.apply，
+    // 体检 → runtime.diagnostics.collect，环境补件 → runtime.env.install_tools，
+    // 卸载重装 → runtime.aitool.uninstall + runtime.aitool.install。都以「：」收尾，
+    // 具体哪个工具/什么现象仍由用户自己写完，不替他编。
+    scene: "安装与修复",
+    items: [
+      { label: "装 AI 工具", template: "帮我安装这个 AI 工具：", icon: Download },
+      { label: "排查打不开", template: "这个 AI 工具打不开了，帮我排查：", icon: Wrench },
+      { label: "环境体检", template: "给我的电脑做个 AI 环境体检：", icon: Stethoscope },
+      { label: "补齐环境", template: "帮我检查一下电脑上缺不缺 Node / Git 这些运行环境，缺的话装上：", icon: HardDriveDownload },
+      { label: "卸载重装", template: "帮我把这个 AI 工具卸载再重新装一遍：", icon: RefreshCw },
     ],
   },
 ];
