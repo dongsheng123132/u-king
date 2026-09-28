@@ -196,8 +196,7 @@ export function App() {
   // 「召唤」handoff：AI 专家页点召唤 → 存这里 + 切到 U-Workspace(chat) → UWorkspace 消费后清空
   const [pendingExpert, setPendingExpert] = useState<Expert | null>(null);
   // 「发一句话」handoff：DSH 插件页「让 AI 帮你挑」→ 存这里 + 切到 chat → UWorkspace 开会话把它发给 AI
-  // `autoSend:false`（工具中心「让 AI 帮我修」这类起手词场景）只填输入框，不代按发送。
-  const [pendingChatPrompt, setPendingChatPrompt] = useState<{ prompt: string; engine?: Engine; passportId?: string; autoSend?: boolean } | null>(null);
+  const [pendingChatPrompt, setPendingChatPrompt] = useState<{ prompt: string; engine?: Engine; passportId?: string } | null>(null);
   // 访问过的 TUI 应用（懒挂载，挂载后常驻 display 切换保活，不卸载 → PTY 续跑）
   const [mountedTui, setMountedTui] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -1349,7 +1348,7 @@ export function App() {
                 onRefreshTools={refresh}
                 onToast={flash}
                 onAskAiToFix={(prompt) => {
-                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair", autoSend: false });
+                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair" });
                   setTab("chat");
                 }}
               />

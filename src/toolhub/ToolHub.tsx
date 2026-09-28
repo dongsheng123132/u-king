@@ -41,6 +41,7 @@ import { providerKeyFor } from "../components/ProviderSwitch";
 import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 import { getLaunchPref, setLaunchPref } from "./launchPref";
+import { buildProviderRepairPrompt } from "../lib/providerRepairPrompt";
 
 type Category = "all" | "cli" | "gui" | "agent" | "lab";
 
@@ -128,7 +129,9 @@ export function ToolHub({
   onRefreshTools: () => Promise<ToolInfo[] | void> | void;
   onToast: (s: string) => void;
   /**
-   * 「让 AI 帮我修」——把工具名 + 报错原样填进 U-Chat 输入框（不代发）。
+   * 「让 AI 帮我修」——跟 `ai-settings-repair` / `airuntime-doctor` / DSH「让 AI 帮你挑」
+   * 同一条修复按钮语义：走 App.tsx 的 `pendingChatPrompt` handoff，**自动发给 AI**，
+   * 不是起手词那种「只填输入框」（那条规矩只管 `QuickPrompts.tsx` 的场景 chips）。
    *
    * 🔴 **只接得住这一页自己能观测到的失败**：`onLaunch`/`onOpen`（=App.tsx 的
    * `launchTool`/`openTool`）都是 fire-and-forget，内部失败自己 `flash` 掉，不会把
@@ -200,8 +203,10 @@ export function ToolHub({
   const [applying, setApplying] = useState(false);
   // 换模型驱动报错时留一条「让 AI 帮我修」的口子——见 `onAskAiToFix` 的注释：
   // 这是本组件唯一自己 try/catch 得到、因此**真能观测到**的失败；切了工具就清掉，
-  // 不然选别的工具时页面上还挂着上一个工具的错误提示。
-  const [applyFailure, setApplyFailure] = useState<{ toolName: string; message: string } | null>(null);
+  // 不然选别的工具时页面上还挂着上一个工具的错误提示。字段形状照抄
+  // `Manager.tsx` 连通故障那颗同名按钮的 `buildProviderRepairPrompt` 入参，
+  // 两处「让 AI 帮我修」用的是同一套修复提示词构造器，不另起一份。
+  const [applyFailure, setApplyFailure] = useState<{ providerName: string; baseUrl: string; model: string; target?: string; error: string } | null>(null);
   useEffect(() => setApplyFailure(null), [selectedId]);
 
   const toggleApplyModelOnLaunch = (checked: boolean) => {
@@ -253,7 +258,13 @@ export function ToolHub({
           await onRefreshTools();
         } catch (e) {
           onToast(String(e));
-          setApplyFailure({ toolName: selected.name, message: String(e) });
+          setApplyFailure({
+            providerName: p.name,
+            baseUrl: (listTool === "claude" ? p.anthropic_base || p.openai_base : p.openai_base || p.anthropic_base) || "",
+            model: currentModelFor(selected, driver) ?? "",
+            target: listTool,
+            error: String(e),
+          });
           setApplying(false);
           return;
         }
@@ -458,14 +469,10 @@ export function ToolHub({
         </label>
         {applyFailure && onAskAiToFix && (
           <button
-            onClick={() =>
-              onAskAiToFix(
-                tr("「{tool}」切换模型驱动失败，帮我看看是怎么回事：\n{err}", {
-                  tool: applyFailure.toolName,
-                  err: applyFailure.message,
-                }),
-              )
-            }
+            onClick={() => {
+              onAskAiToFix(buildProviderRepairPrompt(applyFailure));
+              onToast(tr("已把故障交给 AI，正在打开工作台"));
+            }}
             className="inline-flex items-center gap-1 px-2.5 h-7 rounded-full border border-accent/30 bg-accent/[0.08] text-[11.5px] text-accent hover:bg-accent/[0.14]"
           >
             <Sparkles size={12} /> {tr("让 AI 帮我修")}

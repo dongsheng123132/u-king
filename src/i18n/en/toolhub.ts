@@ -20,7 +20,7 @@ export const toolhub: Record<string, string> = {
   "已切到 {name}，正在启动 {tool}…": "Switched to {name}, launching {tool}…",
   "已为 {name} 打开系统终端": "Opened a system terminal for {name}",
   "打开系统终端失败（{msg}），已改用 U-CLI 终端窗口": "Failed to open a system terminal ({msg}); fell back to the U-CLI terminal window",
-  "让 AI 帮我修": "Ask AI to fix it",
-  "「{tool}」切换模型驱动失败，帮我看看是怎么回事：\n{err}":
-    "Switching the model driver for \"{tool}\" failed. Help me figure out why: \n{err}",
+  // 「让 AI 帮我修」按钮文案 + 「已把故障交给 AI…」提示已经在 `en/settings.ts`
+  // 翻过一次（`Manager.tsx` 同名按钮先用的这两句）——同一句话不在这重复翻第二遍，
+  // 避免两份译文各改各的、悄悄漂开（宪法第 8 条）。
 };

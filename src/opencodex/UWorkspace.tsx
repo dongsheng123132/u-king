@@ -31,9 +31,8 @@ export function UWorkspace({ onToast, pendingExpert, onConsumed, pendingChatProm
   onToast?: (m: string) => void;
   pendingExpert?: Expert | null;
   onConsumed?: () => void;
-  /** 一条待投递的对话（DSH 插件页「让 AI 帮你挑」）—— 来了就开会话、把它发给 AI。
-   *  `autoSend:false`（工具中心「让 AI 帮我修」这类起手词场景）只填输入框，不代按发送。 */
-  pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string; autoSend?: boolean } | null;
+  /** 一条待投递的对话（DSH 插件页「让 AI 帮你挑」）—— 来了就开会话、把它发给 AI。 */
+  pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string } | null;
   onConsumedChat?: () => void;
   onInstallClaude?: () => void;
   /** 专家卡的 route 指向作图/视频时，切到侧栏「AI 创作」那一页（面板已撤，见 App.tsx 注释）。 */
@@ -53,7 +52,7 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
   onToast?: (m: string) => void;
   pendingExpert?: Expert | null;
   onConsumed?: () => void;
-  pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string; autoSend?: boolean } | null;
+  pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string } | null;
   onConsumedChat?: () => void;
   onInstallClaude?: () => void;
   /** 专家卡的 route 指向作图/视频时，切到侧栏「AI 创作」那一页（面板已撤，见 App.tsx 注释）。 */
@@ -148,10 +147,8 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.loaded, pendingExpert, onConsumed]);
 
-  // 「发一句话」handoff（DSH 插件页「让 AI 帮你挑」/ 工具中心「让 AI 帮我修」）：跟召唤专家同一条路 ——
-  // 建一个会话 → 把提示词投进信箱 → 切到对话视图。默认（`autoSend` 不传或为 true）Chat 挂载时
-  // 自取并自动发给 AI，是「用户已经点过交接」的语义；`autoSend:false` 只是起手词，Chat 挂载时
-  // 只填输入框，最后一下留给用户自己按（见 `handoff.ts::Handoff.autoSend`）。
+  // 「发一句话」handoff（DSH 插件页「让 AI 帮你挑」）：跟召唤专家同一条路 ——
+  // 建一个会话 → 把提示词投进信箱 → 切到对话视图（Chat 挂载时自取并自动发给 AI）。
   // 走 `addTask`（普通任务型会话）而不是 addExpertTask：这条没有 persona，就是一段任务提示词。
   useEffect(() => {
     if (!state.loaded || !pendingChatPrompt) return;
@@ -163,7 +160,6 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
         passportId: pendingChatPrompt.passportId ?? "dsh-hire",
         engine: pendingChatPrompt.engine ?? "claude",
         prompt: pendingChatPrompt.prompt,
-        autoSend: pendingChatPrompt.autoSend,
       });
       activate(id);
       setView("chat");

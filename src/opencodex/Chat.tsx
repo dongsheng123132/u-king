@@ -994,14 +994,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   // 等到超时就说人话，别让人对着一个永远转不完的圈猜。
   useEffect(() => {
     if (!seed || seed.engine !== "uking") return;
-    // `autoSend:false`（起手词语义，如工具中心「让 AI 帮我修」）：只填输入框、聚焦，
-    // 不等 Key、不代发——跟 `applyQuick` 走的是同一个 `setInput`，没有第二套「填字」逻辑。
-    if (seed.autoSend === false) {
-      setInput((v) => (v.trim() ? v : seed.prompt));
-      setSeed(null);
-      setTimeout(() => inputRef.current?.focus(), 0);
-      return;
-    }
     let alive = true;
     let tries = 0;
     const fire = () => {
@@ -1161,8 +1153,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                   },
                 }}
                 seedPrompt={seed && seed.engine === engine ? seed.prompt : null}
-                seedAutoSend={seed?.autoSend ?? true}
-                onSeedSent={() => { if (seed) { if (seed.autoSend !== false) deliver(sessionId, seed.passportId); setSeed(null); } }}
+                onSeedSent={() => { if (seed) { deliver(sessionId, seed.passportId); setSeed(null); } }}
                 onGoManage={() => (engine === "claude" && onInstallClaude ? onInstallClaude() : onToast?.(t("请先在「① 装 AI」装好该工具并在「② 虾盘云」一键配好驱动")))} />
             ) : (
               /* claude-cli / hermes：不代驱动，直接在中间开 U-CLI 跑它本人的 TUI（需先一键配好）。
