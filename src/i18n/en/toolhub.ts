@@ -46,4 +46,23 @@ export const toolhub: Record<string, string> = {
   "命令行工具打开方式：": "Open CLI tools in:",
   // 复审 high 修复（LAB_TOOLS 不再计入「已安装」主网格）：已装的实验室工具单收一条紧凑分区。
   "实验室（已装）": "Lab (installed)",
+
+  // 2026-09-29 三次改版（Launchpad 式 logo 墙 + 行内展开详情条）新增：
+  // 分体按钮「启动」旁 ▾ 弹出的两项，以及详情条里描述当前打开方式的同一行小字——
+  // 跟已经存在的「系统终端」「在 U-CLI 终端中打开」措辞不同，是这次新写的完整短句，
+  // 不能复用旧 key（宪法第 8 条：同一句话只认一份翻译，但这不是同一句话）。
+  "在系统终端打开": "Open in system terminal",
+  "在 U-CLI 打开": "Open in U-CLI",
+  // 复审 medium 修复：`route_tab` 类工具（如 hermes）跳的是 U-King 里的专属页，不是系统终端，
+  // 也不听 `launchPref`——不能沿用上面两条 `embedded_pty` 专属的措辞（同一句话只认一份翻译，
+  // 但这不是同一句话，宪法第 8 条）。
+  "在 U-King 里打开": "Open inside U-King",
+  // 详情条次要操作「体检修复」→ App.tsx 的 `setTab("myai")`（装机漏斗页）。
+  "体检修复": "Checkup & repair",
+  // 详情条底部「想在 U-King 里用？」+「对话工作台」「终端工作台」两个链接引导。
+  "想在 U-King 里用？": "Want to use it inside U-King?",
+
+  // 无障碍修复新增：详情条 `role="region"` 的 `aria-label`，读屏器用来播报这块区域是谁的详情，
+  // 跟瓷砖 `aria-controls` 指向的是同一个元素（详情条 id 由 `detailIdFor()` 统一拼）。
+  "{name} 详情": "{name} details",
 };

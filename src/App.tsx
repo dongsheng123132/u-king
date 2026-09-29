@@ -1381,6 +1381,7 @@ export function App() {
                 deviceKey={deviceKey}
                 onLaunch={launchTool}
                 onOpen={openTool}
+                onUninstall={uninstallTool}
                 onGoManage={() => setTab("manage")}
                 onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
                 onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
@@ -1392,6 +1393,8 @@ export function App() {
                 }}
                 onGoSetup={startInstallAll}
                 onGoDoctor={() => setTab("myai")}
+                onGoChat={() => setTab("chat")}
+                onGoTermWb={() => setTab("termwb")}
               />
             ) : tab === "myai" ? (
               <MyAI
@@ -2016,7 +2019,7 @@ export function discoveryNameFor(id: string): string {
 export function currentModelFor(t: ToolInfo, driver: DriverStatus | null): string | null {
   return t.id === "claude-code" || t.id === "claude"
     ? (driver?.claude_model ?? null)
-    : t.id === "codex" || t.id === "codex-cli"
+    : t.id === "codex" || t.id === "codex-cli" || t.id === "codex-app" // Codex 桌面版与 CLI 共用 ~/.codex/config.toml
       ? (driver?.codex_model ?? null)
       : t.id === "hermes"
         ? (driver?.hermes_model ?? null)
@@ -2050,6 +2053,14 @@ const UNINSTALLABLE = new Set([
   "uu-switch",
   "open365",
 ]);
+
+/** 是否支持「一键卸载」—— 镜像 `UNINSTALLABLE` 名单，导出函数而不是导出整个 Set，
+ *  调用方（`toolhub/ToolHub.tsx` 详情条的卸载按钮）只需要问「这个工具能卸载吗」，
+ *  不用知道判断细节；名单只在这一处维护，不在第二个文件里复制一份会漂的名单
+ *  （宪法第 8 条）。 */
+export function canUninstallTool(id: string): boolean {
+  return UNINSTALLABLE.has(id);
+}
 
 /**
  * 「更多」菜单——2026-09-06 Astra UI 规格 B2：已装卡片只留一个主动作（打开/打开终端），
