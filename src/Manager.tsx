@@ -166,8 +166,7 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
   { target: "clawx", label: "ClawX", icon: "clawx" },
   { target: "hermes", label: "Hermes", icon: "hermes" },
   { target: "dsh", label: "DeepSeek Harness", icon: "dsh" },
-  // pi 没有官方 logo/专属图标，ToolIcon 对未知 id 会退到「品牌色首字母方块」兜底
-  // （见 ToolIcon.tsx 的 FALLBACK_BG 分支）——这是已有的中性图标路径，不是新造的 key。
+  // pi 在 ToolIcon.tsx 里有专属 logo（assets/logos/pi.svg，pi.dev 官方标记 + 深色底块），icon: "pi" 直接命中它。
   { target: "pi", label: "pi", icon: "pi" },
   // OpenCode：2026-08-24 加 —— 后端 `apply_opencode` 从 2026-08-03 就在、`APPLY_ALL_TARGETS`
   // 里也一直有它，但这一页没 Tab、`tools.rs` 里还 `hidden: true`，于是它是「藏在『一键配好

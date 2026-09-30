@@ -27,3 +27,120 @@ not limited to:
 
 Refer to each dependency's own license file for full terms. This NOTICE
 file does not modify the terms of any third-party license.
+
+## Third-party trademarks
+
+U-King installs, configures and launches third-party AI tools and connects to
+third-party model providers. The names and logos of those products are
+trademarks or brand assets of their respective owners, including but not
+limited to:
+
+- Claude, Claude Code — Anthropic
+- Codex, ChatGPT, OpenAI — OpenAI
+- Gemini — Google
+- DeepSeek — DeepSeek (深度求索)
+- Kimi — Moonshot AI (月之暗面)
+- GLM, Z.ai — Zhipu AI (智谱)
+- MiniMax — MiniMax
+- Hermes — Nous Research
+- OpenClaw, ClawX — their respective project authors
+- pi — Earendil Inc. and contributors (per the pi.dev site footer)
+- OpenCode — the opencode project (github.com/anomalyco/opencode)
+- Obsidian — Obsidian and its owner (name only; no Obsidian logo is shipped, see Icon sources)
+- UU Remote (UU远程) — NetEase (网易)
+- Doubao (豆包), Volcengine (火山引擎) — ByteDance (字节跳动)
+- QwenWork (千问办公), Bailian (百炼), ModelScope (魔搭) — Alibaba (阿里巴巴)
+- WorkBuddy, CodeBuddy, Hunyuan (混元) — Tencent (腾讯)
+- Groq — Groq, Inc.
+- Mistral — Mistral AI
+- Grok, xAI — xAI
+- Xiaomi MiMo — Xiaomi (小米)
+- Baidu Qianfan (千帆) — Baidu (百度)
+- StepFun (阶跃星辰), SiliconFlow (硅基流动), OpenRouter, LongCat — their respective owners
+
+These names and logos are used only to identify the tools and services that
+U-King works with (nominative use). Their appearance in this product does not
+imply any sponsorship, endorsement, partnership or affiliation, and no license
+to any third-party trademark is granted by this file or by the Apache License.
+All rights in those marks remain with their owners.
+
+## Icon sources
+
+Brand icons live in `src/assets/logos/`, `src/assets/providers/` and in
+`src/components/ToolIcon.tsx`. Each SVG under those two asset directories also
+carries its source in a header comment, except where noted as "no header".
+
+Full license texts for the MIT-licensed icon sources are kept in
+`third_party/licenses/`:
+
+- `lobe-icons-MIT.txt` — lobehub/lobe-icons, MIT, Copyright (c) 2023 LobeHub
+- `opencode-MIT.txt` — anomalyco/opencode, MIT, Copyright (c) 2025 opencode
+
+Icons from lobehub/lobe-icons (https://github.com/lobehub/lobe-icons, MIT,
+Copyright (c) 2023 LobeHub), package @lobehub/icons-static-svg:
+
+- `src/assets/logos/doubao.svg` (icons/doubao-color.svg, v1.95.1). This is a
+  third-party redraw, not an asset published by the trademark owner.
+- `src/assets/providers/*.svg` — all 15 files; each header comment names its
+  lobe-icons file (bailian, groq, hunyuan, longcat, mistral, modelscope,
+  opencode, openrouter, qianfan, siliconflow, stepfun, volcengine, xai,
+  xiaomi-mimo, zai)
+- Codex mark inline in `ToolIcon.tsx` (`CodexMark`, path identical to lobe-icons
+  icons/codex.svg)
+
+Existing model-brand SVGs in `src/assets/logos/` (no header): `claude.svg`,
+`gemini.svg`, `deepseek.svg`, `kimi.svg`, `minimax.svg`, `zhipu.svg`,
+`chatglm.svg`, `openai.svg`, `codex.svg`. Their markup has the lobe-icons static
+SVG shape (`<title>`, `height="1em"`, `flex:none`); `claude.svg`, `deepseek.svg`
+and `zhipu.svg` are byte-identical (ignoring line breaks) to lobe-icons v1.95.1
+`claude-color.svg`, `deepseek-color.svg` and `zhipu-color.svg`; the others differ
+from v1.95.1 (older release or locally recolored). Provenance is therefore
+inferred as lobe-icons (MIT), exact source and version 来源待核.
+
+Obsidian: no Obsidian logo is shipped. The owner's brand page
+(https://obsidian.md/brand) says the logo must not be edited, recolored or
+reconfigured, and that commercial use of Obsidian assets requires contacting
+the owner first. U-King is a commercial product and has no such permission, so
+Obsidian entries use the initial-letter fallback tile. If permission is
+obtained, use the original from the owner's site
+(https://obsidian.md/images/obsidian-logo-gradient.svg), unmodified, and update
+this file.
+
+Icons from official product sites or repositories:
+
+- `src/assets/logos/pi.svg` — official favicon of pi (https://pi.dev/favicon.svg).
+  The mark path comes from the official file; the dark rounded tile behind it
+  was redrawn by U-King so the mark stays visible on light and dark themes.
+  The same graphic is listed in simple-icons (CC0). The project's code
+  repository (github.com/earendil-works/pi; the older badlogic/pi-mono address
+  redirects to it) is MIT, Copyright (c) 2025 Mario Zechner per its LICENSE file
+  (checked 2026-09-30); the pi.dev site footer credits "Earendil Inc. &
+  Contributors". No separate license statement for the favicon graphic was
+  found. Trademark remains with its owner.
+- `src/assets/logos/opencode.svg` — packages/identity/mark.svg of
+  github.com/anomalyco/opencode at commit
+  1251a870cb384543c150c4a72fb101b55eec971b (the upstream file wraps the real
+  svg, which already has its own viewBox, in an outer svg plus an unused
+  `<style>`; U-King kept only the inner svg, with its geometry and colors
+  unchanged).
+  MIT, Copyright (c) 2025 opencode. Trademark remains with its owner.
+- `src/assets/logos/qwenwork.svg` — mark cropped from the page-header logo of
+  the QwenWork official site (qwenwork.cn, image hosted on img.alicdn.com).
+  Brand asset of its owner, no open-source license; nominative use only.
+- `src/assets/logos/workbuddy.svg` — favicon of the WorkBuddy official page
+  (www.codebuddy.cn/work/), unmodified. Brand asset of its owner (Tencent
+  Cloud), no open-source license; nominative use only.
+- `src/assets/logos/uu-remote.png` — the single 64x64 frame of the favicon of
+  the UU Remote official site (uuyc.163.com), converted from ICO to PNG. Brand
+  asset of its owner (NetEase), no open-source license; nominative use only.
+- `src/assets/logos/hermes.png` — Nous Research's Hermes mascot avatar per the
+  code comment in `ToolIcon.tsx`; download URL and license 来源待核.
+- OpenClaw lobster (`OpenClawLobster` in `ToolIcon.tsx`) — the code comment says
+  it was borrowed from the ccswitch build's `claw.svg`; original source and
+  license 来源待核.
+
+Icons drawn by U-King (inline SVG in `ToolIcon.tsx`, covered by the Apache
+License 2.0 of this project, not derived from any third-party logo):
+`XiapanDisk` (虾盘云), `HarnessDoctorGlyph` (Harness Doctor), `Open365Glyph`
+(Open365), `UuSwitchGlyph` (uu-switch). The U-King and 虾盘云 marks remain
+covered by the trademark notice above.

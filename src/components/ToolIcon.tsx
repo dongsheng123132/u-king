@@ -1,13 +1,27 @@
 /**
- * 工具/模型品牌图标 —— 用官方 logo（SVG 资源，Vite 打包为 URL，<img> 渲染）。
+ * 工具/模型品牌图标 —— 品牌 logo（SVG 资源，Vite 打包为 URL，<img> 渲染）。
  *
  * 着色规则：彩色 = 已装/可用；灰色 = 未装（CSS grayscale + 降透明度，无需备两套素材）。
- * OpenClaw 没有现成官方 SVG，用内联龙虾（品牌红）。其余用官方 logo。
+ * OpenClaw 没有现成官方 SVG，用内联龙虾（品牌红）。自家产品用内联字形。其余按下面的来源分组用 logo 资源。
  *
- * 覆盖：claude / codex(LobeHub 官方标记) / gemini / deepseek / kimi(moonshot) / glm(zhipu) /
- *       minimax / hermes(Nous Research 官方吉祥物) / openclaw(clawx) / xiapan(自家品牌盘)。
- *       未知 → 首字母方块兜底。
+ * 覆盖（来源以 NOTICE「Icon sources」段为准，这里只按来源性质分组）：
+ *   官方站/官方仓库原件（<img> 资源，src/assets/logos/）：pi(pi.dev 官方标记 + 深色底块) /
+ *       opencode(官方 mark，自带深色底) / qwenwork(千问办公) / workbuddy / uu-remote(UU远程，仅 64px PNG)。
+ *   lobe-icons（MIT，第三方重绘，不是品牌方官方素材）：doubao(豆包)；另 claude / gemini / deepseek /
+ *       kimi(moonshot) / glm(zhipu) / minimax 的 SVG 按 NOTICE 也是推断出自 lobe-icons，来源待核。
+ *   来源待核：hermes(Nous Research 吉祥物头像 PNG)。
+ *   内联组件：codex(lobe-icons 标记，单色 + 深色圆角块) / openclaw(clawx，龙虾) /
+ *       自家品牌：xiapan(虾盘云) / harness-doctor(体检) / open365(电脑管家) / uu-switch(模型切换器)。
+ *   未知 → 首字母方块兜底（例：crush / qwen-code / uking / obsidian）。
+ *
+ * Obsidian 故意不放图标：官方品牌页（obsidian.md/brand）明令不得改色/变形，商用须先联系官方；
+ * 之前那份 lobe-icons 平涂单色版就是被改色的第三方重绘。拿到官方许可后，用官方站原件
+ * （obsidian.md/images/obsidian-logo-gradient.svg）接入，并同步改 NOTICE。
+ *
+ * 图标来源与许可（含 lobe-icons MIT 声明）统一登记在仓库根目录 NOTICE 的「Icon sources」段；
+ * 新增图标时同步更新那里。各 SVG 文件首行注释也写了来源。
  */
+import { useId } from "react";
 import claudeLogo from "../assets/logos/claude.svg";
 import openaiLogo from "../assets/logos/openai.svg";
 // Codex 改内联单色标记（CodexMark，fill=currentColor），不再用硬编码白 fill 的 svg 资源
@@ -18,6 +32,12 @@ import kimiLogo from "../assets/logos/kimi.svg";
 import zhipuLogo from "../assets/logos/zhipu.svg";
 import minimaxLogo from "../assets/logos/minimax.svg";
 import hermesLogo from "../assets/logos/hermes.png"; // Nous Research 官方吉祥物头像
+import piLogo from "../assets/logos/pi.svg"; // pi.dev 官方标记 + 深色圆角底块（官方原件跟系统主题走，直接用会在浅底上消失）
+import opencodeLogo from "../assets/logos/opencode.svg"; // 官方 mark，自带 #131010 方形深底（圆角由 ROUNDED_IMG 补）
+import doubaoLogo from "../assets/logos/doubao.svg"; // lobe-icons 第三方重绘（MIT），不是豆包官方素材；见 NOTICE
+import qwenworkLogo from "../assets/logos/qwenwork.svg";
+import workbuddyLogo from "../assets/logos/workbuddy.svg";
+import uuRemoteLogo from "../assets/logos/uu-remote.png"; // 官网只有 64px 位图；2x 屏略糊，有矢量源再换
 
 type Props = { tool: string; size?: number; active?: boolean; className?: string };
 
@@ -33,13 +53,25 @@ const LOGO: Record<string, string> = {
   zhipu: zhipuLogo,
   minimax: minimaxLogo,
   hermes: hermesLogo,
+  pi: piLogo,
+  opencode: opencodeLogo,
+  doubao: doubaoLogo,
+  qwenwork: qwenworkLogo,
+  workbuddy: workbuddyLogo,
+  "uu-remote": uuRemoteLogo,
 };
 
-/** 首字母方块兜底色（仅未知 id 用；xiapan/openclaw 已有专属图标，不在此列）。 */
-const FALLBACK_BG: Record<string, string> = {
-  "uu-remote": "#16a34a", // UU远程（网易）品牌绿，首字母 U 方块
-  open365: "#2f7d4f", // Open365 电脑管家品牌绿盾，首字母 O 方块
-};
+/** 素材本身是直角方形底的 logo：用 CSS 补圆角，跟 Codex / pi 的 24% 圆角块保持一致。 */
+const ROUNDED_IMG = new Set(["opencode"]);
+
+/** 首字母方块兜底色（仅未知 id 用；有专属图标/logo 的不会走到这里）。 */
+const FALLBACK_BG = "#5e6ad2";
+
+/** 内联 SVG 里 <linearGradient> 的 id 必须页面内唯一：App 用 display:none 切页保活，
+ *  重复 id 时 url(#id) 可能解析到隐藏页里的那份而不渲染。新增的自家字形用 useId 隔离。 */
+function useGradId(prefix: string): string {
+  return prefix + useId().replace(/[^a-zA-Z0-9_-]/g, "");
+}
 
 function CodexMark({ size }: { size: number }) {
   // Codex 官方标记（LobeHub），单色 fill=currentColor —— 由父层 text-ink-1 上色，
@@ -96,6 +128,78 @@ function XiapanDisk({ size }: { size: number }) {
   );
 }
 
+function HarnessDoctorGlyph({ size }: { size: number }) {
+  // 自家「Harness Doctor（AI 工具体检）」：青→蓝渐变圆角块（沿用虾盘云 XiapanDisk 的渐变，同属自家品牌族）
+  // + 白色心电脉冲线（体检语义）。自带填充，深/浅底都可见；未装时父层 grayscale 灰显。
+  const gid = useGradId("uk-hd-");
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#22d3ee" />
+          <stop offset="100%" stopColor="#2563eb" />
+        </linearGradient>
+      </defs>
+      <rect x="8" y="8" width="104" height="104" rx="28" fill={`url(#${gid})`} />
+      <path
+        d="M18 64 H38 L48 38 L64 92 L76 54 L82 64 H102"
+        stroke="#ffffff"
+        strokeWidth="8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function Open365Glyph({ size }: { size: number }) {
+  // 自家「Open365 电脑管家」：品牌绿 #2f7d4f 渐变盾牌 + 白色对勾（安全护盾语义）。
+  // 盾牌加一圈浅绿描边，深色底上轮廓也清楚。
+  const gid = useGradId("uk-o365-");
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4aa877" />
+          <stop offset="100%" stopColor="#2f7d4f" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M60 8 L102 22 V56 C102 82 84 102 60 112 C36 102 18 82 18 56 V22 Z"
+        fill={`url(#${gid})`}
+        stroke="#86e0ae"
+        strokeOpacity="0.7"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path d="M39 60 L54 75 L83 44" stroke="#ffffff" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function UuSwitchGlyph({ size }: { size: number }) {
+  // 自家「uu-switch 模型切换器」：靛蓝渐变圆角块 + 上右下左两根反向箭头（来回切换语义）。
+  // 不借用上游 cc-switch 的 logo。
+  const gid = useGradId("uk-uusw-");
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#818cf8" />
+          <stop offset="100%" stopColor="#4f46e5" />
+        </linearGradient>
+      </defs>
+      <rect x="8" y="8" width="104" height="104" rx="28" fill={`url(#${gid})`} />
+      <g stroke="#ffffff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M26 42 H92" />
+        <path d="M77 28 L93 42 L77 56" />
+        <path d="M94 78 H28" />
+        <path d="M43 64 L27 78 L43 92" />
+      </g>
+    </svg>
+  );
+}
+
 /** tool/provider id 归一（兼容 ToolInfo.id、TUI tag、驱动 id、中文名 几套命名）。 */
 function normTool(tool: string): string {
   const t = tool.toLowerCase();
@@ -110,6 +214,18 @@ function normTool(tool: string): string {
   if (t.includes("glm") || t.includes("zhipu") || t.includes("智谱")) return "glm";
   if (t.includes("minimax")) return "minimax";
   if (t.includes("xiapan") || t.includes("虾盘")) return "xiapan";
+  // 以下是后加的工具：短/易撞的 id（pi、opencode、uu-*）用精确匹配 + 少量别名，不用裸 includes ——
+  // 「pi」是任何含 pi 字样名字的子串，「opencode」带 code 字样，uu-remote 与 uu-switch 必须分开。
+  // 它们都不会被上面的规则先吃掉（已逐个 id 核对）。
+  if (t === "pi") return "pi";
+  if (t === "opencode" || t === "open-code") return "opencode";
+  if (t.includes("doubao") || t.includes("豆包")) return "doubao";
+  if (t.includes("qwenwork") || t.includes("千问办公")) return "qwenwork";
+  if (t.includes("workbuddy")) return "workbuddy";
+  if (t === "uu-remote" || t === "uuremote" || t.includes("uu远程")) return "uu-remote";
+  if (t === "uu-switch" || t === "uuswitch") return "uu-switch";
+  if (t.includes("harness-doctor")) return "harness-doctor";
+  if (t.includes("open365")) return "open365";
   return t;
 }
 
@@ -132,11 +248,25 @@ export function ToolIcon({ tool, size = 24, active = true, className = "" }: Pro
     );
   } else if (id === "xiapan") {
     inner = <XiapanDisk size={size} />;
+  } else if (id === "harness-doctor") {
+    inner = <HarnessDoctorGlyph size={size} />;
+  } else if (id === "open365") {
+    inner = <Open365Glyph size={size} />;
+  } else if (id === "uu-switch") {
+    inner = <UuSwitchGlyph size={size} />;
   } else if (LOGO[id]) {
-    inner = <img src={LOGO[id]} width={size} height={size} alt={id} style={{ width: size, height: size }} />;
+    inner = (
+      <img
+        src={LOGO[id]}
+        width={size}
+        height={size}
+        alt={id}
+        style={{ width: size, height: size, borderRadius: ROUNDED_IMG.has(id) ? "24%" : undefined }}
+      />
+    );
   } else {
     // 兜底：品牌色首字母方块
-    const bg = FALLBACK_BG[id] ?? "#5e6ad2";
+    const bg = FALLBACK_BG;
     inner = (
       <span
         style={{ width: size, height: size, background: bg }}
