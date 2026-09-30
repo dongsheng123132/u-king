@@ -25,36 +25,38 @@ mkdirSync(OUT, { recursive: true });
 
 /**
  * 工具目录——id/name/kind/launch_cmd/launch_app/hidden 照抄
- * `src-tauri/src/tools.rs::list_tools()` 里的真实字面量（2026-09-29 读源码核对）。
+ * `src-tauri/src/tools.rs::list_tools()` 里的真实字面量（2026-09-29 读源码核对）；
+ * `config_target` 照抄同文件 `TOOL_SPECS` 同 id 条目（后端 `list_tools` 按 id 从那里填，
+ * 2026-09-30 加；`null` = 不接驱动切换）。uu-switch 2026-09-30 已下架（`hidden: true`）。
  * `installed` 不在这张表里——那是每个场景自己决定的演示状态，不是抄来的。
  * `open365` 后端 `installed: true` 是硬编码常量（按需下载设计，见 tools.rs 同名注释），
  * 这里同样硬编码，不随场景切换——这正是 `LAB_TOOLS` 要把它从主「已装」网格摘出去、
  * 单独放"实验室（已装）"分区的原因（ToolHub.tsx `installed` 那段注释）。
  */
 const TOOL_DEFS = [
-  { id: "claude-code", name: "Claude Code CLI", kind: "standalone", launch_cmd: "claude", launch_app: "", hidden: false },
-  { id: "codex", name: "Codex CLI", kind: "standalone", launch_cmd: "codex", launch_app: "", hidden: false },
-  { id: "openclaw", name: "OpenClaw CLI（龙虾）", kind: "deep", launch_cmd: "openclaw", launch_app: "", hidden: true },
-  { id: "qwen-code", name: "Qwen Code", kind: "standalone", launch_cmd: "qwen", launch_app: "", hidden: true },
-  { id: "pi", name: "pi", kind: "standalone", launch_cmd: "pi", launch_app: "", hidden: false },
-  { id: "opencode", name: "OpenCode", kind: "standalone", launch_cmd: "opencode", launch_app: "", hidden: false },
-  { id: "crush", name: "Crush", kind: "standalone", launch_cmd: "crush", launch_app: "", hidden: true },
-  { id: "clawx", name: "OpenClaw 桌面版（ClawX）", kind: "deep", launch_cmd: "", launch_app: "clawx", hidden: false },
-  { id: "hermes", name: "Hermes Agent（Nous 官方）", kind: "deep", launch_cmd: "hermes", launch_app: "", hidden: false },
+  { id: "claude-code", name: "Claude Code CLI", kind: "standalone", launch_cmd: "claude", launch_app: "", hidden: false, config_target: "claude" },
+  { id: "codex", name: "Codex CLI", kind: "standalone", launch_cmd: "codex", launch_app: "", hidden: false, config_target: "codex" },
+  { id: "openclaw", name: "OpenClaw CLI（龙虾）", kind: "deep", launch_cmd: "openclaw", launch_app: "", hidden: true, config_target: "clawx" },
+  { id: "qwen-code", name: "Qwen Code", kind: "standalone", launch_cmd: "qwen", launch_app: "", hidden: true, config_target: "qwen" },
+  { id: "pi", name: "pi", kind: "standalone", launch_cmd: "pi", launch_app: "", hidden: false, config_target: "pi" },
+  { id: "opencode", name: "OpenCode", kind: "standalone", launch_cmd: "opencode", launch_app: "", hidden: false, config_target: "opencode" },
+  { id: "crush", name: "Crush", kind: "standalone", launch_cmd: "crush", launch_app: "", hidden: true, config_target: "crush" },
+  { id: "clawx", name: "OpenClaw 桌面版（ClawX）", kind: "deep", launch_cmd: "", launch_app: "clawx", hidden: false, config_target: "clawx" },
+  { id: "hermes", name: "Hermes Agent（Nous 官方）", kind: "deep", launch_cmd: "hermes", launch_app: "", hidden: false, config_target: "hermes" },
   // Windows 分支（cfg!(windows)）：官方桌面版，launch_app="dsh-desktop"、launch_cmd=""。
-  { id: "dsh", name: "DeepSeek Harness（官方桌面版）", kind: "deep", launch_cmd: "", launch_app: "dsh-desktop", hidden: false },
-  { id: "harness-doctor", name: "Harness Doctor（AI 工具体检）", kind: "utility", launch_cmd: "harness-doctor --target all --no-ports", launch_app: "", hidden: false },
-  { id: "obsidian", name: "Obsidian 知识库", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false },
-  { id: "uu-remote", name: "UU远程（手机控电脑）", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false },
-  { id: "doubao", name: "豆包工作台", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false },
-  { id: "qwenwork", name: "千问办公", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false },
-  { id: "workbuddy", name: "WorkBuddy", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false },
+  { id: "dsh", name: "DeepSeek Harness（官方桌面版）", kind: "deep", launch_cmd: "", launch_app: "dsh-desktop", hidden: false, config_target: "dsh" },
+  { id: "harness-doctor", name: "Harness Doctor（AI 工具体检）", kind: "utility", launch_cmd: "harness-doctor --target all --no-ports", launch_app: "", hidden: false, config_target: null },
+  { id: "obsidian", name: "Obsidian 知识库", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
+  { id: "uu-remote", name: "UU远程（手机控电脑）", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
+  { id: "doubao", name: "豆包工作台", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
+  { id: "qwenwork", name: "千问办公", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
+  { id: "workbuddy", name: "WorkBuddy", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
   // Windows/macOS 分支：Codex 桌面版，插在数组下标 2（这里顺序不影响 ToolHub 渲染，
   // ToolHub 不依赖 list_tools 的原始顺序做任何跨工具比较）。
-  { id: "codex-app", name: "Codex 桌面版", kind: "standalone", launch_cmd: "", launch_app: "codex-app", hidden: false },
-  { id: "open365", name: "Open365 电脑管家（开源）", kind: "standalone", launch_cmd: "", launch_app: "open365", hidden: false, alwaysInstalled: true },
-  { id: "hermes-app", name: "Hermes 桌面版（Nous 官方）", kind: "deep", launch_cmd: "", launch_app: "hermes-app", hidden: true },
-  { id: "uu-switch", name: "uu-switch 模型切换器", kind: "standalone", launch_cmd: "", launch_app: "uu-switch", hidden: false },
+  { id: "codex-app", name: "Codex 桌面版", kind: "standalone", launch_cmd: "", launch_app: "codex-app", hidden: false, config_target: "codex" },
+  { id: "open365", name: "Open365 电脑管家（开源）", kind: "standalone", launch_cmd: "", launch_app: "open365", hidden: false, config_target: null, alwaysInstalled: true },
+  { id: "hermes-app", name: "Hermes 桌面版（Nous 官方）", kind: "deep", launch_cmd: "", launch_app: "hermes-app", hidden: true, config_target: "hermes" },
+  { id: "uu-switch", name: "uu-switch 模型切换器", kind: "standalone", launch_cmd: "", launch_app: "uu-switch", hidden: true, config_target: null },
 ];
 
 /**
@@ -117,6 +119,7 @@ function buildTools(installedIds) {
     launch_cmd: d.launch_cmd,
     launch_app: d.launch_app,
     hidden: d.hidden,
+    config_target: d.config_target,
   }));
 }
 
@@ -236,8 +239,26 @@ const SHIM = ({ tools, driver, deviceKey, checkUpdate, providers, lastTool, laun
             result: { tools: launchPlans },
           };
         }
-        // 这批场景这次只用到 runtime.tool.inspect 这一条 action，其余 action_id 不在用例里，
-        // 落 default 分支即可（同文件顶部注释）。
+        // ToolHub 对 pi/opencode 这类 DriverStatus 没有 *_model 字段的已装工具，会调一次只读
+        // `runtime.provider.effective`（不带 target）回读它们的当前模型。假数据：pi 读到了模型、
+        // opencode 读到了但没配（`readable:true` + model 空 → 「还没配模型」）；claude 那条照真实
+        // 形状带着，证明「DriverStatus 自带字段的工具」不靠这条。
+        if (actionId === "runtime.provider.effective") {
+          return {
+            ok: true,
+            version: 1,
+            action_id: actionId,
+            execution_id: "shim",
+            result: {
+              targets: [
+                { target: "claude", readable: true, provider_key: "xiapan", base_url: "https://api.u-claw.org.cn/v1", model: "deepseek-v4-pro", overridden_by: null },
+                { target: "pi", readable: true, provider_key: "uking", base_url: "https://api.u-claw.org.cn/v1", model: "deepseek-v4-flash", overridden_by: null },
+                { target: "opencode", readable: true, provider_key: null, base_url: null, model: null, overridden_by: null },
+              ],
+            },
+          };
+        }
+        // 其余 action_id 不在用例里，落 default 分支即可（同文件顶部注释）。
         return null;
       }
       default:
@@ -516,7 +537,7 @@ async function shotWide() {
   const manyInstalled = [
     "claude-code", "codex", "pi", "opencode", "clawx", "hermes", "dsh",
     "harness-doctor", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy",
-    "codex-app", "uu-switch",
+    "codex-app",
   ];
   const consoleErrors = await loadToolhub(page, { installedIds: manyInstalled, withModels: true });
   const targetId = await pickSecondRowInstalledToolId(page);
@@ -541,6 +562,44 @@ async function shotWide() {
   await finish("wide", page, consoleErrors, { targetId, detail: d });
 }
 
+/** ⑦ models.png —— 换模型入口覆盖后端所有能写配置的工具（2026-09-30）：入口由后端下发的
+ *  `ToolInfo.config_target` 决定，不再是前端手写的 4 个。逐个展开 claude-code / pi / opencode / dsh，
+ *  读详情条里换模型按钮（`toolhub-model-trigger`）的文字：
+ *   · 四个都必须有这个按钮（dsh/pi/opencode 以前没有 target，显示的是「这里暂不能换它的模型」）；
+ *   · claude-code 读 DriverStatus 自带字段；pi 读 `runtime.provider.effective` 回读（shim 里给了模型）；
+ *   · opencode 回读 `readable:true` 但没模型 → 「还没配模型」；dsh 的 dsh_model 为空 → 同样。 */
+async function shotModels() {
+  const page = await browser.newPage({ viewport: { width: 1134, height: 800 }, deviceScaleFactor: 2 });
+  const consoleErrors = await loadToolhub(page, {
+    installedIds: ["claude-code", "codex", "hermes", "pi", "opencode", "dsh"],
+    withModels: true,
+    // 默认展开 hermes（不在下面 expected 里）：单击一块已展开的瓷砖是收起，不是展开。
+    lastTool: "hermes",
+  });
+  const expected = {
+    "claude-code": "deepseek-v4-pro",
+    pi: "deepseek-v4-flash",
+    opencode: "还没配模型",
+    dsh: "还没配模型",
+  };
+  const seen = {};
+  for (const [id, want] of Object.entries(expected)) {
+    await page.locator(`[data-testid="toolhub-tile"][data-tool-id="${id}"]`).first().click();
+    // 已装瓷砖单击要等 `commitTileClick` 的 300ms 消歧计时器（同 shotWide）。
+    await page.waitForTimeout(450);
+    const trigger = page.locator(`[data-testid="toolhub-model-trigger"][data-tool-id="${id}"]`);
+    if ((await trigger.count()) === 0) {
+      problems.push(`models: ${id} 的详情条里没有换模型按钮 toolhub-model-trigger`);
+      seen[id] = null;
+      continue;
+    }
+    const text = ((await trigger.first().innerText()) || "").trim();
+    seen[id] = text;
+    if (text !== want) problems.push(`models: ${id} 换模型按钮显示「${text}」，期望「${want}」`);
+  }
+  await finish("models", page, consoleErrors, { seen });
+}
+
 console.log("给「我的 AI」（ToolHub）出图（独立 dev 实例，不碰你在跑的 U-King）：");
 await shotDefault();
 await shotGui();
@@ -548,6 +607,7 @@ await shotInstall();
 await shotSplit();
 await shotEmpty();
 await shotWide();
+await shotModels();
 
 await browser.close();
 

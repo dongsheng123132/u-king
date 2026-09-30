@@ -62,6 +62,11 @@ export const toolhub: Record<string, string> = {
   // 详情条底部「想在 U-King 里用？」+「对话工作台」「终端工作台」两个链接引导。
   "想在 U-King 里用？": "Want to use it inside U-King?",
 
+  // 换模型下拉按钮在「读不到当前模型」时的两种文案（pi/opencode 这类回读失败/被挡住；
+  // 「读取中…」复用中央字典已有条目）。不说「还没配模型」——读不到不等于没配。
+  "使用中：{name}": "In use: {name}",
+  "选择模型供应商": "Choose a model provider",
+
   // 无障碍修复新增：详情条 `role="region"` 的 `aria-label`，读屏器用来播报这块区域是谁的详情，
   // 跟瓷砖 `aria-controls` 指向的是同一个元素（详情条 id 由 `detailIdFor()` 统一拼）。
   "{name} 详情": "{name} details",

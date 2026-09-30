@@ -68,6 +68,26 @@ export type DriverStatus = {
   discovered?: ToolDiscovery[];
 };
 
+/**
+ * 「那个工具**真的**会照着跑吗」—— 回读工具自己的配置得到的结论（动作 `runtime.provider.effective`）。
+ * 后端 `providers::EffectiveConfig` 的镜像，字段含义以那边的文档为准。
+ * `Manager.tsx`（AI 设置回验行）与 `toolhub/ToolHub.tsx`（读 pi/opencode 这类 DriverStatus
+ * 没有 *_model 字段的工具的当前模型）共用这一份。
+ *
+ * 🔴 `readable === false` 是**「不知道」**（我们没有这个工具的回读路径），
+ * 不是「没配置」。这两种必须渲染成不同的东西 —— 把「没查」画成绿勾，
+ * 就是这次要修的那类假绿的又一份。
+ */
+export type EffectiveConfig = {
+  target: string;
+  readable: boolean;
+  provider_key: string | null;
+  base_url: string | null;
+  model: string | null;
+  /** 有别的文件压着我们写的那份 → 写入成功但不生效。值是那个文件的路径。 */
+  overridden_by: string | null;
+};
+
 /** `DriverStatus.discovered` 的一条记录（对应后端 `providers.rs::ToolDiscovery`）。 */
 export type ToolDiscovery = {
   name: string;

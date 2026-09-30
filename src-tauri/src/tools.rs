@@ -39,6 +39,16 @@ pub struct ToolInfo {
     /// 当前隐藏：Codex CLI（走桌面版）、OpenClaw 官方 CLI（走 ClawX 桌面版）。
     #[serde(default)]
     pub hidden: bool,
+    /// 这个工具归哪个驱动配置目标（`apply_provider` / `runtime.provider.effective` 认的
+    /// `target` 字符串，如 `"claude"` / `"dsh"` / `"pi"`）。`None` = 不接驱动切换体系。
+    ///
+    /// 🔴 **真相源是 [`TOOL_SPECS`]`.config_target`，不是这里**：[`list_tools`] 末尾按 `id`
+    /// 从 `TOOL_SPECS` 统一覆盖，上面各个 `ToolInfo { .. }` 构造处一律写 `None` 占位——
+    /// 在构造处直接填 `Some(..)` 会被覆盖掉（`list_tools_config_target_mirrors_tool_specs`
+    /// 单测会红）。前端 `toolTargets()`（App.tsx）据此决定「我的 AI」详情条换模型写哪个
+    /// 工具的配置，不再手写一份 id→target 的 switch（宪法第 8 条）。
+    #[serde(default)]
+    pub config_target: Option<String>,
 }
 
 /// 工具注册表的单一真相源（Phase C，2026-09-04）。
@@ -668,6 +678,66 @@ mod tool_specs_tests {
             "TOOL_SPECS 的 id 集合必须和 list_tools() 构造出的 ToolInfo id 集合完全一致"
         );
     }
+
+    /// `list_tools()` 下发给前端的 `ToolInfo.config_target` 必须逐项等于 `TOOL_SPECS` 同 id 条目的
+    /// `config_target`——前端「我的 AI」换模型靠它决定往哪个工具写配置，这里漂了就是写错工具。
+    /// 另外锁 JSON 形状：前端读的是序列化后的 `config_target` 键（有 target 给字符串、没有给 null）。
+    #[test]
+    fn list_tools_config_target_mirrors_tool_specs() {
+        let tools = list_tools();
+        for t in &tools {
+            let spec = TOOL_SPECS
+                .iter()
+                .find(|s| s.id == t.id)
+                .unwrap_or_else(|| panic!("list_tools() 里的 {} 在 TOOL_SPECS 里查不到", t.id));
+            assert_eq!(
+                t.config_target.as_deref(),
+                spec.config_target,
+                "{} 的 ToolInfo.config_target 必须等于 TOOL_SPECS.config_target",
+                t.id
+            );
+        }
+        // 防空对空：上面的循环在「全部 None」时也会绿，所以再钉几个一定要带 target 的/一定不带的。
+        let target_of = |id: &str| {
+            tools
+                .iter()
+                .find(|t| t.id == id)
+                .unwrap_or_else(|| panic!("list_tools() 里没有 {id}"))
+                .config_target
+                .clone()
+        };
+        assert_eq!(target_of("claude-code").as_deref(), Some("claude"));
+        assert_eq!(target_of("dsh").as_deref(), Some("dsh"));
+        assert_eq!(target_of("pi").as_deref(), Some("pi"));
+        assert_eq!(target_of("opencode").as_deref(), Some("opencode"));
+        assert_eq!(target_of("hermes").as_deref(), Some("hermes"));
+        assert_eq!(target_of("harness-doctor"), None);
+        assert_eq!(target_of("doubao"), None);
+
+        let dsh = tools.iter().find(|t| t.id == "dsh").expect("list_tools() 里没有 dsh");
+        let json = serde_json::to_value(dsh).expect("ToolInfo 应可序列化");
+        assert_eq!(json["config_target"], serde_json::json!("dsh"));
+        let doctor = tools.iter().find(|t| t.id == "harness-doctor").expect("list_tools() 里没有 harness-doctor");
+        let json = serde_json::to_value(doctor).expect("ToolInfo 应可序列化");
+        assert!(json.get("config_target").is_some_and(|v| v.is_null()), "没有 target 时应序列化成 null 而不是缺键");
+    }
+
+    /// 前端把 `config_target` 原样当 `apply_provider` 的 target 用——TOOL_SPECS 里任何一个
+    /// `Some(target)` 都必须是后端 `apply_provider` 真会分派的（`APPLY_ALL_TARGETS`），
+    /// 否则「我的 AI」会露出一个点了只会报「未知目标」的换模型入口。
+    #[test]
+    fn every_spec_config_target_is_an_applicable_provider_target() {
+        for s in TOOL_SPECS {
+            if let Some(target) = s.config_target {
+                assert!(
+                    crate::providers::APPLY_ALL_TARGETS.contains(&target),
+                    "{} 的 config_target {:?} 不在 providers::APPLY_ALL_TARGETS 里，apply_provider 会报「未知目标」",
+                    s.id,
+                    target
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1148,6 +1218,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "claude".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // Codex CLI 上首页（2026-07-13 产品决策）：Codex CLI + Codex 桌面版两个都露出、都可装。
@@ -1162,6 +1233,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "codex".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // ★ 2026-08-03 复活（原 hidden=true，2026-07-07 定的「人类入口只留 ClawX 桌面版」）。
@@ -1184,6 +1256,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             // 配置链一个字节没动（apps.ts 的 configTargets 仍指 "clawx"，apply/备份/
             // gateway 全在），已装的客户照配照用。
             hidden: true,
+            config_target: None,
         },
         ToolInfo {
             // ★ 2026-08-03 新上架。本机实测四条门槛全过（详见 apps.ts 同名条目的注释）：
@@ -1200,6 +1273,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_app: "".into(),
             // 2026-08-05 隐藏：实测能用但 35.7s 全场最慢，且与主推线重叠
             hidden: true,
+            config_target: None,
         },
         ToolInfo {
             // ★ 2026-08-03 上架。四条门槛实测全过，且同任务同模型下**上下文只有 Claude Code 的 1/5**
@@ -1214,6 +1288,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "pi".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // ★ 2026-08-03 上架，**仅 TUI**。社区最大的开源 coding agent（★192k），
@@ -1235,6 +1310,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             // 「装得慢」是安装时才付的代价，不该换来「装完也找不到」。慢的那条已写进 summary
             // 里明说（153MB），让用户自己决定，而不是替他决定看不见。
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // ★ 2026-08-03 新上架。Charm 出品（★27k），Go 单二进制。实测：npm 48 包/7s、
@@ -1250,6 +1326,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_app: "".into(),
             // 2026-08-05 隐藏：已修好能用（12.1s），隐藏理由是与 Claude Code/Codex 重叠
             hidden: true,
+            config_target: None,
         },
         ToolInfo {
             // OpenClaw 的「桌面版」= ClawX（官方 Electron GUI）。261MB，不在 app 内装，
@@ -1290,6 +1367,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             //
             // 检测/切驱动/托管式配置能力从头到尾一个都没动过。
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             id: "hermes".into(),
@@ -1302,6 +1380,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "hermes".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // Windows（2026-09-25 起）：DeepSeek 官方桌面版，U-King 只管装/检测/启动/写模型
@@ -1331,6 +1410,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: if cfg!(windows) { "" } else { "dsh web" }.into(),
             launch_app: if cfg!(windows) { "dsh-desktop" } else { "" }.into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             id: "harness-doctor".into(),
@@ -1343,6 +1423,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "harness-doctor --target all --no-ports".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // Obsidian：进阶工具，给想搭「个人知识库」的高级用户。本体是 markdown 笔记库，
@@ -1358,6 +1439,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // UU远程（网易官方）：手机/平板/另一台电脑远控这台机器。定位「让 AI 在电脑上干活时，
@@ -1373,6 +1455,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // 豆包工作台（字节跳动）：闭源网页工作台，用自家模型，不走 U-King 的模型配置
@@ -1388,6 +1471,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // 千问办公（阿里，QwenWork）：闭源，同豆包，用自家模型，不走 U-King 的模型配置。
@@ -1402,6 +1486,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         ToolInfo {
             // WorkBuddy（腾讯云）：闭源订阅制，同豆包，用自家模型，不走 U-King 的模型配置。
@@ -1416,6 +1501,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "".into(),
             hidden: false,
+            config_target: None,
         },
         // 核心工具：Claude Code CLI / Hermes CLI（命令行）
         // + Codex 桌面版 / ClawX 桌面版（图形）。Codex CLI、OpenClaw 官方 CLI 已标
@@ -1442,6 +1528,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "codex-app".into(),
             hidden: false,
+            config_target: None,
         },
     );
     // Open365 开源电脑管家：无广告替代「安全卫士」——网络修复 / 垃圾清理 / 启动项 /
@@ -1462,6 +1549,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
         launch_cmd: "".into(),
         launch_app: "open365".into(),
         hidden: false,
+        config_target: None,
     });
     // Hermes 桌面版（Nous 官方 Electron app）：进阶区工具，hidden=true 不进小白市场/Dock，
     // 只在「进阶/App 版」页露出（Advanced.tsx 自己调 list_tools 取状态）。后端检测/启动能力保留。
@@ -1477,6 +1565,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
         launch_cmd: "".into(),
         launch_app: "hermes-app".into(),
         hidden: true,
+        config_target: None,
     });
     // uu-switch —— 去广告版 cc-switch AI 模型切换器（我方 fork）。GUI 应用：一个窗口统一管
     // 所有 AI 工具（Claude Code / Codex …）的模型驱动，一键切换 + 内置计量看板。action=install
@@ -1498,7 +1587,18 @@ pub fn list_tools() -> Vec<ToolInfo> {
         launch_cmd: "".into(),
         launch_app: "uu-switch".into(),
         hidden: true,
+        config_target: None,
     });
+    // `config_target` 的唯一来源：按 id 从 TOOL_SPECS 取（见字段文档）。TOOL_SPECS 里查不到的
+    // id（理论上不会有，`tool_specs_ids_match_list_tools_ids` 单测守着）保持 None，
+    // 也就是「不接驱动切换」，宁可少露一个换模型入口，也不编一个 target。
+    for t in v.iter_mut() {
+        t.config_target = TOOL_SPECS
+            .iter()
+            .find(|s| s.id == t.id)
+            .and_then(|s| s.config_target)
+            .map(str::to_string);
+    }
     v
 }
 

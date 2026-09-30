@@ -15,7 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
-import type { DeviceKey, DriverStatus } from "./lib/types";
+import type { DeviceKey, DriverStatus, EffectiveConfig } from "./lib/types";
 import {
   CheckCircle2,
   ChevronDown,
@@ -130,6 +130,10 @@ export type ToolInfo = {
   launch_app: string;
   // 后端标记的隐藏工具（Codex CLI / OpenClaw CLI）—— 前端统一过滤掉，不在市场/Dock 露出
   hidden?: boolean;
+  /** 归属的驱动配置目标（`apply_provider` 的 target，如 claude/codex/clawx/hermes/dsh/pi/opencode）。
+   *  真相源是后端 `tools.rs::TOOL_SPECS.config_target`，`list_tools` 按 id 原样带过来；
+   *  `null` = 这个工具不接驱动切换；`undefined` = 后端太老没给这个字段（`toolTargets` 会退回兜底表）。 */
+  config_target?: string | null;
 };
 
 // 🔴 DriverStatus 从 `lib/types.ts` 来 —— 这里原本自己又定义了一份，两边已经漂了：
@@ -1963,11 +1967,23 @@ function XiapanGuide({
 
 /* ---------------- 我的 AI（日常态：打开已装工具）---------------- */
 
-/** 工具 id → apply_provider target（决定切驱动写哪个工具的底层配置）。
- *  导出给 `toolhub/ToolHub.tsx`：右侧「换模型」面板要用同一张映射表去查
+/** 工具 → apply_provider target（决定切驱动写哪个工具的底层配置）。
+ *
+ *  🔴 **真相源是后端 `tools.rs::TOOL_SPECS.config_target`**，经 `list_tools` →
+ *  `ToolInfo.config_target` 原样下发：有值就是 `[它]`，`null` 就是「不接驱动切换」→ `[]`。
+ *  前端不再自己维护一张 id→target 的对照表——原来这里手写了 4 个工具，后端其实有 9 个 target
+ *  能写（claude/codex/clawx/hermes/dsh/pi/opencode/qwen/crush），dsh/pi/opencode 的换模型入口
+ *  因此一直缺（宪法第 8 条：同一事实只认一处）。
+ *
+ *  下面的 switch 只是**兜底**：后端太老、`list_tools` 没给 `config_target` 字段（`undefined`）时
+ *  才走，内容是旧版手写表原样保留。新增工具**不要**往这里加，改 `TOOL_SPECS` 即可。
+ *
+ *  入参是 `ToolInfo`（不是 id）——光有 id 拿不到后端下发的 `config_target`。
+ *  导出给 `toolhub/ToolHub.tsx`：「换模型」下拉要用同一份映射去查
  *  `list_providers`/`apply_provider` 的 target，不能各写一份漂移。 */
-export function toolTargets(id: string): string[] {
-  switch (id) {
+export function toolTargets(t: Pick<ToolInfo, "id" | "config_target">): string[] {
+  if (t.config_target !== undefined) return t.config_target ? [t.config_target] : [];
+  switch (t.id) {
     case "claude-code":
       return ["claude"];
     case "codex":
@@ -2013,21 +2029,71 @@ export function discoveryNameFor(id: string): string {
   return id === "claude-code" ? "claude" : id === "codex-cli" ? "codex" : id;
 }
 
-/** 工具当前配的模型 —— 从 `DriverStatus` 的 *_model 字段里按工具 id 挑一个。
- *  **不猜**：认不出的工具就返回 null，显示一个错的模型名比不显示更坏
- *  （客户会照着它去排查一个不存在的配置）。同上，从 MyAI 抽出来给 ToolHub 复用。 */
-export function currentModelFor(t: ToolInfo, driver: DriverStatus | null): string | null {
-  return t.id === "claude-code" || t.id === "claude"
-    ? (driver?.claude_model ?? null)
-    : t.id === "codex" || t.id === "codex-cli" || t.id === "codex-app" // Codex 桌面版与 CLI 共用 ~/.codex/config.toml
-      ? (driver?.codex_model ?? null)
-      : t.id === "hermes"
-        ? (driver?.hermes_model ?? null)
-        : t.id === "dsh"
-          ? (driver?.dsh_model ?? null)
-          : t.id === "clawx"
-            ? (driver?.clawx_model ?? null)
-            : null;
+/** `DriverStatus` 里自带 *_model 字段的工具 → 读哪个字段。
+ *  `covered: false` = `DriverStatus` 里压根没有这个工具的模型字段（pi / opencode / qwen / crush…），
+ *  是「读不到」，**不是**「没配」——调用方必须分得开这两件事，见 `modelReadbackState`。 */
+function driverModelOf(
+  t: Pick<ToolInfo, "id">,
+  driver: DriverStatus | null,
+): { covered: boolean; model: string | null } {
+  switch (t.id) {
+    case "claude-code":
+    case "claude":
+      return { covered: true, model: driver?.claude_model ?? null };
+    case "codex":
+    case "codex-cli":
+    case "codex-app": // Codex 桌面版与 CLI 共用 ~/.codex/config.toml
+      return { covered: true, model: driver?.codex_model ?? null };
+    case "hermes":
+      return { covered: true, model: driver?.hermes_model ?? null };
+    case "dsh":
+      return { covered: true, model: driver?.dsh_model ?? null };
+    case "clawx":
+      return { covered: true, model: driver?.clawx_model ?? null };
+    default:
+      return { covered: false, model: null };
+  }
+}
+
+/** 这个工具的当前模型要不要靠 `runtime.provider.effective` 回读——有配置目标、但
+ *  `DriverStatus` 又没有它的 *_model 字段（目前是 pi / opencode，以及藏着的 qwen / crush）。
+ *  `ToolHub` 只为这批工具去拉回读，其余工具一次都不多调。 */
+export function needsEffectiveReadback(t: ToolInfo): boolean {
+  return !!t.config_target && !driverModelOf(t, null).covered;
+}
+
+/** 工具当前配的模型。来源按可信度排：① `DriverStatus` 自带的 *_model（按工具 id 挑）；
+ *  ② `effective`——`runtime.provider.effective` 回读该工具**自己的**配置文件得到的结论
+ *  （按 `ToolInfo.config_target` 索引，只有 `readable` 为真才采信）。
+ *  **不猜**：两处都拿不到就返回 null，显示一个错的模型名比不显示更坏
+ *  （客户会照着它去排查一个不存在的配置）。同上，从 MyAI 抽出来给 ToolHub 复用。
+ *  `effective` 不传 = 只看 `DriverStatus`（MyAI 没有回读数据，行为同改动前）。 */
+export function currentModelFor(
+  t: ToolInfo,
+  driver: DriverStatus | null,
+  effective?: Record<string, EffectiveConfig>,
+): string | null {
+  const fromDriver = driverModelOf(t, driver).model;
+  if (fromDriver) return fromDriver;
+  const e = t.config_target ? effective?.[t.config_target] : undefined;
+  return e?.readable && e.model ? e.model : null;
+}
+
+/** 「当前模型为空」到底是**没配**还是**读不到**：
+ *  · `readable` —— 读得到（`DriverStatus` 自带字段，或回读已返回且 `readable`），模型为空 = 真没配；
+ *  · `pending`  —— 该回读、但结果还没回来（别先喊「还没配模型」，会闪一下假警告）；
+ *  · `unreadable` —— 读不了（没有 target / 回读说 `readable:false` / 回读没覆盖这个 target）。
+ *  🔴 `unreadable` 绝不能渲染成「还没配模型」——那是把「没查」说成「没配」。 */
+export type ModelReadback = "readable" | "pending" | "unreadable";
+export function modelReadbackState(
+  t: ToolInfo,
+  effective?: Record<string, EffectiveConfig>,
+): ModelReadback {
+  if (driverModelOf(t, null).covered) return "readable";
+  if (!t.config_target) return "unreadable";
+  const e = effective?.[t.config_target];
+  if (!e) return "pending";
+  return e.readable ? "readable" : "unreadable";
 }
 
 /** 支持「一键卸载」的工具 id —— 镜像后端 cleanup::uninstall_ai_tool 的 match（改一处同步另一处）。
@@ -2361,9 +2427,12 @@ function MyAI({
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {installed.map((t) => {
-              const targets = toolTargets(t.id);
+              const targets = toolTargets(t);
               // 工具 id → DriverStatus 里对应的字段（`currentModelFor`，与 ToolHub 共用一份）。
               const currentModel = currentModelFor(t, driver);
+              // 「还没配模型」只在**读得到**的前提下才能喊：pi / opencode 现在也有 target 了，
+              // 但这一页没有回读数据，它们的模型是「读不到」不是「没配」——照旧只显示「已安装」。
+              const modelUnset = targets.length > 0 && modelReadbackState(t) === "readable";
               // 卡片上「装在哪」——`discoveryNameFor` 同上，跟 ToolHub 共用一份，不再各写一遍。
               // 同名可能有多条（本机一条、盘上一条），后端已按 machine > portable 排好，
               // 取第一条就是当前 search_paths/tool_installed 实际会命中的那份。
@@ -2397,7 +2466,7 @@ function MyAI({
                           <Cpu size={11} className="text-accent/70 shrink-0" />
                           <span className="truncate">{currentModel}</span>
                         </div>
-                      ) : targets.length > 0 ? (
+                      ) : modelUnset ? (
                         <div className="text-[12px] text-warning-600 dark:text-warning-400 flex items-center gap-1 mt-0.5">
                           <CheckCircle2 size={11} className="shrink-0" />
                           <span>{tr("已安装")}</span>

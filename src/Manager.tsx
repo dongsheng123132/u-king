@@ -58,28 +58,13 @@ import { FREE_GUIDE, type FreeGuide } from "./lib/freeGuide";
 import { askConfirm } from "./lib/confirm";
 import { buildProviderRepairPrompt } from "./lib/providerRepairPrompt";
 import { useI18n } from "./i18n";
-import type { DeviceKey, DrawRoute, DriverStatus } from "./lib/types";
+import type { DeviceKey, DrawRoute, DriverStatus, EffectiveConfig } from "./lib/types";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
 
-/**
- * 「那个工具**真的**会照着跑吗」—— 回读工具自己的配置得到的结论。
- * 后端 `providers::effective_config` 的镜像，字段含义以那边的文档为准。
- *
- * 🔴 `readable === false` 是**「不知道」**（我们没有这个工具的回读路径），
- * 不是「没配置」。这两种必须渲染成不同的东西 —— 把「没查」画成绿勾，
- * 就是这次要修的那类假绿的又一份。
- */
-type EffectiveConfig = {
-  target: string;
-  readable: boolean;
-  provider_key: string | null;
-  base_url: string | null;
-  model: string | null;
-  /** 有别的文件压着我们写的那份 → 写入成功但不生效。值是那个文件的路径。 */
-  overridden_by: string | null;
-};
+// `EffectiveConfig`（回验结论：`readable === false` 是「不知道」不是「没配置」）的定义搬到了
+// `lib/types.ts`——「我的 AI」(toolhub/ToolHub.tsx) 也要读它，同一份类型只留一处（宪法第 8 条）。
 
 type DailyUsage = { date: string; tokens: number };
 type UsageTrend = { daily: DailyUsage[]; today_tokens: number; week_tokens: number; samples: number };

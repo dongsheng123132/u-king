@@ -57,8 +57,17 @@ import {
   Trash2,
   Wallet,
 } from "lucide-react";
-import { LAB_TOOLS, toolTargets, currentModelFor, discoveryNameFor, canUninstallTool, type ToolInfo } from "../App";
-import type { DeviceKey, DriverStatus } from "../lib/types";
+import {
+  LAB_TOOLS,
+  toolTargets,
+  currentModelFor,
+  modelReadbackState,
+  needsEffectiveReadback,
+  discoveryNameFor,
+  canUninstallTool,
+  type ToolInfo,
+} from "../App";
+import type { DeviceKey, DriverStatus, EffectiveConfig } from "../lib/types";
 import type { ProviderPreset } from "../Wizard";
 import { ToolIcon } from "../components/ToolIcon";
 import { AnchoredMenu } from "../components/AnchoredMenu";
@@ -120,6 +129,34 @@ function hostOf(url: string | null | undefined): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * 读回 pi / opencode 这类 `DriverStatus` 没有 *_model 字段的工具「当前真正会跑的模型」——
+ * 复用只读动作 `runtime.provider.effective`（回读工具**自己的**配置文件，不新增任何后端能力）。
+ * 不带 `target` = 一次把它认的全部目标回读回来（都是读几个小配置文件，比按 target 各调一次省往返）。
+ *
+ * 🔴 `wanted` 里没被回读到的 target（动作的 target enum 不含它，如 qwen / crush）、动作整个失败、
+ * 返回 `ok:false`，都落成 `readable:false` = 「不知道」。**绝不留空位**（空位在界面上是「还在读」，
+ * 会永远停在「读取中…」），也绝不编一个 model。
+ */
+async function readEffective(wanted: string[]): Promise<Record<string, EffectiveConfig>> {
+  const out: Record<string, EffectiveConfig> = {};
+  try {
+    const env = await callAction(ACTION.RUNTIME_PROVIDER_EFFECTIVE, {});
+    if (env.ok) {
+      const list = (env.result as unknown as { targets?: EffectiveConfig[] }).targets ?? [];
+      for (const e of list) out[e.target] = e;
+    }
+  } catch {
+    /* 回读失败不该影响页面——下面统一把 wanted 补成「不知道」 */
+  }
+  for (const target of wanted) {
+    if (!out[target]) {
+      out[target] = { target, readable: false, provider_key: null, base_url: null, model: null, overridden_by: null };
+    }
+  }
+  return out;
 }
 
 export function ToolHub({
@@ -207,6 +244,31 @@ export function ToolHub({
     () => installableAll.filter((t) => category === "all" || categoryOf(t) === category),
     [installableAll, category],
   );
+
+  // 「当前模型」里 DriverStatus 读不到的那批（有 target、但 DriverStatus 没有它的 *_model 字段——
+  // 目前是 pi / opencode）：有这类工具已装才去调一次只读回读动作，按 target 缓存；一个都没装
+  // 就一次都不调。`driver` 进依赖是因为换完模型后 `onRefreshTools()` 会换一份新 driver，借它
+  // 触发重读（ToolHub 是 `tab === "toolhub"` 条件挂载的，离开再回来整个重新挂载，也会重读）。
+  // 缓存里**没有**某个 target = 还在读（`modelReadbackState` 的 `pending`）；读不了落成
+  // `readable:false`（`readEffective` 保证不留空位）。
+  const [effectiveByTarget, setEffectiveByTarget] = useState<Record<string, EffectiveConfig>>({});
+  const effectiveWantedKey = useMemo(
+    () =>
+      [...new Set(installed.filter(needsEffectiveReadback).map((t) => t.config_target as string))]
+        .sort()
+        .join(","),
+    [installed],
+  );
+  useEffect(() => {
+    if (!effectiveWantedKey) return;
+    let alive = true;
+    void readEffective(effectiveWantedKey.split(",")).then((m) => {
+      if (alive) setEffectiveByTarget((prev) => ({ ...prev, ...m }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [effectiveWantedKey, driver]);
 
   // 当前展开详情的工具 id——已装/可装两个网格共享这一个状态（同一时刻只展开一个，
   // 因为一个工具只可能出现在其中一个网格里）。分类 chip 切走后如果选中的可装工具不再在
@@ -343,7 +405,7 @@ export function ToolHub({
   const [applyFailures, setApplyFailures] = useState<Record<string, ProviderRepairPromptInput>>({});
 
   function openModelMenu(t: ToolInfo) {
-    const target = toolTargets(t.id)[0];
+    const target = toolTargets(t)[0];
     if (!target) return;
     setOpenMenu({ tool: t, target });
   }
@@ -367,12 +429,12 @@ export function ToolHub({
     closeMenu();
     setApplyingIds((s) => new Set(s).add(t.id));
     try {
-      await invoke("apply_provider", { providerId: p.id, apiKey: key, model: null, targets: toolTargets(t.id) });
+      await invoke("apply_provider", { providerId: p.id, apiKey: key, model: null, targets: toolTargets(t) });
       // ClawX 不热重载配置文件（运行时持有内存副本，退出会覆写）——切完必须重启 ClawX 才生效。
       // 跟 `ProviderSwitch.tsx::doSwitch` 用同一句提示（`clawxHint`），别在这重新造一句漂移的文案。
-      const clawxHint = toolTargets(t.id).includes("clawx") ? tr("，请重启 ClawX 生效") : "";
+      const clawxHint = toolTargets(t).includes("clawx") ? tr("，请重启 ClawX 生效") : "";
       // DSH 同理：U-King 写 ~/.dsh/settings.yaml，DSH 只在启动时导入，开着切要重启才生效（同 ProviderSwitch 的 dshHint）。
-      const dshHint = toolTargets(t.id).includes("dsh") ? tr("，重启 DSH 后生效") : "";
+      const dshHint = toolTargets(t).includes("dsh") ? tr("，重启 DSH 后生效") : "";
       const restartHint = clawxHint + dshHint;
       onToast(
         p.id === "official"
@@ -393,7 +455,7 @@ export function ToolHub({
         [t.id]: {
           providerName: p.name,
           baseUrl: (target === "claude" ? p.anthropic_base || p.openai_base : p.openai_base || p.anthropic_base) || "",
-          model: currentModelFor(t, driver) ?? "",
+          model: currentModelFor(t, driver, effectiveByTarget) ?? "",
           target,
           error: String(e),
         },
@@ -487,7 +549,7 @@ export function ToolHub({
   /** 已装瓷砖——图标 + 名字 + 一行极小灰字（当前模型 / 「桌面应用」）,不放任何按钮。 */
   function renderInstalledTile(t: ToolInfo, registerRef: (el: HTMLButtonElement | null) => void) {
     const isSelected = selectedId === t.id;
-    const model = currentModelFor(t, driver);
+    const model = currentModelFor(t, driver, effectiveByTarget);
     const subtitle = model || (t.launch_app ? tr("桌面应用") : "");
     return (
       <button
@@ -575,9 +637,17 @@ export function ToolHub({
   /** 已装工具详情条：左侧 logo/名称/版本/打开方式 + 换模型下拉（逻辑原样搬自旧版卡片）+
    *  报错横幅 + 启动/打开按钮（CLI 工具是分体按钮）+ 次要操作 + 「想在 U-King 里用？」引导。 */
   function renderInstalledDetail(t: ToolInfo) {
-    const model = currentModelFor(t, driver);
-    const targets = toolTargets(t.id);
+    const model = currentModelFor(t, driver, effectiveByTarget);
+    // 当前模型为空时到底是「没配」还是「读不到」——见 `modelReadbackState`；读不到不能喊「还没配模型」。
+    const readback = modelReadbackState(t, effectiveByTarget);
+    const targets = toolTargets(t);
     const target = targets[0];
+    // 读不到模型时（pi/opencode 配置损坏、被 jsonc 挡住等）退而求其次：已知「使用中」的供应商名
+    // 就显示它（名字要等换模型下拉拉过 `list_providers` 才有，没有就不显示——宁缺勿编一个 id 出来）。
+    const activeProviderId = target ? driver?.active?.[target] : undefined;
+    const activeProviderName = activeProviderId
+      ? providersByTarget[target]?.find((p) => p.id === activeProviderId)?.name
+      : undefined;
     const version = primaryDiscoveryVersion(t, driver);
     const applying = applyingIds.has(t.id);
     const failure = applyFailures[t.id];
@@ -693,14 +763,21 @@ export function ToolHub({
             <Cpu size={12} className="text-accent/70 shrink-0" />
             {model ? (
               <span className="flex-1 min-w-0 truncate text-ink-2 text-left">{model}</span>
-            ) : (
+            ) : readback === "readable" ? (
               <span className="flex-1 min-w-0 truncate text-warning-500 text-left">{tr("还没配模型")}</span>
+            ) : readback === "pending" ? (
+              <span className="flex-1 min-w-0 truncate text-ink-4 text-left">{tr("读取中…")}</span>
+            ) : (
+              // 读不到（不是没配）：不说「还没配模型」，也不编模型名。
+              <span className="flex-1 min-w-0 truncate text-ink-4 text-left">
+                {activeProviderName ? tr("使用中：{name}", { name: activeProviderName }) : tr("选择模型供应商")}
+              </span>
             )}
             <ChevronDown size={12} className="text-ink-5 shrink-0" />
           </button>
         ) : model ? (
-          // target 为空但 currentModelFor 有值（如 dsh——模型由 U-King 配置，只是
-          // 走的不是 `toolTargets`/`apply_provider` 这条切换通路）：显示只读模型行。
+          // target 为空但 currentModelFor 有值（没有 config_target、却读得到模型的工具——
+          // 目前后端表里没有这种，保留给以后的只读模型行）：显示只读模型行。
           <div className="flex items-center gap-1.5 px-2 h-8 text-[11.5px] text-ink-2">
             <Cpu size={12} className="text-accent/70 shrink-0" />
             <span className="flex-1 min-w-0 truncate text-left">{model}</span>
