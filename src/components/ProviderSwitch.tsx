@@ -166,11 +166,14 @@ export function ProviderSwitch({
         // ClawX 不热重载配置文件（它运行时持有内存副本，退出会覆写）——切完必须重启 ClawX 才生效。
         // 这是 ClawX 和 U-King 抢同一个 openclaw.json 的真坑（实测：ClawX 开着切，切了不生效）。
         const clawxHint = targets.includes("clawx") ? t("，请重启 ClawX 生效") : "";
+        // DSH 同理：U-King 写的是 ~/.dsh/settings.yaml，DSH 只在启动时导入，开着切要重启才生效。
+        const dshHint = targets.includes("dsh") ? t("，重启 DSH 后生效") : "";
+        const restartHint = clawxHint + dshHint;
         const modelPart = model ? `（${model}）` : "";
         onToast(
           p.id === "official"
-            ? t("已还原官方配置{hint}", { hint: clawxHint })
-            : t("已切到 {name}{model}{hint}", { name: p.name, model: modelPart, hint: clawxHint }),
+            ? t("已还原官方配置{hint}", { hint: restartHint })
+            : t("已切到 {name}{model}{hint}", { name: p.name, model: modelPart, hint: restartHint }),
         );
         await refresh();
         onSwitched?.();

@@ -922,6 +922,8 @@ export function Manager({
         if (target === "codex" && providerId === "xiapan" && (!effModel || effModel.toLowerCase().startsWith("deepseek"))) {
           restartHint = t("（已走 DeepSeek 省钱路由）");
         }
+        // DSH：U-King 写 ~/.dsh/settings.yaml，DSH 只在启动时导入，开着切要重启才生效（同 ProviderSwitch 的 dshHint）。
+        if (target === "dsh") restartHint = t("，重启 DSH 后生效");
       }
       const modelPart = model ? `（${model}）` : "";
       flash(

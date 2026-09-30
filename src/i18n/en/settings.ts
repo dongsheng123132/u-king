@@ -374,6 +374,7 @@ export const settings: Record<string, string> = {
   // ── ProviderSwitch.tsx ──
   "{name} 需要先在「AI 设置」填 Key": "{name} needs a key set in “AI Settings” first",
   "，请重启 ClawX 生效": ", restart ClawX to take effect",
+  "，重启 DSH 后生效": ", restart DSH to take effect",
   "已还原官方配置{hint}": "Restored official config{hint}",
   "已切到 {name}{model}{hint}": "Switched to {name}{model}{hint}",
   "当前：": "Current: ",

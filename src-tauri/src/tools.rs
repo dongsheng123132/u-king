@@ -1482,6 +1482,10 @@ pub fn list_tools() -> Vec<ToolInfo> {
     // 所有 AI 工具（Claude Code / Codex …）的模型驱动，一键切换 + 内置计量看板。action=install
     // 走后端 install_uuswitch（下载 NSIS 静默装，不改用户任何 AI 配置）；装完 launch_app 启动。
     // 仅 Windows 露出（本轮只发 Windows 包，未托管 Mac 包）；删本卡只动本处 + uuswitch.rs + App.tsx。
+    // ★ 2026-09-30 用户决定下架（自有换模型即 cc-switch 同类，不再露出这张卡）：hidden=true，
+    //   App.tsx / ToolHub 都按 `!x.hidden` 过滤，所以不进「我的 AI」也不进可安装列表。
+    //   模块（uuswitch.rs）与 installed 检测 / launch 路由保留——已装用户仍能在「装机·体检」
+    //   （cleanup.rs 直接探 `uuswitch::installed()`，不经本卡）里卸载它。
     #[cfg(windows)]
     v.push(ToolInfo {
         id: "uu-switch".into(),
@@ -1493,7 +1497,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
         target: crate::uuswitch::download_url(),
         launch_cmd: "".into(),
         launch_app: "uu-switch".into(),
-        hidden: false,
+        hidden: true,
     });
     v
 }

@@ -371,10 +371,13 @@ export function ToolHub({
       // ClawX 不热重载配置文件（运行时持有内存副本，退出会覆写）——切完必须重启 ClawX 才生效。
       // 跟 `ProviderSwitch.tsx::doSwitch` 用同一句提示（`clawxHint`），别在这重新造一句漂移的文案。
       const clawxHint = toolTargets(t.id).includes("clawx") ? tr("，请重启 ClawX 生效") : "";
+      // DSH 同理：U-King 写 ~/.dsh/settings.yaml，DSH 只在启动时导入，开着切要重启才生效（同 ProviderSwitch 的 dshHint）。
+      const dshHint = toolTargets(t.id).includes("dsh") ? tr("，重启 DSH 后生效") : "";
+      const restartHint = clawxHint + dshHint;
       onToast(
         p.id === "official"
-          ? tr("已还原官方配置{hint}", { hint: clawxHint })
-          : tr("已切到 {name}{model}{hint}", { name: p.name, model: "", hint: clawxHint }),
+          ? tr("已还原官方配置{hint}", { hint: restartHint })
+          : tr("已切到 {name}{model}{hint}", { name: p.name, model: "", hint: restartHint }),
       );
       setApplyFailures((m) => {
         if (!(t.id in m)) return m;
