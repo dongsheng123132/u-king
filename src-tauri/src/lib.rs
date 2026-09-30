@@ -5640,27 +5640,25 @@ fn install_ai_tool_shared(
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> installer::InstallToolResult {
     let skill = installer::load_skill();
-    let log_store = std::sync::Mutex::new(Vec::<String>::new());
+    // 日志尾巴 + 首个错误快照 + 失败上报规则（预检拦截不报）都在 `report::InstallLogTail`，
+    // 与 `upgrade_cli_tool` 共用同一份，别在这里再抄一遍。
+    let log_tail = report::InstallLogTail::new();
     // 装机日志同时落盘 ~/.uking/logs/install.log：客户点「技术支持」时诊断才带得上
     // （此前日志只活在前端气泡里，采不到 —— issue #226 的客户只能手工复制粘贴）。
     installer::install_log_header(tool_id);
     let r = installer::install_tool(&skill, tool_id, &|phase: &str, line: &str| {
         on_log(phase, line);
         installer::append_install_log(tool_id, phase, line);
-        let mut l = log_store.lock().unwrap();
-        l.push(format!("[{phase}] {line}"));
-        if l.len() > 120 {
-            l.drain(..40);
-        }
+        log_tail.record(phase, line);
     });
-    if !r.ok {
-        let tail = log_store.lock().unwrap().join("\n");
-        report::report_bug(
-            "install_failed",
-            &format!("{tool_id} 安装失败: {}", r.error.clone().unwrap_or_default()),
-            &format!("skill v{} ({})\n{tail}", skill.version, skill.source),
-        );
-    }
+    // 环境预检拦截（磁盘不足 / Windows 版本过低）是设计内拦截，不是 bug：不建 issue，
+    // 但本地 install.log 照写（上面已落盘）、界面照常拿到失败结果。
+    log_tail.report_if_failed(
+        "install_failed",
+        &format!("{tool_id} 安装失败: {}", r.error.clone().unwrap_or_default()),
+        &r,
+        &format!("skill v{} ({})", skill.version, skill.source),
+    );
     r
 }
 
@@ -7410,7 +7408,8 @@ async fn upgrade_cli_tool(
             }
         }
         let tid = tool_id.clone();
-        let log_store = std::sync::Mutex::new(Vec::<String>::new());
+        // 与 install_ai_tool_shared 共用同一套：首个错误快照、预检拦截不上报、detail 不被 repair 洪水淹没
+        let log_tail = report::InstallLogTail::new();
         installer::install_log_header(&format!("upgrade-{tool_id}"));
         let r = installer::install_tool(&skill, &tool_id, &|phase: &str, line: &str| {
             let _ = app2.emit(
@@ -7418,20 +7417,14 @@ async fn upgrade_cli_tool(
                 serde_json::json!({ "tool": tid, "phase": phase, "line": line }),
             );
             installer::append_install_log(&tid, phase, line);
-            let mut l = log_store.lock().unwrap();
-            l.push(format!("[{phase}] {line}"));
-            if l.len() > 120 {
-                l.drain(..40);
-            }
+            log_tail.record(phase, line);
         });
-        if !r.ok {
-            let tail = log_store.lock().unwrap().join("\n");
-            report::report_bug(
-                "upgrade_failed",
-                &format!("{tool_id} 升级失败: {}", r.error.clone().unwrap_or_default()),
-                &format!("skill v{} ({})\n{tail}", skill.version, skill.source),
-            );
-        }
+        log_tail.report_if_failed(
+            "upgrade_failed",
+            &format!("{tool_id} 升级失败: {}", r.error.clone().unwrap_or_default()),
+            &r,
+            &format!("skill v{} ({})", skill.version, skill.source),
+        );
         Ok(r)
     })
     .await

@@ -27,6 +27,9 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use tauri::ipc::Channel;
 
+// 系统 ANSI 代码页解码是全仓公共能力，实现在 installer（装机侧也要解 cmd 的 GBK 输出）；这里只借用不复制。
+use crate::installer::ansi_to_string;
+
 /// 缺省端点 —— 虾盘云。**这是「默认」，不是「唯一」**（2026-08-21）。
 ///
 /// 以前这里是个写死的 const，工作台对话就只能走虾盘云：客户自己有小米 TokenPlan / DeepSeek
@@ -634,30 +637,6 @@ fn drain_decoded(pending: &mut Vec<u8>, acp_mode: &mut bool) -> String {
     let keep = trailing_dbcs_lead(pending);
     let flush: Vec<u8> = pending.drain(..pending.len() - keep).collect();
     ansi_to_string(&flush)
-}
-
-/// 按系统 ANSI 代码页解码（cmd 内建命令 echo/dir/type 的管道输出走的就是它，chcp 管不着）。
-/// 用 Windows 自带 MultiByteToWideChar —— 纯 std FFI 不引 crate，且在繁体/日文机器上自动是对的代码页。
-#[cfg(windows)]
-fn ansi_to_string(bytes: &[u8]) -> String {
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn MultiByteToWideChar(cp: u32, flags: u32, src: *const u8, srclen: i32, dst: *mut u16, dstlen: i32) -> i32;
-    }
-    const CP_ACP: u32 = 0;
-    if bytes.is_empty() { return String::new(); }
-    unsafe {
-        let need = MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), bytes.len() as i32, std::ptr::null_mut(), 0);
-        if need <= 0 { return String::from_utf8_lossy(bytes).into_owned(); }
-        let mut wide = vec![0u16; need as usize];
-        let got = MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), bytes.len() as i32, wide.as_mut_ptr(), need);
-        if got <= 0 { return String::from_utf8_lossy(bytes).into_owned(); }
-        String::from_utf16_lossy(&wide[..got as usize])
-    }
-}
-#[cfg(not(windows))]
-fn ansi_to_string(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// GBK 类双字节流的结尾是不是悬着半个字：从头扫（首字节 0x81-0xFE 吃两个字节），

@@ -43,6 +43,129 @@ const REPORT_URLS: &[&str] = &[
     "https://api.u-claw.org/uking/bug",
 ];
 
+/// `report_bug` 对 detail 的截断上限（字节）。单一真相源：`compose_install_report` 按它给自己
+/// 拼的内容定预算，保证拼出来的东西不会再被 `truncate` 从头部砍掉（那会把首个错误一起砍了）。
+pub(crate) const DETAIL_MAX_BYTES: usize = 6 * 1024;
+
+/// 首个错误快照段（「首个错误及前文」）自身的字节上限。
+const FIRST_ERR_CTX_MAX_BYTES: usize = 1500;
+
+/// 保**尾部**至多 n 字节（切在 char 边界，绝不切坏 UTF-8）；被截过就在最前面补个「…」。
+/// 结果恒 ≤ n 字节（`…` 自己占 3 字节，已计入）。n 小到放不下省略号时返回空串。
+fn keep_tail_bytes(s: &str, n: usize) -> String {
+    if s.len() <= n {
+        return s.to_string();
+    }
+    if n < '…'.len_utf8() {
+        return String::new();
+    }
+    let mut start = s.len() - (n - '…'.len_utf8());
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("…{}", &s[start..])
+}
+
+/// 拼装装机失败上报的 detail，**保住首个错误**。
+///
+/// 为什么要有：装机日志在内存里只留最近 ≤120 行（超了丢最早 40 行），而 `report_bug` 又会把
+/// detail 截到**最后** 6KB。主步骤里的首个错误（往往是真因）随后被 repair 的大量输出淹没：
+/// 首错既被 drain 掉、又在 6KB 截断里排在最前面，上报到手只剩 repair 的连锁报错，约 9% 的
+/// 失败因此判不出原因。调用方在第一次出现 `error` 阶段时快照当时的最后 ≤12 行（含那条 error 行，
+/// 且它是快照的最后一行），失败时连同当前日志尾部一起交给这里。
+///
+/// - 无快照、或「首错行仍在 tail 里 且 整体不超预算」→ **原样旧格式** `header\n{tail}`（行为不变）；
+/// - 否则 → `header` + `[首个错误及前文]`（快照，自身 ≤ 1500 字节，超了保尾部）+ `[日志尾部]`，
+///   tail 段按「budget − 前两段长度」保尾部截断。最终总长 ≤ budget（字节），
+///   传 `DETAIL_MAX_BYTES` 时 `report_bug` 的 `truncate` 便不会再动它。
+pub(crate) fn compose_install_report(
+    header: &str,
+    first_err_ctx: Option<&[String]>,
+    tail_lines: &[String],
+    budget: usize,
+) -> String {
+    let tail = tail_lines.join("\n");
+    let legacy = format!("{header}\n{tail}");
+    let Some(ctx) = first_err_ctx.filter(|c| !c.is_empty()) else {
+        return legacy;
+    };
+    // 快照最后一行就是那条 error 行；它还在当前 tail 里、且旧格式装得下 → 不需要额外拼段
+    let err_line = &ctx[ctx.len() - 1];
+    if tail_lines.iter().any(|l| l == err_line) && legacy.len() <= budget {
+        return legacy;
+    }
+    let ctx_text = keep_tail_bytes(&ctx.join("\n"), FIRST_ERR_CTX_MAX_BYTES.min(budget / 4));
+    let head = format!("{header}\n[首个错误及前文]\n{ctx_text}\n[日志尾部]\n");
+    let room = budget.saturating_sub(head.len());
+    format!("{head}{}", keep_tail_bytes(&tail, room))
+}
+
+/// 装机 / 升级流水线的日志收集 + 失败上报共用件（`install_ai_tool_shared` 与 `upgrade_cli_tool` 都用它，
+/// 两处各抄一份会漂移：首错快照、预检拦截不上报这些规则只此一份）。
+///
+/// - `record`：每条日志进内存尾巴（`[phase] line`，超 120 行丢最早 40 行）；**第一次**出现 `error` 阶段时
+///   快照当时最后 ≤12 行（含那条 error 行），只存第一次。为什么：尾巴会被 repair 的大量输出挤掉、
+///   `report_bug` 又只保 detail 的**尾部**，首个错误（往往是真因）就丢了（约 9% 的失败判不出因）。
+/// - `report_if_failed`：失败且不是预检拦截才上报，detail 走 `compose_install_report`。
+pub(crate) struct InstallLogTail {
+    lines: std::sync::Mutex<Vec<String>>,
+    first_err_ctx: std::sync::Mutex<Option<Vec<String>>>,
+}
+
+/// 首个错误快照最多带的行数（含那条 error 行）。
+const FIRST_ERR_CTX_LINES: usize = 12;
+/// 内存尾巴的行数上限；超了丢最早的 LOG_TAIL_DRAIN 行。
+const LOG_TAIL_MAX_LINES: usize = 120;
+const LOG_TAIL_DRAIN: usize = 40;
+
+impl InstallLogTail {
+    pub(crate) fn new() -> Self {
+        Self { lines: std::sync::Mutex::new(Vec::new()), first_err_ctx: std::sync::Mutex::new(None) }
+    }
+
+    /// 记一条日志。锁被毒化时静默丢弃（上报的辅助信息，不能因它 panic 拖垮装机线程）。
+    pub(crate) fn record(&self, phase: &str, line: &str) {
+        let Ok(mut l) = self.lines.lock() else { return };
+        l.push(format!("[{phase}] {line}"));
+        if phase == "error" {
+            if let Ok(mut snap) = self.first_err_ctx.lock() {
+                if snap.is_none() {
+                    *snap = Some(l[l.len().saturating_sub(FIRST_ERR_CTX_LINES)..].to_vec());
+                }
+            }
+        }
+        if l.len() > LOG_TAIL_MAX_LINES {
+            l.drain(..LOG_TAIL_DRAIN);
+        }
+    }
+
+    /// 拼上报 detail（纯读，好测）。
+    fn detail(&self, header: &str) -> String {
+        let tail_lines = self.lines.lock().map(|l| l.clone()).unwrap_or_default();
+        let first_err = self.first_err_ctx.lock().ok().and_then(|g| g.clone());
+        compose_install_report(header, first_err.as_deref(), &tail_lines, DETAIL_MAX_BYTES)
+    }
+
+    /// 失败才上报：成功不报；`precheck_blocked`（磁盘不足 / Windows 版本过低这类设计内拦截，不是 bug）
+    /// 也不报——本地 install.log 照写、界面照常拿到失败结果。`kind` 分别是 install_failed / upgrade_failed。
+    pub(crate) fn report_if_failed(
+        &self,
+        kind: &str,
+        summary: &str,
+        r: &crate::installer::InstallToolResult,
+        header: &str,
+    ) {
+        if should_report_install_failure(r) {
+            report_bug(kind, summary, &self.detail(header));
+        }
+    }
+}
+
+/// 这次安装/升级结果要不要上报 issue：失败、且不是环境预检拦截。
+pub(crate) fn should_report_install_failure(r: &crate::installer::InstallToolResult) -> bool {
+    !r.ok && !r.precheck_blocked
+}
+
 /// 上报一个 bug（后台线程，静默）。
 ///
 /// `kind`：install_failed / ai_diagnose_failed / apply_failed / panic …
@@ -51,7 +174,7 @@ const REPORT_URLS: &[&str] = &[
 pub fn report_bug(kind: &str, summary: &str, detail: &str) {
     let kind = kind.to_string();
     let summary = truncate(summary, 160);
-    let detail = truncate(detail, 6 * 1024);
+    let detail = truncate(detail, DETAIL_MAX_BYTES);
 
     // 先落**本地**数据基台，再尝试上传。顺序不能反 —— 上面那段注释里的教训就是：
     // 域名在国内不可达时，历史上国内客户的 bug **一条都没收到**。本地这条 append
@@ -360,6 +483,117 @@ mod tests {
         assert!(!decide(&mut st, "install_failed", "cline 安装失败 3", 1_003_600));
         // 24h 窗口过了 → 重新放行
         assert!(decide(&mut st, "install_failed", "cline 安装失败 4", 1_000_000 + 86_400 + 1));
+    }
+
+    fn filler_lines(tag: &str, n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("[out] {tag} 行 {i:04} 一些中文填充内容 padding padding")).collect()
+    }
+
+    /// 长 tail（repair 输出把首个错误挤出去）时：首错段必须还在、总长 ≤ 预算、
+    /// tail 段保尾部，且 report_bug 里的 truncate 不会再动它（否则首错又被从头部砍掉）。
+    #[test]
+    fn install_report_keeps_first_error_when_tail_is_long() {
+        let header = "skill v99 (embedded)";
+        let ctx: Vec<String> = vec![
+            "[step] 装 Node".into(),
+            "[out] npm ERR! 前文".into(),
+            "[error] 安装步骤失败：真因在这里".into(),
+        ];
+        let tail = filler_lines("repair", 200); // ~12KB，首错行早已不在其中
+        let out = compose_install_report(header, Some(&ctx), &tail, DETAIL_MAX_BYTES);
+        assert!(out.len() <= DETAIL_MAX_BYTES, "总长 {} 超预算", out.len());
+        assert!(out.starts_with(header));
+        assert!(out.contains("[首个错误及前文]"), "缺首错段");
+        assert!(out.contains("安装步骤失败：真因在这里"), "首错行丢了");
+        assert!(out.contains("[日志尾部]"), "缺尾部段");
+        assert!(out.ends_with(tail.last().unwrap().as_str()), "tail 要保尾部（最后一行必在）");
+        assert_eq!(truncate(&out, DETAIL_MAX_BYTES), out, "report_bug 的 truncate 不该再动它");
+    }
+
+    /// 首错行仍在 tail 里（且整体装得下）→ 输出与旧格式逐字节一致；无快照同理。
+    #[test]
+    fn install_report_is_legacy_format_when_first_error_still_in_tail() {
+        let header = "skill v1 (server)";
+        let tail: Vec<String> = vec!["[step] a".into(), "[error] 首错".into(), "[out] b".into()];
+        let ctx: Vec<String> = vec!["[step] a".into(), "[error] 首错".into()];
+        let legacy = format!("{header}\n{}", tail.join("\n"));
+        assert_eq!(compose_install_report(header, Some(&ctx), &tail, DETAIL_MAX_BYTES), legacy);
+        assert_eq!(compose_install_report(header, None, &tail, DETAIL_MAX_BYTES), legacy);
+        assert_eq!(compose_install_report(header, Some(&[]), &tail, DETAIL_MAX_BYTES), legacy);
+    }
+
+    /// 首错行还在 tail 里，但 tail 已经大到旧格式会被 truncate 从头砍：也要改走三段式保住首错。
+    #[test]
+    fn install_report_uses_sections_when_legacy_would_overflow_even_if_error_in_tail() {
+        let header = "skill v1 (server)";
+        let mut tail = vec!["[error] 首错在 tail 最前面".to_string()];
+        tail.extend(filler_lines("repair", 200));
+        let ctx: Vec<String> = vec!["[error] 首错在 tail 最前面".into()];
+        let out = compose_install_report(header, Some(&ctx), &tail, DETAIL_MAX_BYTES);
+        assert!(out.len() <= DETAIL_MAX_BYTES);
+        assert!(out.contains("[首个错误及前文]\n[error] 首错在 tail 最前面"));
+        assert!(out.ends_with(tail.last().unwrap().as_str()));
+    }
+
+    /// 快照段自身封顶 ~1500 字节（超了保尾部——那条 error 行在快照最后，必须留住）；
+    /// 全中文（3 字节/字）的 tail 在任意预算下都不许切坏 UTF-8、不许超预算。
+    #[test]
+    fn install_report_caps_first_error_section_and_respects_char_boundaries() {
+        let header = "skill v1 (embedded)";
+        let mut ctx: Vec<String> = (0..12).map(|i| format!("[out] 前文第{i}行 {}", "长".repeat(80))).collect();
+        ctx.push("[error] 最后这条才是首错".into());
+        let tail: Vec<String> = (0..300).map(|i| format!("[out] 全中文第{i}行：{}", "字".repeat(30))).collect();
+        for budget in 2000..2100usize {
+            let out = compose_install_report(header, Some(&ctx), &tail, budget);
+            assert!(out.len() <= budget, "budget={budget} 实际 {}", out.len());
+            assert!(out.contains("[error] 最后这条才是首错"), "budget={budget} 首错行丢了");
+        }
+        let out = compose_install_report(header, Some(&ctx), &tail, DETAIL_MAX_BYTES);
+        let first_sec = out.split("[首个错误及前文]\n").nth(1).unwrap().split("\n[日志尾部]\n").next().unwrap();
+        assert!(first_sec.len() <= 1500, "首错段 {} 字节，超了 1500", first_sec.len());
+    }
+
+    fn result_for_test(ok: bool, blocked: bool) -> crate::installer::InstallToolResult {
+        crate::installer::InstallToolResult {
+            ok,
+            tool: "demo".into(),
+            version: None,
+            attempts: 1,
+            error: if ok { None } else { Some("boom".into()) },
+            precheck_blocked: blocked,
+        }
+    }
+
+    /// 上报判定：成功不报；预检拦截不报；普通失败才报（install 与 upgrade 共用这一条规则）。
+    #[test]
+    fn install_failure_reporting_skips_success_and_precheck_blocked() {
+        assert!(!should_report_install_failure(&result_for_test(true, false)));
+        assert!(!should_report_install_failure(&result_for_test(false, true)));
+        assert!(should_report_install_failure(&result_for_test(false, false)));
+    }
+
+    /// 收集器：尾巴封顶 120 行（超了丢最早 40 行）；首个 error 出现时快照最后 ≤12 行、只存第一次；
+    /// 后面 repair 洪水把首错挤出尾巴后，detail 里首错段仍在、总长 ≤ 6KB。
+    #[test]
+    fn install_log_tail_snapshots_first_error_and_survives_flood() {
+        let t = InstallLogTail::new();
+        for i in 0..20 {
+            t.record("out", &format!("准备步骤 {i}"));
+        }
+        t.record("error", "安装步骤失败：npm 报 ENOENT（这是真因）");
+        t.record("error", "第二个 error：不该覆盖首错快照");
+        t.record("repair", "开始自动修复重装…");
+        for i in 0..400 {
+            t.record("out", &format!("repair 输出洪水 {i} {}", "冗长的日志内容 ".repeat(6)));
+        }
+        assert!(t.lines.lock().unwrap().len() <= 120, "尾巴该封顶 120 行");
+        let snap = t.first_err_ctx.lock().unwrap().clone().expect("应有首错快照");
+        assert!(snap.len() <= 12 && snap.last().unwrap().contains("这是真因"), "{snap:?}");
+        let d = t.detail("skill v57 (embedded)");
+        assert!(d.len() <= DETAIL_MAX_BYTES, "detail {} 字节超预算", d.len());
+        assert!(d.contains("[首个错误及前文]") && d.contains("这是真因"), "首错被淹没了");
+        assert!(!d.contains("第二个 error"), "首错快照只存第一次");
+        assert!(d.contains("repair 输出洪水 399"), "尾部要保住最后的输出");
     }
 
     #[test]

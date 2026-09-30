@@ -397,6 +397,15 @@ pub enum Step {
         /// 但 `codex --version` 崩。开这个加 `--include=optional` 强制拉。
         #[serde(default)]
         with_optional: bool,
+        /// 需要跑安装脚本（postinstall/install）的**依赖包**名单，会并进 `--allow-scripts=` 放行。
+        ///
+        /// 顶层包（`package`）总是自动放行，不用在这里再写一遍；这里只列它**依赖树里**需要跑脚本的包
+        /// （如 openclaw 的 koffi / esbuild / protobufjs）。为什么必须有：npm 12 起默认拦截所有
+        /// 安装脚本（含依赖包的），只放行顶层包不够——依赖的原生模块脚本被拦，装出来的工具跑不起来。
+        /// 每个名字都过 `valid_npm_package`（与包名同款防注入），可带 `@版本`，放行时只取裸包名。
+        /// 老客户端不认识这个字段（serde 忽略未知字段），下发新清单对它们是安全的。
+        #[serde(default)]
+        allow_scripts: Vec<String>,
     },
     #[serde(rename = "ensure_python")]
     EnsurePython { label: String },
@@ -457,6 +466,11 @@ pub struct InstallToolResult {
     /// 1 = 一次成功；2 = 经过修复后成功
     pub attempts: u32,
     pub error: Option<String>,
+    /// 环境预检拦截（系统盘空间不足、Windows build 不够这类「设计内拦截」）：不是我们的 bug，
+    /// 重试也一样，所以 `install_ai_tool_shared` 不为它上报 issue（本地 install.log 照写、
+    /// 界面照常拿到失败结果）。默认 false：只有预检那两处显式置 true，其余失败一律照常上报。
+    #[serde(default)]
+    pub precheck_blocked: bool,
 }
 
 // ============================================================
@@ -2367,7 +2381,7 @@ pub fn install_tool(
                 if crate::dshdesk::installed() {
                     let version = crate::dshdesk::display_version();
                     on_log("done", &msg);
-                    InstallToolResult { ok: true, tool: tool_id.into(), version, attempts: 1, error: None }
+                    InstallToolResult { ok: true, tool: tool_id.into(), version, attempts: 1, error: None, precheck_blocked: false }
                 } else {
                     on_log("out", &msg);
                     fail(tool_id, 1, msg)
@@ -2405,6 +2419,7 @@ pub fn install_tool(
                             version: Some(v),
                             attempts: 3,
                             error: None,
+                            precheck_blocked: false,
                         };
                     }
                 }
@@ -2441,7 +2456,7 @@ fn install_tool_inner(
                     spec.name, spec.min_free_mb
                 );
                 on_log("error", &msg);
-                return fail(tool_id, 0, msg);
+                return blocked(tool_id, msg);
             }
         }
     }
@@ -2459,7 +2474,7 @@ fn install_tool_inner(
                     spec.name, spec.min_windows_build, build
                 );
                 on_log("error", &msg);
-                return fail(tool_id, 0, msg);
+                return blocked(tool_id, msg);
             }
         }
     }
@@ -2505,6 +2520,7 @@ fn install_tool_inner(
                 version: Some(v),
                 attempts: 1,
                 error: None,
+                precheck_blocked: false,
             }
         }
         Err(e) => {
@@ -2869,6 +2885,22 @@ fn write_hermes_xiapan() -> Result<String, String> {
     }
 }
 
+/// 修复流要不要「隐式先确保 Node」，以及用哪个 `min`。纯函数，好测。
+///
+/// - `None`：不用补（主步骤没有 ensure_node，或 repair 自己已经写了 ensure_node——清单以后在
+///   repair 里显式加了就不会重复跑）；
+/// - `Some(min)`：要补，`min` 取主步骤里**第一个** ensure_node 的最低版本（外层 `Some`，
+///   内层 `Option` 就是该步骤的 `min`，可能是 `None` = 不限版本）。
+fn implicit_repair_node_min(spec: &ToolSpec) -> Option<Option<String>> {
+    if spec.repair.iter().any(|s| matches!(s, Step::EnsureNode { .. })) {
+        return None;
+    }
+    spec.steps.iter().find_map(|s| match s {
+        Step::EnsureNode { min, .. } => Some(min.clone()),
+        _ => None,
+    })
+}
+
 fn run_repair(
     skill: &Skill,
     tool_id: &str,
@@ -2885,6 +2917,15 @@ fn run_repair(
         return fail(1, "安装未通过验证，且无修复步骤".into());
     }
     on_log("repair", "开始自动修复重装…");
+    // 主步骤里 ensure_node 失败（或验证失败后 Node 已被弄坏）时，repair 若不自己再确认 Node，
+    // 直接跑 npm 命令会得到满屏的「'npm'/'"node"' 不是内部或外部命令」，真因（Node 没装上）被淹没
+    // （issue r164 / r148）。清单没在 repair 里显式写 ensure_node 时，这里隐式补一次。
+    if let Some(min) = implicit_repair_node_min(spec) {
+        on_log("step", "检查 Node.js 运行时（修复前先确认 Node/npm 可用）");
+        if let Err(e) = ensure_node_min(skill, min.as_deref(), on_log) {
+            return fail(2, format!("修复步骤失败：{e}"));
+        }
+    }
     if let Err(e) = run_steps(skill, &spec.repair, on_log) {
         return fail(2, format!("修复步骤失败：{e}"));
     }
@@ -2898,6 +2939,7 @@ fn run_repair(
                 version: Some(v),
                 attempts: 2,
                 error: None,
+                precheck_blocked: false,
             }
         }
         Err(e) => fail(2, format!("修复后仍未通过验证：{e}")),
@@ -2911,7 +2953,14 @@ fn fail(tool: &str, attempts: u32, err: String) -> InstallToolResult {
         version: None,
         attempts,
         error: Some(err),
+        precheck_blocked: false,
     }
+}
+
+/// 环境预检拦截型失败（磁盘不足 / Windows build 不够）：结果同 `fail`，只多打 `precheck_blocked`，
+/// 让上层知道这是设计内拦截、不该建 issue。
+fn blocked(tool: &str, err: String) -> InstallToolResult {
+    InstallToolResult { precheck_blocked: true, ..fail(tool, 0, err) }
 }
 
 fn run_steps(
@@ -2923,7 +2972,7 @@ fn run_steps(
         on_log("step", step.label());
         match step {
             Step::EnsureNode { min, .. } => ensure_node_min(skill, min.as_deref(), on_log)?,
-            Step::NpmInstall { package, force, with_optional, .. } => {
+            Step::NpmInstall { package, force, with_optional, allow_scripts, .. } => {
                 // skill 可能来自服务器下发：包名严格校验，防被篡改后注入任意命令
                 if !valid_npm_package(package) {
                     return Err(format!("非法 npm 包名（已拦截）：{package}"));
@@ -2950,7 +2999,8 @@ fn run_steps(
                             &format!("npm 主源安装失败，切换备用源 {registry} 重试…"),
                         );
                     }
-                    let cmd = npm_install_command(package, registry, *with_optional, *force);
+                    // 名单校验失败 = 清单被改坏/被篡改：直接拒绝执行，不进备用源循环白重试
+                    let cmd = npm_install_command(package, registry, *with_optional, *force, allow_scripts)?;
                     match run_stream(&cmd, portable_node_dir().as_deref(), on_log) {
                         Ok(()) => {
                             installed = true;
@@ -3062,12 +3112,56 @@ fn valid_npm_package(p: &str) -> bool {
 /// 不从服务器 skill 读取备用列表，避免扩大被篡改清单的命令执行面。
 const NPM_FALLBACK_REGISTRIES: &[&str] = &["https://registry.npmjs.org"];
 
+/// npm 包规格 → 裸包名：去掉 `@版本` / `@tag` 后缀。scoped 包开头的 `@` 是 scope 标记不是版本分隔符，
+/// 所以从第 2 个字符起找 `@`（`@scope/name@1.2.3` → `@scope/name`，`name@1.2.3` → `name`）。
+fn npm_bare_name(spec: &str) -> &str {
+    match spec.get(1..).and_then(|rest| rest.find('@')) {
+        Some(i) => &spec[..1 + i],
+        None => spec,
+    }
+}
+
+/// `--allow-scripts=` 的放行名单：顶层包 + 清单里列的依赖包，取裸包名、去重、保持顺序。
+/// **每个名字（含顶层包）都过 `valid_npm_package`**，任何一个不合法整体拒绝（返回 Err）——
+/// 这些名字会被原样拼进 shell 命令行，与包名白名单同款防注入。
+fn npm_allow_scripts_names(package: &str, extra: &[String]) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = Vec::new();
+    for spec in std::iter::once(package).chain(extra.iter().map(String::as_str)) {
+        if !valid_npm_package(spec) {
+            return Err(format!("非法 npm 包名（已拦截）：{spec}"));
+        }
+        let bare = npm_bare_name(spec);
+        if !valid_npm_package(bare) {
+            return Err(format!("非法 npm 包名（已拦截）：{spec}"));
+        }
+        if !names.iter().any(|n| n == bare) {
+            names.push(bare.to_string());
+        }
+    }
+    Ok(names)
+}
+
+/// 拼 `npm install -g` 命令行。`allow_scripts` 是清单里声明的、需要跑安装脚本的**依赖包**（顶层包自动带上）。
+///
+/// 🔴 为什么总带 `--allow-scripts=`（issue r178/r151，实测）：npm 12 起默认**拦截**包的安装脚本，
+/// claude-code 的 postinstall 不跑 → `bin/claude.exe` 只剩 ~500 字节占位壳 → 运行报
+/// 「与 Windows 版本不兼容」。各 npm 版本对该 flag 的行为（主会话逐版实测）：
+/// - npm 10.9.x：静默忽略，postinstall 照跑、退出 0（对老 Node 完全无害）；
+/// - npm 11.16–11.20：接受该 flag（11 本来就只对脚本告警不拦）；
+/// - npm 12.0/12.1：默认拦，加 `--allow-scripts=<包名>` 后放行；逗号列表、重复 flag、`name@ver` 都认，
+///   **通配 `@scope/*` 不认**，所以这里只拼精确包名。npm 12 起未知 CLI flag 会报错，
+///   但 allow-scripts 在 12 里是已知项，不会撞。
+///
+/// 依赖包的脚本在 npm 12 下同样被拦（openclaw 的 koffi/esbuild/protobufjs），只放行顶层包不够，
+/// 所以才有清单字段 `allow_scripts`。名字校验不过返回 Err，调用方拒绝执行。
 fn npm_install_command(
     package: &str,
     registry: &str,
     with_optional: bool,
     force: bool,
-) -> String {
+    allow_scripts: &[String],
+) -> Result<String, String> {
+    let allow = npm_allow_scripts_names(package, allow_scripts)?;
     // --proxy="" --https-proxy="" 强制本次安装不走代理。
     // 客户机的代理可能写死在全局 npmrc（%APPDATA%\npm\etc\npmrc），
     // env 层清空盖不住它，只有命令行 flag 能覆盖 npmrc 配置。
@@ -3082,6 +3176,7 @@ fn npm_install_command(
     if force {
         cmd.push_str(" --force");
     }
+    cmd.push_str(&format!(" --allow-scripts={}", allow.join(",")));
     // macOS：系统 node 的默认全局 prefix 是 /usr/local（要 sudo，普通用户装不进），
     // 且客户机 ~/.npmrc 可能残留坏 prefix。显式钉到可写且在 search_paths 的 ~/.local。
     #[cfg(target_os = "macos")]
@@ -3098,7 +3193,7 @@ fn npm_install_command(
             cmd.push_str(&format!(" --prefix \"{}\"", p.display()));
         }
     }
-    cmd
+    Ok(cmd)
 }
 
 /// verify_cmd 验证，返回首行输出（版本号）。
@@ -3119,6 +3214,10 @@ fn looks_like_transient_lock(err: &str) -> bool {
         "is not recognized as an internal or external command",
         "不是内部或外部命令",
         "系统找不到指定的文件",
+        // 真机日志：`claude --version` 已经打出 `2.1.272 (Claude Code)`，退出码却是 1，
+        // 后面跟一句「找不到批处理文件。」—— claude.cmd 刚落盘被扫描/占用的典型形状（issue r148）
+        "找不到批处理文件",
+        "the process cannot access the file",
     ];
     let lower = err.to_lowercase();
     MARKERS.iter().any(|m| lower.contains(&m.to_lowercase()))
@@ -3178,14 +3277,20 @@ fn warn_if_shadowed(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)
 #[cfg(not(target_os = "macos"))]
 fn warn_if_shadowed(_spec: &ToolSpec, _on_log: &(dyn Fn(&str, &str) + Send + Sync)) {}
 
+/// 验证遇到瞬时锁时每次重试前等多久（毫秒）：7 次重试、累计 29s。见 `verify` 里的窗口史。
+const VERIFY_LOCK_BACKOFF_MS: [u64; 7] = [1000, 2000, 3000, 4000, 5000, 6000, 8000];
+
 fn verify(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<String, String> {
     let cmdline = verify_cmdline(spec);
     on_log("verify", &format!("验证：{cmdline}"));
     let mut last_err = String::new();
-    // 杀软瞬时锁重试：6 次、退避递增到 ~10s 总时长（issue #136 实锤——原来 4×1s≈4s
-    // 顶不住某些客户机杀软对刚落盘 claude.exe 的持锁，验证被误判失败进而误报装机失败）。
+    // 杀软瞬时锁重试：只在命中 looks_like_transient_lock 时才等，语义失败照旧立即放弃。
+    // 窗口史：原来 4×1s≈4s（issue #136 实锤顶不住）→ 6 次 ~10.5s → 现在 7 次重试 ~29s。
+    // 再加长的证据：npm 11 客户机（r138/r125/r82）装完 claude 首验就报「另一个程序正在使用此文件，
+    // 进程无法访问」，repair 强制重装后仍同样失败——240MB 的 claude.exe 刚落盘被杀软整包扫描，
+    // 10 秒撑不住，扫描得 20~30 秒。等的是杀软而不是我们，多等这十几秒远比误报装机失败便宜。
     // 跨平台放在这里，别塞进单字段 verify_cmd（那会在 Mac 上崩，见 skill v32→v33 回滚 #143）。
-    for attempt in 0..6u64 {
+    for attempt in 0..=VERIFY_LOCK_BACKOFF_MS.len() {
         match run_capture(&cmdline, portable_node_dir().as_deref()) {
             Ok((0, out)) => {
                 let v = out.lines().next().unwrap_or("ok").trim().to_string();
@@ -3196,11 +3301,12 @@ fn verify(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Resul
             Ok((code, out)) => last_err = format!("退出码 {code}：{}", tail(&out, 200)),
             Err(e) => last_err = e,
         }
-        if attempt < 5 && looks_like_transient_lock(&last_err) {
-            let wait = 700 * (attempt + 1); // 700/1400/2100/2800/3500ms，累计 ~10.5s
-            on_log("verify", &format!("验证未通过，疑似杀软瞬时锁住刚落盘的文件，{wait}ms 后重试…"));
-            std::thread::sleep(std::time::Duration::from_millis(wait));
-            continue;
+        if let Some(&wait) = VERIFY_LOCK_BACKOFF_MS.get(attempt) {
+            if looks_like_transient_lock(&last_err) {
+                on_log("verify", &format!("验证未通过，疑似杀软瞬时锁住刚落盘的文件，{wait}ms 后重试…"));
+                std::thread::sleep(std::time::Duration::from_millis(wait));
+                continue;
+            }
         }
         break;
     }
@@ -4110,6 +4216,58 @@ pub fn install_env_tools(progress: &(dyn Fn(&str) + Send + Sync)) -> EnvToolsRes
     EnvToolsResult { node, git, pwsh, command_guard }
 }
 
+/// 停掉「可执行文件落在 `dir` 底下」的所有进程，返回停掉的个数（Windows 专用；其他平台恒 0）。
+///
+/// 为什么需要：便携 Node 重装要先清掉旧 `~/.uking/runtime/node`，而客户机上常有进程正从那个目录
+/// 跑着（claude.exe / node.exe / gateway，或被杀软占着）——文件被占，`remove_dir_all` 删不干净，
+/// 后面 rename 就报「目录不是空的 (os error 145)」，且每轮重来都撞同一堵墙（issue r164 连续 3 轮）。
+/// 这些进程本来就是从「即将被替换的旧目录」里跑的，不停掉旧目录永远清不掉。
+///
+/// 实现同 `uninstall.rs` 的延迟脚本与 claude-code 清单 repair 第一步：`Get-CimInstance Win32_Process`
+/// 按 ExecutablePath 前缀匹配。两处刻意的差异：
+/// - 路径经**环境变量** `UKING_KILL_ROOT` 传给 PowerShell，不拼进命令字符串（中文用户名 / 引号 /
+///   单引号都不必转义，脚本本身只含单引号）；
+/// - 前缀带结尾分隔符，`...\runtime\node` 不会误伤同级的 `...\runtime\node-v22.x-win-x64`；
+///   并跳过 U-King 自己（env `UKING_KILL_SELF` = 本进程 pid）与 PowerShell 自身，防自杀。
+///
+/// 必须有超时（15s）：CIM 查询被杀软/WMI 拖住时不许卡住装机主流程，超时按 0 处理（尽力而为）。
+#[cfg(windows)]
+fn stop_processes_under(dir: &Path, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> usize {
+    const SCRIPT: &str = "$ErrorActionPreference='SilentlyContinue'; \
+        $r=$env:UKING_KILL_ROOT.TrimEnd('\\')+'\\'; \
+        $me=[int]$env:UKING_KILL_SELF; \
+        $n=0; \
+        $ps=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ProcessId -ne $me -and $_.ProcessId -ne $PID -and $_.ExecutablePath.StartsWith($r,[StringComparison]::OrdinalIgnoreCase) }); \
+        foreach ($p in $ps) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $n++ } catch {} }; \
+        Write-Output $n";
+    let mut c = base_command("powershell");
+    c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", SCRIPT])
+        .env("UKING_KILL_ROOT", dir.as_os_str())
+        .env("UKING_KILL_SELF", std::process::id().to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let Some(out) = output_with_timeout(c, 15) else {
+        on_log("out", "查找占用旧 Node 目录的进程超时或失败，已跳过");
+        return 0;
+    };
+    let n = decode_console(&out.stdout)
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    if n > 0 {
+        on_log("out", &format!("已停止 {n} 个从旧 Node 目录运行的进程（它们占着文件，旧目录清不掉）"));
+    }
+    n
+}
+
+/// 非 Windows：没有「exe 被占着删不掉」这回事，恒 0（签名与 Windows 版一致，调用点不必 cfg）。
+#[cfg(not(windows))]
+fn stop_processes_under(_dir: &Path, _on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> usize {
+    0
+}
+
 /// `ensure_node` 加一条「这个工具跑得起来所需的最低版本」。
 /// `min` 为 None 时行为与老 `ensure_node` 逐字节一致。
 pub fn ensure_node_min(
@@ -4157,8 +4315,30 @@ pub fn ensure_node_min(
                     ),
                 }
             } else {
-                on_log("out", &format!("Node.js 已就绪：{}", v.trim()));
-                return Ok(());
+                // 系统 Node 只信不碰（不自检、不重装）——但「node 在」不等于「npm 在」：
+                // 客户机上 Node 装得残缺（只有 node.exe、npm 被删/没进 PATH）时，这里若直接报就绪，
+                // 后面 `npm install` 整条挂成「'npm' 不是内部或外部命令」（issue r174：
+                // 日志先打「Node.js 已就绪：v24.19.0」紧跟着 npm is not recognized）。
+                // 所以就绪要验 npm 真能跑；不能跑就落到下面的便携版下载安装（不改动用户自己的 Node，
+                // 与 too_old_for_tool 同款走法：便携版目录前置进 PATH，npm 从它那里来）。
+                let npm_problem = match run_capture("npm --version", None) {
+                    Ok((0, _)) => None,
+                    Ok((code, out)) => Some(format!("退出码 {code}：{}", tail(&out, 120))),
+                    Err(e) => Some(tail(&e, 120)),
+                };
+                match npm_problem {
+                    None => {
+                        on_log("out", &format!("Node.js 已就绪：{}", v.trim()));
+                        return Ok(());
+                    }
+                    Some(why) => on_log(
+                        "out",
+                        &format!(
+                            "系统 Node.js {} 缺少可用的 npm（{why}），改用 U-King 自带的便携版（不改动你自己的 Node）…",
+                            v.trim()
+                        ),
+                    ),
+                }
             }
         } else {
             on_log("out", &format!("便携 Node.js 版本过旧（{} < 需要 {}），重新下载新版…", v.trim(), skill.node.version));
@@ -4211,22 +4391,52 @@ pub fn ensure_node_min(
         // 瞬时锁住，remove_dir_all/rename 一次性失败会报「目录不是空的 (os error 145)」（issue #50）；退避重试。
         let extracted = runtime.join(dir_name);
         let target = runtime.join("node");
-        let mut rename_err = None;
-        for a2 in 0..10 {
+        // 旧 node 目录必须先清掉，否则 rename 落在「目标非空」上报 145（issue r164 连续 3 轮）。
+        // 老代码这里 `let _ = remove_dir_all` 把删除失败吞了、只重试 3 秒，最后只剩一句
+        // 「目录不是空的」——真因（旧目录有文件被占）一个字也没进日志。改成：
+        // ① 复用 clear_dir_before_extract（删不掉会改名挪到 node.broken.N）；
+        // ② 仍在 → 说明有进程占着旧目录里的文件（典型是从那里跑着的 claude.exe/node.exe，
+        //    或杀软正在扫），停掉它们再清一次。这步不改「重装便携 Node 会清掉旧目录」的语义，
+        //    只是让它清得掉、清不掉时说清为什么。
+        if target.exists() {
+            clear_dir_before_extract(&target, on_log);
             if target.exists() {
-                let _ = std::fs::remove_dir_all(&target);
-            }
-            match std::fs::rename(&extracted, &target) {
-                Ok(()) => {
-                    rename_err = None;
-                    break;
+                if stop_processes_under(&target, on_log) > 0 {
+                    // 进程刚被终止，句柄释放有个极短的滞后
+                    std::thread::sleep(std::time::Duration::from_millis(800));
                 }
-                Err(e) => {
-                    rename_err = Some(e);
-                    if a2 < 9 {
-                        std::thread::sleep(std::time::Duration::from_millis(300));
+                clear_dir_before_extract(&target, on_log);
+            }
+        }
+        // rename 退避：300→3000ms 递增、总计 ~15s（老的 10×300ms 只有 3s，顶不住杀软长扫描）。
+        // 每轮先看旧目录是不是又冒出来了（占着它的进程可能又写了文件）→ 再清一次；
+        // 清不掉就**不去 rename**（目标非空必失败，报出来的「目录不是空的」是误导），
+        // 直接记「旧目录清不掉：{真实错误}」。两类失败原因分开写进 last，最终 Err 与日志里能看到真因。
+        const RENAME_BACKOFF_MS: [u64; 9] = [300, 600, 900, 1200, 1500, 2000, 2500, 3000, 3000];
+        let mut rename_err: Option<String> = None;
+        for a2 in 0..=RENAME_BACKOFF_MS.len() {
+            let mut this_err: Option<String> = None;
+            if target.exists() {
+                // 这里只做一次轻量删除（不用 clear_dir_before_extract：它内部自带 ~5s 退避，
+                // 套在 10 轮循环里会把总时长放大到分钟级），退避由外层这个循环统一负责。
+                if let Err(e) = std::fs::remove_dir_all(&target) {
+                    if target.exists() {
+                        this_err = Some(format!("旧目录清不掉：{e}"));
                     }
                 }
+            }
+            if this_err.is_none() {
+                match std::fs::rename(&extracted, &target) {
+                    Ok(()) => {
+                        rename_err = None;
+                        break;
+                    }
+                    Err(e) => this_err = Some(format!("改名失败：{e}")),
+                }
+            }
+            rename_err = this_err;
+            if let Some(ms) = RENAME_BACKOFF_MS.get(a2) {
+                std::thread::sleep(std::time::Duration::from_millis(*ms));
             }
         }
         if let Some(e) = rename_err {
@@ -6050,6 +6260,64 @@ fn shell_command(cmdline: &str) -> std::process::Command {
     }
 }
 
+/// 按系统 ANSI 代码页解码（cmd 内建命令 echo/dir/type 的管道输出走的就是它，chcp 管不着）。
+/// 用 Windows 自带 MultiByteToWideChar —— 纯 std FFI 不引 crate，且在繁体/日文机器上自动是对的代码页。
+/// 原本私藏在 `agent/chat.rs`；装机侧读子进程输出也要它，所以搬到这里给全仓复用（chat.rs 反向调用）。
+#[cfg(windows)]
+pub(crate) fn ansi_to_string(bytes: &[u8]) -> String {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn MultiByteToWideChar(cp: u32, flags: u32, src: *const u8, srclen: i32, dst: *mut u16, dstlen: i32) -> i32;
+    }
+    const CP_ACP: u32 = 0;
+    if bytes.is_empty() { return String::new(); }
+    unsafe {
+        let need = MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), bytes.len() as i32, std::ptr::null_mut(), 0);
+        if need <= 0 { return String::from_utf8_lossy(bytes).into_owned(); }
+        let mut wide = vec![0u16; need as usize];
+        let got = MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), bytes.len() as i32, wide.as_mut_ptr(), need);
+        if got <= 0 { return String::from_utf8_lossy(bytes).into_owned(); }
+        String::from_utf16_lossy(&wide[..got as usize])
+    }
+}
+#[cfg(not(windows))]
+pub(crate) fn ansi_to_string(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+/// 解码一段子进程输出：**合法 UTF-8 原样用，否则按系统 ANSI 代码页解**。
+///
+/// 中文 Windows 上 cmd / 系统本地化报错（「找不到批处理文件。」「另一个程序正在使用…」）走
+/// ACP=GBK，而 npm / node / claude 吐的是 UTF-8。老代码一律 `from_utf8_lossy`，GBK 那部分全成
+/// `����`：一来上报日志是乱码判不了因，二来 `looks_like_transient_lock` 里的中文特征词永远匹配
+/// 不上 → 验证被杀软瞬时锁住时 0 次重试直接进修复（issue r148 的根因）。
+/// 判定粒度由调用方决定（`read_lines_lossy` 按行、`capture` 按流）：同一条命令里两种编码会
+/// 混着来，粒度越细越不容易把 UTF-8 中文误当 GBK。非 Windows 上 `ansi_to_string` 本就是 lossy UTF-8。
+pub(crate) fn decode_console(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => ansi_to_string(bytes),
+    }
+}
+
+/// 整段（已收齐的）输出按**行**解码：先试整段是不是合法 UTF-8（绝大多数情况，零额外开销），
+/// 不是才按 `\n` 切成行（**保留原行尾**，拼回去逐字节还原换行/回车），每行各自 `decode_console`。
+///
+/// 为什么要按行：`capture()` 拿到的是整条流，而同一条命令里 UTF-8 行（npm/node）和 GBK 行（cmd/系统报错）
+/// 会交替出现。整条流只判一次的话，一行 GBK 就让整段判成「非 UTF-8」，其余行里的 UTF-8 中文被当 GBK
+/// 一起解成乱码。GBK 的后继字节范围是 0x40–0xFE，不含 0x0A，所以在 `\n` 处切行不会切坏双字节字符。
+/// 与 `read_lines_lossy`（流式，逐行读）同一个粒度，两条读输出的路径就此对齐。
+fn decode_console_by_line(bytes: &[u8]) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(bytes.len());
+    for line in bytes.split_inclusive(|&b| b == b'\n') {
+        out.push_str(&decode_console(line));
+    }
+    out
+}
+
 /// 按行读一个流，**用 lossy 解码**，而不是 `BufReader::lines()`。
 ///
 /// 🔴 `lines()` 产出的是 `Result<String>`：非 UTF-8 的行是 `Err`，而 `map_while(Result::ok)`
@@ -6062,6 +6330,11 @@ fn shell_command(cmdline: &str) -> std::process::Command {
 /// 改 lossy 后坏字节退化成 `�`，**但行还在、流也读得下去**，错误原文进得了 Err、进得了
 /// report_bug。`capture()` 早就是 lossy 的（所以自检那条日志能看到 cp936 报错，装机这条看不到），
 /// 两边就此对齐。
+///
+/// 每行再走 `decode_console`：UTF-8 行原样、非 UTF-8 行按系统 ANSI 代码页（中文机 = GBK）解，
+/// 于是 cmd 的「找不到批处理文件。」能还原成中文，不再是 `����`。**按行**判定是因为同一条命令里
+/// npm 吐 UTF-8、cmd 吐 GBK 会一行一行地交替出现，整条流只判一次的话，一行 GBK 就会把
+/// 前后所有 UTF-8 中文一起当 GBK 解坏。
 fn read_lines_lossy<R: std::io::Read>(r: R, mut on_line: impl FnMut(String)) {
     let mut br = std::io::BufReader::new(r);
     let mut buf = Vec::new();
@@ -6073,7 +6346,7 @@ fn read_lines_lossy<R: std::io::Read>(r: R, mut on_line: impl FnMut(String)) {
                 while matches!(buf.last(), Some(b'\n') | Some(b'\r')) {
                     buf.pop();
                 }
-                on_line(String::from_utf8_lossy(&buf).into_owned());
+                on_line(decode_console(&buf));
             }
         }
     }
@@ -6160,13 +6433,17 @@ pub(crate) fn run_capture_raw(program: &str, args: &[&str], extra_path: Option<&
     capture(c, program)
 }
 
+/// 跑完一条命令收 stdout + stderr。**两条流分别**走 `decode_console_by_line`（每行：UTF-8 否则系统 ANSI
+/// 代码页）再拼接：stdout 常是 npm/node 的 UTF-8、stderr 常是 cmd 的 GBK 报错，各自编码不同；
+/// 而**同一条流内**也会 UTF-8 行与 GBK 行交替出现，所以粒度是「行」而不是「一条流」——
+/// 否则一行 GBK 会连坐整条流里的 UTF-8 中文（见 `decode_console_by_line`）。
 fn capture(mut c: std::process::Command, what: &str) -> Result<(i32, String), String> {
     let out = c
         .stdin(std::process::Stdio::null())
         .output()
         .map_err(|e| format!("启动 {what} 失败: {e}"))?;
-    let mut s = String::from_utf8_lossy(&out.stdout).to_string();
-    s.push_str(&String::from_utf8_lossy(&out.stderr));
+    let mut s = decode_console_by_line(&out.stdout);
+    s.push_str(&decode_console_by_line(&out.stderr));
     Ok((out.status.code().unwrap_or(-1), s))
 }
 
@@ -7370,13 +7647,17 @@ mod tests {
             "https://registry.npmmirror.com",
             true,
             true,
-        );
+            &[],
+        )
+        .unwrap();
         let fallback = npm_install_command(
             "openclaw",
             NPM_FALLBACK_REGISTRIES[0],
             true,
             true,
-        );
+            &[],
+        )
+        .unwrap();
 
         assert!(primary.contains("--registry=https://registry.npmmirror.com"));
         assert!(fallback.contains("--registry=https://registry.npmjs.org"));
@@ -7386,7 +7667,93 @@ mod tests {
             assert!(cmd.contains("--no-fund --no-audit"));
             assert!(cmd.contains("--include=optional"));
             assert!(cmd.contains("--force"));
+            // 备用源那一轮也带放行 flag（npm 12 拦脚本，换源不换病）
+            assert!(cmd.contains("--allow-scripts=openclaw"));
         }
+    }
+
+    /// 顶层包总被放行：npm 12 默认拦 postinstall，claude.exe 会只剩 500 字节占位壳（issue r178/r151）。
+    #[test]
+    fn npm_install_command_allows_scripts_for_top_level_package() {
+        let cmd = npm_install_command(
+            "@anthropic-ai/claude-code",
+            "https://registry.npmmirror.com",
+            false,
+            false,
+            &[],
+        )
+        .unwrap();
+        assert!(cmd.contains(" --allow-scripts=@anthropic-ai/claude-code"), "{cmd}");
+        // 只有一个名字，不带多余逗号
+        assert!(!cmd.contains("--allow-scripts=@anthropic-ai/claude-code,"), "{cmd}");
+    }
+
+    /// 带 extras：逗号拼接、顶层包在前、按裸包名去重（版本后缀被剥掉，scoped 包的 @scope 不被误剥）。
+    #[test]
+    fn npm_install_command_joins_extra_allow_scripts_deduped() {
+        let extras: Vec<String> =
+            ["koffi", "esbuild@0.21.5", "@scope/native@1.2.3", "openclaw", "koffi"].iter().map(|s| s.to_string()).collect();
+        let cmd = npm_install_command("openclaw@2026.1.1", "https://registry.npmmirror.com", false, false, &extras)
+            .unwrap();
+        assert!(
+            cmd.contains(" --allow-scripts=openclaw,koffi,esbuild,@scope/native"),
+            "顶层包在前、去重、剥版本：{cmd}"
+        );
+        // 包本身带版本时，安装目标保持原样，只有放行名单用裸名
+        assert!(cmd.contains("npm install -g openclaw@2026.1.1 "), "{cmd}");
+    }
+
+    /// 验证的瞬时锁退避窗口：7 次重试、累计约 29s（原 ~10.5s 撑不住 240MB 的 claude.exe 被杀软整包扫描）。
+    #[test]
+    fn verify_lock_backoff_window_is_about_29_seconds() {
+        assert_eq!(VERIFY_LOCK_BACKOFF_MS.len(), 7);
+        let total: u64 = VERIFY_LOCK_BACKOFF_MS.iter().sum();
+        assert_eq!(total, 29_000);
+        assert!(VERIFY_LOCK_BACKOFF_MS.windows(2).all(|w| w[0] < w[1]), "应递增退避");
+    }
+
+    /// 语义性失败（不命中瞬时锁特征词）必须立即放弃、一次都不等：只有杀软锁才值得多等。
+    #[test]
+    fn verify_does_not_wait_on_semantic_failure() {
+        let spec: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo", "verify_cmd": "exit 3", "steps": [],
+        }))
+        .unwrap();
+        let logs = std::sync::Mutex::new(Vec::<String>::new());
+        let r = verify(&spec, &|_, m| logs.lock().unwrap().push(m.to_string()));
+        assert!(r.as_ref().is_err_and(|e| e.contains("退出码 3")), "{r:?}");
+        assert!(
+            logs.lock().unwrap().iter().all(|m| !m.contains("疑似杀软瞬时锁")),
+            "语义失败不该走重试：{:?}",
+            logs.lock().unwrap()
+        );
+    }
+
+    #[test]
+    fn npm_bare_name_only_strips_version_not_scope() {
+        assert_eq!(npm_bare_name("foo"), "foo");
+        assert_eq!(npm_bare_name("foo@1.2.3"), "foo");
+        assert_eq!(npm_bare_name("@scope/foo"), "@scope/foo");
+        assert_eq!(npm_bare_name("@scope/foo@latest"), "@scope/foo");
+        assert_eq!(npm_bare_name("@"), "@");
+        assert_eq!(npm_bare_name(""), "");
+    }
+
+    /// 名单里任何一个名字不合法就整体拒绝：这些名字会被原样拼进 shell 命令行（防注入）。
+    #[test]
+    fn npm_install_command_rejects_invalid_allow_scripts_name() {
+        for bad in ["evil; calc", "a&b", "x\"y", "UPPER", "a b", "..", "$(x)", "", "foo,bar", "@scope/x@1;rm"] {
+            let r = npm_install_command(
+                "openclaw",
+                "https://registry.npmmirror.com",
+                false,
+                false,
+                &[bad.to_string()],
+            );
+            assert!(r.is_err(), "{bad:?} 应被拦截，实际拿到：{r:?}");
+        }
+        // 顶层包名本身不合法同样拒绝（放行名单不是绕过包名校验的旁路）
+        assert!(npm_install_command("bad name", "https://registry.npmmirror.com", false, false, &[]).is_err());
     }
 
     #[test]
@@ -7494,5 +7861,321 @@ mod tests {
             via_action, via_probe,
             "同一台机器上两个出口对系统代理给出了不同答案 —— 这正是 cfg 空桩那个坑"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // 子进程输出解码 + 瞬时锁特征词（issue r148）
+    // ------------------------------------------------------------------
+
+    /// 合法 UTF-8（含中文 / emoji）必须原样返回 —— 不能被当成 ANSI 再解一遍解坏。
+    #[test]
+    fn decode_console_keeps_valid_utf8_untouched() {
+        let s = "退出码 1：2.1.272 (Claude Code)\n找不到批处理文件。✓ emoji 🚀";
+        assert_eq!(decode_console(s.as_bytes()), s);
+        assert_eq!(decode_console(b""), "");
+        assert_eq!(decode_console(b"plain ascii"), "plain ascii");
+    }
+
+    /// 真机日志的形状：`claude --version` 已打出版本号，退出码却是 1，后跟「找不到批处理文件。」。
+    /// 这句必须被认成瞬时锁（退避重试），而不是 0 次重试直接进修复（issue r148 根因）。
+    #[test]
+    fn transient_lock_recognizes_batch_file_not_found_after_version_banner() {
+        assert!(looks_like_transient_lock("退出码 1：2.1.272 (Claude Code)\n找不到批处理文件。"));
+        assert!(looks_like_transient_lock("退出码 1：The process cannot access the file"));
+        // 语义性失败仍不许被当成瞬时锁白等重试
+        assert!(!looks_like_transient_lock("退出码 1：Node.js v18.0.0 is required"));
+    }
+
+    /// `read_lines_lossy`：UTF-8 行、CRLF 行尾、空行都照旧（不依赖代码页，所有平台都跑）。
+    #[test]
+    fn read_lines_lossy_keeps_utf8_lines_and_trims_line_endings() {
+        let data = "第一行 中文\r\nsecond\n\n第四行 ✓".as_bytes();
+        let mut got: Vec<String> = Vec::new();
+        read_lines_lossy(std::io::Cursor::new(data), |l| got.push(l));
+        assert_eq!(got, vec!["第一行 中文", "second", "", "第四行 ✓"]);
+    }
+
+    // 下面三个测试辅助项额外标 `#[cfg(test)]`：本文件的 `mod tests` 没有 cfg(test) 门控，
+    // 非测试构建也会编译它，辅助项没人调用就会多出 dead_code 警告。
+    /// 取系统 ANSI 代码页（仅 Windows 测试用）：936 = 简体中文 GBK。
+    #[cfg(all(test, windows))]
+    fn system_acp() -> u32 {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetACP() -> u32;
+        }
+        unsafe { GetACP() }
+    }
+
+    /// 「找不到批处理文件。」的 GBK 字节（PowerShell `[Text.Encoding]::GetEncoding(936).GetBytes(..)` 算出）。
+    #[cfg(all(test, windows))]
+    const GBK_BATCH_NOT_FOUND: &[u8] =
+        &[0xD5, 0xD2, 0xB2, 0xBB, 0xB5, 0xBD, 0xC5, 0xFA, 0xB4, 0xA6, 0xC0, 0xED, 0xCE, 0xC4, 0xBC, 0xFE, 0xA1, 0xA3];
+
+    /// 只在系统 ANSI 代码页是 936 的机器上有意义（CI 是 ubuntu、别的代码页机器上直接跳过）：
+    /// GBK 字节必须还原成原文，且能被瞬时锁判定命中 —— 旧代码在这里得到 `����` 而 0 次重试。
+    #[test]
+    #[cfg(windows)]
+    fn decode_console_decodes_gbk_when_acp_is_936() {
+        if system_acp() != 936 {
+            return;
+        }
+        assert!(std::str::from_utf8(GBK_BATCH_NOT_FOUND).is_err(), "夹具本身应当不是合法 UTF-8");
+        let s = decode_console(GBK_BATCH_NOT_FOUND);
+        assert_eq!(s, "找不到批处理文件。");
+        assert!(looks_like_transient_lock(&format!("退出码 1：2.1.272 (Claude Code)\n{s}")));
+    }
+
+    /// 同一条流里 UTF-8 行和 GBK 行交替出现（npm 吐 UTF-8、cmd 吐 GBK）：**按行**判定，
+    /// GBK 行还原、前后的 UTF-8 中文行不被连坐解坏。
+    #[test]
+    #[cfg(windows)]
+    fn read_lines_lossy_decodes_mixed_utf8_and_gbk_lines_independently() {
+        if system_acp() != 936 {
+            return;
+        }
+        let mut data: Vec<u8> = Vec::new();
+        data.extend_from_slice("npm 提示：安装完成\r\n".as_bytes());
+        data.extend_from_slice(GBK_BATCH_NOT_FOUND);
+        data.extend_from_slice(b"\r\n");
+        data.extend_from_slice("2.1.272 (Claude Code)\n".as_bytes());
+        let mut got: Vec<String> = Vec::new();
+        read_lines_lossy(std::io::Cursor::new(data), |l| got.push(l));
+        assert_eq!(got, vec!["npm 提示：安装完成", "找不到批处理文件。", "2.1.272 (Claude Code)"]);
+    }
+
+    /// `capture()` 用的整段按行解码：同一段 bytes 里 UTF-8 中文行 + GBK 行，两行都得对；
+    /// 换行/回车原样保留；纯 UTF-8 整段走快路径不变（所有平台都跑这半条）。
+    #[test]
+    fn decode_console_by_line_keeps_utf8_lines_and_decodes_gbk_lines() {
+        // 纯 UTF-8：与整段解码一致（不依赖代码页）
+        let utf8 = "第一行\r\n第二行 ✓\n".as_bytes();
+        assert_eq!(decode_console_by_line(utf8), "第一行\r\n第二行 ✓\n");
+        assert_eq!(decode_console_by_line(b""), "");
+        #[cfg(windows)]
+        if system_acp() == 936 {
+            let mut data: Vec<u8> = Vec::new();
+            data.extend_from_slice("npm 提示：安装完成\r\n".as_bytes()); // UTF-8 行
+            data.extend_from_slice(GBK_BATCH_NOT_FOUND); // GBK 行（无行尾，夹在中间）
+            data.extend_from_slice(b"\r\n");
+            data.extend_from_slice("2.1.272 (Claude Code)".as_bytes()); // 末行无换行
+            assert_eq!(
+                decode_console_by_line(&data),
+                "npm 提示：安装完成\r\n找不到批处理文件。\r\n2.1.272 (Claude Code)",
+                "UTF-8 中文行不许被 GBK 行连坐"
+            );
+            // 对照：旧的整流一次判定，在同样输入上 UTF-8 中文行会被解坏（证明这条测试真能区分新旧）
+            assert_ne!(decode_console(&data), decode_console_by_line(&data));
+        }
+    }
+
+    /// 端到端（仅 936 机器）：cmd 内建 echo 的管道输出走 ACP=GBK，经 `capture()` 后必须是中文原文。
+    #[test]
+    #[cfg(windows)]
+    fn capture_decodes_cmd_builtin_gbk_output() {
+        if system_acp() != 936 {
+            return;
+        }
+        let (code, out) = run_capture("echo 找不到批处理文件。", None).expect("cmd 应能启动");
+        assert_eq!(code, 0);
+        assert!(out.contains("找不到批处理文件。"), "输出被解成了乱码：{out:?}");
+        assert!(!out.contains('\u{FFFD}'), "输出含 �：{out:?}");
+    }
+
+    // ------------------------------------------------------------------
+    // 预检拦截标记（不上报 issue）
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn blocked_marks_precheck_and_fail_does_not() {
+        let b = blocked("codex-app", "系统盘空间不足".into());
+        assert!(!b.ok);
+        assert!(b.precheck_blocked);
+        assert_eq!(b.attempts, 0);
+        assert_eq!(b.error.as_deref(), Some("系统盘空间不足"));
+
+        let f = fail("codex-app", 1, "boom".into());
+        assert!(!f.ok);
+        assert!(!f.precheck_blocked, "普通失败必须照常上报，不能被当成设计内拦截");
+        // 前端拿到的 JSON 里带这个字段（TS 侧是可选字段，缺省 false）
+        assert_eq!(serde_json::to_value(&b).unwrap()["precheck_blocked"], serde_json::json!(true));
+        assert_eq!(serde_json::to_value(&f).unwrap()["precheck_blocked"], serde_json::json!(false));
+    }
+
+    // ------------------------------------------------------------------
+    // 内嵌清单 v57 的结构性判据（H1 / H2）
+    // ------------------------------------------------------------------
+
+    /// 清单里每条 run 步骤的命令都不许命中 `FIX_BLACKLIST`：`run_steps` 对 run 步骤与 AI 修复共用这份
+    /// 黑名单（对整条 cmd 小写后做**子串**匹配），命中就整步拒绝执行。写脚本时很容易无意踩中
+    /// （比如 `Get-Date -Format ...` 含 "format "、`-ForceApplicationShutdown` 含 "shutdown"），
+    /// 而这在开发机上不跑那一步就发现不了 —— 所以用一条静态判据把它守住。
+    #[test]
+    fn embedded_manifest_run_steps_never_hit_fix_blacklist() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        let mut hits: Vec<String> = Vec::new();
+        for (tool_id, tool) in &skill.tools {
+            for (bucket, steps) in [("steps", &tool.steps), ("repair", &tool.repair)] {
+                for (i, step) in steps.iter().enumerate() {
+                    let Step::Run { cmd, .. } = step else { continue };
+                    let lower = cmd.to_lowercase();
+                    if let Some(bad) = FIX_BLACKLIST.iter().find(|b| lower.contains(*b)) {
+                        hits.push(format!("{tool_id}.{bucket}[{i}] 命中黑名单 `{bad}`"));
+                    }
+                }
+            }
+        }
+        assert!(hits.is_empty(), "这些 run 步骤运行时会被守卫拒绝：\n{}", hits.join("\n"));
+    }
+
+    /// H2：凡 steps 里有 ensure_node 的工具，repair 里也必须显式有（老客户端没有「修复流隐式补 Node」的
+    /// Rust 逻辑，主步骤里 Node 没装上时 repair 直接跑 npm，会得到满屏「'npm' 不是内部或外部命令」）。
+    #[test]
+    fn embedded_manifest_repair_ensures_node_when_steps_do() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        for (tool_id, tool) in &skill.tools {
+            let has = |steps: &[Step]| steps.iter().any(|s| matches!(s, Step::EnsureNode { .. }));
+            if has(&tool.steps) {
+                assert!(has(&tool.repair), "{tool_id}：steps 有 ensure_node 而 repair 没有");
+                // 前置：必须排在第一个 npm_install 之前，否则没意义
+                let en = tool.repair.iter().position(|s| matches!(s, Step::EnsureNode { .. })).unwrap();
+                if let Some(np) = tool.repair.iter().position(|s| matches!(s, Step::NpmInstall { .. })) {
+                    assert!(en < np, "{tool_id}：repair 里 ensure_node 必须在 npm_install 之前");
+                }
+                // 隐式补 Node 的 Rust 逻辑此时应当不重复补
+                assert_eq!(implicit_repair_node_min(tool), None, "{tool_id}：repair 已显式带 ensure_node，不该再隐式补");
+            }
+        }
+    }
+
+    /// H1：claude-code 在 npm_install 之后（且在「覆盖上去」shim 步之前）补跑安装脚本，repair 里强制重装之后同样补跑。
+    /// 新版 npm 默认拦截 postinstall，claude.exe 会只剩 ~500 字节占位壳（issue r178/r151）。
+    #[test]
+    fn embedded_manifest_claude_code_reruns_postinstall_after_npm_install() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        let cc = skill.tools.get("claude-code").expect("清单应含 claude-code");
+        let is_fix = |s: &Step| matches!(s, Step::Run { cmd, os, .. }
+            if cmd.contains("install.cjs") && cmd.contains("claude.exe") && os.as_deref() == Some("windows"));
+        let is_npm = |s: &Step| matches!(s, Step::NpmInstall { .. });
+        let is_shim = |s: &Step| matches!(s, Step::Run { cmd, .. } if cmd.contains(".uking\\shims"));
+
+        let fix = cc.steps.iter().position(is_fix).expect("steps 里缺补跑步骤");
+        assert!(cc.steps.iter().position(is_npm).unwrap() < fix, "补跑必须在 npm_install 之后");
+        assert!(fix < cc.steps.iter().position(is_shim).expect("应有 shim 步"), "补跑必须在 shim 步之前");
+
+        let fix_r = cc.repair.iter().position(is_fix).expect("repair 里缺补跑步骤");
+        let last_npm_r = cc.repair.iter().rposition(is_npm).expect("repair 应有强制重装");
+        assert!(last_npm_r < fix_r, "repair 里补跑必须在强制重装之后");
+    }
+
+    // ------------------------------------------------------------------
+    // 修复流先确保 Node（implicit_repair_node_min）
+    // ------------------------------------------------------------------
+
+    #[cfg(test)]
+    fn spec_from_steps(steps: serde_json::Value, repair: serde_json::Value) -> ToolSpec {
+        serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo", "verify_cmd": "demo --version",
+            "steps": steps, "repair": repair,
+        }))
+        .expect("测试 ToolSpec 应能解析")
+    }
+
+    #[test]
+    fn implicit_repair_node_min_follows_steps_when_repair_lacks_ensure_node() {
+        let ensure = |min: Option<&str>| match min {
+            Some(m) => serde_json::json!({"type":"ensure_node","label":"装 Node","min":m}),
+            None => serde_json::json!({"type":"ensure_node","label":"装 Node"}),
+        };
+        let npm = serde_json::json!({"type":"npm_install","label":"装包","package":"demo-pkg"});
+
+        // steps 有 ensure_node（带 min）、repair 没有 → 补，min 原样带上
+        let s = spec_from_steps(serde_json::json!([ensure(Some("22.19.0")), npm.clone()]), serde_json::json!([npm.clone()]));
+        assert_eq!(implicit_repair_node_min(&s), Some(Some("22.19.0".to_string())));
+
+        // steps 的 ensure_node 没写 min → 补，min 为 None（不限版本）
+        let s = spec_from_steps(serde_json::json!([ensure(None), npm.clone()]), serde_json::json!([npm.clone()]));
+        assert_eq!(implicit_repair_node_min(&s), Some(None));
+
+        // repair 已自己写了 ensure_node → 不重复跑
+        let s = spec_from_steps(
+            serde_json::json!([ensure(Some("22.19.0")), npm.clone()]),
+            serde_json::json!([ensure(None), npm.clone()]),
+        );
+        assert_eq!(implicit_repair_node_min(&s), None);
+
+        // steps 里根本没有 ensure_node（如纯 pip 工具）→ 不补
+        let s = spec_from_steps(serde_json::json!([npm.clone()]), serde_json::json!([npm.clone()]));
+        assert_eq!(implicit_repair_node_min(&s), None);
+
+        // repair 为空 → 也是 None（run_repair 自己在前面就会因无修复步骤返回）
+        let s = spec_from_steps(serde_json::json!([ensure(None)]), serde_json::json!([]));
+        assert_eq!(implicit_repair_node_min(&s), Some(None));
+    }
+
+    // ------------------------------------------------------------------
+    // stop_processes_under（Windows 真进程，沙箱在临时目录）
+    // ------------------------------------------------------------------
+
+    /// 把系统 `ping.exe` 复制到「含中文和空格」的临时目录里各起一个长跑进程：
+    /// 目标目录下的被停掉、**同级前缀相近的兄弟目录**（`node` vs `node-v22`）里的毫发无伤。
+    /// 这同时验证了「路径经环境变量传给 PowerShell」在中文/空格路径下是通的。
+    #[test]
+    #[cfg(windows)]
+    fn stop_processes_under_kills_only_processes_inside_dir() {
+        let root = std::env::temp_dir().join(format!("uking 杀进程 测试 {}", std::process::id()));
+        let target = root.join("node");
+        let sibling = root.join("node-v22.x-win-x64"); // 前缀含 target 全名，必须不被误伤
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let ping_src = std::path::PathBuf::from(system_tool("ping"));
+        let spawn_from = |dir: &Path| -> std::process::Child {
+            let exe = dir.join("ping.exe");
+            std::fs::copy(&ping_src, &exe).expect("复制 ping.exe 失败");
+            std::process::Command::new(&exe)
+                .args(["-n", "60", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .stdin(std::process::Stdio::null())
+                .spawn()
+                .expect("启动复制出的 ping.exe 失败")
+        };
+        let mut victim = spawn_from(&target);
+        let mut bystander = spawn_from(&sibling);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let logs = std::sync::Mutex::new(Vec::<String>::new());
+        let n = stop_processes_under(&target, &|_, m| logs.lock().unwrap().push(m.to_string()));
+
+        // 给 Windows 一点时间回收句柄再判
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let victim_gone = victim.try_wait().map(|s| s.is_some()).unwrap_or(false);
+        let bystander_alive = bystander.try_wait().map(|s| s.is_none()).unwrap_or(false);
+        let _ = victim.kill();
+        let _ = bystander.kill();
+        let _ = victim.wait();
+        let _ = bystander.wait();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(n, 1, "应恰好停掉 1 个进程，日志：{:?}", logs.lock().unwrap());
+        assert!(victim_gone, "目标目录下的进程应已被停掉");
+        assert!(bystander_alive, "兄弟目录 node-v22.x-win-x64 下的进程不该被误杀");
+        assert!(
+            logs.lock().unwrap().iter().any(|m| m.contains("已停止 1 个从旧 Node 目录运行的进程")),
+            "应写一行日志说明停了什么：{:?}",
+            logs.lock().unwrap()
+        );
+    }
+
+    /// 目录下没有任何进程 → 返回 0、不写日志（不制造噪音）。
+    #[test]
+    fn stop_processes_under_returns_zero_when_nothing_runs_there() {
+        let root = std::env::temp_dir().join(format!("uking-noproc-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let logs = std::sync::Mutex::new(Vec::<String>::new());
+        let n = stop_processes_under(&root, &|_, m| logs.lock().unwrap().push(m.to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(n, 0);
+        assert!(logs.lock().unwrap().iter().all(|m| !m.contains("已停止")), "{:?}", logs.lock().unwrap());
     }
 }

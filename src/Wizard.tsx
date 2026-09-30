@@ -57,6 +57,8 @@ type InstallToolResult = {
   version: string | null;
   attempts: number;
   error: string | null;
+  /** 环境预检拦截（磁盘不足 / Windows 版本过低）：设计内拦截，后端不为它建 issue；界面行为不变 */
+  precheck_blocked?: boolean;
 };
 
 export type ProviderPreset = {
