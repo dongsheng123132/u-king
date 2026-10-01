@@ -468,7 +468,8 @@ pub struct InstallToolResult {
     pub error: Option<String>,
     /// 环境预检拦截（系统盘空间不足、Windows build 不够这类「设计内拦截」）：不是我们的 bug，
     /// 重试也一样，所以 `install_ai_tool_shared` 不为它上报 issue（本地 install.log 照写、
-    /// 界面照常拿到失败结果）。默认 false：只有预检那两处显式置 true，其余失败一律照常上报。
+    /// 界面照常拿到失败结果）。默认 false：只有预检那两处 + 用户在 UAC 点「否」（Codex 桌面版
+    /// 提权兜底）显式置 true，其余失败一律照常上报。
     #[serde(default)]
     pub precheck_blocked: bool,
 }
@@ -2315,14 +2316,7 @@ pub fn codex_app_installed() -> bool {
     {
         return true;
     }
-    matches!(
-        run_capture_raw(
-            "powershell",
-            &["-NoProfile", "-NonInteractive", "-Command", "if (Get-AppxPackage -Name OpenAI.Codex) { exit 0 } else { exit 1 }"],
-            None,
-        ),
-        Ok((0, _))
-    )
+    codex_appx_registered()
 }
 
 #[cfg(not(windows))]
@@ -2395,6 +2389,18 @@ pub fn install_tool(
     }
 
     let res = install_tool_inner(skill, tool_id, on_log);
+    // Codex 桌面版（Windows）：清单流程（Store → 非提权装 MSIX）走不通时的**提权兜底**——新版 MSIX
+    // 带系统沙箱服务，非提权必败（0x80073D28），得管理员批准才能装。提权逻辑编在程序里、不经清单
+    // run 步骤：清单是热下发的，不该能被服务器远程推一个「弹 UAC 提权」的动作。
+    // 只在：清单已经失败 + 不是预检拦截 + 确实没装上 + 清单 repair 已把 MSIX 下到约定落点 时才走。
+    // 「没装上」只认 Appx 注册（codex_appx_registered），不用 codex_app_installed：后者也看
+    // %LOCALAPPDATA%\OpenAI\Codex 数据目录，卸载后它常残留 →「卸载后重装」会被误判已装、跳过兜底。
+    #[cfg(windows)]
+    if tool_id == "codex-app" && !res.ok && !res.precheck_blocked && !codex_appx_registered() {
+        if let Some(msix) = codex_app_downloaded_msix() {
+            return codex_app_elevated_fallback(skill, tool_id, &msix, on_log);
+        }
+    }
     if res.ok || tool_id != "codex" {
         return res;
     }
@@ -2435,6 +2441,313 @@ pub fn install_tool(
     #[cfg(not(any(windows, target_os = "macos")))]
     {
         res
+    }
+}
+
+// ============================================================
+// Codex 桌面版：提权安装兜底（Windows）
+// ============================================================
+//
+// 背景（已查实）：Codex 26.915 起 MSIX 带一个 LocalSystem 的打包服务（desktop6:Service），
+// 非提权 `Add-AppxPackage` 必败，退出 0x80073D28（ERROR_PACKAGED_SERVICE_REQUIRES_ADMIN_PRIVILEGES）；
+// OpenAI 官方文档也写明需管理员安装。另一类失败 0x80073CF0 + 0x80070020 = 包文件被占用
+// （%TEMP% 下固定文件名 + 杀软扫描 / 残留句柄）。
+//
+// 分工：**下载**仍由清单的 repair[0] 负责（下载地址只在清单里，热下发可换）；**提权安装**在这里
+// 编进程序——不放清单，见 `install_tool` 里的注释。
+
+/// 与清单的契约：清单 codex-app 的 repair 里「下载官方 MSIX」那步把包落在 `%TEMP%\codex-app.msix`。
+/// 程序这边**只认这个落点**，不再抄一份下载地址（单一真相源）。
+/// `embedded_manifest_codex_app_download_matches_program_contract` 盯着内嵌清单，落点漂了当场变红。
+#[cfg(any(windows, test))]
+const CODEX_APP_MSIX_NAME: &str = "codex-app.msix";
+/// 小于这个大小不算「下好了」（真包约 650MB；同清单下载步骤的 `-gt 100MB` 校验一致）。
+#[cfg(windows)]
+const CODEX_APP_MSIX_MIN_BYTES: u64 = 100 * 1024 * 1024;
+/// Codex 自带的系统沙箱服务名：装/升级前要先停，否则文件被它占着（0x80070020）。
+#[cfg(any(windows, test))]
+const CODEX_SANDBOX_SERVICE: &str = "CodexSandboxService.OpenAI.Codex";
+/// 提权外层脚本收到这个退出码 = 用户在 UAC 弹窗点了「否」/ 系统策略禁止提权
+/// （Win32 ERROR_CANCELLED = 1223，与 `airuntime::run_fix_elevated` 同一约定）。
+#[cfg(windows)]
+const ELEVATION_CANCELLED: i32 = 1223;
+
+/// 清单 repair 下好的 MSIX（存在且 >100MB 才算找到）。
+#[cfg(windows)]
+fn codex_app_downloaded_msix() -> Option<PathBuf> {
+    // 清单里写的是 `$env:TEMP`，这里也读 TEMP（`std::env::temp_dir()` 优先读 TMP，两者偶有不同）。
+    let temp = std::env::var_os("TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let p = temp.join(CODEX_APP_MSIX_NAME);
+    let len = std::fs::metadata(&p).ok()?.len();
+    (len > CODEX_APP_MSIX_MIN_BYTES).then_some(p)
+}
+
+/// 极小标准 base64 编码（带 padding）。纯 std；本项目约定叶子小工具各留一份、不跨模块耦合
+/// （`dshdesk.rs` / `fs.rs` / `draw.rs` 里同款）。
+#[cfg(any(windows, test))]
+fn b64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// 内层（提权后运行的）脚本模板。**纯 ASCII**；路径不直接拼进脚本（中文用户名 / 引号转义会出事），
+/// 而是以 UTF-16LE base64 嵌入、脚本里 `Unicode.GetString(FromBase64String(..))` 还原。
+/// 提权子进程不一定继承环境变量，所以内层需要的路径必须嵌进脚本本身。
+///
+/// 流程：包文件在不在 → 沙箱服务在跑就停（静默）→ `Add-AppxPackage` 最多 3 次，仅当异常信息命中
+/// 「文件被占用」类代码（0x80070020 / 0x80073CF0 / 0x80073D02）才睡 10*i 秒重试，其余错误直接停 →
+/// 结果写结果文件（成功 `OK`、失败 `FAIL <消息>`，UTF-8）→ 退出码 0/1。
+#[cfg(any(windows, test))]
+const CODEX_ELEVATED_INNER_TEMPLATE: &str = "\
+$ErrorActionPreference='Stop'; \
+$p=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('@@MSIX_B64@@')); \
+$r=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('@@RESULT_B64@@')); \
+$msg='FAIL unknown'; \
+try { \
+if(-not (Test-Path -LiteralPath $p)){ throw ('package file not found: '+$p) }; \
+$sv=Get-Service -Name '@@SERVICE@@' -ErrorAction SilentlyContinue; \
+if($sv -and $sv.Status -eq 'Running'){ Stop-Service -Name '@@SERVICE@@' -Force -ErrorAction SilentlyContinue }; \
+for($i=1; $i -le 3; $i++){ \
+try { Add-AppxPackage -Path $p -ForceApplicationShutdown -ErrorAction Stop; $msg='OK'; break } \
+catch { $m=([string]$_.Exception.Message) -replace '\\s+',' '; \
+if($i -lt 3 -and $m -match '0x80070020|0x80073CF0|0x80073D02'){ Start-Sleep -Seconds (10*$i) } else { $msg='FAIL '+$m; break } } \
+} \
+} catch { $msg='FAIL '+(([string]$_.Exception.Message) -replace '\\s+',' ') }; \
+[IO.File]::WriteAllText($r,$msg,(New-Object Text.UTF8Encoding($false))); \
+if($msg -eq 'OK'){ exit 0 } else { exit 1 }";
+
+/// 模板 → 可执行的内层脚本（占位符替换）。
+#[cfg(any(windows, test))]
+fn render_codex_elevated_inner(msix_b64: &str, result_b64: &str, service: &str) -> String {
+    CODEX_ELEVATED_INNER_TEMPLATE
+        .replace("@@MSIX_B64@@", msix_b64)
+        .replace("@@RESULT_B64@@", result_b64)
+        .replace("@@SERVICE@@", service)
+}
+
+/// 路径 → UTF-16LE base64（`encode_wide` 无损，连未配对代理项的怪文件名也不丢）。
+#[cfg(windows)]
+fn path_b64_utf16(p: &Path) -> String {
+    use std::os::windows::ffi::OsStrExt;
+    let bytes: Vec<u8> = p.as_os_str().encode_wide().flat_map(|u| u.to_le_bytes()).collect();
+    b64_encode(&bytes)
+}
+
+/// 外层（**非提权**）脚本：弹一次 UAC 起提权 PowerShell 跑内层脚本，等它结束并原样转出退出码。
+/// 与 `airuntime::run_fix_elevated` 同款写法：用户点「否」/ 策略禁止 → 1223。
+/// 内层脚本经环境变量 `UKING_ELEV_B64` 传入（外层是普通子进程，继承 env）。
+#[cfg(windows)]
+fn elevated_outer_script() -> String {
+    let ps = system_tool("powershell").replace('\'', "''");
+    format!(
+        "try {{ $p = Start-Process -FilePath '{ps}' -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop -ArgumentList '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$env:UKING_ELEV_B64; if ($null -eq $p) {{ exit {ELEVATION_CANCELLED} }}; exit $p.ExitCode }} catch {{ exit {ELEVATION_CANCELLED} }}"
+    )
+}
+
+/// 以管理员身份跑一段 PowerShell（会弹一次 UAC），返回提权进程的退出码（用户取消 = 1223）。
+/// 外层走 `base_command("powershell")`（System32 绝对路径 + CREATE_NO_WINDOW）+ `output_with_timeout`：
+/// **必须有超时**——UAC 窗口被遮挡 / 没人点会一直等。超时（或 PowerShell 起不来）返回 Err，
+/// 外层进程留给系统收，提权进程若还在跑也不去杀（别把装了一半的包打断）。
+#[cfg(windows)]
+fn run_powershell_elevated(inner_script: &str, timeout_secs: u64) -> Result<i32, String> {
+    let utf16le: Vec<u8> = inner_script.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    let mut c = base_command("powershell");
+    c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &elevated_outer_script()])
+        .env("UKING_ELEV_B64", b64_encode(&utf16le))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let Some(out) = output_with_timeout(c, timeout_secs) else {
+        return Err(format!(
+            "管理员授权/安装步骤在 {} 分钟内没有结束（或 PowerShell 无法启动）",
+            timeout_secs / 60
+        ));
+    };
+    Ok(out.status.code().unwrap_or(-1))
+}
+
+/// 把清单下好的 MSIX 从 `%TEMP%` 挪到 `<uking_home>\downloads\codex-app-<时间戳>.msix`：
+/// 换唯一文件名 + 离开 TEMP，避开固定名下残留句柄 / 杀软扫描造成的「文件被占用」（0x80073CF0）。
+/// rename 失败（被占）按 1/2/4/8s 退避重试，仍失败改 `copy`；都失败给人话。
+#[cfg(windows)]
+fn stage_codex_msix(
+    src: &Path,
+    dir: &Path,
+    on_log: &(dyn Fn(&str, &str) + Send + Sync),
+) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dst = dir.join(format!("codex-app-{ts}.msix"));
+    const BACKOFF_SECS: [u64; 4] = [1, 2, 4, 8];
+    let mut last = String::new();
+    for attempt in 0..=BACKOFF_SECS.len() {
+        match std::fs::rename(src, &dst) {
+            Ok(()) => return Ok(dst),
+            Err(e) => {
+                last = e.to_string();
+                // 17 = ERROR_NOT_SAME_DEVICE：TEMP 与家目录不在同一个盘，改名必失败，别白等，直接复制
+                if e.raw_os_error() == Some(17) {
+                    break;
+                }
+            }
+        }
+        if let Some(s) = BACKOFF_SECS.get(attempt) {
+            std::thread::sleep(std::time::Duration::from_secs(*s));
+        }
+    }
+    on_log("out", "安装包暂时挪不动（多为杀软正在扫描），改用复制…");
+    match std::fs::copy(src, &dst) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(src);
+            Ok(dst)
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&dst); // 半截副本别留
+            Err(format!("安装包被占用（多为杀软正在扫描），请稍后重试：改名失败（{last}），复制也失败（{e}）"))
+        }
+    }
+}
+
+/// 包注册表里能不能看到 Codex 桌面版（只查 Appx，不看数据目录——数据目录卸载后可能残留）。
+#[cfg(windows)]
+fn codex_appx_registered() -> bool {
+    matches!(
+        run_capture_raw(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command", "if (Get-AppxPackage -Name OpenAI.Codex) { exit 0 } else { exit 1 }"],
+            None,
+        ),
+        Ok((0, _))
+    )
+}
+
+/// 提权装完仍看不到包时的最后一搏：非提权按包家族名登记（有超时，失败无所谓）。
+#[cfg(windows)]
+fn codex_try_register_by_family_name() {
+    let mut c = base_command("powershell");
+    c.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "try { Add-AppxPackage -RegisterByFamilyName -MainPackage 'OpenAI.Codex_2p2nqsd0c76g0' -ErrorAction Stop } catch {}; exit 0",
+    ])
+    .stdin(std::process::Stdio::null());
+    let _ = output_with_timeout(c, 60);
+}
+
+/// 提权兜底主流程。返回终局结果（成功 attempts=3，与 codex 二进制兜底一致）。
+/// 无论成败，收尾都删 downloads 里这份 MSIX 与结果文件（约 650MB，不留垃圾）。
+#[cfg(windows)]
+fn codex_app_elevated_fallback(
+    skill: &Skill,
+    tool_id: &str,
+    msix: &Path,
+    on_log: &(dyn Fn(&str, &str) + Send + Sync),
+) -> InstallToolResult {
+    let Some(spec) = skill.tools.get(tool_id) else {
+        return fail(tool_id, 0, format!("skill 清单里没有工具 {tool_id}"));
+    };
+    let downloads = uking_home().join("downloads");
+    let staged = match stage_codex_msix(msix, &downloads, on_log) {
+        Ok(p) => p,
+        Err(e) => {
+            on_log("error", &e);
+            return fail(tool_id, 3, e);
+        }
+    };
+    let result_file = downloads.join("codex-app-install.result");
+    let cleanup = || {
+        let _ = std::fs::remove_file(&staged);
+        let _ = std::fs::remove_file(&result_file);
+    };
+    let _ = std::fs::remove_file(&result_file); // 上次残留的结果不能当这次的
+
+    let inner = render_codex_elevated_inner(&path_b64_utf16(&staged), &path_b64_utf16(&result_file), CODEX_SANDBOX_SERVICE);
+    on_log(
+        "repair",
+        "Codex 桌面版新版自带一个系统沙箱服务，Windows 规定必须管理员批准才能安装。即将弹出管理员授权窗口，请点「是」（没看到弹窗就看任务栏上闪烁的盾牌图标）…",
+    );
+    let elevated = run_powershell_elevated(&inner, 20 * 60);
+    // 用户在 UAC 点了「否」/策略禁止提权：是客户的选择，不是我们的 bug —— 照常返回失败给界面，
+    // 但打 precheck_blocked 让上层不建 issue（否则每次点「否」都是一条噪音上报）。
+    let cancelled = matches!(elevated, Ok(ELEVATION_CANCELLED));
+    let outcome: Result<(), String> = match elevated {
+        Err(e) => Err(e),
+        Ok(ELEVATION_CANCELLED) => Err(
+            "你取消了管理员授权，或系统策略禁止提权。Codex 桌面版必须管理员批准才能装；可以重新点安装并在弹窗里点「是」，或改用 Codex 命令行版（无需管理员）。"
+                .to_string(),
+        ),
+        Ok(0) => Ok(()),
+        Ok(code) => {
+            let detail = std::fs::read(&result_file)
+                .map(|b| decode_console(&b))
+                .unwrap_or_default();
+            let detail = detail.trim().trim_start_matches("FAIL").trim();
+            Err(format!(
+                "以管理员身份安装仍失败：{}",
+                if detail.is_empty() { format!("（没有拿到错误详情，退出码 {code}）") } else { detail.to_string() }
+            ))
+        }
+    };
+    if let Err(e) = outcome {
+        on_log("error", &e);
+        cleanup();
+        return InstallToolResult { precheck_blocked: cancelled, ..fail(tool_id, 3, e) };
+    }
+
+    // 提权进程退出 0 = 包已部署；注册到当前账户可能有点滞后，轮询 12×5s
+    let mut visible = false;
+    for i in 0..12 {
+        if codex_appx_registered() {
+            visible = true;
+            break;
+        }
+        if i < 11 {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
+    }
+    if !visible {
+        codex_try_register_by_family_name();
+        visible = codex_appx_registered();
+    }
+    cleanup();
+    if !visible {
+        let e = "已用管理员身份装好，但当前 Windows 账户下看不到 Codex（标准用户输入了另一个管理员账户的密码时，包会注册给那个账户）。请注销重新登录后再试，或用管理员账户登录使用。".to_string();
+        on_log("error", &e);
+        return fail(tool_id, 3, e);
+    }
+    match verify(spec, on_log) {
+        Ok(v) => {
+            on_log("done", &format!("{} 提权安装成功 · {v}", spec.name));
+            post_install(tool_id, on_log);
+            InstallToolResult {
+                ok: true,
+                tool: tool_id.into(),
+                version: Some(v),
+                attempts: 3,
+                error: None,
+                precheck_blocked: false,
+            }
+        }
+        Err(e) => {
+            let msg = format!("已用管理员身份装好，但验证未通过：{e}");
+            on_log("error", &msg);
+            fail(tool_id, 3, msg)
+        }
     }
 }
 
@@ -8066,6 +8379,203 @@ mod tests {
         let fix_r = cc.repair.iter().position(is_fix).expect("repair 里缺补跑步骤");
         let last_npm_r = cc.repair.iter().rposition(is_npm).expect("repair 应有强制重装");
         assert!(last_npm_r < fix_r, "repair 里补跑必须在强制重装之后");
+    }
+
+    // ------------------------------------------------------------------
+    // Codex 桌面版提权兜底（编进程序，不经清单）
+    // ------------------------------------------------------------------
+    // ⚠️ 本区所有测试**严禁执行 `-Verb RunAs`**：只做文本断言 / 语法解析 / 非提权直接跑内层脚本。
+
+    #[test]
+    fn b64_encode_matches_known_vectors() {
+        // RFC 4648 §10 官方测试向量
+        for (raw, enc) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+            assert_eq!(b64_encode(raw.as_bytes()), enc, "{raw:?}");
+        }
+        // 内层脚本走 UTF-16LE：「ab」→ 61 00 62 00
+        let utf16: Vec<u8> = "ab".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        assert_eq!(b64_encode(&utf16), "YQBiAA==");
+    }
+
+    /// 内层脚本模板：占位符全部被替换、**纯 ASCII**（中文路径只经 base64 进去）、关键动作都在。
+    #[test]
+    fn codex_elevated_inner_template_renders_clean_ascii_script() {
+        let s = render_codex_elevated_inner("TVNJWFBBVEg=", "UkVTVUxUUEFUSA==", CODEX_SANDBOX_SERVICE);
+        assert!(!s.contains("@@"), "还有没替换的占位符：{s}");
+        assert!(s.is_ascii(), "内层脚本必须纯 ASCII（路径走 base64）");
+        assert!(s.contains("'TVNJWFBBVEg='") && s.contains("'UkVTVUxUUEFUSA=='"));
+        assert_eq!(s.matches(CODEX_SANDBOX_SERVICE).count(), 2, "服务名应出现在 Get-Service 与 Stop-Service 各一次");
+        for must in ["Add-AppxPackage -Path $p -ForceApplicationShutdown -ErrorAction Stop", "0x80070020|0x80073CF0|0x80073D02", "Start-Sleep -Seconds (10*$i)", "-le 3"] {
+            assert!(s.contains(must), "内层脚本缺 `{must}`");
+        }
+        assert!(s.contains("'OK'") && s.contains("'FAIL '+"), "结果文件约定 OK / FAIL <消息>");
+    }
+
+    /// 与清单的契约：清单 codex-app repair 里有「下载」步骤，把包落在 `$env:TEMP` 下的 `codex-app.msix`
+    /// ——程序（`codex_app_downloaded_msix`）只认这个落点。契约漂了（清单改了文件名/目录）当场变红，
+    /// 而不是等到客户机上「兜底永远找不到包」。
+    #[test]
+    fn embedded_manifest_codex_app_download_matches_program_contract() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        let app = skill.tools.get("codex-app").expect("清单应含 codex-app");
+        let downloads = app.repair.iter().any(|s| {
+            matches!(s, Step::Run { cmd, .. }
+                if cmd.contains(CODEX_APP_MSIX_NAME) && cmd.contains("$env:TEMP") && cmd.contains("curl.exe"))
+        });
+        assert!(downloads, "codex-app 的 repair 里找不到把包下到 $env:TEMP\\{CODEX_APP_MSIX_NAME} 的下载步骤");
+    }
+
+    /// I2：清单 codex-app 的非提权安装步骤不再自称「免管理员」，并且遇到 0x80073D28 会给老客户端一句人话。
+    /// **清单里不许做任何提权**（提权只在程序里）。
+    #[test]
+    fn embedded_manifest_codex_app_install_step_explains_admin_requirement() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        let app = skill.tools.get("codex-app").expect("清单应含 codex-app");
+        let mut saw_install = false;
+        for step in app.steps.iter().chain(app.repair.iter()) {
+            if let Step::Run { label, cmd, .. } = step {
+                assert!(!cmd.to_lowercase().contains("runas"), "清单里不许做提权：{label}");
+                if cmd.contains("Add-AppxPackage") {
+                    saw_install = true;
+                    assert!(!label.contains("免管理员"), "label 不许再写「免管理员」：{label}");
+                    assert!(cmd.contains("0x80073D28"), "非提权安装步骤应识别 0x80073D28 并给出人话");
+                }
+            }
+        }
+        assert!(saw_install, "codex-app 应有 Add-AppxPackage 安装步骤");
+    }
+
+    /// I2：openclaw 的 npm_install（steps 与 repair）放行 koffi / esbuild / protobufjs 的安装脚本（npm 12 会拦），
+    /// 并且这份名单能通过 `npm_install_command` 的名字校验、拼进命令行。
+    #[test]
+    fn embedded_manifest_openclaw_allows_dependency_install_scripts() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        let oc = skill.tools.get("openclaw").expect("清单应含 openclaw");
+        for (bucket, steps) in [("steps", &oc.steps), ("repair", &oc.repair)] {
+            let mut n = 0;
+            for step in steps.iter() {
+                if let Step::NpmInstall { package, allow_scripts, force, with_optional, .. } = step {
+                    n += 1;
+                    assert_eq!(allow_scripts, &["koffi", "esbuild", "protobufjs"], "openclaw.{bucket}");
+                    let cmd = npm_install_command(package, "https://registry.npmmirror.com", *with_optional, *force, allow_scripts)
+                        .expect("清单里的放行名单必须过名字校验");
+                    assert!(cmd.contains(&format!(" --allow-scripts={package},koffi,esbuild,protobufjs")), "{cmd}");
+                }
+            }
+            assert_eq!(n, 1, "openclaw.{bucket} 应恰有一个 npm_install");
+        }
+    }
+
+    /// 跑一遍 PowerShell 自带语法解析器，返回错误个数（脚本经环境变量传入，避免引号转义）。
+    #[cfg(all(test, windows))]
+    fn powershell_parse_errors(script: &str) -> usize {
+        let mut c = base_command("powershell");
+        c.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$e=$null;$t=$null;[void][System.Management.Automation.Language.Parser]::ParseInput($env:UKING_PARSE_SRC,[ref]$t,[ref]$e);Write-Output $e.Count",
+        ])
+        .env("UKING_PARSE_SRC", script)
+        .stdin(std::process::Stdio::null());
+        let out = output_with_timeout(c, 60).expect("PowerShell 语法检查超时");
+        String::from_utf8_lossy(&out.stdout).trim().parse().expect("PowerShell 语法检查没有输出个数")
+    }
+
+    /// 外层脚本与内层脚本（替换占位符后）都必须能被 PowerShell 解析（0 errors）。
+    /// 外层只做文本断言 + 语法检查，**不执行**（它会 `-Verb RunAs`）。
+    #[test]
+    #[cfg(windows)]
+    fn codex_elevation_scripts_parse_without_errors() {
+        let outer = elevated_outer_script();
+        for must in ["-Verb RunAs", "-PassThru -Wait", "$env:UKING_ELEV_B64", "-EncodedCommand", "exit 1223", "exit $p.ExitCode", "$null -eq $p"] {
+            assert!(outer.contains(must), "外层脚本缺 `{must}`：{outer}");
+        }
+        assert_eq!(powershell_parse_errors(&outer), 0, "外层脚本语法错误");
+
+        let inner = render_codex_elevated_inner(
+            &path_b64_utf16(Path::new(r"D:\示例目录\.uking\downloads\codex-app-1.msix")),
+            &path_b64_utf16(Path::new(r"D:\示例目录\.uking\downloads\codex-app-install.result")),
+            CODEX_SANDBOX_SERVICE,
+        );
+        assert_eq!(powershell_parse_errors(&inner), 0, "内层脚本语法错误");
+    }
+
+    /// **非提权**直接跑内层脚本（`powershell -EncodedCommand`，绝不 RunAs）：
+    /// ① msix 是个 1KB 假文件 → `Add-AppxPackage` 必败 → 结果文件以 `FAIL` 开头、退出码 1、进程没崩；
+    /// ② msix 路径不存在 → `FAIL package file not found`，且**根本没碰服务/包**。
+    /// 服务名换成不存在的假名：测试机上若真装着 Codex（服务在跑），绝不能被这条测试停掉。
+    #[test]
+    #[cfg(windows)]
+    fn codex_inner_script_writes_fail_result_without_elevation() {
+        let sandbox = std::env::temp_dir().join(format!("uking-codex-inner-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&sandbox);
+        std::fs::create_dir_all(&sandbox).unwrap();
+        let fake = sandbox.join("fake.msix");
+        std::fs::write(&fake, vec![0u8; 1024]).unwrap();
+        let missing = sandbox.join("missing.msix");
+
+        let run = |msix: &Path, tag: &str| -> (Option<i32>, String) {
+            let result = sandbox.join(format!("{tag}.result"));
+            let inner = render_codex_elevated_inner(&path_b64_utf16(msix), &path_b64_utf16(&result), "Uking.NoSuchService.ForTest");
+            let utf16: Vec<u8> = inner.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+            let mut c = base_command("powershell");
+            c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &b64_encode(&utf16)])
+                .stdin(std::process::Stdio::null());
+            let out = output_with_timeout(c, 180).expect("内层脚本超时（不该发生：假包应当立即失败）");
+            let text = std::fs::read(&result).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+            (out.status.code(), text)
+        };
+
+        let (code, text) = run(&fake, "fake");
+        assert_eq!(code, Some(1), "假包应以退出码 1 结束：{text:?}");
+        assert!(text.starts_with("FAIL "), "假包应写出 FAIL 结果，实际：{text:?}");
+        let (code, text) = run(&missing, "missing");
+        assert_eq!(code, Some(1));
+        assert!(text.starts_with("FAIL package file not found"), "{text:?}");
+
+        let _ = std::fs::remove_dir_all(&sandbox);
+    }
+
+    /// 挪包：正常路径——rename 成功，源文件消失，目标名是 `codex-app-<时间戳>.msix`（沙箱目录，不碰真实家目录）。
+    #[test]
+    #[cfg(windows)]
+    fn stage_codex_msix_moves_file_to_unique_name() {
+        let root = std::env::temp_dir().join(format!("uking-stage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let src = root.join(CODEX_APP_MSIX_NAME);
+        std::fs::write(&src, b"msix-bytes").unwrap();
+        let dst = stage_codex_msix(&src, &root.join("downloads"), &|_, _| {}).expect("应挪成功");
+        let name = dst.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("codex-app-") && name.ends_with(".msix"), "{name}");
+        assert!(name["codex-app-".len()..name.len() - ".msix".len()].chars().all(|c| c.is_ascii_digit()), "{name}");
+        assert!(!src.exists(), "源文件应已被挪走");
+        assert_eq!(std::fs::read(&dst).unwrap(), b"msix-bytes");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 挪包：源文件被别的进程占着（不共享删除）→ rename 一直失败 → 按 1/2/4/8s 退避后改 copy。
+    /// 用 `share_mode(FILE_SHARE_READ)` 打开源文件模拟杀软扫描的持锁；copy 只要读，能成功。约 15s。
+    #[test]
+    #[cfg(windows)]
+    fn stage_codex_msix_falls_back_to_copy_when_source_is_locked() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = std::env::temp_dir().join(format!("uking-stage-lock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let src = root.join(CODEX_APP_MSIX_NAME);
+        std::fs::write(&src, b"locked-bytes").unwrap();
+        let held = std::fs::OpenOptions::new().read(true).share_mode(1 /* FILE_SHARE_READ：不许别人删除/改名 */).open(&src).unwrap();
+        let logs = std::sync::Mutex::new(Vec::<String>::new());
+        let started = std::time::Instant::now();
+        let dst = stage_codex_msix(&src, &root.join("downloads"), &|_, m| logs.lock().unwrap().push(m.to_string()))
+            .expect("rename 失败后应当改 copy 成功");
+        assert!(started.elapsed().as_secs() >= 14, "应先按 1+2+4+8s 退避重试 rename，实际只等了 {:?}", started.elapsed());
+        assert_eq!(std::fs::read(&dst).unwrap(), b"locked-bytes");
+        assert!(logs.lock().unwrap().iter().any(|m| m.contains("改用复制")), "{:?}", logs.lock().unwrap());
+        drop(held);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     // ------------------------------------------------------------------
