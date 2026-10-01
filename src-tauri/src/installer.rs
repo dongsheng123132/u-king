@@ -2884,6 +2884,42 @@ fn post_install(tool_id: &str, on_log: &(dyn Fn(&str, &str) + Send + Sync)) {
         },
         _ => {}
     }
+
+    // 装完把「真正装到哪」的命令接进 PATH 最前（Windows 专属；非 Windows 的守卫本就是 no-op）。
+    // 为什么在这里补：客户机已有系统 Node 时 npm 的 prefix 是 `%APPDATA%\npm`，工具就装在那里，
+    // 而该目录常不在用户 PATH（zip 版 Node 等）→ 装完在终端敲 `claude` 是「不是内部或外部命令」
+    // （历史 7 条上报）。此前这个守卫只有「一键优化」会调，装机流程不经过它。
+    // 只对「会装出 CLI 命令」的工具调：codex-app / dsh 这类桌面版、非 CLI 的安装与转发器无关，
+    // 不该顺手去改用户 PATH 和 ~/.uking/shims。
+    // 失败只记一行日志、**不改安装结果**：工具本身已经装好并验证过了，转发器是锦上添花。
+    // 沙箱（`UKING_TEST_HOME`）下 `ensure_cli_command_guard` 自带跳过，不会碰真实 PATH / shims。
+    #[cfg(windows)]
+    if installs_guarded_cli(tool_id) {
+        if let Err(e) = ensure_cli_command_guard(on_log) {
+            on_log("out", &format!("命令转发器未能建立：{e}（不影响已装好的工具）"));
+        }
+    }
+}
+
+/// 装机清单的工具 id → 它装出来的命令名（即 `GUARDED_CLIS` 里的那一项）。
+/// 两边名字不同的只有 `claude-code`→`claude`、`qwen-code`→`qwen`，所以不能直接拿 tool_id 去查 `GUARDED_CLIS`。
+/// 单测 `command_guard_tool_map_covers_every_guarded_cli` 断言它与 `GUARDED_CLIS` 一一对应且 id 都在内嵌清单里。
+#[cfg_attr(not(windows), allow(dead_code))]
+const CLI_TOOL_COMMANDS: &[(&str, &str)] = &[
+    ("claude-code", "claude"),
+    ("codex", "codex"),
+    ("pi", "pi"),
+    ("openclaw", "openclaw"),
+    ("hermes", "hermes"),
+    ("qwen-code", "qwen"),
+    ("crush", "crush"),
+    ("opencode", "opencode"),
+];
+
+/// 这个工具装完后是否会在 npm / 便携 Node 目录里留下需要转发器的 CLI 命令。
+#[cfg_attr(not(windows), allow(dead_code))]
+fn installs_guarded_cli(tool_id: &str) -> bool {
+    CLI_TOOL_COMMANDS.iter().any(|(id, _)| *id == tool_id)
 }
 
 fn write_codex_xiapan() -> Result<String, String> {
@@ -5705,6 +5741,15 @@ pub fn inspect_ai_process_health() -> AiProcessInspection {
     }
 }
 
+/// 命令转发器（`~/.uking/shims/<name>.cmd`）覆盖的命令名单 —— **Rust 侧的唯一真相源**。
+///
+/// 为什么单拎一份：原先 `ensure_cli_command_guard` 与 `migrate_legacy_cli_command_guards` 各写了一份
+/// 5 个名字的字面量，而装机清单 shim 步（`foreach($t in @(...))`）是 8 个，装机流程建出来的
+/// qwen / crush / opencode 转发器 Rust 这边既不迁移也不认。清单是热下发的脚本、没法 import 这个常量，
+/// 所以由单测 `guarded_clis_match_manifest_shim_step` 解析内嵌清单与它逐项比对，漂移当场变红。
+#[cfg_attr(not(windows), allow(dead_code))]
+const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "qwen", "crush", "opencode"];
+
 #[cfg(windows)]
 /// Build an ACP-safe `.cmd` body. Never interpolate a Unicode absolute path: Rust writes UTF-8
 /// while cmd.exe reads batch files in the system ANSI code page.
@@ -5743,25 +5788,32 @@ pub fn fetch_free_registry() -> Option<serde_json::Value> {
     None
 }
 
+/// 认「带标记的新格式」之前 U-King 写过的两种两行转发器（都只转发到 `.uking\runtime\node\<name>.cmd`）：
+/// - 老 Rust 版：`"…\.uking\runtime\node\<name>.cmd" %*`（第二行以 `"` 开头）；
+/// - 装机清单到 v57 为止的 shim 步：`call "…\.uking\runtime\node\<name>.cmd" %*`（第二行以 `call ` 开头）。
+///   这份只有清单脚本在写，Rust 守卫此前不认它，会当成「未知转发器」不迁移也不覆盖。
+///
+/// 新格式有 3 行且带 `U-King CLI command guard` 标记，天然不满足「恰好两行」，走各调用点的 marker 分支。
 #[cfg(windows)]
 fn is_legacy_uking_command_guard(old: &str, name: &str) -> bool {
     let lines: Vec<_> = old.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
     let expected_tail = format!("\\.uking\\runtime\\node\\{name}.cmd\" %*");
     lines.len() == 2
         && lines[0].eq_ignore_ascii_case("@echo off")
-        && lines[1].starts_with('"')
+        && (lines[1].starts_with('"') || lines[1].to_ascii_lowercase().starts_with("call "))
         && lines[1].to_ascii_lowercase().ends_with(&expected_tail)
 }
 
-/// Upgrade only the exact two-line guard written by pre-marker U-King releases. This startup
-/// migration does not create guards, alter PATH, or overwrite an unknown user script.
+/// Upgrade only the exact two-line guards written by pre-marker U-King releases (the legacy Rust
+/// form and the install-manifest `call "…"` form). This startup migration does not create guards,
+/// alter PATH, or overwrite an unknown user script.
 #[cfg(windows)]
 pub fn migrate_legacy_cli_command_guards() -> usize {
     let Ok(home) = std::env::var("USERPROFILE") else { return 0 };
     let home = PathBuf::from(home);
     let shims = uking_home().join("shims");
     let mut migrated = 0;
-    for name in ["claude", "codex", "pi", "openclaw", "hermes"] {
+    for name in GUARDED_CLIS.iter().copied() {
         let shim = shims.join(format!("{name}.cmd"));
         let old = std::fs::read_to_string(&shim).unwrap_or_default();
         if !is_legacy_uking_command_guard(&old, name) { continue; }
@@ -5800,7 +5852,7 @@ pub fn ensure_cli_command_guard(on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> 
     sources.push(Path::new(&home).join(".local").join("bin"));
 
     let mut targets = Vec::new();
-    for name in ["claude", "codex", "pi", "openclaw", "hermes"] {
+    for name in GUARDED_CLIS.iter().copied() {
         let target = sources.iter().find_map(|dir| {
             [".cmd", ".exe"]
                 .iter()
@@ -7785,6 +7837,171 @@ mod tests {
         let old_pi = format!("@echo off\r\n\"{}\" %*\r\n", home.join(r".uking\runtime\node\pi.cmd").display());
         assert!(is_legacy_uking_command_guard(&old_pi, "pi"));
         assert!(!is_legacy_uking_command_guard("@echo off\r\ncall C:\\custom.cmd %*\r\n", "codex"));
+    }
+
+    /// 迁移判据按「谁写的」分四类：老 Rust 两行（认）、装机清单 v57 前的 `call "…"` 两行（认）、
+    /// 带标记的新格式（不认 —— 走各调用点的 marker 分支）、用户自写脚本（不认，绝不覆盖）。
+    /// 清单那种形状此前不被认，装机流程建的转发器 Rust 守卫当「未知转发器」永远不迁移。
+    #[cfg(windows)]
+    #[test]
+    fn legacy_command_guard_detector_covers_manifest_shape_and_rejects_the_rest() {
+        let home = Path::new(r"C:\Users\demo");
+        let target = home.join(r".uking\runtime\node\claude.cmd");
+
+        // 老 Rust 两行：首行 @echo off，第二行以 `"` 开头
+        let legacy_rust = format!("@echo off\r\n\"{}\" %*\r\n", target.display());
+        assert!(is_legacy_uking_command_guard(&legacy_rust, "claude"));
+
+        // 清单到 v57 为止写的：`call "…\.uking\runtime\node\<name>.cmd" %*`。cmd.exe 会把命令行里的
+        // %USERPROFILE% 先展开成绝对路径，所以两种写法都要认（展开后的 / 未展开的 / 大小写混用的）。
+        let manifest_expanded = format!("@echo off\r\ncall \"{}\" %*\r\n", target.display());
+        assert!(is_legacy_uking_command_guard(&manifest_expanded, "claude"));
+        let manifest_literal = "@echo off\r\ncall \"%USERPROFILE%\\.uking\\runtime\\node\\claude.cmd\" %*\r\n";
+        assert!(is_legacy_uking_command_guard(manifest_literal, "claude"));
+        let shouting = "@ECHO OFF\r\nCALL \"%USERPROFILE%\\.UKING\\RUNTIME\\NODE\\CLAUDE.CMD\" %*\r\n";
+        assert!(is_legacy_uking_command_guard(shouting, "claude"));
+        // LF 行尾、无结尾换行也算（用户用记事本另存过也不该影响判定）
+        assert!(is_legacy_uking_command_guard("@echo off\ncall \"%USERPROFILE%\\.uking\\runtime\\node\\claude.cmd\" %*", "claude"));
+        // 转发的是别的工具 → 不是这个名字的转发器
+        assert!(!is_legacy_uking_command_guard(&manifest_expanded, "codex"));
+
+        // 带标记的新格式：三行，不满足「恰好两行」→ false（由 marker 分支处理）
+        let fresh = cli_command_guard_script(&target, home, None).expect("portable target");
+        assert!(fresh.contains("U-King CLI command guard"));
+        assert!(!is_legacy_uking_command_guard(&fresh, "claude"));
+
+        // 用户自写脚本：形状像但不是我们的，一律 false
+        assert!(!is_legacy_uking_command_guard("@echo off\r\ncall \"D:\\mine\\claude.cmd\" %*\r\n", "claude"));
+        assert!(!is_legacy_uking_command_guard("@echo off\r\necho hi\r\ncall \"%USERPROFILE%\\.uking\\runtime\\node\\claude.cmd\" %*\r\n", "claude"));
+        assert!(!is_legacy_uking_command_guard("claude.exe %*\r\n", "claude"));
+        assert!(!is_legacy_uking_command_guard("", "claude"));
+    }
+
+    /// 转发器正文的调用写法：`.cmd` 必须 `call`（否则批处理一去不回，后面的命令不执行），`.exe` 不带 call；
+    /// 目标在 `%APPDATA%` 下（系统 Node 的 npm prefix）时引用 `%APPDATA%`，正文始终纯 ASCII。
+    /// 只测纯函数，不写任何文件 / PATH。
+    #[cfg(windows)]
+    #[test]
+    fn cli_guard_script_calls_cmd_targets_under_appdata_and_not_exe() {
+        // appdata 不在 home 之下（漫游配置重定向 / 企业域环境）→ 走 APPDATA 根
+        let home = Path::new(r"C:\Users\demo");
+        let appdata = Path::new(r"D:\Roaming\demo");
+        let cmd_target = appdata.join(r"npm\claude.cmd");
+        let s = cli_command_guard_script(&cmd_target, home, Some(appdata)).expect("appdata target");
+        assert_eq!(s, "@echo off\r\nrem U-King CLI command guard\r\ncall \"%APPDATA%\\npm\\claude.cmd\" %*\r\n");
+        assert!(s.is_ascii());
+
+        let exe_target = appdata.join(r"npm\claude.exe");
+        let s = cli_command_guard_script(&exe_target, home, Some(appdata)).expect("exe target");
+        assert_eq!(s, "@echo off\r\nrem U-King CLI command guard\r\n\"%APPDATA%\\npm\\claude.exe\" %*\r\n");
+        assert!(!s.contains("call"), ".exe 目标不该带 call：{s:?}");
+
+        // 默认布局：appdata 在 home 之下，函数优先用 USERPROFILE 根（同一个文件，只是文本不同）
+        let default_appdata = Path::new(r"C:\Users\demo\AppData\Roaming");
+        let t = default_appdata.join(r"npm\codex.cmd");
+        let s = cli_command_guard_script(&t, home, Some(default_appdata)).expect("default layout");
+        assert!(s.contains("call \"%USERPROFILE%\\AppData\\Roaming\\npm\\codex.cmd\" %*"), "{s:?}");
+
+        // home / appdata 都不是它的前缀 → 不生成（宁可不建，也不内插任意绝对路径）
+        assert!(cli_command_guard_script(Path::new(r"E:\elsewhere\claude.cmd"), home, Some(appdata)).is_none());
+        // 带 Unicode 的后缀 → 不生成（cmd.exe 按 ANSI 代码页读批处理，UTF-8 路径会乱码）
+        assert!(cli_command_guard_script(&appdata.join("npm").join("工具.cmd"), home, Some(appdata)).is_none());
+    }
+
+    /// `GUARDED_CLIS`（Rust 守卫）与装机清单 shim 步里的 `foreach($t in @(...))` 名单必须一致。
+    /// 清单是热下发的脚本、不能 import 常量，只能靠这条解析内嵌清单的判据把两份名单焊住；
+    /// 任何一边加 / 减工具而另一边没跟，这里当场变红。shim 步的 cmd 还必须是纯 ASCII
+    /// （cmd.exe 按 ANSI 代码页解析，混进非 ASCII 字符整条命令会乱码）。
+    #[test]
+    fn guarded_clis_match_manifest_shim_step() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        const NEEDLE: &str = "foreach($t in @(";
+        let mut seen = 0;
+        for (tool_id, tool) in &skill.tools {
+            for (bucket, steps) in [("steps", &tool.steps), ("repair", &tool.repair)] {
+                for (i, step) in steps.iter().enumerate() {
+                    let Step::Run { cmd, .. } = step else { continue };
+                    let Some(start) = cmd.find(NEEDLE) else { continue };
+                    let rest = &cmd[start + NEEDLE.len()..];
+                    let end = rest.find(')').expect("shim 步的工具数组没有右括号");
+                    let names: Vec<&str> = rest[..end].split(',').map(|s| s.trim().trim_matches('\'')).collect();
+                    assert_eq!(
+                        names.as_slice(),
+                        GUARDED_CLIS,
+                        "{tool_id}.{bucket}[{i}] 的转发器工具名单与 installer.rs::GUARDED_CLIS 漂移了"
+                    );
+                    assert!(cmd.is_ascii(), "{tool_id}.{bucket}[{i}] 的 shim 步 cmd 含非 ASCII 字符");
+                    // run 步经 `cmd /C` 执行，cmd.exe 会在 PowerShell 看到命令之前就把字面 `%VAR%` 展开成绝对路径
+                    // （v57 就是这样把 `C:\Users\<名>\...` 写进转发器的，中文用户名在 -Encoding Ascii 下变 `?`）。
+                    // 转发器正文里的 `%` 必须由 `[char]37` 在 PowerShell 里拼出来，命令行里除开头的 %SystemRoot% 不许再有 `%`。
+                    let after_root = cmd.strip_prefix("%SystemRoot%").unwrap_or(cmd);
+                    assert!(!after_root.contains('%'), "{tool_id}.{bucket}[{i}] 的 shim 步 cmd 里有字面 `%`，会被 cmd.exe 提前展开");
+                    assert!(cmd.contains("[char]37"), "{tool_id}.{bucket}[{i}] 的 shim 步没用 [char]37 拼 `%`");
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen >= 1, "内嵌清单里一条转发器 shim 步都没找到 —— 解析规则与清单写法脱节了，这条判据空转");
+    }
+
+    /// `post_install` 只对「会装出 CLI 命令」的工具调转发器守卫：映射必须与 `GUARDED_CLIS` 一一对应
+    /// （名单漂移当场变红），且每个 tool_id 都真的存在于内嵌清单（写错 id 会让该工具永远收不到守卫）；
+    /// codex-app / dsh 等非 CLI 安装不在其内。只测纯函数与解析内嵌清单，不碰任何真实状态。
+    #[test]
+    fn command_guard_tool_map_covers_every_guarded_cli() {
+        let mut mapped: Vec<&str> = CLI_TOOL_COMMANDS.iter().map(|(_, cmd)| *cmd).collect();
+        let mut guarded: Vec<&str> = GUARDED_CLIS.to_vec();
+        mapped.sort_unstable();
+        guarded.sort_unstable();
+        assert_eq!(mapped, guarded, "CLI_TOOL_COMMANDS 与 GUARDED_CLIS 漂移了：每个守卫的命令都该有且仅有一个 tool_id");
+
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单解析失败");
+        for (id, cmd) in CLI_TOOL_COMMANDS {
+            assert!(skill.tools.contains_key(*id), "映射里的 tool_id `{id}` 不在内嵌清单里");
+            assert!(installs_guarded_cli(id), "{id} 应当会触发转发器守卫");
+            // 命令名要与清单里该工具的 `bin` 一致 —— 防止把 id→命令 的对应关系抄错
+            assert_eq!(skill.tools[*id].bin, *cmd, "{id} 在清单里的 bin 与映射的命令名对不上");
+        }
+
+        for non_cli in ["codex-app", "dsh", "harness-doctor", "agent-browser", "git", "node", ""] {
+            assert!(!installs_guarded_cli(non_cli), "{non_cli:?} 不是会装出受守卫 CLI 的工具，不该去改 PATH / shims");
+        }
+    }
+
+    /// 装机成功后的收尾（`post_install`）在 Windows 上对 CLI 工具必须走到 `ensure_cli_command_guard`，
+    /// 对非 CLI 工具（dsh）必须**不**走到；沙箱下走到了也只能是「跳过」：不写 `~/.uking/shims`、不动真实用户 PATH。
+    ///
+    /// 怎么保证不碰真实状态：整条用例在 `with_sandbox` 里（`UKING_TEST_HOME` 非空 → 守卫入口即返回），
+    /// 且 `USERPROFILE` / `APPDATA` 都先指到沙箱临时目录（沙箱 Drop 时还原）。用 `pi` / `dsh`
+    /// 是因为它们都命中 `post_install` 的 `_ => {}`，不会去写任何 xiapan / 模型配置（`codex-app` 会写
+    /// codex 配置，故不拿它跑，改在映射单测里断言它不触发守卫）。判据钉在真实用户 PATH 的内容和沙箱里
+    /// shims 目录是否被建出来上（同 `sandbox_never_touches_real_user_path` 的口径）。
+    #[cfg(windows)]
+    #[test]
+    fn post_install_reaches_command_guard_only_for_cli_tools() {
+        let before = read_user_path_for_test();
+        assert!(!before.trim().is_empty(), "读不到真实用户 PATH —— 判据是空的，这条用例证明不了任何事");
+        let cli_logs = std::sync::Mutex::new(Vec::<String>::new());
+        let non_cli_logs = std::sync::Mutex::new(Vec::<String>::new());
+        crate::testsandbox::with_sandbox("postinstall-guard", &[], |root| {
+            assert!(sandboxed(), "进了沙箱 UKING_TEST_HOME 却没生效，这条用例就白跑了");
+            std::env::set_var("USERPROFILE", root);
+            std::env::set_var("APPDATA", root.join("AppData").join("Roaming"));
+            post_install("pi", &|_stream: &str, msg: &str| cli_logs.lock().unwrap().push(msg.to_string()));
+            post_install("dsh", &|_stream: &str, msg: &str| non_cli_logs.lock().unwrap().push(msg.to_string()));
+            assert!(!root.join(".uking").join("shims").exists(), "沙箱下不该建出 shims 目录");
+        });
+        let cli_logs = cli_logs.into_inner().unwrap();
+        let non_cli_logs = non_cli_logs.into_inner().unwrap();
+        assert!(
+            cli_logs.iter().any(|l| l.contains("测试沙箱中跳过用户 PATH 修改")),
+            "post_install(pi) 没走到 ensure_cli_command_guard（或守卫没跳过）：{cli_logs:?}"
+        );
+        assert!(
+            non_cli_logs.is_empty(),
+            "post_install(dsh) 不该碰转发器守卫（它不是 CLI 工具），却有日志：{non_cli_logs:?}"
+        );
+        assert_eq!(before, read_user_path_for_test(), "沙箱改动了真实用户 PATH");
     }
 
     /// 「自动升级失败」账本：**同一目标版本累加、换版本清零、读得回原因**。
