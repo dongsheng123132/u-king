@@ -592,7 +592,7 @@
         },
         {
           "type": "npm_install",
-          "label": "安装 pi（Mario Zechner 的开源终端 agent，npmmirror 国内加速）",
+          "label": "安装 pi（Earendil 出品的开源终端 agent，npmmirror 国内加速）",
           "package": "@earendil-works/pi-coding-agent"
         }
       ],

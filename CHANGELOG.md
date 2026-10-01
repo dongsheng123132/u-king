@@ -7,6 +7,20 @@
 
 ## 未发布
 
+## 1.3.4（2026-10-01）
+
+**用户可感知**
+
+- 首页改为「我的 AI」图标墙 + 行内展开详情（双击启动、默认展开上次用的、按真实 LaunchMode 显示打开方式）；AI 工具中心页（工具→模型→启动一屏）。
+- 换模型入口改读后端 TOOL_SPECS.config_target：pi / OpenCode / DSH 也能在卡片上换；读不到模型不编造。切模型时 JSON/TOML 解析或读取失败拒写，Codex 只换自有块，Windows 原子替换。
+- 装机失败 Top 修复：npm 全局安装带 --allow-scripts（npm 12 拦 postinstall）；子进程输出按行 UTF-8/ACP 解码，verify 瞬时锁重试 ~29s；便携 Node 目录清不掉先停占用进程；系统 Node 缺 npm 改装便携版；repair 前置 ensure_node；上报保首错，预检拦截与 UAC 取消不建 issue。
+- Codex 桌面版提权安装兜底（新版 MSIX 带 LocalSystem 服务，0x80073D28）。
+- DeepSeek Harness（Windows）改走官方桌面版静默安装；换模型写 ~/.dsh/settings.yaml 并提示重启生效。
+- 新增动作 runtime.aitool.install（CLI/MCP/U-Chat 可调装机）；U-Chat 起手词加「安装与修复」。
+- AI 工具官方图标 + NOTICE 第三方商标与图标许可声明；uu-switch 入口下架。
+- 创作画布标签加「打开在线版画布」；客户端模型清单补 GLM-5.3 / 5.3-flash。
+- 装机清单 v57（两份同步）：claude-code 补跑 install.cjs、npm 工具 repair 前置 ensure_node、codex-app 0x80073D28 提示、openclaw 放行 koffi/esbuild/protobufjs 安装脚本。
+
 ## 1.3.3（2026-09-24）
 
 **用户可感知**
