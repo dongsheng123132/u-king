@@ -2,6 +2,8 @@
 
 import { spawnSync } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, rmdirSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -139,7 +141,7 @@ function hostManifest(full, bindingSnapshot) {
 function runUkingJson(commandArgs) {
   // A freshly built candidate can be checked without rebuilding a debug exe that may be in use.
   const candidate = process.env.UKING_PARITY_EXE;
-  const result = spawnSync(
+  const result = captureRegistry(
     candidate || "cargo",
     candidate ? commandArgs : ["run", "--quiet", "--manifest-path", path.join(root, "src-tauri", "Cargo.toml"), "--", ...commandArgs],
     { cwd: root, encoding: "utf8", windowsHide: true, timeout: 660_000 }
@@ -155,6 +157,28 @@ function runUkingJson(commandArgs) {
   }
 }
 
+function captureRegistry(command, commandArgs, options) {
+  if (process.platform !== "win32") return spawnSync(command, commandArgs, options);
+  // Detached grandchildren may inherit pipes on Windows and keep spawnSync waiting after
+  // the registry process has exited. Files preserve the exact output without waiting for EOF.
+  const directory = mkdtempSync(path.join(os.tmpdir(), "uking-parity-output-"));
+  const stdoutPath = path.join(directory, "stdout");
+  const stderrPath = path.join(directory, "stderr");
+  let stdout;
+  let stderr;
+  try {
+    stdout = openSync(stdoutPath, "w");
+    stderr = openSync(stderrPath, "w");
+    const result = spawnSync(command, commandArgs, { ...options, stdio: ["ignore", stdout, stderr] });
+    return { ...result, stdout: readFileSync(stdoutPath, "utf8"), stderr: readFileSync(stderrPath, "utf8") };
+  } finally {
+    if (stdout !== undefined) closeSync(stdout);
+    if (stderr !== undefined) closeSync(stderr);
+    // An inherited handle can delay removal; cleanup must not hide the verification result.
+    try { rmSync(stdoutPath, { force: true }); rmSync(stderrPath, { force: true }); rmdirSync(directory); } catch {}
+  }
+}
+
 function runActionParity(check) {
   const cliArgs = [
     actionParityCli,
@@ -166,7 +190,8 @@ function runActionParity(check) {
     "--json",
     ...(check ? ["--check"] : [])
   ];
-  const result = spawnSync(process.execPath, cliArgs, { cwd: root, encoding: "utf8", windowsHide: true });
+  const result = spawnSync(process.execPath, cliArgs, { cwd: root, encoding: "utf8", windowsHide: true, timeout: 60_000 });
+  if (result.error) throw new Error(`ActionParity client check failed: ${result.error.message}`);
   let envelope;
   try {
     envelope = JSON.parse(result.stdout);
