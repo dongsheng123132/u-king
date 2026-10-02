@@ -137,11 +137,14 @@ function hostManifest(full, bindingSnapshot) {
 }
 
 function runUkingJson(commandArgs) {
+  // A freshly built candidate can be checked without rebuilding a debug exe that may be in use.
+  const candidate = process.env.UKING_PARITY_EXE;
   const result = spawnSync(
-    "cargo",
-    ["run", "--quiet", "--manifest-path", path.join(root, "src-tauri", "Cargo.toml"), "--", ...commandArgs],
-    { cwd: root, encoding: "utf8", windowsHide: true }
+    candidate || "cargo",
+    candidate ? commandArgs : ["run", "--quiet", "--manifest-path", path.join(root, "src-tauri", "Cargo.toml"), "--", ...commandArgs],
+    { cwd: root, encoding: "utf8", windowsHide: true, timeout: 660_000 }
   );
+  if (result.error) throw new Error(`U-King Registry check failed: ${result.error.message}`);
   if (result.status !== 0) {
     throw new Error(`U-King Registry export failed (${result.status}): ${result.stderr.trim()}`);
   }

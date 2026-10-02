@@ -51,6 +51,7 @@ const ALLOWED_SPEC_WITHOUT_TUI_APP = new Set([
   "obsidian",
   "uu-remote",
   "codex-app",
+  "claude-app", // Native GUI app; has no TUI route.
   "open365",
   "hermes-app",
   "uu-switch",

@@ -10,6 +10,31 @@
  *  +「AI 设置」出口（后者复用中央字典已有的「AI 设置」键，这里不重复翻）。
  *  「使用工具自带账号」这一条从此不再被引用，同上一条一起留着不删。 */
 export const toolhub: Record<string, string> = {
+  "桌面版模型配置说明": "Desktop model configuration guide",
+  "开始安装 {tool}（官方下载，装完自动验证）…": "Installing {tool} from the official source and verifying it…",
+  "日常软件与环境 →": "Everyday software and runtimes →",
+  "多选安装": "Install multiple",
+  "取消多选": "Cancel selection",
+  "安装所选（{n}）": "Install selected ({n})",
+  "安装所选软件：{list}": "Install selected software: {list}",
+  "所选软件安装流程已结束。请在「我的 AI」中启动；支持的工具可换模型或充值，需要账号的工具在首次启动时登录。": "Installation finished. Launch tools from My AI; supported tools offer model switching and recharge, while account-based tools require sign-in on first launch.",
+  "官方登录": "Official sign-in",
+  "自备 Key / 官方登录": "Your own key / official sign-in",
+  "在 U-King 内置终端打开": "Open in U-King's terminal",
+  "切换后 Claude Code 将使用 {name} 的模型和计费。可在「AI 设置」还原官方登录。": "Claude Code will use {name}'s models and billing. You can restore official sign-in in AI Settings.",
+  "开始安装 Claude 桌面版（官方安装包，装完检测能否启动）…": "Installing Claude Desktop from the official installer and verifying the app…",
+
+  "选择要在哪个文件夹里打开 {name}": "Choose a folder for {name}",
+  "在哪个文件夹里打开 {name}？": "Where should {name} open?",
+  "{name} 会在这个文件夹里读取、新建和修改文件。": "{name} will read, create, and edit files in this folder.",
+  "正在读取最近用过的文件夹…": "Loading recent folders…",
+  "还没有用过的文件夹，先选一个吧。": "Choose your first working folder.",
+  "最近用过的文件夹": "Recent folders",
+  "选择文件夹…": "Choose a folder…",
+  "选择其它文件夹…": "Choose another folder…",
+  "在这里打开": "Open here",
+  "向下回看较新输出": "Scroll down to newer output",
+
   "AI 工具中心": "AI Tool Hub",
   "选工具 · 选模型 · 一键启动": "Pick a tool, pick a model, launch",
   "命令行": "CLI",

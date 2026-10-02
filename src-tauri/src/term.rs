@@ -674,12 +674,28 @@ fn enable_interactive_color(builder: &mut CommandBuilder) {
     builder.env_remove("NO_COLOR");
 }
 
-/// cwd 选择：传入路径非空且确为已存在目录则用它，否则回落 home。
+/// 未指定 cwd 时用 home；指定的目录无效时拒绝，避免在错误目录中运行。
 /// （工作台按任务文件夹开终端用；原底部抽屉传 None → 行为不变。）
-fn resolve_cwd(cwd: Option<String>) -> String {
-    cwd.map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty() && std::path::Path::new(p).is_dir())
-        .unwrap_or_else(home_dir)
+fn resolve_cwd(cwd: Option<String>) -> Result<String, String> {
+    match cwd.filter(|p| !p.trim().is_empty()) {
+        Some(path) if std::path::Path::new(&path).is_absolute() && std::path::Path::new(&path).is_dir() => Ok(path),
+        Some(_) => Err("工作文件夹不存在或不是绝对路径，请重新选择文件夹。".into()),
+        None => Ok(home_dir()),
+    }
+}
+
+/// 写进 `.bat` 的路径：字面 `%` 必须写成 `%%`，否则批处理会把 `%XX%` 当环境变量展开
+/// （目录名「100%完成」→ `cd /d` 静默失败）。只在 Windows 的 `term_open_external` 用。
+#[cfg_attr(not(windows), allow(dead_code))]
+fn bat_escape_percent(path: &str) -> String {
+    path.replace('%', "%%")
+}
+
+/// 写进 `.command`（zsh）的路径：整体单引号包裹，路径内的 `'` 写成 `'\''`。
+/// 只在 macOS 的 `term_open_external` 用。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn sh_single_quote(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\\''"))
 }
 
 /// 待运行命令校验：放宽到支持带参命令（`claude --resume`、`codex --model x` 等），
@@ -701,8 +717,7 @@ fn resolve_cwd(cwd: Option<String>) -> String {
 /// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
 /// 附近注释，实现时不要漏掉这一条。
 pub fn validate_cmd(cmd: &str) -> bool {
-    const ALLOWED_PROGRAMS: &[&str] =
-        &["claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "node", "npm", "git", "ollama"];
+    const ALLOWED_PROGRAMS: &[&str] = &["kimi", "grok", "muse", "agy", "claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;
     if cmd.len() > MAX_LEN {
         return false;
@@ -865,10 +880,27 @@ pub async fn headless_session_test() -> Result<String, String> {
 
     // ---- A：保序 + EOF 哨兵 + 自清 ----
     let (ch_a, text_a, eof_a) = collector();
-    let id_a = term_open_pty(120, 30, ch_a, None, None, Some("selftest".into())).await?;
+    let selected_dir = std::env::temp_dir().join(format!("uking-pty-中文 空格 100% & !-{}-{}", std::process::id(), next_id()));
+    std::fs::create_dir(&selected_dir).map_err(|e| e.to_string())?;
+    let cwd_result = selected_dir.join("actual-cwd.txt");
+    let id_a = term_open_pty(120, 30, ch_a, None, Some(selected_dir.to_string_lossy().into()), Some("selftest".into())).await?;
     if !wait_shell_ready(&text_a, &id_a) {
         fails.push("shell 60s 内没能执行一条 echo（起不来？）".into());
     }
+    #[cfg(windows)]
+    let cwd_command = format!("[IO.File]::WriteAllText('{}', (Get-Location).Path)\r", cwd_result.to_string_lossy().replace('\'', "''"));
+    #[cfg(not(windows))]
+    let cwd_command = format!("pwd > {}\r", sh_single_quote(&cwd_result.to_string_lossy()));
+    term_write(id_a.clone(), cwd_command)?;
+    let mut cwd_ok = false;
+    for _ in 0..100 {
+        sleep(100);
+        if let Ok(actual) = std::fs::read_to_string(&cwd_result) {
+            cwd_ok = actual.trim() == selected_dir.to_string_lossy();
+            break;
+        }
+    }
+    if !cwd_ok { fails.push("PTY 没有进入选中的中文/空格/百分号工作目录".into()); }
     // 清掉 PS7 下载日志 / banner / 握手回显，免得污染下面的顺序断言
     if let Ok(mut g) = text_a.lock() {
         g.clear();
@@ -935,10 +967,13 @@ pub async fn headless_session_test() -> Result<String, String> {
         fails.push(format!("写入阻塞：1MB 的 term_write 花了 {write_ms}ms（应当立刻返回）"));
     }
     let _ = term_close(id_b);
+    let _ = std::fs::remove_file(&cwd_result);
+    let _ = std::fs::remove_dir(&selected_dir);
 
     let report = format!(
-        "{{\"ok\":{},\"write_1mb_ms\":{},\"order_ok\":{},\"eof_sentinel\":{},\"fails\":{}}}",
+        "{{\"ok\":{},\"cwd_ok\":{},\"write_1mb_ms\":{},\"order_ok\":{},\"eof_sentinel\":{},\"fails\":{}}}",
         fails.is_empty(),
+        cwd_ok,
         write_ms,
         order_ok,
         eof_a.load(Ordering::Relaxed),
@@ -983,15 +1018,20 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
     #[cfg(windows)]
     {
         use std::io::Write as _;
-        let path = build_path();
-        let home = openclaw_home();
-        let _ = std::fs::create_dir_all(&home);
-        let workdir = resolve_cwd(cwd);
+        let path = bat_escape_percent(&build_path());
+        let original_home = openclaw_home();
+        let home = bat_escape_percent(&original_home);
+        let _ = std::fs::create_dir_all(&original_home);
+        // 用户在「选文件夹」弹窗里选的目录（可能含中文 / 空格 / `&` / 括号）。实测（GBK 系统、
+        // `chcp 65001` + UTF-8 无 BOM 的 .bat）：中文、空格、`&`、`()`、`!` 都能被 `cd /d "…"`
+        // 正确吃下；唯一会炸的是 `%`——批处理会把 `%NAME%` 当变量展开，目录名里带 `%`（如
+        // 「100%完成」）时 `cd` 静默失败、终端落在 U-King 自己的 cwd。批处理里字面 `%` 要写 `%%`。
+        let workdir = bat_escape_percent(&resolve_cwd(cwd)?);
 
         // run 行：有命令就 /K 跑命令并保活；纯开终端就 /K 进交互 shell。
         let run_line = match &cmd {
-            Some(c) => format!("cmd /K \"{c}\""),
-            None => "cmd /K".to_string(),
+            Some(c) => format!("cmd /D /V:OFF /K \"{c}\""),
+            None => "cmd /D /V:OFF /K".to_string(),
         };
 
         let bat = format!(
@@ -1006,7 +1046,7 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
              set \"PIP_DISABLE_PIP_VERSION_CHECK=1\"\r\n\
              set \"UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/\"\r\n\
              set \"UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple/\"\r\n\
-             cd /d \"{workdir}\"\r\n\
+             cd /d \"{workdir}\" || exit /b 1\r\n\
              echo [U-King] \u{5df2}\u{6ce8}\u{5165}\u{5de5}\u{5177}\u{8def}\u{5f84}\u{ff0c}openclaw / hermes / claude / codex \u{53ef}\u{76f4}\u{63a5}\u{8fd0}\u{884c}\r\n\
              {run_line}\r\n",
         );
@@ -1022,11 +1062,12 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
                 msg
             })?;
 
-        // `cmd /C start "" <bat>` —— start 把 bat 拉成独立新控制台进程（与 U-King 无父子关系）。
-        // 头一个空 "" 是 start 的窗口标题占位（不可省，否则带引号的路径会被当标题）。
+        // 直接创建控制台，避免 start 对路径的第二次 shell 解析。关闭 AutoRun 和延迟展开。
+        use std::os::windows::process::CommandExt;
         std::process::Command::new(crate::installer::system_tool("cmd"))
-            .args(["/C", "start", ""])
+            .args(["/D", "/V:OFF", "/C"])
             .arg(&bat_file)
+            .creation_flags(0x0000_0010) // CREATE_NEW_CONSOLE（用户明确选择系统终端）
             .spawn()
             .map_err(|e| {
                 let msg = format!("\u{542f}\u{52a8}\u{72ec}\u{7acb}\u{7ec8}\u{7aef}\u{5931}\u{8d25}: {e}");
@@ -1052,7 +1093,8 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
         let path = build_path();
         let home = openclaw_home();
         let _ = std::fs::create_dir_all(&home);
-        let workdir = resolve_cwd(cwd);
+        // 单引号包裹 + `'` → `'\''`：目录名里的 `$` / 反引号 / `"` 不会被 zsh 当展开处理。
+        let workdir = sh_single_quote(&resolve_cwd(cwd)?);
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
 
         // run 行：有命令就先跑命令，跑完 exec 交互 shell 保活；纯开终端直接交互 shell。
@@ -1071,7 +1113,7 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
              export PIP_DISABLE_PIP_VERSION_CHECK=1\n\
              export UV_INDEX_URL=\"https://mirrors.aliyun.com/pypi/simple/\"\n\
              export UV_DEFAULT_INDEX=\"https://mirrors.aliyun.com/pypi/simple/\"\n\
-             cd \"{workdir}\"\n\
+             cd {workdir} || exit 1\n\
              echo \"[U-King] 已注入工具路径，openclaw / hermes / claude / codex 可直接运行\"\n\
              {run_line}",
         );
@@ -1194,6 +1236,8 @@ pub async fn term_open_pty(
         other => other,
     };
 
+    let resolved_cwd = resolve_cwd(cwd)?;
+
     // 首次开终端且客户机没有 PowerShell 7 时，下发便携 PS7（很多老机器只有 5.1，中文易乱码、
     // 无 PSReadLine）。进度直接写进本终端窗格（on_data 已就绪），下完这一次之后 shell_builder
     // 里的 find_pwsh 就命中便携版、秒开。下载失败回落 5.1，终端照常能开。
@@ -1210,8 +1254,6 @@ pub async fn term_open_pty(
         })
         .await;
     }
-
-    let resolved_cwd = resolve_cwd(cwd);
 
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -1834,8 +1876,26 @@ pub fn openclaw_webui_url() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_env_dump, term_open_pty, validate_cmd};
+    use super::{bat_escape_percent, parse_env_dump, sh_single_quote, term_open_pty, validate_cmd};
     use tauri::ipc::Channel;
+
+    #[test]
+    fn requested_working_folder_never_silently_falls_back_to_home() {
+        assert!(super::resolve_cwd(Some("missing/relative-folder".into())).is_err());
+        let dir = std::env::temp_dir();
+        assert_eq!(super::resolve_cwd(Some(dir.to_string_lossy().into_owned())).unwrap(), dir.to_string_lossy());
+        assert!(super::resolve_cwd(None).is_ok());
+    }
+
+    /// 用户选的文件夹路径写进启动脚本前的转义：中文 / 空格 / `&` / 括号原样放行，
+    /// 只有 `%`（批处理变量展开）与 `'`（zsh 单引号）需要处理。
+    #[test]
+    fn launch_script_path_escaping() {
+        assert_eq!(bat_escape_percent(r"D:\项目 测试 空格&(括号)"), r"D:\项目 测试 空格&(括号)");
+        assert_eq!(bat_escape_percent(r"D:\100%完成\%PATH%"), r"D:\100%%完成\%%PATH%%");
+        assert_eq!(sh_single_quote("/Users/me/项目 a"), "'/Users/me/项目 a'");
+        assert_eq!(sh_single_quote("/tmp/it's $HOME `x`"), r"'/tmp/it'\''s $HOME `x`'");
+    }
 
     /// rc 文件在标记前打印的横幅（含 `=`）不能混进环境变量；标记后才是 env 输出。
     #[test]

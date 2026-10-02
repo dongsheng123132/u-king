@@ -481,7 +481,7 @@ export function Sidebar({
                   ? updateFailed > 0
                     ? "text-amber-500 hover:bg-amber-500/[0.12]"
                     : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]"
-                  : "text-ink-5 hover:text-ink-3 hover:bg-white/[0.04]",
+                  : "text-ink-3 hover:text-ink-3 hover:bg-white/[0.04]",
               )}
             >
               <ArrowUpCircle size={18} className={hasUpdate && updating ? "animate-pulse" : ""} />
@@ -685,7 +685,7 @@ export function Sidebar({
                 ? updateFailed > 0
                   ? "text-amber-500 hover:bg-amber-500/[0.12]"
                   : "text-ink-4 hover:text-accent hover:bg-accent/[0.08]"
-                : "text-ink-5 hover:text-ink-3 hover:bg-white/[0.04]",
+                : "text-ink-3 hover:text-ink-3 hover:bg-white/[0.04]",
             )}
           >
             <ArrowUpCircle size={15} className={cn("shrink-0", hasUpdate && updating && "animate-pulse")} />
@@ -728,9 +728,9 @@ export function Sidebar({
 
       {/* 语言 + 主题合并成一行：原来是两整行（各 py-2）太占纵向空间（客户反馈「堆一块、占地方太多」）。
           合并后省一行高度，又保留标签+分段控件的可发现性（不退回当年那个没人发现的 24px 页脚小图标）。 */}
-      <div className="px-2.5 pb-1 flex items-center gap-2">
+      <div className="px-2.5 pb-1 flex flex-wrap items-center gap-1">
         {/* 语言分段 */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0 px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-2">
+        <div className="flex items-center gap-1.5 flex-1 min-w-[100px] px-1 py-1.5 rounded-card bg-white/[0.02] text-ink-2">
           <Languages size={15} className="text-ink-4 shrink-0" />
           <div className="flex items-center gap-0.5 rounded-md bg-white/[0.04] p-0.5">
             {(["zh", "en"] as const).map((l) => (
@@ -752,7 +752,7 @@ export function Sidebar({
         <button
           onClick={onToggleTheme}
           title={theme === "dark" ? t("浅色模式") : t("深色模式")}
-          className="flex items-center gap-1.5 shrink-0 min-h-[32px] px-2.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
+          className="flex items-center gap-1.5 shrink-0 min-h-[32px] px-1.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
         >
           {theme === "dark" ? (
             <Moon size={15} className="text-ink-4" />
@@ -792,7 +792,7 @@ export function Sidebar({
         {/* 加个图标 —— 光一串 10px 的灰色版本号，没人看得出它是可点的。 */}
         <button
           onClick={() => onShowChangelog?.()}
-          className="flex items-center gap-1 text-[10px] text-ink-5 hover:text-accent transition-colors"
+          className="flex items-center gap-1 text-[10px] text-ink-3 hover:text-accent transition-colors"
           title={t("查看更新日志")}
         >
           <History size={11} />

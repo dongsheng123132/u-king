@@ -6788,23 +6788,72 @@ fn classify_search_dirs_from(
         .collect()
 }
 
-/// 只在零成本时填版本：同目录或上级目录有 `package.json` 就读它的 `version` 字段，
-/// 拿不到就是 `None`。绝不为它起进程——那是 `installer::tool_installed` 的活。
-fn cheap_version_hint(dir: &Path) -> Option<String> {
+/// 只在零成本时填版本，拿不到就是 `None`。绝不为它起进程——那是 `installer::tool_installed` 的活。
+///
+/// 来源按可信度排：
+///  ① **npm 命令 shim 指向的包**——`file`（`claude.cmd` / `claude.ps1` / 无扩展名的 sh shim）是
+///    npm 生成的几行文本，里面写着 `node_modules\<pkg>\…`；包的 `package.json` 就在
+///    `<shim 所在目录>/node_modules/<pkg>/package.json`。便携 Node 下 shim 在
+///    `~/.uking/runtime/node/`、包在它的 `node_modules/` 里，目录本身（以及上一级）**没有**
+///    `package.json`——老逻辑只看这两处，所以详情条的版本号一直是空的；
+///  ② 兜底（老逻辑，原样保留）：同目录或上级目录有 `package.json` 就读它的 `version`。
+fn cheap_version_hint(dir: &Path, file: &Path) -> Option<String> {
+    if let Some(v) = npm_shim_package_version(dir, file) {
+        return Some(v);
+    }
     let mut candidates = vec![dir.join("package.json")];
     if let Some(parent) = dir.parent() {
         candidates.push(parent.join("package.json"));
     }
-    for candidate in candidates {
-        if let Ok(text) = std::fs::read_to_string(&candidate) {
-            if let Ok(v) = serde_json::from_str::<Value>(&text) {
-                if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
-                    return Some(ver.to_string());
-                }
-            }
-        }
+    candidates.iter().find_map(|c| read_package_version(c))
+}
+
+fn read_package_version(package_json: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(package_json).ok()?;
+    let v = serde_json::from_str::<Value>(&text).ok()?;
+    v.get("version").and_then(|x| x.as_str()).map(|s| s.to_string())
+}
+
+/// 读 `file` 这个 npm shim，找到它指向的包再读包的版本。`file` 不是文本 shim（`.exe`、
+/// 指向大 JS 文件的符号链接……）就返回 `None`，交给调用方走兜底。
+fn npm_shim_package_version(dir: &Path, file: &Path) -> Option<String> {
+    // shim 只有几行（实测 < 1KB）；超过 16KB 的多半是被符号链接成真正的 JS 入口 / 二进制，
+    // 里面的 "node_modules" 字样不代表它自己的包，别读。
+    const MAX_SHIM_BYTES: u64 = 16 * 1024;
+    let ext = file
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if !matches!(ext.as_str(), "" | "cmd" | "bat" | "ps1") {
+        return None;
     }
-    None
+    if std::fs::metadata(file).ok()?.len() > MAX_SHIM_BYTES {
+        return None;
+    }
+    let text = std::fs::read_to_string(file).ok()?;
+    let pkg = npm_pkg_from_shim(&text)?;
+    read_package_version(&dir.join("node_modules").join(pkg).join("package.json"))
+}
+
+/// 从 npm shim 文本里认出它指向的包名：`...node_modules\@scope\name\bin\x` → `@scope/name`，
+/// `...node_modules/opencode-ai/bin/x` → `opencode-ai`（反斜杠 / 正斜杠都认——`.cmd` 用前者，
+/// `.ps1` 与 sh shim 用后者）。认不出、或包名里带 `..` / 盘符冒号（防路径穿越）→ `None`。
+fn npm_pkg_from_shim(text: &str) -> Option<String> {
+    const SEPS: [char; 7] = ['\\', '/', '"', '\'', ' ', '\r', '\n'];
+    let idx = text.find("node_modules")?;
+    let rest = text[idx + "node_modules".len()..].strip_prefix(['\\', '/'])?;
+    let mut parts = rest.split(SEPS);
+    let first = parts.next().filter(|p| !p.is_empty())?;
+    let pkg = if first.starts_with('@') {
+        let name = parts.next().filter(|p| !p.is_empty())?;
+        format!("{first}/{name}")
+    } else {
+        first.to_string()
+    };
+    if pkg.contains("..") || pkg.contains(':') {
+        return None;
+    }
+    Some(pkg)
 }
 
 /// 锁 `ToolDiscovery.source` 的语义（`"machine"` / `"portable"`），防止
@@ -6919,6 +6968,46 @@ mod tool_discovery_source_tests {
         );
         assert!(out[0].configured, "active 回查也要用 'clawx' 这个 name，不是 cmd");
     }
+
+    /// 版本号：npm shim 里写着包名，包的 package.json 在 `<shim 目录>/node_modules/<pkg>/`。
+    /// shim 文本取自本机便携 Node 目录里真实的 `claude.cmd` / `codex.cmd` / `pi.cmd` / `opencode.cmd`。
+    #[test]
+    fn npm_shim_text_yields_package_name() {
+        let cmd_scoped = "@ECHO off\r\nSETLOCAL\r\nCALL :find_dp0\r\n\"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe\"   %*\r\n";
+        assert_eq!(npm_pkg_from_shim(cmd_scoped).as_deref(), Some("@anthropic-ai/claude-code"));
+        let cmd_plain = "\"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe\"   %*";
+        assert_eq!(npm_pkg_from_shim(cmd_plain).as_deref(), Some("opencode-ai"));
+        let ps1 = "$exe=\"\"\n& \"$basedir/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js\" $args\n";
+        assert_eq!(npm_pkg_from_shim(ps1).as_deref(), Some("@earendil-works/pi-coding-agent"));
+        // 认不出 / 路径穿越 → None
+        assert_eq!(npm_pkg_from_shim("echo hello"), None);
+        assert_eq!(npm_pkg_from_shim("\"%dp0%\\node_modules\\..\\evil\\x\""), None);
+        assert_eq!(npm_pkg_from_shim("node_modules/@scope"), None);
+    }
+
+    /// 端到端（真实小目录）：便携 Node 的目录结构——目录本身和上一级都没有 package.json，
+    /// 版本只能从 shim 指向的 `node_modules/<pkg>/package.json` 拿；`.exe` / 没有 shim 时走兜底。
+    #[test]
+    fn version_hint_follows_npm_shim_into_node_modules() {
+        let root = std::env::temp_dir().join(format!("uking-verhint-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let node_dir = root.join("runtime").join("node");
+        let pkg_dir = node_dir.join("node_modules").join("@anthropic-ai").join("claude-code");
+        std::fs::create_dir_all(&pkg_dir).unwrap();
+        std::fs::write(pkg_dir.join("package.json"), r#"{"name":"@anthropic-ai/claude-code","version":"9.8.7"}"#).unwrap();
+        let shim = node_dir.join("claude.cmd");
+        std::fs::write(&shim, "\"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe\"   %*\r\n").unwrap();
+
+        assert_eq!(cheap_version_hint(&node_dir, &shim).as_deref(), Some("9.8.7"));
+        // .exe 不是文本 shim：不读它，也没有兜底的 package.json → None
+        let exe = node_dir.join("claude.exe");
+        std::fs::write(&exe, b"MZ").unwrap();
+        assert_eq!(cheap_version_hint(&node_dir, &exe), None);
+        // 兜底（老逻辑）：同目录有 package.json
+        std::fs::write(node_dir.join("package.json"), r#"{"version":"1.2.3"}"#).unwrap();
+        assert_eq!(cheap_version_hint(&node_dir, &exe).as_deref(), Some("1.2.3"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 /// `DriverStatus::discovered` 的实际计算：覆盖 `LIST_TOOLS` 这 7 个工具，
@@ -6972,7 +7061,7 @@ fn discover_tools_from(
                         name: (*name).to_string(),
                         path: file.display().to_string(),
                         source: (*source).to_string(),
-                        version: cheap_version_hint(dir),
+                        version: cheap_version_hint(dir, &file),
                         configured: active.get(*name).is_some(),
                     });
                 }

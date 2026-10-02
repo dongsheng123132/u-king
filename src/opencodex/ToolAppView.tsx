@@ -17,7 +17,8 @@ import { ProviderSwitch } from "../components/ProviderSwitch";
 import { ToolIcon } from "../components/ToolIcon";
 import { LaunchBlocked, type LaunchPlan } from "../components/LaunchBlocked";
 import { ACTION, createTauriActionClient } from "../generated/action-client";
-import type { DeviceKey, DriverStatus } from "../lib/types";
+import type { DeviceKey } from "../lib/types";
+import { ensureDefaultDriver } from "../lib/ensureDriver";
 import { useViewport } from "../lib/useViewport";
 import { useI18n } from "../i18n";
 
@@ -25,27 +26,6 @@ import { useI18n } from "../i18n";
 // `runtime.tool.launch`——本视图的启动仍是各工具自己那套 handleStart 时序，判定核心只用来
 // 决定"要不要盖 LaunchBlocked"，不接管实际启动）。
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
-
-/** 这个工具是否已被任何驱动接管（接管了就别自动回灌，尊重用户可能切到的官方直连）。 */
-function targetConfigured(app: TuiApp, d: DriverStatus | null): boolean {
-  if (!d) return false;
-  const t = app.configTargets[0];
-  // 用户显式选过的驱动（含「官方直连」official）一律算已接管 —— 绝不回灌覆盖。
-  // 这条优先级最高：还原到 official 后 config.toml 可能被删（没了 model_provider），
-  // 若只看下面的实时配置会误判成「没配过」→ 把虾盘云又写回去，造成「怎么都还原不了」。
-  if (d.active?.[t]) return true;
-  if (t === "claude") return !!d.claude_base;
-  if (t === "codex") return !!d.codex_provider;
-  if (t === "clawx") return !!d.clawx_model;
-  if (t === "dsh") return !!d.dsh_model;
-  // Hermes 特例：**不能**用 `!!d.hermes_model` 兜底 —— Hermes 首次运行会**自造**一个默认
-  // 模型（alibaba/qwen3.7-max），config.yaml 里永远有 model.default，导致这里恒为 true →
-  // 启动时的自动配置被跳过 → Hermes 用它自己的 qwen 默认 + 空 Key → HTTP 401（客户实锤，
-  // 见截图 2026-07-08）。真正的「已配过」信号是 active["hermes"]（line 26 已处理，来自
-  // 显式记录或 base_url 反推的已知 provider）。无该记录 = 从没被我们/用户配过 → 该自动配虾盘云。
-  if (t === "hermes") return false;
-  return false;
-}
 
 const OPENCLAW_PORT = 18789;
 const OPENCLAW_GATEWAY_CMD = `openclaw gateway run --allow-unconfigured --port ${OPENCLAW_PORT}`;
@@ -190,25 +170,17 @@ export function ToolAppView({
   // claude / codex 不在此列：用户常有自己的官方登录（Claude Pro/Max、Codex ChatGPT），点「启动」
   // 只是跑 CLI、绝不替他切驱动；要接虾盘云请用右侧 ProviderSwitch 显式切（可一键还原）。
   const ensureWebToolConfigured = async () => {
-    if (!deviceKey?.key) return;
-    // cline 已下架（2026-09-08），不再按需配。
-    if (app.id !== "openclaw" && app.id !== "hermes" && app.id !== "dsh") return;
-    const d = await invoke<DriverStatus>("get_driver_status").catch(() => null);
-    if (targetConfigured(app, d)) return; // 已配过（含官方直连）→ 尊重用户选择，不动
-    try {
-      await invoke("apply_provider", {
-        providerId: "xiapan",
-        apiKey: deviceKey.key,
-        model: null,
-        targets: app.configTargets,
-      });
-      onRefreshDriver();
-      onToast(
-        t("{name} 已配好虾盘云", { name: app.name }) + (app.id === "openclaw" ? t("（ClawX 需重启）") : ""),
-      );
-    } catch {
-      /* 配失败不打断启动，右侧 ProviderSwitch 仍可手动切 */
-    }
+    // 逻辑（含「只对 openclaw/hermes/dsh 生效」「已被驱动接管就不碰」）抽到了 `lib/ensureDriver.ts`，
+    // 「我的 AI」直接启动 Hermes 的链路（App.tsx::runLaunchAction）调的是同一份。
+    await ensureDefaultDriver({
+      toolId: app.id,
+      name: app.name,
+      configTargets: app.configTargets,
+      deviceKey,
+      onRefreshDriver,
+      onToast,
+      tr: t,
+    });
   };
 
   const handleStart = async () => {

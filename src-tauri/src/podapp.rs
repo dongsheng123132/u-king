@@ -123,8 +123,8 @@ pub fn installed() -> Option<(PathBuf, String)> {
         for key in ["org.podapp.dock", PRODUCT] {
             let full = format!("{hive}\\{key}");
             let Some(out) = reg_query(&full) else { continue };
-            let ver = reg_value(&out, "DisplayVersion").unwrap_or_default();
-            let loc = reg_value(&out, "InstallLocation").unwrap_or_default();
+            let ver = crate::installer::reg_value(&out, "DisplayVersion").unwrap_or_default();
+            let loc = crate::installer::reg_value(&out, "InstallLocation").unwrap_or_default();
             let exe = if loc.is_empty() {
                 None
             } else {
@@ -177,41 +177,6 @@ fn reg_query(key: &str) -> Option<String> {
         .output()
         .ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
-}
-
-/// 从 `reg query` 输出里取某个值（形如 `    DisplayVersion    REG_SZ    0.1.1`）。
-///
-/// 🔴 **必须剥掉包裹的双引号**：2026-07-30 干净机实测，PodApp 的 NSIS 把 `InstallLocation`
-/// 写成了 `"C:\...\泊舟 AI 小程序"` —— **带引号存进注册表**。不剥的话 `PathBuf` 会拿到一个以
-/// `"` 开头的非法路径，`is_file()` 恒 false → 装好了照样报「没装」→ 客户重复安装。
-/// 这是 UU远程 那次「装了却报没装」的同款故障，换了个成因（那次是目录少一层，这次是引号）。
-#[cfg(windows)]
-fn reg_value(out: &str, name: &str) -> Option<String> {
-    for line in out.lines() {
-        let t = line.trim();
-        // 用 `starts_with(name)` 会让 `Display` 误命中 `DisplayVersion`；要求后面紧跟空白。
-        let Some(rest) = t.strip_prefix(name) else { continue };
-        if !rest.starts_with(char::is_whitespace) {
-            continue;
-        }
-        let rest = rest.trim_start();
-        for ty in ["REG_EXPAND_SZ", "REG_SZ"] {
-            if let Some(v) = rest.strip_prefix(ty) {
-                let v = v.trim();
-                // 剥掉成对的包裹引号（只在首尾都有时剥，别把值里的引号吃掉）
-                let v = v
-                    .strip_prefix('"')
-                    .and_then(|x| x.strip_suffix('"'))
-                    .unwrap_or(v)
-                    .trim()
-                    .trim_end_matches('\\');
-                if !v.is_empty() {
-                    return Some(v.to_string());
-                }
-            }
-        }
-    }
-    None
 }
 
 /// 读 exe 的文件版本（注册表没给版本时兜底）。
@@ -431,30 +396,5 @@ mod tests {
     fn china_reachable_source_first() {
         assert!(MANIFEST_URLS[0].contains("u-claw.org.cn"));
         assert!(MANIFEST_URLS.last().unwrap().contains("github.com"));
-    }
-
-    /// 用 2026-07-30 干净机上 `reg query` 的**实测原文**当夹具。
-    /// 这段里 `InstallLocation` 带引号 —— 就是「装好了却报没装」的那颗雷。
-    #[cfg(windows)]
-    #[test]
-    fn reg_value_strips_wrapping_quotes() {
-        let out = "\r\nHKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\泊舟 AI 小程序\r\n    DisplayName    REG_SZ    泊舟 AI 小程序\r\n    DisplayVersion    REG_SZ    0.1.1\r\n    InstallLocation    REG_SZ    \"C:\\Users\\x\\AppData\\Local\\泊舟 AI 小程序\"\r\n";
-        assert_eq!(reg_value(out, "DisplayVersion").as_deref(), Some("0.1.1"));
-        // 关键断言：拿到的必须是干净路径，不带引号
-        assert_eq!(
-            reg_value(out, "InstallLocation").as_deref(),
-            Some("C:\\Users\\x\\AppData\\Local\\泊舟 AI 小程序")
-        );
-        // `DisplayName` 不能被 `DisplayVersion` 抢走（前缀匹配必须要求后面跟空白）
-        assert_eq!(reg_value(out, "DisplayName").as_deref(), Some("泊舟 AI 小程序"));
-        assert!(reg_value(out, "NoSuchValue").is_none());
-    }
-
-    /// 尾部反斜杠要去掉，否则 join 出 `...\\泊舟 AI 小程序\\\\x.exe`。
-    #[cfg(windows)]
-    #[test]
-    fn reg_value_trims_trailing_slash() {
-        let out = "    InstallLocation    REG_SZ    \"C:\\App\\\"\r\n";
-        assert_eq!(reg_value(out, "InstallLocation").as_deref(), Some("C:\\App"));
     }
 }

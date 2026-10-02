@@ -129,7 +129,13 @@ let nextId = 1;
 
 // 队列里的每一步都用 `t(TOOL_NAMES[tool])` 做文案，**漏一个就显示 "undefined 安装成功"**。
 // 所以这里必须覆盖所有可能进队列或被工具市场点进来的 id，不只是默认装的三件套。
-const TOOL_NAMES: Record<string, string> = {
+export const TOOL_NAMES: Record<string, string> = {
+  "claude-app": "Claude 桌面版",
+  "kimi-code": "Kimi Code",
+  "grok-build": "Grok Build",
+  "muse-code": "Muse Code",
+  "antigravity-cli": "Antigravity CLI",
+
   "claude-code": "Claude Code CLI",
   pi: "pi",
   hermes: "Hermes Agent",
@@ -185,7 +191,7 @@ export function Wizard({
   onGoWorkspace,
 }: {
   /** 从工具市场点进来时预选的工具 id */
-  preselect?: string | null;
+  preselect?: string | string[] | null;
   onFinished?: () => void;
   /** 装完把人送进 U-Workspace（0.9.85 起的落点：装完不再指向 ClawX）。
    *  没传就只显示文字引导，不给点了没反应的按钮。 */
@@ -328,6 +334,16 @@ export function Wizard({
   }
 
   async function pickTools(detect: StackDetect) {
+    if (Array.isArray(preselect)) {
+      const catalog = await invoke<{ id: string; installed: boolean }[]>("list_tools");
+      const ids = [...new Set(preselect)].filter((id) => TOOL_NAMES[id]);
+      ctx.current.queue = ids.filter((id) => !catalog.find((tool) => tool.id === id)?.installed);
+      if (IS_WINDOWS && !detect.git.found && ids.some((id) => id === "claude-code" || id === "kimi-code")) {
+        ctx.current.queue.unshift("env:git");
+      }
+      pushUser(t("安装所选软件：{list}", { list: ids.map((id) => TOOL_NAMES[id]).join("、") }));
+      return installQueue();
+    }
     // 「一键全安装」：客户点首屏大按钮进来，不再逐个问，直接排队装好 Claude Code 和
     // 必要环境（不是真的把工具市场里所有可装工具都装一遍，见下方 preselect === "all" 的队列）。
     //
@@ -715,8 +731,12 @@ export function Wizard({
         push({
           role: "uking",
           text:
-            tool === "codex-app"
+            tool === "claude-app"
+              ? t("开始安装 Claude 桌面版（官方安装包，装完检测能否启动）…")
+              : tool === "codex-app"
               ? t("开始安装 Codex 桌面版（微软商店渠道，不通自动切国内镜像，装完自动验证）…")
+              : ["grok-build", "muse-code", "antigravity-cli"].includes(tool)
+              ? t("开始安装 {tool}（官方下载，装完自动验证）…", { tool: TOOL_NAMES[tool] })
               : t("开始安装 {tool}（走 npmmirror 国内加速，装完自动验证）…", { tool: t(TOOL_NAMES[tool]) }),
         });
         const logId = push({ role: "uking", log: [], logDone: false });
@@ -884,6 +904,10 @@ export function Wizard({
     //   finishInstallAll 里一个字都没有。留着会让人以为这里还在推 261MB 的下载。）
     if (ctx.current.installAllThenXiapan) {
       return finishInstallAll();
+    }
+    if (Array.isArray(preselect) || ctx.current.queue.every((id) => ["claude-app", "grok-build", "muse-code", "antigravity-cli", "kimi-code"].includes(id))) {
+      push({ role: "uking", text: t("所选软件安装流程已结束。请在「我的 AI」中启动；支持的工具可换模型或充值，需要账号的工具在首次启动时登录。") });
+      return finish();
     }
     // 单独安装 DSH：安装完就把这台机器的虾盘云 Key 写进 DSH 原生
     // settings/credentials，Web + terminal 共用。这是用户主动点「安装 DSH」的收尾，

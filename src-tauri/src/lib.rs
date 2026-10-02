@@ -76,6 +76,7 @@ mod tasks;
 mod term;
 mod toolprobe;
 mod tools;
+mod desktop_app;
 mod tray;
 mod uninstall;
 mod ulog;
@@ -3204,7 +3205,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 match plan.mode {
                     tools::LaunchMode::GuiApp => {
                         tools::launch_app(&plan.tool_id)?;
-                        Ok(serde_json::json!({ "next": "done", "message": format!("已启动 {tool_id}") }))
+                        Ok(serde_json::json!({ "next": "done", "message": format!("已启动 {}", tools::list_tools().iter().find(|t| t.id == tool_id).map(|t| t.name.as_str()).unwrap_or(tool_id)) }))
                     }
                     tools::LaunchMode::ExternalTerm => {
                         term::term_open_external(Some(plan.launch_cmd.clone()), None)?;

@@ -1,8 +1,8 @@
 {
   "skill": "uking-install-windows",
-  "version": 58,
+  "version": 59,
   "updated": "2026-10-02",
-  "notes": "v58: 修「装完在终端敲 claude / codex 提示不是内部或外部命令」：电脑上已有系统 Node 时工具装在 %APPDATA%\\npm，该目录常不在用户 PATH；转发启动器步骤现在也会从 %APPDATA%\\npm 建转发器并前置进用户 PATH（先找 U-King 自带 Node，找不到再找 %APPDATA%\\npm；已有的旧转发器会被识别并更新，你自己写的同名脚本不会被覆盖）。python3 转发器也一并修了（中文用户名下不再被写成问号路径）。\nv57: claude-code 装完补跑 postinstall（新版 npm 默认拦截安装脚本，claude.exe 只剩 500 字节占位壳、运行报「与 Windows 版本不兼容」；repair 强制重装后同样补跑）；所有 steps 里有 ensure_node 而 repair 里没有的 npm 工具，repair 显式前置 ensure_node（Node 没装上时不再满屏「npm 不是内部或外部命令」）。codex-app 安装失败提示 0x80073D28 时说明需管理员并引导升级；openclaw 放行 koffi/esbuild/protobufjs 安装脚本（npm 12）。\nv56: DSH 锁定更新至 0.1.7-rc.2（npm next 标签，与官方桌面版 0.1.7-rc.1 同一条线；npm latest 仍是较旧的 0.1.5-rc.3，故明确钉版本）。2026-09-25 隔离 DSH_HOME 实测：521 包 23s 装完、两个固定插件 add 成功、web/terminal profile dump-config 通过、dsh web 起在 3080 且带 token 访问正常、terminal 模式可启动（有 code-runtime-worker-thread 未激活告警，系自研终端插件与新版包结构不匹配）。未用真实模型凭证跑会话。\nv55: DSH 锁定更新至 0.1.5-rc.2；在隔离副本中只验证现有 profile 的离线配置解析与版本可执行，未启动会话或验证第三方插件。\nv54: 下架 Cline CLI（reports 仓被 [auto][install_failed] 淹没：Windows 平台二进制 @cline/cli-windows-x64 约 150MB 是 optionalDependency，npmmirror 滞后静默跳过 → 装上了但 --version 崩， Widely 误报；产品同步收窄）。删 tools.cline + shim 名单；存量已装走「一键卸载」(cleanup tool-cline)。老客户端忽略未知字段，线上热下发可直接覆盖。\nv52: 上架 Cline CLI（cline@npm，Apache-2.0）。四门槛 2026-08-29 本机沙箱实测全过：npm 328 包/17s、auth 非交互接虾盘云（openai-compatible 槽位）、headless 真调 6.6s、工具调用真改文件。安装 min_free_mb=600 + with_optional=true（Windows 平台二进制 @cline/cli-windows-x64 约 150MB 是 optionalDependency，npmmirror 滞后会静默跳过 → 装上了但 --version 崩，同 codex 的坑）；repair 四步与 pi 逐字节同款。\\nv51: CLI 转发 shim 改为仅指向 U-King 便携 Node 的 ASCII %USERPROFILE% 路径，并补 Pi；杜绝中文用户名在 cmd.exe 下重造启动失败。\nv50: 免费额度教程加入 OpenCode Go；「去领 Key」直接走带推荐码的官方注册链接，朋友完成 Go 订阅后双方各得 $5。\nv49: harness-doctor 改从 npm 正式包安装（0.3.2，latest）。此前写的是 git 规格（github:用户/仓库#v0.3.1），冒号不在 npm 包名白名单字符里，被客户端安全闸拦截，主装与 repair 全部报「非法 npm 包名」（reports #44/#47/#51/#52/#53 五连）。npm 上已有同名正式包且 latest=0.3.2，白名单原样放行，无需改 exe。\nv47: 「添加供应商」画廊模板挪进本清单（provider_templates 字段），加新厂商不用发版；老客户端会忽略这个新字段 —— 已拿 website/download 里真的 1.0.2 发布版 exe 实测（劫持它的系统 curl 喂含该字段的清单，selfcheck 回 source=server、10 个工具一个不少），不是靠新代码自己跑测试自证。前端仍以内嵌的 src/lib/providerTemplates.ts 为兜底。🔴 这份原本编号 v45，但 45/46 已被 pnpm 修复和 Harness Doctor 两条线用掉，照 45 发会把线上回退掉 harness-doctor —— 版本号是发布事实不是待办，改号前先看线上 install-windows.json 是几。\nv46: 合入 Harness Doctor 体检工具（原在 codex/harness-doctor-integration 分支上，基线停在 v43、不含 v45 的 pnpm 与 codeload 修复）。合并时以 v45 为底、只取它的 harness-doctor 条目，**没有回退 v44/v45 的任何东西**。\nv45: DSH 的 plugin 子命令会直接调用外部 pnpm；U-King 过去只保证 Node/npm，导致 Windows 干净机稳定报 pnpm 不存在。现在两轮插件安装前固定安装 pnpm 10.33.0，并把 git-hosted 规格改成钉 SHA 的 HTTPS tarball，干净机无需另装 Git。\nv43: DeepSeek Harness 增加 Web / 持续对话终端双模式，并安装两个固定 commit 的 MIT 开源 bundle：dsh-cache-stabilizer 把默认 persona 的 cwd 后移到运行时上下文、固定 schema 键序并提供 /cache 实测；dsh-terminal 复用同一个真实 Agent/Session 连续对话。GitHub 依赖钉死 SHA，避免 main 漂移。\nv42: 上架 DeepSeek 官方 DeepSeek Harness（dsh）Developer Preview。锁定实测接口版本 0.1.0-rc.6，要求 Node 22.19+；安装量较大，预留 800MB，并沿用 npm 主源失败切官方源与通用 repair。主入口是 Web 工作台，headless 只做一次性任务。\nv41: 给 crush / qwen-code / opencode / pi 补上 repair 步骤 —— 这四个后加的 npm 工具一直没有修复步骤，装不上就直接报「安装未通过验证，且无修复步骤」然后停住（issue #336）。它们的安装形状（ensure_node + npm_install）跟 claude-code / openclaw 完全一样，老工具那套 repair 本来就适用；前三步命令在这两个老工具间逐字节相同，说明是工具无关的通用步骤，此处原样取用、只另写文案。\nv37: 补上 OpenCode(opencode-ai)。它是社区最大的开源 coding agent，交互式 TUI 成熟，但**非交互 opencode run 在 Windows 上实测恒定挂死零输出**（1.4.3/1.18.11、沙箱/真实 HOME、带不带 --format 四种组合全挂），所以只按 TUI 上架、不进竞技场。v36: 上架 Qwen Code 与 Crush，并复活 Codex CLI / OpenClaw CLI 入口（主线改为「CLI 干活 + U-Workspace 当壳」）。 | v39: Windows 专属步骤打上 os=windows —— Mac 和 Windows 读同一份清单，那些 powershell.exe 步骤在 macOS 上被 sh 执行会报 `sh: line 0: fg: no job control`，把整条安装判失败并拖进修复循环（issue #340）。",
+  "notes": "v59: 新增 Claude 桌面版及 Kimi Code、Grok Build、Muse Code、Antigravity CLI 安装入口。桌面版安装后按主程序或 MSIX 包验证；海外安装脚本下载有超时，下载失败直接说明网络问题。\nv58: 修「装完在终端敲 claude / codex 提示不是内部或外部命令」：电脑上已有系统 Node 时工具装在 %APPDATA%\\npm，该目录常不在用户 PATH；转发启动器步骤现在也会从 %APPDATA%\\npm 建转发器并前置进用户 PATH（先找 U-King 自带 Node，找不到再找 %APPDATA%\\npm；已有的旧转发器会被识别并更新，你自己写的同名脚本不会被覆盖）。python3 转发器也一并修了（中文用户名下不再被写成问号路径）。\nv57: claude-code 装完补跑 postinstall（新版 npm 默认拦截安装脚本，claude.exe 只剩 500 字节占位壳、运行报「与 Windows 版本不兼容」；repair 强制重装后同样补跑）；所有 steps 里有 ensure_node 而 repair 里没有的 npm 工具，repair 显式前置 ensure_node（Node 没装上时不再满屏「npm 不是内部或外部命令」）。codex-app 安装失败提示 0x80073D28 时说明需管理员并引导升级；openclaw 放行 koffi/esbuild/protobufjs 安装脚本（npm 12）。\nv56: DSH 锁定更新至 0.1.7-rc.2（npm next 标签，与官方桌面版 0.1.7-rc.1 同一条线；npm latest 仍是较旧的 0.1.5-rc.3，故明确钉版本）。2026-09-25 隔离 DSH_HOME 实测：521 包 23s 装完、两个固定插件 add 成功、web/terminal profile dump-config 通过、dsh web 起在 3080 且带 token 访问正常、terminal 模式可启动（有 code-runtime-worker-thread 未激活告警，系自研终端插件与新版包结构不匹配）。未用真实模型凭证跑会话。\nv55: DSH 锁定更新至 0.1.5-rc.2；在隔离副本中只验证现有 profile 的离线配置解析与版本可执行，未启动会话或验证第三方插件。\nv54: 下架 Cline CLI（reports 仓被 [auto][install_failed] 淹没：Windows 平台二进制 @cline/cli-windows-x64 约 150MB 是 optionalDependency，npmmirror 滞后静默跳过 → 装上了但 --version 崩， Widely 误报；产品同步收窄）。删 tools.cline + shim 名单；存量已装走「一键卸载」(cleanup tool-cline)。老客户端忽略未知字段，线上热下发可直接覆盖。\nv52: 上架 Cline CLI（cline@npm，Apache-2.0）。四门槛 2026-08-29 本机沙箱实测全过：npm 328 包/17s、auth 非交互接虾盘云（openai-compatible 槽位）、headless 真调 6.6s、工具调用真改文件。安装 min_free_mb=600 + with_optional=true（Windows 平台二进制 @cline/cli-windows-x64 约 150MB 是 optionalDependency，npmmirror 滞后会静默跳过 → 装上了但 --version 崩，同 codex 的坑）；repair 四步与 pi 逐字节同款。\\nv51: CLI 转发 shim 改为仅指向 U-King 便携 Node 的 ASCII %USERPROFILE% 路径，并补 Pi；杜绝中文用户名在 cmd.exe 下重造启动失败。\nv50: 免费额度教程加入 OpenCode Go；「去领 Key」直接走带推荐码的官方注册链接，朋友完成 Go 订阅后双方各得 $5。\nv49: harness-doctor 改从 npm 正式包安装（0.3.2，latest）。此前写的是 git 规格（github:用户/仓库#v0.3.1），冒号不在 npm 包名白名单字符里，被客户端安全闸拦截，主装与 repair 全部报「非法 npm 包名」（reports #44/#47/#51/#52/#53 五连）。npm 上已有同名正式包且 latest=0.3.2，白名单原样放行，无需改 exe。\nv47: 「添加供应商」画廊模板挪进本清单（provider_templates 字段），加新厂商不用发版；老客户端会忽略这个新字段 —— 已拿 website/download 里真的 1.0.2 发布版 exe 实测（劫持它的系统 curl 喂含该字段的清单，selfcheck 回 source=server、10 个工具一个不少），不是靠新代码自己跑测试自证。前端仍以内嵌的 src/lib/providerTemplates.ts 为兜底。🔴 这份原本编号 v45，但 45/46 已被 pnpm 修复和 Harness Doctor 两条线用掉，照 45 发会把线上回退掉 harness-doctor —— 版本号是发布事实不是待办，改号前先看线上 install-windows.json 是几。\nv46: 合入 Harness Doctor 体检工具（原在 codex/harness-doctor-integration 分支上，基线停在 v43、不含 v45 的 pnpm 与 codeload 修复）。合并时以 v45 为底、只取它的 harness-doctor 条目，**没有回退 v44/v45 的任何东西**。\nv45: DSH 的 plugin 子命令会直接调用外部 pnpm；U-King 过去只保证 Node/npm，导致 Windows 干净机稳定报 pnpm 不存在。现在两轮插件安装前固定安装 pnpm 10.33.0，并把 git-hosted 规格改成钉 SHA 的 HTTPS tarball，干净机无需另装 Git。\nv43: DeepSeek Harness 增加 Web / 持续对话终端双模式，并安装两个固定 commit 的 MIT 开源 bundle：dsh-cache-stabilizer 把默认 persona 的 cwd 后移到运行时上下文、固定 schema 键序并提供 /cache 实测；dsh-terminal 复用同一个真实 Agent/Session 连续对话。GitHub 依赖钉死 SHA，避免 main 漂移。\nv42: 上架 DeepSeek 官方 DeepSeek Harness（dsh）Developer Preview。锁定实测接口版本 0.1.0-rc.6，要求 Node 22.19+；安装量较大，预留 800MB，并沿用 npm 主源失败切官方源与通用 repair。主入口是 Web 工作台，headless 只做一次性任务。\nv41: 给 crush / qwen-code / opencode / pi 补上 repair 步骤 —— 这四个后加的 npm 工具一直没有修复步骤，装不上就直接报「安装未通过验证，且无修复步骤」然后停住（issue #336）。它们的安装形状（ensure_node + npm_install）跟 claude-code / openclaw 完全一样，老工具那套 repair 本来就适用；前三步命令在这两个老工具间逐字节相同，说明是工具无关的通用步骤，此处原样取用、只另写文案。\nv37: 补上 OpenCode(opencode-ai)。它是社区最大的开源 coding agent，交互式 TUI 成熟，但**非交互 opencode run 在 Windows 上实测恒定挂死零输出**（1.4.3/1.18.11、沙箱/真实 HOME、带不带 --format 四种组合全挂），所以只按 TUI 上架、不进竞技场。v36: 上架 Qwen Code 与 Crush，并复活 Codex CLI / OpenClaw CLI 入口（主线改为「CLI 干活 + U-Workspace 当壳」）。 | v39: Windows 专属步骤打上 os=windows —— Mac 和 Windows 读同一份清单，那些 powershell.exe 步骤在 macOS 上被 sh 执行会报 `sh: line 0: fg: no job control`，把整条安装判失败并拖进修复循环（issue #340）。",
   "mirror_fallback": "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/runtimes",
   "python": {
     "url": "https://registry.npmmirror.com/-/binary/python-build-standalone/20241016/cpython-3.12.7+20241016-x86_64-pc-windows-msvc-install_only.tar.gz",
@@ -97,7 +97,7 @@
         {
           "type": "run",
           "label": "覆盖上去：给已装的 AI 命令（含系统 Node 装到 %APPDATA%\\npm 的）建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
-          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','kimi')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
           "os": "windows"
         }
       ],
@@ -157,7 +157,7 @@
         {
           "type": "run",
           "label": "覆盖上去：给已装的 AI 命令（含系统 Node 装到 %APPDATA%\\npm 的）建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
-          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','kimi')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
           "os": "windows"
         }
       ],
@@ -262,7 +262,7 @@
         {
           "type": "run",
           "label": "覆盖上去：给已装的 AI 命令（含系统 Node 装到 %APPDATA%\\npm 的）建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
-          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','kimi')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
           "os": "windows"
         }
       ],
@@ -326,7 +326,7 @@
         {
           "type": "run",
           "label": "覆盖上去：给已装的 AI 命令（含系统 Node 装到 %APPDATA%\\npm 的）建轻量转发启动器并前置进用户 PATH，让 U-King 装的赢过你之前装的别家/旧版（不动你的 node/npm、不删你的东西；原 PATH 已备份到 ~/.uking/path-backup.txt，UKING_TEST_HOME 沙箱下跳过）",
-          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"if($env:UKING_TEST_HOME){ exit 0 }; $ErrorActionPreference='SilentlyContinue'; $shims=Join-Path $env:USERPROFILE '.uking\\shims'; New-Item -ItemType Directory -Force -Path $shims | Out-Null; $q=[char]34; $pc=[char]37; $nl=[Environment]::NewLine; function UkOurs($f,$tail){ $old=''; if(Test-Path -LiteralPath $f){ $old=[IO.File]::ReadAllText($f) }; $ln=@([regex]::Split($old,'\\r?\\n') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); return (($old.Trim() -eq '') -or $old.Contains('U-King CLI command guard') -or (($ln.Count -eq 2) -and ($ln[0] -eq '@echo off') -and (($ln[1].StartsWith($q)) -or ($ln[1] -like 'call *')) -and $ln[1].EndsWith($tail,[StringComparison]::OrdinalIgnoreCase))) }; $src=@(@{d=(Join-Path $env:USERPROFILE '.uking\\runtime\\node'); r=($pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\node\\')}); if($env:APPDATA){ $src=$src+,@{d=(Join-Path $env:APPDATA 'npm'); r=($pc+'APPDATA'+$pc+'\\npm\\')} }; foreach($t in @('claude','codex','pi','openclaw','hermes','qwen','crush','opencode','kimi')){ $hit=$null; foreach($s in $src){ foreach($e in @('.cmd','.exe')){ if(Test-Path -LiteralPath (Join-Path $s.d ($t+$e))){ $hit=@{r=($s.r+$t+$e); e=$e}; break } }; if($hit){break} }; if($hit){ $f=Join-Path $shims ($t+'.cmd'); if(UkOurs $f ('\\.uking\\runtime\\node\\'+$t+'.cmd'+$q+' '+$pc+'*')){ if($hit.e -eq '.cmd'){ $call='call '+$q+$hit.r+$q+' '+$pc+'*' } else { $call=$q+$hit.r+$q+' '+$pc+'*' }; [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$call+$nl),[Text.Encoding]::ASCII) } } };  $py=Join-Path $env:USERPROFILE '.uking\\runtime\\python\\python.exe'; if(Test-Path -LiteralPath $py){ $f=Join-Path $shims 'python3.cmd'; if(UkOurs $f ('\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*')){ [IO.File]::WriteAllText($f,('@echo off'+$nl+'rem U-King CLI command guard'+$nl+$q+$pc+'USERPROFILE'+$pc+'\\.uking\\runtime\\python\\python.exe'+$q+' '+$pc+'*'+$nl),[Text.Encoding]::ASCII) } }; $u=[Environment]::GetEnvironmentVariable('Path','User'); if($null -eq $u){$u=''}; $bak=Join-Path $env:USERPROFILE '.uking\\path-backup.txt'; if(-not (Test-Path $bak)){ [IO.File]::WriteAllText($bak,$u) }; $keep=@($u -split ';' | Where-Object { $_ -ne '' -and $_ -ne $shims }); [Environment]::SetEnvironmentVariable('Path',((@($shims)+$keep) -join ';'),'User'); exit 0\"",
           "os": "windows"
         }
       ],
@@ -687,6 +687,141 @@
         }
       ],
       "min_free_mb": 80
+    },
+    "claude-app": {
+      "name": "Claude 桌面版",
+      "bin": "",
+      "verify_cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$p=Get-AppxPackage -Name Claude | Select-Object -First 1; if($p){ Write-Output $p.Version; exit 0 }; foreach($e in @((Join-Path $env:LOCALAPPDATA 'AnthropicClaude\\Claude.exe'),(Join-Path $env:LOCALAPPDATA 'Programs\\Claude\\Claude.exe'))){ if(Test-Path -LiteralPath $e -PathType Leaf){ Write-Output (Get-Item -LiteralPath $e).VersionInfo.ProductVersion; exit 0 } }; exit 1\"",
+      "min_windows_build": 18362,
+      "min_free_mb": 800,
+      "steps": [
+        {
+          "type": "run",
+          "label": "通过 Windows 软件包管理器安装 Claude 官方桌面版",
+          "os": "windows",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$w=Get-Command winget -ErrorAction SilentlyContinue; if(-not $w){ throw 'winget 不可用，改走官方安装包' }; $p=Start-Process -FilePath $w.Source -ArgumentList @('install','--id','Anthropic.Claude','-e','--source','winget','--installer-type','exe','--scope','user','--silent','--accept-package-agreements','--accept-source-agreements','--disable-interactivity') -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(900000)){ $p.Kill(); throw 'Claude 安装超时，请重试' }; exit $p.ExitCode\""
+        }
+      ],
+      "repair": [
+        {
+          "type": "run",
+          "label": "下载安装 Claude 官方桌面包（需要可访问 Anthropic 下载服务）",
+          "os": "windows",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; $a=if($env:PROCESSOR_ARCHITECTURE -eq 'ARM64'){'arm64'}else{'x64'}; $f=Join-Path $env:TEMP ('uking-claude-'+[Guid]::NewGuid().ToString('N')+'.exe'); & curl.exe -fL --connect-timeout 15 --max-time 600 --retry 1 -o $f ('https://claude.ai/api/desktop/win32/'+$a+'/exe/latest/redirect'); if($LASTEXITCODE -ne 0){ throw 'Claude 官方下载服务不可达，请检查网络后重试' }; $sig=Get-AuthenticodeSignature -LiteralPath $f; if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Anthropic'){ throw '官方安装包签名校验失败，已停止安装' }; $p=Start-Process -FilePath $f -ArgumentList '--silent' -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(900000)){ $p.Kill(); throw 'Claude 安装超时，请重试' }; exit $p.ExitCode\""
+        }
+      ]
+    },
+    "kimi-code": {
+      "name": "Kimi Code",
+      "bin": "kimi",
+      "verify_cmd": "kimi --version",
+      "min_free_mb": 400,
+      "steps": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时"
+        },
+        {
+          "type": "npm_install",
+          "label": "安装 Kimi Code 官方包",
+          "package": "@moonshot-ai/kimi-code",
+          "with_optional": true
+        }
+      ],
+      "repair": [
+        {
+          "type": "ensure_node",
+          "label": "检查 Node.js 运行时"
+        },
+        {
+          "type": "npm_install",
+          "label": "重装 Kimi Code 官方包",
+          "package": "@moonshot-ai/kimi-code",
+          "force": true,
+          "with_optional": true
+        }
+      ]
+    },
+    "grok-build": {
+      "name": "Grok Build",
+      "bin": "grok",
+      "verify_cmd": "grok --version",
+      "min_free_mb": 200,
+      "steps": [
+        {
+          "type": "run",
+          "label": "下载并运行Grok Build官方安装器（需海外网络）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; if($env:UKING_TEST_HOME){ throw '沙箱禁止运行第三方系统安装脚本，请在隔离测试机验证' }; $f=Join-Path $env:TEMP ('uking-grok-'+[Guid]::NewGuid().ToString('N')+'.ps1'); & curl.exe -fsSL --connect-timeout 10 --max-time 30 -o $f 'https://x.ai/cli/install.ps1'; if($LASTEXITCODE -ne 0){ throw 'Grok Build 下载失败，需要可访问海外服务的网络' }; $p=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',([char]34+$f+[char]34)) -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(900000)){ $p.Kill(); throw 'Grok Build 安装超时，请检查网络后重试' }; exit $p.ExitCode\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "安装Grok Build官方 CLI",
+          "cmd": "curl -fsSL --connect-timeout 10 --max-time 30 https://x.ai/cli/install.sh -o /tmp/uking-grok-install.sh && bash /tmp/uking-grok-install.sh",
+          "os": "macos"
+        },
+        {
+          "type": "run",
+          "label": "安装Grok Build官方 CLI",
+          "cmd": "curl -fsSL --connect-timeout 10 --max-time 30 https://x.ai/cli/install.sh -o /tmp/uking-grok-install.sh && bash /tmp/uking-grok-install.sh",
+          "os": "linux"
+        }
+      ],
+      "repair": []
+    },
+    "muse-code": {
+      "name": "Muse Code",
+      "bin": "muse",
+      "verify_cmd": "muse --version",
+      "min_free_mb": 200,
+      "steps": [
+        {
+          "type": "run",
+          "label": "下载并运行Muse Code官方安装器（需海外网络）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; if($env:UKING_TEST_HOME){ throw '沙箱禁止运行第三方系统安装脚本，请在隔离测试机验证' }; $f=Join-Path $env:TEMP ('uking-muse-'+[Guid]::NewGuid().ToString('N')+'.ps1'); & curl.exe -fsSL --connect-timeout 10 --max-time 30 -o $f 'https://dev.meta.ai/install.ps1'; if($LASTEXITCODE -ne 0){ throw 'Muse Code 下载失败，需要可访问海外服务的网络' }; $p=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',([char]34+$f+[char]34)) -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(900000)){ $p.Kill(); throw 'Muse Code 安装超时，请检查网络后重试' }; exit $p.ExitCode\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "安装Muse Code官方 CLI",
+          "cmd": "curl -fsSL --connect-timeout 10 --max-time 30 https://dev.meta.ai/install.sh -o /tmp/uking-muse-install.sh && bash /tmp/uking-muse-install.sh",
+          "os": "macos"
+        },
+        {
+          "type": "run",
+          "label": "安装Muse Code官方 CLI",
+          "cmd": "curl -fsSL --connect-timeout 10 --max-time 30 https://dev.meta.ai/install.sh -o /tmp/uking-muse-install.sh && bash /tmp/uking-muse-install.sh",
+          "os": "linux"
+        }
+      ],
+      "repair": []
+    },
+    "antigravity-cli": {
+      "name": "Antigravity CLI",
+      "bin": "agy",
+      "verify_cmd": "agy --version",
+      "min_free_mb": 200,
+      "steps": [
+        {
+          "type": "run",
+          "label": "下载并运行Antigravity CLI官方安装器（需海外网络）",
+          "cmd": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; if($env:UKING_TEST_HOME){ throw '沙箱禁止运行第三方系统安装脚本，请在隔离测试机验证' }; $f=Join-Path $env:TEMP ('uking-agy-'+[Guid]::NewGuid().ToString('N')+'.ps1'); & curl.exe -fsSL --connect-timeout 10 --max-time 30 -o $f 'https://antigravity.google/cli/install.ps1'; if($LASTEXITCODE -ne 0){ throw 'Antigravity CLI 下载失败，需要可访问海外服务的网络' }; $p=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',([char]34+$f+[char]34)) -WindowStyle Hidden -PassThru; if(-not $p.WaitForExit(900000)){ $p.Kill(); throw 'Antigravity CLI 安装超时，请检查网络后重试' }; exit $p.ExitCode\"",
+          "os": "windows"
+        },
+        {
+          "type": "run",
+          "label": "安装Antigravity CLI官方 CLI",
+          "cmd": "curl -fsSL --connect-timeout 10 --max-time 30 https://antigravity.google/cli/install.sh -o /tmp/uking-agy-install.sh && bash /tmp/uking-agy-install.sh",
+          "os": "macos"
+        },
+        {
+          "type": "run",
+          "label": "安装Antigravity CLI官方 CLI",
+          "cmd": "curl -fsSL --connect-timeout 10 --max-time 30 https://antigravity.google/cli/install.sh -o /tmp/uking-agy-install.sh && bash /tmp/uking-agy-install.sh",
+          "os": "linux"
+        }
+      ],
+      "repair": []
     }
   },
   "provider_templates": [

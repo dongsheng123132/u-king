@@ -6,7 +6,7 @@
  */
 
 // 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突
-export type TuiAppId = "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi";
+export type TuiAppId = "kimi" | "grok" | "muse" | "agy" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -30,6 +30,14 @@ export type TuiApp = {
 };
 
 export const TUI_APPS: TuiApp[] = [
+  { id: "kimi", toolId: "kimi-code", name: "Kimi Code", tool: "kimi",
+    prompts: [{ label: "启动", cmd: "kimi" }], configTargets: [], group: "cli", hidden: true },
+  { id: "grok", toolId: "grok-build", name: "Grok Build", tool: "grok",
+    prompts: [{ label: "启动", cmd: "grok" }], configTargets: [], group: "cli", hidden: true },
+  { id: "muse", toolId: "muse-code", name: "Muse Code", tool: "muse",
+    prompts: [{ label: "启动", cmd: "muse" }], configTargets: [], group: "cli", hidden: true },
+  { id: "agy", toolId: "antigravity-cli", name: "Antigravity CLI", tool: "agy",
+    prompts: [{ label: "启动", cmd: "agy" }], configTargets: [], group: "cli", hidden: true },
   {
     id: "claude",
     toolId: "claude-code",

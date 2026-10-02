@@ -49,6 +49,7 @@ pub struct ToolInfo {
     /// 工具的配置，不再手写一份 id→target 的 switch（宪法第 8 条）。
     #[serde(default)]
     pub config_target: Option<String>,
+    pub version: Option<String>,
 }
 
 /// 工具注册表的单一真相源（Phase C，2026-09-04）。
@@ -400,6 +401,31 @@ pub fn plan_all() -> Vec<LaunchPlan> {
 
 pub const TOOL_SPECS: &[ToolSpec] = &[
     ToolSpec {
+        id: "claude-app", cmd: "", config_target: None,
+        in_list_tools: false, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::GuiApp, route_tab: None,
+    },
+    ToolSpec {
+        id: "kimi-code", cmd: "kimi", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "grok-build", cmd: "grok", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "muse-code", cmd: "muse", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "antigravity-cli", cmd: "agy", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
         id: "claude-code",
         cmd: "claude",
         config_target: Some("claude"),
@@ -471,11 +497,14 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: true,
         in_checkup: Some("Hermes"),
         probe_args: Some(&["-z", crate::toolprobe::PROMPT]),
-        // App.tsx::launchTool 硬编码分支：`if (t.id === "hermes") { setTab("hermes"); return; }`
-        // —— ToolAppView 把它当 external 应用处理（apps.ts TUI_APPS 的 hermes 条目 external:true），
-        // 启动时还要按需配虾盘云（ensureWebToolConfigured），不能当普通 EmbeddedPty。
-        launch_mode: LaunchMode::RouteTab,
-        route_tab: Some("hermes"),
+        // 2026-10-02 起与 claude 同类：双击 / 点「启动」= 选文件夹 → 开终端跑 `hermes`，不再
+        // 先切到 Hermes 专属页让用户再点一次「启动 Hermes 终端」（用户视角走查：多一步还容易
+        // 以为没反应）。「启动前按需配虾盘云」（原 ToolAppView::ensureWebToolConfigured）已抽成
+        // 前端 `lib/ensureDriver.ts`，启动链路（App.tsx::runLaunchAction）与专属页共用同一份。
+        // Hermes 专属页（网页版 / 浏览器接管 / 重新初始化）保留，tab id 仍是 "hermes"，
+        // 从「我的 AI」详情条的次要入口进入，不再由启动判定核心路由过去。
+        launch_mode: LaunchMode::EmbeddedPty,
+        route_tab: None,
     },
     ToolSpec {
         // Windows（2026-09-25 起）：官方桌面版，普通 GUI 应用，Rust 直接 `launch_app` 拉起
@@ -557,7 +586,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         probe_args: None,
         // list_tools() 里 launch_cmd=""、launch_app=""，action="url" 跳官网下载页
         // ——App.tsx::launchTool 命中 `if (!t.launch_cmd) { flash(...); return; }`，没有可执行入口。
-        launch_mode: LaunchMode::None,
+        launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
     ToolSpec {
@@ -568,7 +597,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: None,
         probe_args: None,
         // 同 obsidian：launch_cmd=""、launch_app=""，只能跳官网下载页。
-        launch_mode: LaunchMode::None,
+        launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
     ToolSpec {
@@ -581,7 +610,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
-        launch_mode: LaunchMode::None,
+        launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
     ToolSpec {
@@ -592,7 +621,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
-        launch_mode: LaunchMode::None,
+        launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
     ToolSpec {
@@ -603,7 +632,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
-        launch_mode: LaunchMode::None,
+        launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
     ToolSpec {
@@ -1208,6 +1237,30 @@ impl NoWindow for std::process::Command {
 pub fn list_tools() -> Vec<ToolInfo> {
     let mut v = vec![
         ToolInfo {
+            id: "kimi-code".into(), name: "Kimi Code".into(), summary: "月之暗面的命令行编程助手，国内可用；首次启动用 /login 登录。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("kimi"), action: "install".into(),
+            target: "".into(), launch_cmd: "kimi".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
+        ToolInfo {
+            id: "grok-build".into(), name: "Grok Build".into(), summary: "xAI 官方命令行编程助手，需要可访问海外服务的网络和官方账号。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("grok"), action: "install".into(),
+            target: "".into(), launch_cmd: "grok".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
+        ToolInfo {
+            id: "muse-code".into(), name: "Muse Code".into(), summary: "Meta 官方命令行编程助手，需要海外网络及官方账号与计费设置。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("muse"), action: "install".into(),
+            target: "".into(), launch_cmd: "muse".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
+        ToolInfo {
+            id: "antigravity-cli".into(), name: "Antigravity CLI".into(), summary: "Google 官方命令行编程助手，需要海外网络；首次启动登录 Google 账号。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("agy"), action: "install".into(),
+            target: "".into(), launch_cmd: "agy".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
+        ToolInfo {
             id: "claude-code".into(),
             name: "Claude Code CLI".into(),
             summary: "Anthropic 官方命令行编程助手。一键安装 + 国内驱动直连。".into(),
@@ -1218,7 +1271,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "claude".into(),
             launch_app: "".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // Codex CLI 上首页（2026-07-13 产品决策）：Codex CLI + Codex 桌面版两个都露出、都可装。
@@ -1233,7 +1286,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "codex".into(),
             launch_app: "".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // ★ 2026-08-03 复活（原 hidden=true，2026-07-07 定的「人类入口只留 ClawX 桌面版」）。
@@ -1256,7 +1309,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             // 配置链一个字节没动（apps.ts 的 configTargets 仍指 "clawx"，apply/备份/
             // gateway 全在），已装的客户照配照用。
             hidden: true,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // ★ 2026-08-03 新上架。本机实测四条门槛全过（详见 apps.ts 同名条目的注释）：
@@ -1273,7 +1326,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_app: "".into(),
             // 2026-08-05 隐藏：实测能用但 35.7s 全场最慢，且与主推线重叠
             hidden: true,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // ★ 2026-08-03 上架。四条门槛实测全过，且同任务同模型下**上下文只有 Claude Code 的 1/5**
@@ -1288,7 +1341,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "pi".into(),
             launch_app: "".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // ★ 2026-08-03 上架，**仅 TUI**。社区最大的开源 coding agent（★192k），
@@ -1310,7 +1363,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             // 「装得慢」是安装时才付的代价，不该换来「装完也找不到」。慢的那条已写进 summary
             // 里明说（153MB），让用户自己决定，而不是替他决定看不见。
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // ★ 2026-08-03 新上架。Charm 出品（★27k），Go 单二进制。实测：npm 48 包/7s、
@@ -1326,7 +1379,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_app: "".into(),
             // 2026-08-05 隐藏：已修好能用（12.1s），隐藏理由是与 Claude Code/Codex 重叠
             hidden: true,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // OpenClaw 的「桌面版」= ClawX（官方 Electron GUI）。261MB，不在 app 内装，
@@ -1367,7 +1420,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             //
             // 检测/切驱动/托管式配置能力从头到尾一个都没动过。
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             id: "hermes".into(),
@@ -1380,7 +1433,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "hermes".into(),
             launch_app: "".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // Windows（2026-09-25 起）：DeepSeek 官方桌面版，U-King 只管装/检测/启动/写模型
@@ -1410,7 +1463,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: if cfg!(windows) { "" } else { "dsh web" }.into(),
             launch_app: if cfg!(windows) { "dsh-desktop" } else { "" }.into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             id: "harness-doctor".into(),
@@ -1422,8 +1475,8 @@ pub fn list_tools() -> Vec<ToolInfo> {
             target: "".into(),
             launch_cmd: "harness-doctor --target all --no-ports".into(),
             launch_app: "".into(),
-            hidden: false,
-            config_target: None,
+            hidden: true,
+            config_target: None, version: None,
         },
         ToolInfo {
             // Obsidian：进阶工具，给想搭「个人知识库」的高级用户。本体是 markdown 笔记库，
@@ -1433,13 +1486,13 @@ pub fn list_tools() -> Vec<ToolInfo> {
             name: "Obsidian 知识库".into(),
             summary: "本地 markdown 笔记库（进阶）。把资料/笔记存进它的文件夹，再让 ClawX/Hermes 指向该文件夹，就成了「AI 能查能答」的个人知识库。点开下载官网安装包。".into(),
             kind: "standalone".into(),
-            installed: obsidian_installed(),
+            installed: crate::installer::managed_desktop_installed("obsidian"),
             action: "url".into(),
             target: "https://obsidian.md/download".into(),
             launch_cmd: "".into(),
-            launch_app: "".into(),
+            launch_app: "obsidian".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // UU远程（网易官方）：手机/平板/另一台电脑远控这台机器。定位「让 AI 在电脑上干活时，
@@ -1449,13 +1502,13 @@ pub fn list_tools() -> Vec<ToolInfo> {
             name: "UU远程（手机控电脑）".into(),
             summary: "网易官方远控：手机/平板/另一台电脑随时连回这台机器。出门在外也能看 AI 在电脑上干活、随时接管操作。两端登同一账号即连，点开下载官网客户端。".into(),
             kind: "standalone".into(),
-            installed: uu_remote_installed(),
+            installed: crate::installer::managed_desktop_installed("uu-remote"),
             action: "url".into(),
             target: UU_REMOTE_DOWNLOAD_PAGE.into(),
             launch_cmd: "".into(),
-            launch_app: "".into(),
+            launch_app: "uu-remote".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // 豆包工作台（字节跳动）：闭源网页工作台，用自家模型，不走 U-King 的模型配置
@@ -1465,13 +1518,13 @@ pub fn list_tools() -> Vec<ToolInfo> {
             name: "豆包工作台".into(),
             summary: "字节跳动 AI 工作台，聊天/写作/读文档。用自家模型，不走 U-King 的模型配置。点开官方工作台（认准 doubao.com，勿信仿冒站）。".into(),
             kind: "standalone".into(),
-            installed: false,
+            installed: crate::installer::managed_desktop_installed("doubao"),
             action: "url".into(),
             target: "https://www.doubao.com/work".into(),
             launch_cmd: "".into(),
-            launch_app: "".into(),
+            launch_app: "doubao".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // 千问办公（阿里，QwenWork）：闭源，同豆包，用自家模型，不走 U-King 的模型配置。
@@ -1480,13 +1533,13 @@ pub fn list_tools() -> Vec<ToolInfo> {
             name: "千问办公".into(),
             summary: "阿里 AI 办公工作台（QwenWork），智能体+钉钉生态。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
             kind: "standalone".into(),
-            installed: false,
+            installed: crate::installer::managed_desktop_installed("qwenwork"),
             action: "url".into(),
             target: "https://qwenwork.cn/download".into(),
             launch_cmd: "".into(),
-            launch_app: "".into(),
+            launch_app: "qwenwork".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         ToolInfo {
             // WorkBuddy（腾讯云）：闭源订阅制，同豆包，用自家模型，不走 U-King 的模型配置。
@@ -1495,18 +1548,25 @@ pub fn list_tools() -> Vec<ToolInfo> {
             name: "WorkBuddy".into(),
             summary: "腾讯云职场 AI 助手，订阅制付费。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
             kind: "standalone".into(),
-            installed: false,
+            installed: crate::installer::managed_desktop_installed("workbuddy"),
             action: "url".into(),
             target: "https://www.codebuddy.cn/work/".into(),
             launch_cmd: "".into(),
-            launch_app: "".into(),
+            launch_app: "workbuddy".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
         // 核心工具：Claude Code CLI / Hermes CLI（命令行）
         // + Codex 桌面版 / ClawX 桌面版（图形）。Codex CLI、OpenClaw 官方 CLI 已标
         // hidden=true（上面），后端检测/切驱动/装机能力全保留，仅不在市场露出。
     ];
+    #[cfg(any(windows, target_os = "macos"))]
+    v.insert(1, ToolInfo {
+            id: "claude-app".into(), name: "Claude 桌面版".into(), summary: "Anthropic 官方桌面应用，含 Chat、Cowork 与 Code。可一键安装及启动；桌面版第三方模型需在应用中配置网关。".into(),
+            kind: "standalone".into(), installed: crate::installer::managed_desktop_installed("claude-app"), action: if cfg!(windows) { "install" } else { "url" }.into(),
+            target: "https://claude.com/download".into(), launch_cmd: "".into(), launch_app: "claude-app".into(),
+            hidden: false, config_target: None, version: None,
+        });
     // Codex 桌面版：Windows 一键装（微软商店渠道 + 国内镜像 MSIX 兜底）；
     // macOS 露出检测/启动/手动教程入口，安装走官方 DMG（不做假静默）。
     #[cfg(any(windows, target_os = "macos"))]
@@ -1528,7 +1588,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
             launch_cmd: "".into(),
             launch_app: "codex-app".into(),
             hidden: false,
-            config_target: None,
+            config_target: None, version: None,
         },
     );
     // Open365 开源电脑管家：无广告替代「安全卫士」——网络修复 / 垃圾清理 / 启动项 /
@@ -1549,7 +1609,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
         launch_cmd: "".into(),
         launch_app: "open365".into(),
         hidden: false,
-        config_target: None,
+        config_target: None, version: None,
     });
     // Hermes 桌面版（Nous 官方 Electron app）：进阶区工具，hidden=true 不进小白市场/Dock，
     // 只在「进阶/App 版」页露出（Advanced.tsx 自己调 list_tools 取状态）。后端检测/启动能力保留。
@@ -1565,7 +1625,7 @@ pub fn list_tools() -> Vec<ToolInfo> {
         launch_cmd: "".into(),
         launch_app: "hermes-app".into(),
         hidden: true,
-        config_target: None,
+        config_target: None, version: None,
     });
     // uu-switch —— 去广告版 cc-switch AI 模型切换器（我方 fork）。GUI 应用：一个窗口统一管
     // 所有 AI 工具（Claude Code / Codex …）的模型驱动，一键切换 + 内置计量看板。action=install
@@ -1587,12 +1647,13 @@ pub fn list_tools() -> Vec<ToolInfo> {
         launch_cmd: "".into(),
         launch_app: "uu-switch".into(),
         hidden: true,
-        config_target: None,
+        config_target: None, version: None,
     });
     // `config_target` 的唯一来源：按 id 从 TOOL_SPECS 取（见字段文档）。TOOL_SPECS 里查不到的
     // id（理论上不会有，`tool_specs_ids_match_list_tools_ids` 单测守着）保持 None，
     // 也就是「不接驱动切换」，宁可少露一个换模型入口，也不编一个 target。
     for t in v.iter_mut() {
+        t.version = crate::installer::managed_desktop_version(&t.id);
         t.config_target = TOOL_SPECS
             .iter()
             .find(|s| s.id == t.id)
@@ -1853,6 +1914,7 @@ pub fn launch_app(app: &str) -> Result<(), String> {
 }
 
 fn launch_app_inner(app: &str) -> Result<(), String> {
+    if let Some(result) = crate::installer::launch_managed_desktop(app) { return result; }
     match app {
         "codex-app" => launch_codex_app(),
         "clawx" => launch_clawx_app(),

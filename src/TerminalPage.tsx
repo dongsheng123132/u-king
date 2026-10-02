@@ -18,6 +18,8 @@ export function TerminalPage({
   active,
   pendingCmd,
   onConsumedCmd,
+  cwd,
+  initialCmd,
   pendingRestores,
   onRestoreFailed,
   onConsumedRestores,
@@ -26,6 +28,8 @@ export function TerminalPage({
   /** 待运行命令（点工具「打开终端」时塞进来），运行后回调清空 */
   pendingCmd: string | null;
   onConsumedCmd: () => void;
+  cwd?: string;
+  initialCmd?: string;
   /** 自升级后的会话快照：逐条打开成独立终端标签。 */
   pendingRestores?: TermRestore[] | null;
   onRestoreFailed?: (failed: TermRestore[]) => void;
@@ -34,6 +38,8 @@ export function TerminalPage({
   const { t: tr } = useI18n();
   const { hostRef, tabs, activeKey, setActiveKey, newTerm, closeTerm, restartTerm, runInActive, dropOver } = useTermGroup({
     open: active,
+    cwd,
+    initialCmd,
     pendingCmd,
     onConsumedCmd,
     pendingRestores,

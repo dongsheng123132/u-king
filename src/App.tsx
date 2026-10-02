@@ -51,6 +51,8 @@ import { DoctorCard } from "./components/DoctorCard";
 import { AnchoredMenu } from "./components/AnchoredMenu";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 import { getLaunchPref } from "./toolhub/launchPref";
+import { LaunchFolderDialog } from "./toolhub/LaunchFolderDialog";
+import { ensureDefaultDriver } from "./lib/ensureDriver";
 
 // 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
 // （Manager 挂载点 / launchTool / ToolAppView::handleStart 三条前端路径共用这一个 client）。
@@ -128,6 +130,7 @@ export type ToolInfo = {
   target: string;
   launch_cmd: string;
   launch_app: string;
+  version?: string | null;
   // 后端标记的隐藏工具（Codex CLI / OpenClaw CLI）—— 前端统一过滤掉，不在市场/Dock 露出
   hidden?: boolean;
   /** 归属的驱动配置目标（`apply_provider` 的 target，如 claude/codex/clawx/hermes/dsh/pi/opencode）。
@@ -163,6 +166,9 @@ export function App() {
   // ClawX 首次启动「允许访问网络」引导浮层：ClawX 是 Electron，第一次开会弹 Windows
   // 防火墙警报，小白点了「取消」就联网失败 = 主力工具打不开。这里在启动前弹一次醒目说明。
   const [clawxNetHint, setClawxNetHint] = useState<null | (() => void)>(null);
+  const [launchFolder, setLaunchFolder] = useState<{ tool: ToolInfo; resolve: (path: string | null) => void } | null>(null);
+  const launchFolderPending = useRef<((path: string | null) => void) | null>(null);
+  const launchingTools = useRef(new Set<string>());
   // ClawX 下载/安装进度（210MB 大包，常驻进度条让小白安心，不以为卡死）。
   const [clawxProgress, setClawxProgress] = useState<string | null>(null);
   const [driver, setDriver] = useState<DriverStatus | null>(null);
@@ -175,7 +181,7 @@ export function App() {
     localStorage.getItem("uking.theme") === "dark" ? "dark" : "light",
   );
   // 对话式安装向导：runId 每次 +1 强制重开新会话
-  const [wizard, setWizard] = useState<{ runId: number; preselect: string | null } | null>(null);
+  const [wizard, setWizard] = useState<{ runId: number; preselect: string | string[] | null } | null>(null);
   // 左侧边栏：setup=装机向导 / myai=我的 AI（已装快捷启动）/ manage=AI 设置（切驱动+余额+用量）。
   const [tab, setTab] = useState<TabId>("setup");
   // 「我的 AI」首页免费模型导流卡 → 跳「AI 设置」时要落到哪个分区（2026-09-06）。
@@ -798,6 +804,8 @@ export function App() {
   };
 
   const runLaunchAction = async (t: ToolInfo) => {
+    if (launchingTools.current.has(t.id)) return;
+    launchingTools.current.add(t.id);
     try {
       const env = await callAction(ACTION.RUNTIME_TOOL_LAUNCH, { tool_id: t.id }, { confirmed: true });
       if (!env.ok) {
@@ -813,6 +821,14 @@ export function App() {
           if (result.route) setTab(result.route as TabId);
           return;
         case "embedded_pty": {
+          const cwd = await new Promise<string | null>((resolve) => {
+            launchFolderPending.current?.(null);
+            launchFolderPending.current = resolve;
+            setLaunchFolder({ tool: t, resolve });
+          });
+          if (!cwd) return;
+          await ensureDefaultDriver({ toolId: t.id, name: t.name, configTargets: toolTargets(t), deviceKey,
+            onRefreshDriver: () => void refresh(), onToast: flash, tr });
           // 「打开终端」拉哪种窗口——两条路都是独立弹窗，客户能自己选（`toolhub/launchPref.ts`）：
           //  · "ucli"   ＝ U-King 自带的 U-CLI 小窗（`open_terminal_window`，2026-09-06 起的默认行为）；
           //  · "system" ＝ 系统原生控制台（`term::term_open_external`，ExternalTerm 模式那批工具
@@ -820,11 +836,11 @@ export function App() {
           // 系统终端万一打不开（White-list 拒绝 / 平台差异），原样回退回 U-CLI，不留死胡同。
           const cmd = result.launch_cmd ?? t.launch_cmd ?? "";
           if (getLaunchPref() === "system") {
-            invoke("term_open_external", { cmd, cwd: null })
+            await invoke("term_open_external", { cmd, cwd })
               .then(() => flash(tr("已为 {name} 打开系统终端", { name: t.name })))
               .catch((e) => {
                 flash(tr("打开系统终端失败（{msg}），已改用 U-CLI 终端窗口", { msg: String(e) }));
-                void invoke("open_terminal_window", { cwd: null, cmd })
+                return invoke("open_terminal_window", { cwd, cmd })
                   .catch((e2) => flash(tr("拉出终端窗口失败：{msg}", { msg: String(e2) })));
               });
             return;
@@ -832,7 +848,7 @@ export function App() {
           // 2026-09-06 起不再 setTab("terminal") 塞进内嵌终端整页 —— 那页侧栏入口平时隐藏，
           // 一旦从这里落进去就没有能切回来的入口（幽灵页）。内嵌终端页现在只留给快照恢复用，
           // pendingCmd / TerminalPage 的 prop 结构不动，只是这个分支不再是它的生产者。
-          void invoke("open_terminal_window", { cwd: null, cmd })
+          await invoke("open_terminal_window", { cwd, cmd })
             .catch((e) => flash(tr("拉出终端窗口失败：{msg}", { msg: String(e) })));
           return;
         }
@@ -849,6 +865,8 @@ export function App() {
       }
     } catch (e) {
       flash(tr("{name} 启动失败：{msg}", { name: t.name, msg: String(e) }));
+    } finally {
+      launchingTools.current.delete(t.id);
     }
   };
 
@@ -1385,6 +1403,10 @@ export function App() {
                 deviceKey={deviceKey}
                 onLaunch={launchTool}
                 onOpen={openTool}
+                onInstallSelection={(ids) => {
+                  setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: ids }));
+                  setTab("setup");
+                }}
                 onUninstall={uninstallTool}
                 onGoManage={() => setTab("manage")}
                 onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
@@ -1397,6 +1419,7 @@ export function App() {
                 }}
                 onGoSetup={startInstallAll}
                 onGoDoctor={() => setTab("myai")}
+                onGoToolbox={() => setTab("toolbox")}
                 onGoChat={() => setTab("chat")}
                 onGoTermWb={() => setTab("termwb")}
               />
@@ -1475,6 +1498,9 @@ export function App() {
       )}
 
       {/* ClawX 首次启动：允许访问网络 引导浮层 */}
+      {launchFolder && <LaunchFolderDialog tool={launchFolder.tool}
+        onPick={(path) => { launchFolder.resolve(path); setLaunchFolder(null); }}
+        onCancel={() => { launchFolder.resolve(null); setLaunchFolder(null); }} />}
       {clawxNetHint && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-[440px] max-w-[92vw] rounded-card border border-accent/30 bg-bg-2 shadow-card overflow-hidden">
@@ -2014,7 +2040,7 @@ export function toolTargets(t: Pick<ToolInfo, "id" | "config_target">): string[]
  * 导出给 `toolhub/ToolHub.tsx`：AI 工具中心的「实验室」分类标签复用同一张名单，
  * 不在那边另起一份、又漂一次（宪法第 8 条）。
  */
-export const LAB_TOOLS = new Set(["open365", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy"]);
+export const LAB_TOOLS = new Set(["open365"]);
 
 /**
  * 工具 id → 后端 `discover_tools` 用的探测名（`ToolDiscovery.name`）。
@@ -2068,6 +2094,15 @@ export function needsEffectiveReadback(t: ToolInfo): boolean {
  *  **不猜**：两处都拿不到就返回 null，显示一个错的模型名比不显示更坏
  *  （客户会照着它去排查一个不存在的配置）。同上，从 MyAI 抽出来给 ToolHub 复用。
  *  `effective` 不传 = 只看 `DriverStatus`（MyAI 没有回读数据，行为同改动前）。 */
+export function configurationLabelFor(t: Pick<ToolInfo, "config_target">, driver: DriverStatus | null): string | null {
+  const target = t.config_target;
+  if (!target) return null;
+  if (driver?.active?.[target] === "official") return "官方登录";
+  if (target === "claude" && driver?.claude_own_key) return "自备 Key / 官方登录";
+  if (target === "codex" && driver?.codex_own_key) return "自备 Key / 官方登录";
+  return null;
+}
+
 export function currentModelFor(
   t: ToolInfo,
   driver: DriverStatus | null,
@@ -2429,7 +2464,7 @@ function MyAI({
             {installed.map((t) => {
               const targets = toolTargets(t);
               // 工具 id → DriverStatus 里对应的字段（`currentModelFor`，与 ToolHub 共用一份）。
-              const currentModel = currentModelFor(t, driver);
+              const currentModel = currentModelFor(t, driver) ?? (configurationLabelFor(t, driver) ? tr(configurationLabelFor(t, driver)!) : null);
               // 「还没配模型」只在**读得到**的前提下才能喊：pi / opencode 现在也有 target 了，
               // 但这一页没有回读数据，它们的模型是「读不到」不是「没配」——照旧只显示「已安装」。
               const modelUnset = targets.length > 0 && modelReadbackState(t) === "readable";

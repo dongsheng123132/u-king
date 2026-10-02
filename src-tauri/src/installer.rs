@@ -2242,6 +2242,47 @@ pub fn reg_query(key: &str, value: &str) -> Option<String> {
     }
 }
 
+/// 从 `reg query <key>`（不带 `/v`）的整段输出里取某个值（形如 `    DisplayVersion    REG_SZ    0.1.1`）。
+///
+/// **公共层唯一实现** —— `podapp.rs`（泊舟）和 `desktop_app.rs`（豆包工作 / 千问办公 / WorkBuddy …）
+/// 都读卸载表，这条原先是 podapp 私有的一份，现在下沉到这里，不许再各抄一份（宪法第 8 条）。
+/// 纯字符串解析、不碰注册表，所以不套 `cfg(windows)`：夹具测试在任何平台都能跑。
+///
+/// 🔴 **必须剥掉包裹的双引号**：2026-07-30 干净机实测，PodApp 的 NSIS 把 `InstallLocation`
+/// 写成了 `"C:\...\泊舟 AI 小程序"` —— **带引号存进注册表**。不剥的话 `PathBuf` 会拿到一个以
+/// `"` 开头的非法路径，`is_file()` 恒 false → 装好了照样报「没装」→ 客户重复安装。
+/// 这是 UU远程 那次「装了却报没装」的同款故障，换了个成因（那次是目录少一层，这次是引号）。
+/// 同理 `DisplayIcon` 常见 `"C:\...\x.exe",0`（引号在中间，不是整体包裹）——那种由调用方
+/// （`desktop_app::parse_display_icon`）自己拆，这里只剥「首尾成对」的那一层。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn reg_value(out: &str, name: &str) -> Option<String> {
+    for line in out.lines() {
+        let t = line.trim();
+        // 用 `starts_with(name)` 会让 `Display` 误命中 `DisplayVersion`；要求后面紧跟空白。
+        let Some(rest) = t.strip_prefix(name) else { continue };
+        if !rest.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let rest = rest.trim_start();
+        for ty in ["REG_EXPAND_SZ", "REG_SZ"] {
+            if let Some(v) = rest.strip_prefix(ty) {
+                let v = v.trim();
+                // 剥掉成对的包裹引号（只在首尾都有时剥，别把值里的引号吃掉）
+                let v = v
+                    .strip_prefix('"')
+                    .and_then(|x| x.strip_suffix('"'))
+                    .unwrap_or(v)
+                    .trim()
+                    .trim_end_matches('\\');
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Windows 内部版本号（如 22631 / 19045 / 17763）。**探不到就 `None`**。
 ///
 /// 公共层实现，`term.rs`（xterm 折行分支）和 `install_tool_inner`（`min_windows_build` 预检）
@@ -2328,11 +2369,21 @@ pub fn codex_app_installed() -> bool {
 }
 
 /// Claude 桌面版探测。
+pub(crate) fn managed_desktop_installed(id: &str) -> bool {
+    crate::desktop_app::installed(id)
+}
+
+pub(crate) fn managed_desktop_version(id: &str) -> Option<String> {
+    crate::desktop_app::version_of(id)
+}
+
+pub(crate) fn launch_managed_desktop(id: &str) -> Option<Result<(), String>> {
+    crate::desktop_app::rule_of(id).map(|_| crate::desktop_app::launch(id))
+}
+
 #[cfg(windows)]
 fn claude_desktop_installed() -> bool {
-    std::env::var("LOCALAPPDATA")
-        .map(|d| Path::new(&d).join("AnthropicClaude").exists())
-        .unwrap_or(false)
+    crate::desktop_app::installed("claude-app")
 }
 
 #[cfg(not(windows))]
@@ -2360,6 +2411,9 @@ pub fn install_tool(
     tool_id: &str,
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> InstallToolResult {
+    if tool_id == "claude-app" && sandboxed() {
+        return fail(tool_id, 0, "沙箱禁止安装系统桌面应用；请在隔离测试机验证。".into());
+    }
     // DeepSeek Harness（Windows）：不再用 npm 全局包，走官方桌面版静默安装（见 `dshdesk.rs`
     // 模块头注释）。这样向导 / `action run` / MCP 全都走同一条实现，不在前端再写一份安装逻辑。
     // Mac/Linux 未改，落到下面的 `install_tool_inner`（仍是 npm 清单那条路）。
@@ -2413,7 +2467,7 @@ pub fn install_tool(
         match ensure_codex_binary(on_log) {
             Ok(dest) => {
                 if let Some(spec) = skill.tools.get(tool_id) {
-                    if let Ok(v) = verify(spec, on_log) {
+                    if let Ok(v) = verify(tool_id, spec, on_log) {
                         on_log(
                             "done",
                             &format!("Codex CLI 二进制兜底安装成功 · {v}（{}）", dest.display()),
@@ -2730,7 +2784,7 @@ fn codex_app_elevated_fallback(
         on_log("error", &e);
         return fail(tool_id, 3, e);
     }
-    match verify(spec, on_log) {
+    match verify(tool_id, spec, on_log) {
         Ok(v) => {
             on_log("done", &format!("{} 提权安装成功 · {v}", spec.name));
             post_install(tool_id, on_log);
@@ -2823,7 +2877,7 @@ fn install_tool_inner(
         // 步骤失败也尝试修复流
         return run_repair(skill, tool_id, spec, on_log);
     }
-    match verify(spec, on_log) {
+    match verify(tool_id, spec, on_log) {
         Ok(v) => {
             on_log("done", &format!("{} 安装成功 · {v}", spec.name));
             post_install(tool_id, on_log);
@@ -2906,6 +2960,7 @@ fn post_install(tool_id: &str, on_log: &(dyn Fn(&str, &str) + Send + Sync)) {
 /// 单测 `command_guard_tool_map_covers_every_guarded_cli` 断言它与 `GUARDED_CLIS` 一一对应且 id 都在内嵌清单里。
 #[cfg_attr(not(windows), allow(dead_code))]
 const CLI_TOOL_COMMANDS: &[(&str, &str)] = &[
+    ("kimi-code", "kimi"),
     ("claude-code", "claude"),
     ("codex", "codex"),
     ("pi", "pi"),
@@ -3278,7 +3333,7 @@ fn run_repair(
     if let Err(e) = run_steps(skill, &spec.repair, on_log) {
         return fail(2, format!("修复步骤失败：{e}"));
     }
-    match verify(spec, on_log) {
+    match verify(tool_id, spec, on_log) {
         Ok(v) => {
             on_log("done", &format!("{} 修复后安装成功 · {v}", spec.name));
             post_install(tool_id, on_log);
@@ -3629,7 +3684,13 @@ fn warn_if_shadowed(_spec: &ToolSpec, _on_log: &(dyn Fn(&str, &str) + Send + Syn
 /// 验证遇到瞬时锁时每次重试前等多久（毫秒）：7 次重试、累计 29s。见 `verify` 里的窗口史。
 const VERIFY_LOCK_BACKOFF_MS: [u64; 7] = [1000, 2000, 3000, 4000, 5000, 6000, 8000];
 
-fn verify(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<String, String> {
+fn verify(tool_id: &str, spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<String, String> {
+    if tool_id == "claude-app" {
+        crate::desktop_app::invalidate();
+        return crate::desktop_app::find("claude-app")
+            .map(|app| app.version.unwrap_or_else(|| "已找到 Claude 主程序".into()))
+            .ok_or_else(|| "安装程序已退出，但没有找到 Claude 桌面版的主程序".into());
+    }
     let cmdline = verify_cmdline(spec);
     on_log("verify", &format!("验证：{cmdline}"));
     let mut last_err = String::new();
@@ -5598,17 +5659,39 @@ fn running_security_products() -> Vec<String> {
     Vec::new()
 }
 
-/// 跑一条命令并**最多等 `secs` 秒**。超时返回 `None`，子进程留给系统收。
+/// 跑一条命令并最多等 `secs` 秒；并发排空输出，超时终止子进程后返回 `None`。
 ///
 /// std 的 `Command::output()` 没有超时，而本文件里几个探测助手跑在启动路径上 ——
 /// `tasklist` 被杀软钩住卡死过（客户机 pc-*** 那次查了半天），一卡就是「界面起不来」，
 /// 而它们全都是**可有可无的诊断**：宁可探不到，不许卡（宪法第 9 条）。
-fn output_with_timeout(mut cmd: std::process::Command, secs: u64) -> Option<std::process::Output> {
+pub(crate) fn output_with_timeout(mut cmd: std::process::Command, secs: u64) -> Option<std::process::Output> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().ok()?;
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(cmd.output());
-    });
-    rx.recv_timeout(std::time::Duration::from_secs(secs)).ok()?.ok()
+    for (is_err, pipe) in [(false, child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>)),
+        (true, child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>))] {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe { let _ = pipe.read_to_end(&mut bytes); }
+            let _ = tx.send((is_err, bytes));
+        });
+    }
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(25)),
+            _ => { let _ = child.kill(); let _ = child.wait(); return None; }
+        }
+    };
+    let mut out = std::process::Output { status, stdout: Vec::new(), stderr: Vec::new() };
+    for _ in 0..2 {
+        let (is_err, bytes) = rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())).ok()?;
+        if is_err { out.stderr = bytes; } else { out.stdout = bytes; }
+    }
+    Some(out)
 }
 
 /// 这个 pid 现在跑的是哪个镜像名（`u-king-mini.exe` / `node.exe` …）。
@@ -5748,7 +5831,7 @@ pub fn inspect_ai_process_health() -> AiProcessInspection {
 /// qwen / crush / opencode 转发器 Rust 这边既不迁移也不认。清单是热下发的脚本、没法 import 这个常量，
 /// 所以由单测 `guarded_clis_match_manifest_shim_step` 解析内嵌清单与它逐项比对，漂移当场变红。
 #[cfg_attr(not(windows), allow(dead_code))]
-const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "qwen", "crush", "opencode"];
+const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "qwen", "crush", "opencode", "kimi"];
 
 #[cfg(windows)]
 /// Build an ACP-safe `.cmd` body. Never interpolate a Unicode absolute path: Rust writes UTF-8
@@ -6335,9 +6418,13 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
                 v.push(npm);
             }
         }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let agy = Path::new(&local).join("agy/bin");
+            if agy.is_dir() { v.push(agy); }
+        }
         // 用户常把 CLI 手动放进 ~/bin、~/.local/bin（非标准但很常见）—— 不扫会漏判「未安装」
         if let Ok(home) = std::env::var("USERPROFILE") {
-            for sub in ["bin", ".local/bin"] {
+            for sub in ["bin", ".local/bin", ".grok/bin", ".muse/bin"] {
                 let p = Path::new(&home).join(sub);
                 if p.exists() {
                     v.push(p);
@@ -6360,7 +6447,7 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
             }
         }
         if let Ok(home) = std::env::var("HOME") {
-            for sub in [".npm-global/bin", ".local/bin"] {
+            for sub in [".npm-global/bin", ".local/bin", ".grok/bin", ".muse/bin"] {
                 let p = Path::new(&home).join(sub);
                 if p.exists() {
                     v.push(p);
@@ -8250,7 +8337,7 @@ mod tests {
         }))
         .unwrap();
         let logs = std::sync::Mutex::new(Vec::<String>::new());
-        let r = verify(&spec, &|_, m| logs.lock().unwrap().push(m.to_string()));
+        let r = verify("demo", &spec, &|_, m| logs.lock().unwrap().push(m.to_string()));
         assert!(r.as_ref().is_err_and(|e| e.contains("退出码 3")), "{r:?}");
         assert!(
             logs.lock().unwrap().iter().all(|m| !m.contains("疑似杀软瞬时锁")),
@@ -8904,5 +8991,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(n, 0);
         assert!(logs.lock().unwrap().iter().all(|m| !m.contains("已停止")), "{:?}", logs.lock().unwrap());
+    }
+
+    /// 用 2026-07-30 干净机上 `reg query` 的**实测原文**当夹具（原在 podapp.rs，随 `reg_value`
+    /// 一起下沉到公共层）。这段里 `InstallLocation` 带引号 —— 就是「装好了却报没装」的那颗雷。
+    #[test]
+    fn reg_value_strips_wrapping_quotes() {
+        let out = "\r\nHKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\泊舟 AI 小程序\r\n    DisplayName    REG_SZ    泊舟 AI 小程序\r\n    DisplayVersion    REG_SZ    0.1.1\r\n    InstallLocation    REG_SZ    \"C:\\Users\\x\\AppData\\Local\\泊舟 AI 小程序\"\r\n";
+        assert_eq!(reg_value(out, "DisplayVersion").as_deref(), Some("0.1.1"));
+        // 关键断言：拿到的必须是干净路径，不带引号
+        assert_eq!(
+            reg_value(out, "InstallLocation").as_deref(),
+            Some("C:\\Users\\x\\AppData\\Local\\泊舟 AI 小程序")
+        );
+        // `DisplayName` 不能被 `DisplayVersion` 抢走（前缀匹配必须要求后面跟空白）
+        assert_eq!(reg_value(out, "DisplayName").as_deref(), Some("泊舟 AI 小程序"));
+        assert!(reg_value(out, "NoSuchValue").is_none());
+    }
+
+    /// 尾部反斜杠要去掉，否则 join 出 `...\\泊舟 AI 小程序\\\\x.exe`。
+    #[test]
+    fn reg_value_trims_trailing_slash() {
+        let out = "    InstallLocation    REG_SZ    \"C:\\App\\\"\r\n";
+        assert_eq!(reg_value(out, "InstallLocation").as_deref(), Some("C:\\App"));
+    }
+
+    /// `DisplayIcon` 的「引号在中间」形状（`"path",0`）不是整体包裹，`reg_value` 不剥、原样交给调用方拆；
+    /// 同时 `QuietUninstallString` 不能被 `UninstallString` 的前缀匹配抢走。
+    #[test]
+    fn reg_value_leaves_inner_quotes_for_the_caller() {
+        let out = "    QuietUninstallString    REG_SZ    \"C:\\App\\u.exe\" /S\r\n    UninstallString    REG_SZ    \"C:\\App\\u.exe\"\r\n    DisplayIcon    REG_SZ    \"C:\\App\\a.exe\",0\r\n";
+        assert_eq!(reg_value(out, "DisplayIcon").as_deref(), Some("\"C:\\App\\a.exe\",0"));
+        assert_eq!(reg_value(out, "UninstallString").as_deref(), Some("C:\\App\\u.exe"));
     }
 }

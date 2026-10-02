@@ -41,8 +41,11 @@
  * 从「常驻在每张卡片上」挪进「点开才看到的详情条」。
  */
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { askConfirm } from "../lib/confirm";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  Check,
   ChevronDown,
   Cpu,
   Download,
@@ -61,6 +64,7 @@ import {
   LAB_TOOLS,
   toolTargets,
   currentModelFor,
+  configurationLabelFor,
   modelReadbackState,
   needsEffectiveReadback,
   discoveryNameFor,
@@ -68,7 +72,7 @@ import {
   type ToolInfo,
 } from "../App";
 import type { DeviceKey, DriverStatus, EffectiveConfig } from "../lib/types";
-import type { ProviderPreset } from "../Wizard";
+import { TOOL_NAMES, type ProviderPreset } from "../Wizard";
 import { ToolIcon } from "../components/ToolIcon";
 import { AnchoredMenu } from "../components/AnchoredMenu";
 import { providerKeyFor } from "../components/ProviderSwitch";
@@ -165,6 +169,7 @@ export function ToolHub({
   deviceKey,
   onLaunch,
   onOpen,
+  onInstallSelection,
   onUninstall,
   onGoManage,
   onManageProviders,
@@ -174,6 +179,7 @@ export function ToolHub({
   onAskAiToFix,
   onGoSetup,
   onGoDoctor,
+  onGoToolbox,
   onGoChat,
   onGoTermWb,
 }: {
@@ -184,6 +190,7 @@ export function ToolHub({
   onLaunch: (t: ToolInfo) => void;
   /** 未装工具的一键安装通路 / GUI 应用直开（=App.tsx 的 `openTool`）。 */
   onOpen: (t: ToolInfo) => void;
+  onInstallSelection: (ids: string[]) => void;
   /** 详情条「卸载」——彻底卸载某个 AI 工具（=App.tsx 的 `uninstallTool`，含残留清理 + 二次
    *  确认，那套破坏性弹窗逻辑一个字没动，本组件只负责在能卸载的工具详情条里露出这个入口，
    *  能不能卸载看 `canUninstallTool`，跟侧栏「装机 · 体检」`MyAI` 共用同一份名单）。 */
@@ -215,6 +222,7 @@ export function ToolHub({
   /** 页头次要链接「装机 · 体检 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
    *  （装机漏斗 + 体检/卸载）。 */
   onGoDoctor: () => void;
+  onGoToolbox: () => void;
   /** 详情条「想在 U-King 里用？」→「对话工作台」→ App.tsx 的 `setTab("chat")`。 */
   onGoChat: () => void;
   /** 同上，→「终端工作台」→ App.tsx 的 `setTab("termwb")`。 */
@@ -223,6 +231,8 @@ export function ToolHub({
   const { t: tr } = useI18n();
   const [category, setCategory] = useState<Category>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchSelection, setBatchSelection] = useState<string[]>([]);
 
   const visibleTools = useMemo(() => tools.filter((t) => !t.hidden), [tools]);
   // 「已装」只数主线工具——`LAB_TOOLS`（Open365 等）不算。Open365 后端 `installed` 恒 true
@@ -426,6 +436,10 @@ export function ToolHub({
       onGoManage();
       return;
     }
+    if (target === "claude" && configurationLabelFor(t, driver) && p.id !== "official") {
+      const approved = await askConfirm(tr("切换后 Claude Code 将使用 {name} 的模型和计费。可在「AI 设置」还原官方登录。", { name: p.name }));
+      if (!approved) return;
+    }
     closeMenu();
     setApplyingIds((s) => new Set(s).add(t.id));
     try {
@@ -439,7 +453,7 @@ export function ToolHub({
       onToast(
         p.id === "official"
           ? tr("已还原官方配置{hint}", { hint: restartHint })
-          : tr("已切到 {name}{model}{hint}", { name: p.name, model: "", hint: restartHint }),
+          : tr("已切到 {name}{model}{hint}", { name: p.name, model: p.model ? " · " + p.model : "", hint: restartHint }),
       );
       setApplyFailures((m) => {
         if (!(t.id in m)) return m;
@@ -508,7 +522,7 @@ export function ToolHub({
     };
   }, []);
 
-  // 分体按钮右侧 ▾ 弹出的「在系统终端打开 / 在 U-CLI 打开」——只有两项的静态菜单，
+  // 分体按钮右侧 ▾ 弹出的「在系统终端打开 / 在 U-King 内置终端打开」——只有两项的静态菜单，
   // 不需要像换模型下拉那样跨工具缓存，存整个 ToolInfo 而不是 id，点了直接拿来启动。
   const [splitMenuTool, setSplitMenuTool] = useState<ToolInfo | null>(null);
   const splitAnchorRef = useRef<HTMLButtonElement | null>(null);
@@ -549,7 +563,7 @@ export function ToolHub({
   /** 已装瓷砖——图标 + 名字 + 一行极小灰字（当前模型 / 「桌面应用」）,不放任何按钮。 */
   function renderInstalledTile(t: ToolInfo, registerRef: (el: HTMLButtonElement | null) => void) {
     const isSelected = selectedId === t.id;
-    const model = currentModelFor(t, driver, effectiveByTarget);
+    const model = currentModelFor(t, driver, effectiveByTarget) ?? (configurationLabelFor(t, driver) ? tr(configurationLabelFor(t, driver)!) : null);
     const subtitle = model || (t.launch_app ? tr("桌面应用") : "");
     return (
       <button
@@ -569,8 +583,8 @@ export function ToolHub({
         <span className="grid place-items-center w-16 h-16 rounded-2xl bg-bg-3">
           <ToolIcon tool={t.id} size={56} active />
         </span>
-        <span className="w-full text-[12px] font-medium text-ink-0 truncate">{t.name}</span>
-        <span className="w-full text-[10px] text-ink-5 truncate">{subtitle || " "}</span>
+        <span className="w-full text-[12px] font-medium text-ink-0 whitespace-normal leading-snug min-h-[32px]">{t.name}</span>
+        <span className="w-full text-[10px] text-ink-3 truncate">{subtitle || " "}</span>
       </button>
     );
   }
@@ -579,30 +593,36 @@ export function ToolHub({
    *  + 右下角一个小下载徽标；下面一行极小灰字是分类名（跟旧版可装 tile 同一份展示，
    *  这次改版没人要求去掉它）。同样不放任何按钮。 */
   function renderInstallableTile(t: ToolInfo, registerRef: (el: HTMLButtonElement | null) => void) {
-    const isSelected = selectedId === t.id;
+    const canBatch = t.action === "install" && !!TOOL_NAMES[t.id];
+    const isSelected = batchMode ? batchSelection.includes(t.id) : selectedId === t.id;
     const catLabel = CATS.find((c) => c.id === categoryOf(t))?.label ?? "";
     return (
       <button
         ref={registerRef}
         data-testid="toolhub-tile"
         data-tool-id={t.id}
-        aria-expanded={isSelected}
+        aria-expanded={batchMode ? undefined : isSelected}
+        aria-pressed={batchMode ? isSelected : undefined}
         aria-controls={detailIdFor(t.id)}
-        onClick={() => toggleSelect(t.id)}
+        disabled={batchMode && !canBatch}
+        onClick={() => batchMode
+          ? setBatchSelection((ids) => ids.includes(t.id) ? ids.filter((id) => id !== t.id) : [...ids, t.id])
+          : toggleSelect(t.id)}
         className={cn(
           "flex flex-col items-center gap-1.5 rounded-xl border p-2.5 text-center transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+          "disabled:opacity-40",
           isSelected ? "border-accent bg-accent/[0.10]" : "border-transparent hover:bg-white/[0.04] hover:border-white/[0.10]",
         )}
       >
         <span className="relative grid place-items-center w-16 h-16 rounded-2xl bg-bg-3">
           <ToolIcon tool={t.id} size={56} active={false} />
           <span className="absolute -bottom-1 -right-1 grid place-items-center w-5 h-5 rounded-full bg-bg-1 border border-white/[0.14] text-ink-4">
-            <Download size={10} />
+            {batchMode && isSelected ? <Check size={10} /> : <Download size={10} />}
           </span>
         </span>
-        <span className="w-full text-[12px] font-medium text-ink-2 truncate">{t.name}</span>
-        <span className="w-full text-[10px] text-ink-5 truncate">{tr(catLabel)}</span>
+        <span className="w-full text-[12px] font-medium text-ink-2 whitespace-normal leading-snug min-h-[32px]">{t.name}</span>
+        <span className="w-full text-[10px] text-ink-3 truncate">{tr(catLabel)}</span>
       </button>
     );
   }
@@ -637,7 +657,7 @@ export function ToolHub({
   /** 已装工具详情条：左侧 logo/名称/版本/打开方式 + 换模型下拉（逻辑原样搬自旧版卡片）+
    *  报错横幅 + 启动/打开按钮（CLI 工具是分体按钮）+ 次要操作 + 「想在 U-King 里用？」引导。 */
   function renderInstalledDetail(t: ToolInfo) {
-    const model = currentModelFor(t, driver, effectiveByTarget);
+    const model = currentModelFor(t, driver, effectiveByTarget) ?? (configurationLabelFor(t, driver) ? tr(configurationLabelFor(t, driver)!) : null);
     // 当前模型为空时到底是「没配」还是「读不到」——见 `modelReadbackState`；读不到不能喊「还没配模型」。
     const readback = modelReadbackState(t, effectiveByTarget);
     const targets = toolTargets(t);
@@ -648,7 +668,7 @@ export function ToolHub({
     const activeProviderName = activeProviderId
       ? providersByTarget[target]?.find((p) => p.id === activeProviderId)?.name
       : undefined;
-    const version = primaryDiscoveryVersion(t, driver);
+    const version = t.version ?? primaryDiscoveryVersion(t, driver);
     const applying = applyingIds.has(t.id);
     const failure = applyFailures[t.id];
     // 真正的启动方式（`tools::LaunchMode`，见上面 `launchModes` 的注释）——只有它是
@@ -669,7 +689,7 @@ export function ToolHub({
             : mode === "embedded_pty"
               ? launchPref === "system"
                 ? tr("在系统终端打开")
-                : tr("在 U-CLI 打开")
+                : tr("在 U-King 内置终端打开")
               : isGuiApp
                 ? tr("桌面应用")
                 : "";
@@ -683,8 +703,12 @@ export function ToolHub({
             </span>
             <div className="min-w-0">
               <div className="text-[15px] font-semibold text-ink-0 truncate">{t.name}</div>
-              {version && <div className="text-[11px] text-ink-5 font-mono truncate">v{version}</div>}
-              {openMethodText && <div className="text-[10.5px] text-ink-4 truncate">{openMethodText}</div>}
+              {version && <div className="text-[11px] text-ink-3 font-mono truncate">v{version}</div>}
+              <p className="mt-1 text-[12px] text-ink-3 leading-relaxed max-w-[520px]">{t.summary}</p>
+              {t.id === "claude-app" && <button className="mt-1 text-[12px] text-accent hover:underline"
+                onClick={() => void openUrl("https://code.claude.com/docs/en/llm-gateway-connect").catch((e) => onToast(String(e)))}>
+                {tr("桌面版模型配置说明")}
+              </button>}
             </div>
           </div>
 
@@ -726,7 +750,7 @@ export function ToolHub({
                     <ChevronDown size={13} />
                   </button>
                 </div>
-                <span className="text-[10px] text-ink-5">{openMethodText}</span>
+                <span className="text-[10px] text-ink-3">{openMethodText}</span>
               </>
             ) : (
               // `route_tab`（如 hermes）/`external_term`（如 harness-doctor）/`mode` 还没拉到：
@@ -743,7 +767,7 @@ export function ToolHub({
                 >
                   <Play size={14} /> {applying ? tr("正在应用配置…") : tr("启动")}
                 </button>
-                {openMethodText && <span className="text-[10px] text-ink-5">{openMethodText}</span>}
+                {openMethodText && <span className="text-[10px] text-ink-3">{openMethodText}</span>}
               </>
             )}
           </div>
@@ -773,7 +797,7 @@ export function ToolHub({
                 {activeProviderName ? tr("使用中：{name}", { name: activeProviderName }) : tr("选择模型供应商")}
               </span>
             )}
-            <ChevronDown size={12} className="text-ink-5 shrink-0" />
+            <ChevronDown size={12} className="text-ink-3 shrink-0" />
           </button>
         ) : model ? (
           // target 为空但 currentModelFor 有值（没有 config_target、却读得到模型的工具——
@@ -785,7 +809,7 @@ export function ToolHub({
         ) : (
           // target 为空、currentModelFor 也拿不到值：如实说「这里换不了」，给个「AI 设置」
           // 的出口，别把用户卡死在这条详情里。
-          <div className="flex items-center gap-1.5 px-2 h-8 text-[11.5px] text-ink-5">
+          <div className="flex items-center gap-1.5 px-2 h-8 text-[11.5px] text-ink-3">
             <Cpu size={12} className="shrink-0" />
             <span className="flex-1 min-w-0 truncate text-left">{tr("这里暂不能换它的模型")}</span>
             <button data-testid="toolhub-go-manage" onClick={onGoManage} className="shrink-0 text-accent-400 hover:text-accent hover:underline">
@@ -827,7 +851,7 @@ export function ToolHub({
               data-tool-id={t.id}
               onClick={() => onUninstall(t)}
               title={tr("彻底卸载 {name}（含 U-King 相关残留清理）", { name: t.name })}
-              className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11.5px] text-ink-5 hover:text-red-400 hover:bg-red-500/[0.06]"
+              className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11.5px] text-ink-3 hover:text-red-400 hover:bg-red-500/[0.06]"
             >
               <Trash2 size={12} /> {tr("卸载")}
             </button>
@@ -842,7 +866,7 @@ export function ToolHub({
           </button>
         </div>
 
-        <div className="text-[11px] text-ink-5">
+        <div className="text-[11px] text-ink-3">
           {tr("想在 U-King 里用？")}{" "}
           <button data-testid="toolhub-go-chat" onClick={onGoChat} className="text-accent-400 hover:underline">
             {tr("对话工作台")}
@@ -870,6 +894,7 @@ export function ToolHub({
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-semibold text-ink-0 truncate">{t.name}</div>
           <div className="text-[11.5px] text-ink-4 truncate">{tr(catLabel)}</div>
+          <div className="mt-1 text-[12px] text-ink-3">{t.summary}</div>
         </div>
         <button
           data-testid="toolhub-install-btn"
@@ -908,6 +933,10 @@ export function ToolHub({
             className="inline-flex items-center gap-1 px-2 h-8 text-[12.5px] text-accent hover:text-accent-600"
           >
             {tr("装机 · 体检 →")}
+          </button>
+          <button data-testid="toolhub-go-toolbox" onClick={onGoToolbox}
+            className="inline-flex items-center gap-1 px-2 h-8 text-[12.5px] text-accent hover:text-accent-600">
+            {tr("日常软件与环境 →")}
           </button>
         </div>
       </div>
@@ -968,6 +997,15 @@ export function ToolHub({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-[13px] font-semibold text-ink-1">{tr("可安装（{n}）", { n: installableAll.length })}</h2>
           <div className="flex items-center gap-1.5 flex-wrap">
+            <button data-testid="toolhub-batch-toggle" className="px-2.5 h-7 rounded-full text-[11.5px] text-accent border border-accent/30"
+              onClick={() => { setBatchMode((value) => !value); setBatchSelection([]); setSelectedId(null); }}>
+              {tr(batchMode ? "取消多选" : "多选安装")}
+            </button>
+            {batchMode && <button data-testid="toolhub-batch-install" disabled={!batchSelection.length}
+              className="px-2.5 h-7 rounded-full text-[11.5px] bg-accent text-white disabled:opacity-40"
+              onClick={() => { onInstallSelection(batchSelection); setBatchMode(false); setBatchSelection([]); }}>
+              {tr("安装所选（{n}）", { n: batchSelection.length })}
+            </button>}
             {CATS.map((c) => (
               <button
                 key={c.id}
@@ -991,7 +1029,7 @@ export function ToolHub({
         ) : (
           <TileGrid
             tiles={installableFiltered}
-            selectedId={installableSelectedId}
+            selectedId={batchMode ? null : installableSelectedId}
             renderTile={renderInstallableTile}
             renderDetail={(t, caretLeft) => detailShell(t, caretLeft, renderInstallableDetail(t))}
           />
@@ -1111,7 +1149,7 @@ export function ToolHub({
               }}
               className="w-full text-left px-2.5 py-2 rounded-md text-[12px] text-ink-2 hover:bg-white/[0.06]"
             >
-              {tr("在 U-CLI 打开")}
+              {tr("在 U-King 内置终端打开")}
             </button>
           </div>
         </AnchoredMenu>
