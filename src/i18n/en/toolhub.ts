@@ -11,6 +11,7 @@
  *  「使用工具自带账号」这一条从此不再被引用，同上一条一起留着不删。 */
 export const toolhub: Record<string, string> = {
   "桌面版模型配置说明": "Desktop model configuration guide",
+  "配置与登录说明": "Configuration and sign-in guide",
   "开始安装 {tool}（官方下载，装完自动验证）…": "Installing {tool} from the official source and verifying it…",
   "日常软件与环境 →": "Everyday software and runtimes →",
   "多选安装": "Install multiple",

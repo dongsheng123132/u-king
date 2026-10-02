@@ -649,6 +649,12 @@ export function ToolHub({
           className="rounded-card border border-ink-5/30 bg-bg-1 p-4 space-y-3"
         >
           {body}
+          {t.action === "install" && t.launch_cmd && t.target.startsWith("https://") && <button
+            data-testid="toolhub-config-guide"
+            className="mt-1 text-[12px] text-accent hover:underline"
+            onClick={() => void openUrl(t.target).catch((e) => onToast(String(e)))}>
+            {tr("配置与登录说明")}
+          </button>}
         </div>
       </div>
     );

@@ -6,7 +6,7 @@
  */
 
 // 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突
-export type TuiAppId = "kimi" | "grok" | "muse" | "agy" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi";
+export type TuiAppId = "mimo" | "codebuddy" | "qodercn" | "kimi" | "grok" | "muse" | "agy" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -30,6 +30,12 @@ export type TuiApp = {
 };
 
 export const TUI_APPS: TuiApp[] = [
+  { id: "mimo", toolId: "mimo-code", name: "MiMo Code", tool: "mimo",
+    prompts: [{ label: "启动", cmd: "mimo" }], configTargets: [], group: "cli", hidden: true },
+  { id: "codebuddy", toolId: "codebuddy-code", name: "CodeBuddy Code", tool: "codebuddy",
+    prompts: [{ label: "启动", cmd: "codebuddy" }], configTargets: [], group: "cli", hidden: true },
+  { id: "qodercn", toolId: "qoder-cn", name: "Qoder CN CLI", tool: "qodercn",
+    prompts: [{ label: "启动", cmd: "qodercn" }], configTargets: [], group: "cli", hidden: true },
   { id: "kimi", toolId: "kimi-code", name: "Kimi Code", tool: "kimi",
     prompts: [{ label: "启动", cmd: "kimi" }], configTargets: [], group: "cli", hidden: true },
   { id: "grok", toolId: "grok-build", name: "Grok Build", tool: "grok",

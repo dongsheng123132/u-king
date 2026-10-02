@@ -366,6 +366,9 @@ pub struct ToolSpec {
     /// 老客户端不认识这个字段（serde 忽略未知字段），下发新清单对它们是安全的。
     #[serde(default)]
     pub min_windows_build: u32,
+    /// Empty means no architecture restriction. Checked before downloading or retrying.
+    #[serde(default)]
+    pub windows_architectures: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -2814,6 +2817,19 @@ fn install_tool_inner(
         return fail(tool_id, 0, format!("skill 清单里没有工具 {tool_id}"));
     };
 
+    #[cfg(windows)]
+    if !spec.windows_architectures.is_empty() {
+        let raw = std::env::var("PROCESSOR_ARCHITEW6432")
+            .or_else(|_| std::env::var("PROCESSOR_ARCHITECTURE"))
+            .unwrap_or_else(|_| std::env::consts::ARCH.into());
+        let arch = normalize_windows_arch(&raw);
+        if !windows_arch_supported(&spec.windows_architectures, arch) {
+            let msg = format!("{} 暂不支持这台 Windows 的 {arch} 架构；支持 {}。请使用其他 AI 工具或查看官方安装说明。", spec.name, spec.windows_architectures.join(" / "));
+            on_log("error", &msg);
+            return blocked(tool_id, msg);
+        }
+    }
+
     // 磁盘空间预检（min_free_mb > 0 才查）：满盘时下载报错是天书，提前拦下来说人话
     if spec.min_free_mb > 0 {
         if let Some(free_mb) = temp_disk_free_mb() {
@@ -2897,6 +2913,22 @@ fn install_tool_inner(
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+fn normalize_windows_arch(raw: &str) -> &str {
+    if raw.eq_ignore_ascii_case("AMD64") || raw.eq_ignore_ascii_case("x86_64") || raw.eq_ignore_ascii_case("x64") {
+        "x64"
+    } else if raw.eq_ignore_ascii_case("ARM64") || raw.eq_ignore_ascii_case("aarch64") {
+        "arm64"
+    } else {
+        raw
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_arch_supported(supported: &[String], arch: &str) -> bool {
+    supported.is_empty() || supported.iter().any(|item| item == arch)
+}
+
 /// 装完某工具后的收尾动作：尽量把默认虾盘云驱动也写好，做到“安装成功 = 可直接试用”。
 fn post_install(tool_id: &str, on_log: &(dyn Fn(&str, &str) + Send + Sync)) {
     match tool_id {
@@ -2960,6 +2992,9 @@ fn post_install(tool_id: &str, on_log: &(dyn Fn(&str, &str) + Send + Sync)) {
 /// 单测 `command_guard_tool_map_covers_every_guarded_cli` 断言它与 `GUARDED_CLIS` 一一对应且 id 都在内嵌清单里。
 #[cfg_attr(not(windows), allow(dead_code))]
 const CLI_TOOL_COMMANDS: &[(&str, &str)] = &[
+    ("mimo-code", "mimo"),
+    ("codebuddy-code", "codebuddy"),
+    ("qoder-cn", "qodercn"),
     ("kimi-code", "kimi"),
     ("claude-code", "claude"),
     ("codex", "codex"),
@@ -5831,7 +5866,7 @@ pub fn inspect_ai_process_health() -> AiProcessInspection {
 /// qwen / crush / opencode 转发器 Rust 这边既不迁移也不认。清单是热下发的脚本、没法 import 这个常量，
 /// 所以由单测 `guarded_clis_match_manifest_shim_step` 解析内嵌清单与它逐项比对，漂移当场变红。
 #[cfg_attr(not(windows), allow(dead_code))]
-const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "qwen", "crush", "opencode", "kimi"];
+const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "qwen", "crush", "opencode", "kimi", "mimo", "codebuddy", "qodercn"];
 
 #[cfg(windows)]
 /// Build an ACP-safe `.cmd` body. Never interpolate a Unicode absolute path: Rust writes UTF-8
@@ -8893,6 +8928,18 @@ mod tests {
             "steps": steps, "repair": repair,
         }))
         .expect("测试 ToolSpec 应能解析")
+    }
+
+    #[test]
+    fn windows_architecture_gate_blocks_unsupported_downloads() {
+        let all: Vec<String> = Vec::new();
+        let x64 = vec!["x64".into()];
+        assert!(windows_arch_supported(&all, "arm64"));
+        assert!(windows_arch_supported(&x64, normalize_windows_arch("AMD64")));
+        assert!(windows_arch_supported(&x64, normalize_windows_arch("x86_64")));
+        assert!(!windows_arch_supported(&x64, normalize_windows_arch("ARM64")));
+        assert!(!windows_arch_supported(&x64, normalize_windows_arch("aarch64")));
+        assert!(!windows_arch_supported(&x64, "x86"));
     }
 
     #[test]

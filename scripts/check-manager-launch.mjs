@@ -10,12 +10,17 @@ const tools = [
   { id: 'claude-app', name: 'Claude 桌面版', installed: true, launch_cmd: '', launch_app: 'claude-app', config_target: null, kind: 'standalone' },
   { id: 'kimi-code', name: 'Kimi Code', installed: false, launch_cmd: 'kimi', launch_app: '', config_target: null, kind: 'standalone' },
   { id: 'grok-build', name: 'Grok Build', installed: false, launch_cmd: 'grok', launch_app: '', config_target: null, kind: 'standalone' },
-].map(t => ({ ...t, action: 'install', target: '', hidden: false, summary: t.name }));
+  { id: 'mimo-code', name: 'MiMo Code', installed: false, launch_cmd: 'mimo', launch_app: '', config_target: null, kind: 'standalone', target: 'https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code' },
+  { id: 'codebuddy-code', name: 'CodeBuddy Code', installed: false, launch_cmd: 'codebuddy', launch_app: '', config_target: null, kind: 'standalone' },
+  { id: 'qoder-cn', name: 'Qoder CN CLI', installed: false, launch_cmd: 'qodercn', launch_app: '', config_target: null, kind: 'standalone' },
+].map(t => ({ action: 'install', target: '', ...t, hidden: false, summary: t.name }));
 const browser = await chromium.launch();
 const errors = [];
 let page;
 try {
   page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  page.setDefaultTimeout(30000);
+  page.setDefaultNavigationTimeout(30000);
   page.on('pageerror', e => errors.push(String(e)));
   await page.addInitScript(({ tools, folder }) => {
     localStorage.setItem('uking.seenGuide', '1');
@@ -84,12 +89,15 @@ try {
   await tile('claude-app').dblclick();
   await page.waitForFunction(() => window.testCalls.some(c => c.cmd === 'action_parity_call' && c.args.request.action_id === 'runtime.tool.launch' && c.args.request.input.tool_id === 'claude-app'));
   assert.equal(await page.getByTestId('launch-folder-dialog').count(), 0, 'Desktop app should launch directly');
+  await tile('mimo-code').click();
+  await page.getByTestId('toolhub-config-guide').click();
+  await page.waitForFunction(() => window.testCalls.some(c => c.args?.url === 'https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code'));
   await page.getByTestId('toolhub-batch-toggle').click();
-  await tile('kimi-code').click(); await tile('grok-build').click();
+  await tile('mimo-code').click(); await tile('codebuddy-code').click(); await tile('qoder-cn').click();
   await page.getByTestId('toolhub-batch-install').click();
   await page.getByText('所选软件安装流程已结束。', { exact: false }).waitFor();
   const calls = await page.evaluate(() => window.testCalls);
-  assert.deepEqual(calls.filter(c => c.cmd === 'install_tool').map(c => c.args.toolId), ['kimi-code', 'grok-build']);
+  assert.deepEqual(calls.filter(c => c.cmd === 'install_tool').map(c => c.args.toolId), ['mimo-code', 'codebuddy-code', 'qoder-cn']);
   assert.equal(calls.filter(c => c.cmd === 'apply_provider').length, 0, 'Batch install must preserve existing providers');
   mkdirSync('shots/manager-check', { recursive: true });
   await page.screenshot({ path: 'shots/manager-check/install-result.png' });

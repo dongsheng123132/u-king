@@ -401,6 +401,21 @@ pub fn plan_all() -> Vec<LaunchPlan> {
 
 pub const TOOL_SPECS: &[ToolSpec] = &[
     ToolSpec {
+        id: "mimo-code", cmd: "mimo", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "codebuddy-code", cmd: "codebuddy", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "qoder-cn", cmd: "qodercn", config_target: None,
+        in_list_tools: true, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
         id: "claude-app", cmd: "", config_target: None,
         in_list_tools: false, in_checkup: None, probe_args: None,
         launch_mode: LaunchMode::GuiApp, route_tab: None,
@@ -1236,6 +1251,24 @@ impl NoWindow for std::process::Command {
 /// action = "install"：走对话式安装向导（skill 驱动，可真装）；"url"：打开官网指引。
 pub fn list_tools() -> Vec<ToolInfo> {
     let mut v = vec![
+        ToolInfo {
+            id: "mimo-code".into(), name: "MiMo Code".into(), summary: "小米的终端 AI 编程助手。支持小米账号登录，也可在 /connect 中配置模型供应商。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("mimo"), action: "install".into(),
+            target: "https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code".into(), launch_cmd: "mimo".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
+        ToolInfo {
+            id: "codebuddy-code".into(), name: "CodeBuddy Code".into(), summary: "腾讯的终端 AI 编程助手。首次启动登录国内账号；自定义模型可按官方配置说明接入。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("codebuddy"), action: "install".into(),
+            target: "https://www.codebuddy.ai/docs/zh/cli/env-vars".into(), launch_cmd: "codebuddy".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
+        ToolInfo {
+            id: "qoder-cn".into(), name: "Qoder CN CLI".into(), summary: "阿里的国内版终端 AI 助手，使用国内账号登录。Windows 暂仅支持 x64；模型与套餐由工具自身管理。".into(),
+            kind: "standalone".into(), installed: crate::installer::tool_installed("qodercn"), action: "install".into(),
+            target: "https://docs.qoder.cn/cli/installation".into(), launch_cmd: "qodercn".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None,
+        },
         ToolInfo {
             id: "kimi-code".into(), name: "Kimi Code".into(), summary: "月之暗面的命令行编程助手，国内可用；首次启动用 /login 登录。".into(),
             kind: "standalone".into(), installed: crate::installer::tool_installed("kimi"), action: "install".into(),

@@ -717,7 +717,7 @@ fn sh_single_quote(path: &str) -> String {
 /// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
 /// 附近注释，实现时不要漏掉这一条。
 pub fn validate_cmd(cmd: &str) -> bool {
-    const ALLOWED_PROGRAMS: &[&str] = &["kimi", "grok", "muse", "agy", "claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "node", "npm", "git", "ollama"];
+    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "grok", "muse", "agy", "claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;
     if cmd.len() > MAX_LEN {
         return false;
@@ -735,6 +735,21 @@ pub fn validate_cmd(cmd: &str) -> bool {
                 !c.is_ascii() || c.is_ascii_alphanumeric() || "-_=./:".contains(c)
             })
     })
+}
+
+// Choose the domestic account service only for CodeBuddy launches with no explicit edition.
+// Keep this default in one place for embedded PTY and external terminals.
+fn codebuddy_default_env(cmd: Option<&str>, configured: Option<&std::ffi::OsStr>) -> Option<(&'static str, &'static str)> {
+    if cmd.and_then(|c| c.split_whitespace().next()) == Some("codebuddy") && configured.is_none() {
+        Some(("CODEBUDDY_INTERNET_ENVIRONMENT", "internal"))
+    } else {
+        None
+    }
+}
+
+fn tool_launch_env(cmd: Option<&str>) -> Vec<(&'static str, &'static str)> {
+    let configured = std::env::var_os("CODEBUDDY_INTERNET_ENVIRONMENT");
+    codebuddy_default_env(cmd, configured.as_deref()).into_iter().collect()
 }
 
 /// 构造交互式 shell 命令。Windows 优先 PowerShell 7（pwsh），回落 Windows PowerShell 5.1；
@@ -770,6 +785,7 @@ pub fn headless_run(cmd: &str, timeout_ms: u64) -> Result<String, String> {
     let mut builder = shell_builder();
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
+    for (name, value) in tool_launch_env(Some(cmd)) { builder.env(name, value); }
     enable_interactive_color(&mut builder);
     inject_openclaw_env(&mut builder);
     inject_pip_mirror(&mut builder);
@@ -1067,6 +1083,7 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
         std::process::Command::new(crate::installer::system_tool("cmd"))
             .args(["/D", "/V:OFF", "/C"])
             .arg(&bat_file)
+            .envs(tool_launch_env(cmd.as_deref()))
             .creation_flags(0x0000_0010) // CREATE_NEW_CONSOLE（用户明确选择系统终端）
             .spawn()
             .map_err(|e| {
@@ -1103,8 +1120,12 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
             None => format!("exec \"{shell}\" -il\n"),
         };
 
+        let tool_env = tool_launch_env(cmd.as_deref()).into_iter()
+            .map(|(name, value)| format!("export {name}={}\n", sh_single_quote(value)))
+            .collect::<String>();
         let script = format!(
             "#!/bin/zsh\n\
+             {tool_env}\
              export PATH=\"{path}\"\n\
              export OPENCLAW_HOME=\"{home}\"\n\
              export OPENCLAW_STATE_DIR=\"{home}\"\n\
@@ -1268,6 +1289,7 @@ pub async fn term_open_pty(
     let mut builder = shell_builder();
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
+    for (name, value) in tool_launch_env(initial_cmd.as_deref()) { builder.env(name, value); }
     enable_interactive_color(&mut builder);
     inject_openclaw_env(&mut builder);
     inject_pip_mirror(&mut builder);
@@ -1876,7 +1898,7 @@ pub fn openclaw_webui_url() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{bat_escape_percent, parse_env_dump, sh_single_quote, term_open_pty, validate_cmd};
+    use super::{bat_escape_percent, codebuddy_default_env, parse_env_dump, sh_single_quote, term_open_pty, validate_cmd};
     use tauri::ipc::Channel;
 
     #[test]
@@ -1963,6 +1985,27 @@ mod tests {
         let long_cmd = format!("claude {}", "a".repeat(600));
         assert!(long_cmd.len() > 512);
         assert!(!validate_cmd(&long_cmd));
+    }
+
+    #[test]
+    fn domestic_tool_commands_preserve_command_validation() {
+        for cmd in ["mimo", "codebuddy", "qodercn", "mimo --version", "codebuddy --model demo-model"] {
+            assert!(validate_cmd(cmd), "{cmd}");
+        }
+        for cmd in ["mimo & calc", "qodercn ../demo", "codebuddy %TOKEN%", "codebuddy $(demo)"] {
+            assert!(!validate_cmd(cmd), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn codebuddy_defaults_to_domestic_accounts_without_overriding_an_edition() {
+        assert_eq!(codebuddy_default_env(Some("codebuddy --version"), None), Some(("CODEBUDDY_INTERNET_ENVIRONMENT", "internal")));
+        for edition in ["internal", "ioa", "international", ""] {
+            assert_eq!(codebuddy_default_env(Some("codebuddy"), Some(std::ffi::OsStr::new(edition))), None);
+        }
+        for cmd in [None, Some("mimo"), Some("qodercn"), Some("codebuddy-code")] {
+            assert_eq!(codebuddy_default_env(cmd, None), None);
+        }
     }
 
     #[test]

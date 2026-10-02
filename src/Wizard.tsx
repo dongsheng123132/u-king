@@ -130,6 +130,9 @@ let nextId = 1;
 // 队列里的每一步都用 `t(TOOL_NAMES[tool])` 做文案，**漏一个就显示 "undefined 安装成功"**。
 // 所以这里必须覆盖所有可能进队列或被工具市场点进来的 id，不只是默认装的三件套。
 export const TOOL_NAMES: Record<string, string> = {
+  "mimo-code": "MiMo Code",
+  "codebuddy-code": "CodeBuddy Code",
+  "qoder-cn": "Qoder CN CLI",
   "claude-app": "Claude 桌面版",
   "kimi-code": "Kimi Code",
   "grok-build": "Grok Build",
@@ -905,7 +908,7 @@ export function Wizard({
     if (ctx.current.installAllThenXiapan) {
       return finishInstallAll();
     }
-    if (Array.isArray(preselect) || ctx.current.queue.every((id) => ["claude-app", "grok-build", "muse-code", "antigravity-cli", "kimi-code"].includes(id))) {
+    if (Array.isArray(preselect) || ctx.current.queue.every((id) => ["claude-app", "grok-build", "muse-code", "antigravity-cli", "kimi-code", "mimo-code", "codebuddy-code", "qoder-cn"].includes(id))) {
       push({ role: "uking", text: t("所选软件安装流程已结束。请在「我的 AI」中启动；支持的工具可换模型或充值，需要账号的工具在首次启动时登录。") });
       return finish();
     }
