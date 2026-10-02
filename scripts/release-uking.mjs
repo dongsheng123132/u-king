@@ -176,6 +176,10 @@ async function readConfig(configArg) {
       downloadDir,
       sudo: target.sudo === true,
       versionPaths: target.versionPaths.map((entry, pathIndex) => requireRemotePath(entry, `config.targets[${index}].versionPaths[${pathIndex}]`)),
+      skillPaths: target.skillPaths === undefined ? [] : (() => {
+        if (!Array.isArray(target.skillPaths)) fail(`config.targets[${index}].skillPaths 必须是数组`);
+        return target.skillPaths.map((entry, pathIndex) => requireRemotePath(entry, `config.targets[${index}].skillPaths[${pathIndex}]`));
+      })(),
     };
   });
   if (!isObject(config.oss)) fail("config.oss 必须是对象");
@@ -392,7 +396,7 @@ async function remoteCommit(target, staged) {
   await run("ssh", sshArgs(target, remoteCommand(target, commands.join("; "))));
 }
 
-async function freezeReleaseInputs(inspected, websiteVersion) {
+async function freezeReleaseInputs(inspected, websiteVersion, config) {
   const snapshotDir = await fs.mkdtemp(path.join(os.tmpdir(), "uking-release-"));
   const artifacts = [];
   for (const artifact of inspected.artifacts) {
@@ -408,7 +412,18 @@ async function freezeReleaseInputs(inspected, websiteVersion) {
   await fs.writeFile(metadataPath, websiteVersion.buffer, { flag: "wx" });
   if (await sha256(metadataPath) !== websiteVersion.sha256) fail("冻结 version.json 后哈希不一致");
   const metadata = { name: "version.json", path: metadataPath, bytes: websiteVersion.bytes, sha256: websiteVersion.sha256 };
-  return { snapshotDir, artifacts, metadata, macZipInfoPlistVersion: inspected.macZipInfoPlistVersion, macReleaseProof: inspected.macReleaseProof };
+  let skill = null;
+  if (config.targets.some((target) => target.skillPaths.length > 0)) {
+    const skillBuffer = await fs.readFile(path.join(ROOT, "website", "skills", "install-windows.json"));
+    const deploymentBuffer = await fs.readFile(path.join(config.websiteDir, "skills", "install-windows.json"));
+    if (!skillBuffer.equals(deploymentBuffer)) fail("部署装机清单与源码不一致");
+    const embeddedBuffer = await fs.readFile(path.join(ROOT, "src-tauri", "skills", "install-windows.json"));
+    if (!skillBuffer.equals(embeddedBuffer)) fail("官网装机清单与内嵌清单不一致");
+    const skillPath = path.join(snapshotDir, "install-windows.json");
+    await fs.writeFile(skillPath, skillBuffer, { flag: "wx" });
+    skill = { name: "install-windows.json", path: skillPath, bytes: skillBuffer.length, sha256: await sha256(skillPath) };
+  }
+  return { snapshotDir, artifacts, metadata, skill, macZipInfoPlistVersion: inspected.macZipInfoPlistVersion, macReleaseProof: inspected.macReleaseProof };
 }
 
 async function ossDownloadedHash(oss, objectPath, localDir) {
@@ -457,7 +472,24 @@ async function publish(config, plan, journal, persistJournal) {
     await persistJournal();
   }
 
-  console.log("所有二进制已核验；现在发布 version.json…");
+  if (plan.skill) {
+    console.log("二进制已核验；同步对应的装机清单…");
+    for (let index = 0; index < config.targets.length; index += 1) {
+      const target = config.targets[index];
+      if (target.skillPaths.length === 0) continue;
+      const staged = [];
+      for (const remotePath of target.skillPaths) {
+        staged.push(await remoteStage(target, plan.skill.path, remotePath, plan.skill.sha256, releaseId));
+      }
+      journal.inFlight = { phase: "target-skill", targetIndex: index };
+      await persistJournal();
+      await remoteCommit(target, staged);
+      journal.skillTargetsCommitted.push(index);
+      journal.inFlight = null;
+      await persistJournal();
+    }
+  }
+  console.log("二进制与装机清单已核验；现在发布 version.json…");
   for (let index = 0; index < config.targets.length; index += 1) {
     const target = config.targets[index];
     const staged = [];
@@ -515,7 +547,7 @@ async function main() {
   const source = await trackedSourceState();
   const websiteVersion = await assertVersionConsistency(config);
   const inspected = await inspectArtifacts(config, source);
-  const frozen = await freezeReleaseInputs(inspected, websiteVersion);
+  const frozen = await freezeReleaseInputs(inspected, websiteVersion, config);
   const manifest = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -527,6 +559,7 @@ async function main() {
     websiteVersionSha256: frozen.metadata.sha256,
     macZipInfoPlistVersion: frozen.macZipInfoPlistVersion,
     macReleaseProof: frozen.macReleaseProof,
+    ...(frozen.skill ? { installSkill: { bytes: frozen.skill.bytes, sha256: frozen.skill.sha256 } } : {}),
     artifacts: frozen.artifacts.map(({ name, kind, bytes, sha256, fileVersion }) => ({ name, kind, bytes, sha256, ...(fileVersion ? { fileVersion } : {}) })),
   };
   const outputRoot = path.join(config.artifactDir, MANIFEST_DIR_NAME);
@@ -548,6 +581,7 @@ async function main() {
       commit: source.commit,
       status: "publishing",
       binaryTargetsCommitted: [],
+      skillTargetsCommitted: [],
       ossBinariesVerified: [],
       metadataTargetsCommitted: [],
       ossMetadataVerified: false,
