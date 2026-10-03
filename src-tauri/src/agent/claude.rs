@@ -507,12 +507,8 @@ fn run_turn(
     // 不够单次预扣（403 token quota is not enough），却被这句话支去重配驱动。
     // **原因当时就渲染在同一个屏幕上** —— 我们认得出，只是没喂给自己的分类器。
     let err_text = {
-        let from_stderr = err_buf.lock().map(|g| g.trim().to_string()).unwrap_or_default();
-        if from_stderr.is_empty() {
-            state.result_error().unwrap_or_default().to_string()
-        } else {
-            from_stderr
-        }
+        let from_stderr = err_buf.lock().map(|g| g.clone()).unwrap_or_default();
+        failure_text(&from_stderr, state.result_error())
     };
     // 收尾事件：卡死/成功/中断/错误。
     // **卡死判定必须排在 interrupted 前面** —— 看门狗是靠杀进程收场的，进程状态上跟「人按了停止」
@@ -540,6 +536,48 @@ fn run_turn(
     );
     let _ = on_event.send(done);
     Ok(())
+}
+
+/// Claude Code 往 stderr 打的**诊断标签行**里，已核实与「这一轮失败」无关的那几类。
+/// 值是方括号里 `claude-code:` 之后那段。**只收实测过、读过源码确认是纯诊断的**，别图省事写成 `claude-code:*`：
+/// 将来它新增一个真有信息量的标签，被我们一刀切吞掉，比多显示一行噪声更糟。
+///
+/// - `unrecognized_model`：模型名不在 Claude Code 内置清单里时打一行
+///   `[claude-code:unrecognized_model] {"model":"…","query_source":"…"}`（claude 2.1.280 实测）。
+///   走虾盘云网关换成 deepseek / glm 这类非 Anthropic 模型名就必然出现，**跟请求成不成功无关**
+///   （纯文字轮次它照打、照样成功）。
+const STDERR_NOISE_TAGS: &[&str] = &["unrecognized_model"];
+
+/// 这一行是不是上面那类已知噪声。只认行首（容忍前导空白）的 `[claude-code:<tag>]`。
+fn is_stderr_noise(line: &str) -> bool {
+    line.trim_start()
+        .strip_prefix("[claude-code:")
+        .and_then(|rest| rest.split_once(']'))
+        .is_some_and(|(tag, _)| STDERR_NOISE_TAGS.contains(&tag.trim()))
+}
+
+/// 这一轮失败时**拿什么当失败原因展示**。
+///
+/// 优先级：stderr 去掉已知噪声行后的正文 → stdout 上 `result` 事件的失败正文 → 最后才退回带噪声的原始 stderr。
+///
+/// 🔴 为什么要滤噪声：原先是「stderr 非空就用 stderr」。可 claude 的真报错（400 / 403 / 余额…）全在 stdout，
+/// stderr 里躺着的只有 `[claude-code:unrecognized_model] …` 这一行 —— 它让 stderr「非空」，于是真正的
+/// `API Error: 400 …` 被挤掉，失败卡片上只剩一行跟故障无关的诊断，客户和我们都被它带去查模型名。
+/// 压根没有别的可展示时才退回原始 stderr：宁可显示一行噪声，也不要显示空串（空串会让界面退化成「claude 退出码 1」）。
+fn failure_text(stderr: &str, result_error: Option<&str>) -> String {
+    let real = stderr
+        .lines()
+        .filter(|l| !is_stderr_noise(l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let real = real.trim();
+    if !real.is_empty() {
+        return real.to_string();
+    }
+    match result_error.map(str::trim).filter(|e| !e.is_empty()) {
+        Some(e) => e.to_string(),
+        None => stderr.trim().to_string(),
+    }
 }
 
 /// 中断某任务正在跑的 claude。
@@ -613,6 +651,46 @@ mod tests {
             }
             assert!(!teach.iter().any(|a| a.contains("运行环境")), "GUARD 漏进 teach: {teach:?}");
         }
+    }
+
+    /// 失败卡片的原因文：stderr 里只有 `unrecognized_model` 诊断行时，必须让位给 stdout 上真正的 API 错误。
+    #[test]
+    fn failure_text_prefers_real_api_error_over_unrecognized_model_noise() {
+        let noise = "[claude-code:unrecognized_model] {\"model\":\"glm-5.3-flash\",\"query_source\":\"repl_main_thread\"}\n";
+        let api = "API Error: 400 The request is invalid: the request was rejected by an internal MaaS component";
+        // 只有噪声 + stdout 有真错误 → 展示真错误，噪声不出现
+        let t = failure_text(noise, Some(api));
+        assert_eq!(t, api);
+        assert!(!t.contains("unrecognized_model"), "噪声不该混进失败原因: {t}");
+        // stderr 空（老行为）→ 照旧退到 stdout 的失败正文
+        assert_eq!(failure_text("", Some(api)), api);
+        assert_eq!(failure_text("  \n", Some(api)), api);
+    }
+
+    /// stderr 里有真内容时，仍然以 stderr 为准（老行为不变），只是把夹在里面的噪声行摘掉；
+    /// 没有任何别的可展示时才退回带噪声的原文，不给空串。
+    #[test]
+    fn failure_text_keeps_real_stderr_and_never_returns_empty_when_only_noise() {
+        let noise = "[claude-code:unrecognized_model] {\"model\":\"deepseek-v4-flash\"}";
+        // 噪声夹在真 stderr 中间 → 真内容保留、噪声摘掉，即使 stdout 也有错误也沿用 stderr 优先
+        let mixed = format!("{noise}\nError: spawn failed\n");
+        assert_eq!(failure_text(&mixed, Some("API Error: 400 x")), "Error: spawn failed");
+        // 只有噪声、stdout 也没错误正文 → 退回原文（宁可显示一行噪声，也不要空串）
+        assert_eq!(failure_text(noise, None), noise);
+        assert_eq!(failure_text(noise, Some("   ")), noise);
+        // 全空 → 空串（调用方自己会退到「claude 退出码 N」）
+        assert_eq!(failure_text("", None), "");
+    }
+
+    /// 噪声判定只认**已核实**的标签，不能一刀切 `[claude-code:*]`；也只认行首，正文里提到它不算。
+    #[test]
+    fn stderr_noise_only_matches_known_tags_at_line_start() {
+        assert!(is_stderr_noise("[claude-code:unrecognized_model] {\"model\":\"x\"}"));
+        assert!(is_stderr_noise("   [claude-code:unrecognized_model]"));
+        assert!(!is_stderr_noise("[claude-code:some_future_tag] real problem"));
+        assert!(!is_stderr_noise("[claude-code:unrecognized_model"), "没闭合的方括号不算");
+        assert!(!is_stderr_noise("Error: see [claude-code:unrecognized_model] above"));
+        assert!(!is_stderr_noise("API Error: 400"));
     }
 
     /// 多行提示词不许内联进 teach（粘进 shell 会断在半路），且要如实报告没内联。
