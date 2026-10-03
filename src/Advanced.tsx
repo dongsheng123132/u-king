@@ -36,6 +36,7 @@ import { useI18n } from "./i18n";
 import { cn } from "./lib/cn";
 import { askConfirm } from "./lib/confirm";
 import { mergeModels } from "./lib/models";
+import { useXiapanModels } from "./lib/useXiapanModels";
 import type { DeviceKey as DeviceKeyFull } from "./lib/types";
 
 /** 虾盘云国内可达端点（OpenAI 兼容格式）。**必须用 .org.cn** —— 裸 api.u-claw.org 国内 GFW SNI reset。 */
@@ -142,7 +143,8 @@ function CredentialBlock({
       .catch(() => alive && setLiveModels(null));
     return () => { alive = false; };
   }, [deviceKey?.key]);
-  const modelGroups = mergeModels(liveModels);
+  const { groups: catalogGroups } = useXiapanModels(); // 内嵌清单 + 线上更新版（见 useXiapanModels）
+  const modelGroups = mergeModels(liveModels, catalogGroups);
   const { t } = useI18n();
   const [model, setModel] = useState(XIAPAN_MODEL);
 

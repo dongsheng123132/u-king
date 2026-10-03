@@ -36,6 +36,7 @@ mod expert;
 mod hire;
 mod feedback;
 mod metrics;
+mod model_catalog;
 mod model_route;
 mod video;
 mod vision;
@@ -1777,6 +1778,16 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             30_000,
             &["node", "npm", "claude", "codex", "git", "claude_desktop", "codex_app", "portable_node"],
             |_, _, _| action_json(installer::detect_stack()),
+        ),
+        // 虾盘云模型目录：「换模型」下拉和「哪个模型能收图」的唯一真相源（见 model_catalog.rs）。
+        // 纯读内存快照 + 一次小文件读，不联网；联网刷新由启动时的后台任务负责。
+        actions::readonly(
+            actions::MODEL_CATALOG_INSPECT,
+            "Inspect the Xiapan model catalog",
+            "Read the effective Xiapan model catalog (grouped chat models, which ones accept image input, default and strong model, plus the separate image-generation model list) plus where it came from (embedded / cache / online) and its version. Reads only; the online refresh runs in the background at startup.",
+            5_000,
+            &["catalog", "version", "source", "default", "strong", "groups", "image_models"],
+            |_, _, _| model_catalog::inspect(),
         ),
         actions::readonly(
             actions::HARDWARE_INSPECT,
@@ -10234,6 +10245,12 @@ pub fn run() {
                 let _ = skillpack::export_to(None);
                 let _ = skillpack::install_into_tools();
             });
+            // 虾盘云模型目录热下发：后台拉线上 `xiapan-models.json`（version 比内嵌/缓存大才采用，
+            // 并写 `~/.uking/cache/`）。**为什么挂在这儿**：「哪些模型、谁能收图」以前硬编码在三十多处，
+            // 改一个要发一次版；目录可热下发后，上游下线模型 / 新增能收图的模型不用等发版。
+            // 只起一次（函数内部用原子标志把关）、自带 7s 启动延迟和 45s 总预算、失败静默回落内嵌，
+            // 不进首屏路径 —— 调用方（providers / 前端下拉）读到的永远是「内嵌 → 缓存 → 线上更新版」里最新的合法一份。
+            model_catalog::start_background_refresh();
             // 静默自升级「下载」阶段：后台把新版绿色 exe 悄悄下到 exe 同目录暂存（不动正在运行
             // 的 exe、不弹任何提示）。下次裸启动时 apply_staged_update 原子替换。延迟 8s 让首屏
             // 先稳住，绝不阻塞启动。绿色版 / 安装版同此一套（current_exe 自动指向各自路径）。

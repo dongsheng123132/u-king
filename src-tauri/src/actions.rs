@@ -305,6 +305,9 @@ pub const CRASH_INSPECT: &str = "runtime.crash.inspect";
 /// 没有这条动作，排障的人会去查调度器、查配置、查上游，而真相只是「你开了两个」。
 pub const INSTANCE_INSPECT: &str = "runtime.instance.inspect";
 pub const STACK_INSPECT: &str = "runtime.stack.inspect";
+/// 虾盘云模型目录（哪些模型、哪个收图、默认/满血档）+ 它来自内嵌/缓存/线上哪一环。
+/// 前端「换模型」下拉和后端 `providers.rs` 的识图声明读的是同一份（`model_catalog.rs`）。
+pub const MODEL_CATALOG_INSPECT: &str = "runtime.model_catalog.inspect";
 pub const HARDWARE_INSPECT: &str = "runtime.hardware.inspect";
 pub const CODEX_INSPECT: &str = "runtime.codex.inspect";
 pub const DRIVER_INSPECT: &str = "runtime.driver.inspect";
@@ -436,7 +439,7 @@ pub const CREATOR_IMAGE_INSPECT: &str = "runtime.creator.image.inspect";
 /// 影核清单里少一个，远端影子就看不见它。
 pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
-    HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
+    MODEL_CATALOG_INSPECT, HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
     CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, GEO_INSPECT, UU_REMOTE_INSPECT, PODAPP_INSPECT, AUTOMATION_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,

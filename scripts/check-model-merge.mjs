@@ -17,8 +17,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // 吃**真的**源码，不在这里抄一份实现（抄一份的话补丁被删了跑道照样绿）
+//
+// models.ts 的清单现在来自 `import catalogJson from ".../xiapan-models.json"`（vite 打包时解析）。
+// 这里只做单文件转译、落到临时目录再 import，相对路径的 JSON 导入在那儿解析不到，
+// 所以把这一行换成「内联同一份真 JSON」—— 数据仍是仓库里那份，不是手抄的样本。
+const modelsSrc = readFileSync(join(root, "src/lib/models.ts"), "utf8").replace(
+  /import catalogJson from "[^"]*xiapan-models\.json";/,
+  () => `const catalogJson = ${readFileSync(join(root, "src-tauri/models/xiapan-models.json"), "utf8")};`,
+);
+if (!modelsSrc.includes("const catalogJson =")) {
+  console.error("❌ models.ts 里找不到 `import catalogJson from \"…/xiapan-models.json\"` —— 清单的来源变了，跑道得跟着改。");
+  process.exit(1);
+}
 const js = (
-  await transformWithEsbuild(readFileSync(join(root, "src/lib/models.ts"), "utf8"), "models.ts", {
+  await transformWithEsbuild(modelsSrc, "models.ts", {
     loader: "ts",
     format: "esm",
   })

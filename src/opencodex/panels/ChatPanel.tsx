@@ -18,7 +18,8 @@ import { MiniMd } from "../../lib/miniMd";
 import { QuickPrompts, type Best } from "../QuickPrompts";
 import { useComposerMenu } from "../ComposerMenu";
 import { AttachButton, Composer, ComposerSelect } from "../Composer";
-import { XIAPAN_MODELS, priceyModelHint } from "../../lib/models";
+import { priceyModelHint } from "../../lib/models";
+import { useXiapanModels } from "../../lib/useXiapanModels";
 import { AnchoredMenu } from "../../components/AnchoredMenu";
 // 「哪些扩展名 redline 渲染得了」的唯一真相源，别在本文件再抄一份
 import { REDLINE_EXTS } from "../../vendor/redline-core";
@@ -365,6 +366,8 @@ export function ChatPanel({
    *  是**看得见自己用到哪儿了**；以前拿写死的价表折算成 ¥，跟真实账单对不上，
    *  改成直接报 token（CLI usage 事件的原始数字，无需换算，不会漂）。 */
   const [spentTok, setSpentTok] = useState(0);
+  // Claude 侧下拉的模型清单：内嵌目录 + 线上更新版（见 useXiapanModels）。
+  const { groups: xiapanGroups } = useXiapanModels();
   const [model, setModel] = useState(() => {
     try {
       return localStorage.getItem(MODEL_KEY + agent) ?? "";
@@ -927,11 +930,21 @@ export function ChatPanel({
                     <option value="">{t("模型：跟随驱动设置")}</option>
                     {agent === "codex"
                       ? codexModels.map((m) => (<option key={m.id} value={m.id}>{t(m.label)}</option>))
-                      : XIAPAN_MODELS.map((g) => (
-                          <optgroup key={g.group} label={t(g.group)}>
-                            {g.items.map((m) => (<option key={m.id} value={m.id}>{t(m.label)}</option>))}
-                          </optgroup>
-                        ))}
+                      : (
+                        <>
+                          {/* 当前值可能是目录里已经没有的模型（以前选过，后来目录收敛/下线了它，localStorage 里还记着）：
+                              受控 select 找不到对应 option 会显示成空白/第一项，实际发出去的却还是那个旧模型。
+                              所以不在清单里时原样补一项（裸 id），界面如实说出正在用的是谁。 */}
+                          {model && !xiapanGroups.some((g) => g.items.some((m) => m.id === model)) && (
+                            <option value={model}>{model}</option>
+                          )}
+                          {xiapanGroups.map((g) => (
+                            <optgroup key={g.group} label={t(g.group)}>
+                              {g.items.map((m) => (<option key={m.id} value={m.id}>{t(m.label)}</option>))}
+                            </optgroup>
+                          ))}
+                        </>
+                      )}
                   </ComposerSelect>
                 )}
                 {/* 🔴 权限 chip **已折进 `+` 菜单**（客户：「权限……不要让客户选择，或者隐藏，

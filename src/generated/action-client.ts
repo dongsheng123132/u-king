@@ -141,6 +141,8 @@ export const ACTION = {
   RUNTIME_LOCALLLM_START: "runtime.localllm.start",
   /** Stop the process U-King started for that engine. Idempotent: succeeds when nothing is running. Only ever kills the recorded PID, and only after re-checking that PID still carries the image name we launched — never by bare process name, which would take down a customer's own identically-named server. */
   RUNTIME_LOCALLLM_STOP: "runtime.localllm.stop",
+  /** Read the effective Xiapan model catalog (grouped chat models, which ones accept image input, default and strong model, plus the separate image-generation model list) plus where it came from (embedded / cache / online) and its version. Reads only; the online refresh runs in the background at startup. */
+  RUNTIME_MODEL_CATALOG_INSPECT: "runtime.model_catalog.inspect",
   /** Read system proxy, process and terminal-shell proxy variables and WSL bridge settings, and check whether local loopback proxy ports are actually listening. Never contacts an external network or changes the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
   /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
@@ -320,6 +322,7 @@ export type ActionInputMap = {
   "runtime.localllm.model_add": { expected_state_version?: string; kind: "dir" | "gguf"; name?: string; path: string; };
   "runtime.localllm.start": { ctx?: number; engine: "ollama" | "llamacpp"; expected_state_version?: string; gpu_layers?: number; model?: string; port?: number; threads?: number; };
   "runtime.localllm.stop": { engine: "ollama" | "llamacpp"; expected_state_version?: string; };
+  "runtime.model_catalog.inspect": Record<string, never>;
   "runtime.network.inspect": Record<string, never>;
   "runtime.openclaw2.configure_model": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
   "runtime.openclaw2.inspect": Record<string, never>;
@@ -444,6 +447,7 @@ export type ActionOutputMap = {
   "runtime.localllm.model_add": Record<string, unknown>;
   "runtime.localllm.start": Record<string, unknown>;
   "runtime.localllm.stop": Record<string, unknown>;
+  "runtime.model_catalog.inspect": Record<string, unknown>;
   "runtime.network.inspect": Record<string, unknown>;
   "runtime.openclaw2.configure_model": Record<string, unknown>;
   "runtime.openclaw2.inspect": Record<string, unknown>;

@@ -29,6 +29,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use crate::installer::curl;
+use crate::model_catalog;
 
 // ============================================================
 // 预设
@@ -3633,13 +3634,15 @@ fn apply_dsh(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
     // 带图直接本地抛 `does not support image input` —— 请求根本到不了虾盘云
     // （客户机实测：DSH + 虾盘云 deepseek-v4-flash 发不出图）。OpenClaw 那边早就对同一个
     // 模型声明了 `input:["text","image"]`（见 `apply_openclaw_agent_to_home`），这里补齐。
+    // 「哪个模型收图」不再在这里写死：问模型目录（`model_catalog::accepts_image`，2026-10-03 起
+    // 一份可热下发的 JSON，逐个真请求实测过），DSH / OpenClaw 两边读同一份，不会再漂。
     // 判定依据和 OpenClaw 同款：拿 `managed_provider_id(p)`（= 真正的账号/路由 id）比
-    // `XIAPAN_MANAGED_ACCOUNT`，只认虾盘云自己的路由 —— 别家供应商的 deepseek-v4-flash id
+    // `XIAPAN_MANAGED_ACCOUNT`，只认虾盘云自己的路由 —— 别家供应商的同名 id
     // 不一定是同一个模型，硬声明就是伪能力。
-    // 主模型不是 flash（如 v4-pro，收不了图）时什么都不加：DSH 没有 imageModel 兜底，
+    // 主模型收不了图（目录里写 text，或目录里根本没有）时什么都不加：DSH 没有 imageModel 兜底，
     // 产品要求 DSH 只做最低限度配置，不额外塞模型。
     let mut model_entry = json!({ "id": model, "name": model });
-    if route_id == XIAPAN_MANAGED_ACCOUNT && model == XIAPAN_VISION_CAPABLE_MODEL {
+    if route_id == XIAPAN_MANAGED_ACCOUNT && model_catalog::accepts_image(model) {
         model_entry["input"] = json!(["text", "image"]);
     }
     let profile = serde_yaml::to_value(json!({
@@ -4081,6 +4084,84 @@ mod managed_provider_identity_tests {
                     .find(|m| m["id"] == "deepseek-v4-flash")
                     .expect("主模型自己必须在数组里");
                 assert_eq!(flash["input"], json!(["text", "image"]));
+            },
+        );
+    }
+
+    /// 「收不收图」问的是模型目录，不是某个写死的 id：目录里写了 image 的任何主模型
+    /// （kimi-k3 / glm-5.3-flash / claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）
+    /// 都要声明 `input:["text","image"]`，且因为主模型自己能收图，不该再写 imageModel 兜底。
+    #[test]
+    fn xiapan_route_declares_image_for_every_catalog_vision_primary() {
+        for (n, id) in ["kimi-k3", "glm-5.3-flash", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"]
+            .into_iter()
+            .enumerate()
+        {
+            crate::testsandbox::with_sandbox(
+                &format!("xiapan-image-catalog-vision-{n}"),
+                &["ClawX", ".openclaw", ".uking"],
+                |root| {
+                    let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
+                    apply_clawx(&xiapan, "sk-xp", id).unwrap();
+                    let oc_path = root.join(".openclaw").join("openclaw.json");
+                    let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                    let models = oc["models"]["providers"]["custom-ukingxia"]["models"].as_array().unwrap();
+                    let primary = models.iter().find(|m| m["id"] == id).expect("主模型必须在数组里");
+                    assert_eq!(primary["input"], json!(["text", "image"]), "{id} 目录里收图，必须声明");
+                    assert!(
+                        oc["agents"]["defaults"].get("imageModel").is_none(),
+                        "{id} 自己能收图，不该额外写 imageModel"
+                    );
+                },
+            );
+        }
+    }
+
+    /// 主模型收不了图 —— 目录里写 text（deepseek-v4-pro），或压根不在目录里（qwen3.7-max、
+    /// 用户手填的任意 id）—— 都不许声明 image（宁可不声明，不许谎报），
+    /// 并且 imageModel 兜底指向目录默认模型。
+    #[test]
+    fn xiapan_route_never_declares_image_for_text_only_or_unlisted_primary() {
+        for (n, id) in ["deepseek-v4-pro", "qwen3.7-max", "glm-5.3", "some-user-typed-model"].into_iter().enumerate() {
+            crate::testsandbox::with_sandbox(
+                &format!("xiapan-image-catalog-text-{n}"),
+                &["ClawX", ".openclaw", ".uking"],
+                |root| {
+                    let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
+                    apply_clawx(&xiapan, "sk-xp", id).unwrap();
+                    let oc_path = root.join(".openclaw").join("openclaw.json");
+                    let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                    let models = oc["models"]["providers"]["custom-ukingxia"]["models"].as_array().unwrap();
+                    let primary = models.iter().find(|m| m["id"] == id).expect("主模型必须在数组里");
+                    assert!(primary.get("input").is_none(), "{id} 收不了图/不在目录里，不许声明 input：{primary}");
+                    assert_eq!(
+                        oc["agents"]["defaults"]["imageModel"]["primary"],
+                        "custom-ukingxia/deepseek-v4-flash",
+                        "{id}：imageModel 必须兜底到目录默认模型"
+                    );
+                    let flash = models.iter().find(|m| m["id"] == "deepseek-v4-flash").expect("兜底模型必须声明");
+                    assert_eq!(flash["input"], json!(["text", "image"]));
+                },
+            );
+        }
+    }
+
+    /// 非虾盘云路由：哪怕模型 id 恰好和目录里收图的同名，也一律不声明 image、不写 imageModel。
+    #[test]
+    fn non_xiapan_route_never_declares_image_even_for_catalog_vision_ids() {
+        crate::testsandbox::with_sandbox(
+            "xiapan-image-catalog-other-route",
+            &["ClawX", ".openclaw", ".uking"],
+            |root| {
+                let other = custom("custom-openrouter", "OpenRouter", "https://openrouter.ai/api/v1");
+                apply_clawx(&other, "sk-or", "kimi-k3").unwrap();
+                let oc_path = root.join(".openclaw").join("openclaw.json");
+                let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
+                let prov = "custom-ukingope"; // clawx_agent_provider_key("uking-openrouter")
+                for m in oc["models"]["providers"][prov]["models"].as_array().unwrap() {
+                    assert!(m.get("input").is_none(), "非虾盘云路由不许声明 input：{m}");
+                }
+                assert!(oc["agents"]["defaults"].get("imageModel").is_none());
             },
         );
     }
@@ -4883,6 +4964,31 @@ mod dsh_provider_tests {
                 Some("deepseek-v4-pro")
             );
             assert_eq!(model_input(&models[0]), None, "v4-pro 收不了图，不该声明 input：{models:?}");
+        });
+    }
+
+    /// 「收不收图」问模型目录：目录里写了 image 的（deepseek-v4-flash / kimi-k3 / glm-5.3-flash /
+    /// claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）DSH 都要声明；写了 text 的
+    /// （deepseek-v4-pro）和压根不在目录里的（qwen3.7-max、glm-5.3、deepseek-flash、手填 id）
+    /// 一律不声明 —— 目录只回答它收录的 8 个，其余宁可不声明。
+    #[test]
+    fn dsh_xiapan_declares_image_exactly_for_catalog_vision_models() {
+        crate::testsandbox::with_sandbox("dsh-vision-catalog", &[".dsh", ".uking"], |root| {
+            let settings_path = root.join(".dsh").join("settings.yaml");
+            let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
+            let image_input = Some(vec!["text".to_string(), "image".to_string()]);
+            for id in ["kimi-k3", "glm-5.3-flash", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol", "deepseek-v4-flash"] {
+                apply_dsh(&p, "sk-device-secret", id).unwrap();
+                let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+                assert_eq!(models.len(), 1, "{id}: {models:?}");
+                assert_eq!(model_input(&models[0]), image_input, "{id} 目录里收图，必须声明：{models:?}");
+            }
+            for id in ["deepseek-v4-pro", "qwen3.7-max", "glm-5.3", "deepseek-flash", "some-user-typed-model"] {
+                apply_dsh(&p, "sk-device-secret", id).unwrap();
+                let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+                assert_eq!(models.len(), 1, "{id}: {models:?}");
+                assert_eq!(model_input(&models[0]), None, "{id} 收不了图或不在目录里，不许声明：{models:?}");
+            }
         });
     }
 
@@ -5934,15 +6040,16 @@ const OPENCLAW_SMALL_FAST_MODEL: &str = "deepseek-v4-flash";
 /// DSH 的 route 键用的也是 `managed_provider_id(p)`，所以 `apply_dsh` 拿它判「是不是虾盘云自己的路由」。
 const XIAPAN_MANAGED_ACCOUNT: &str = "uking-xiapan";
 
-/// 虾盘云路由上**原生能收图**的模型 —— OpenClaw 用它给 `agents.defaults.imageModel` 兜底路由，
-/// OpenClaw / DSH 两边都只给这一个模型 id 声明 `input: ["text","image"]`。
+/// 虾盘云路由上 `agents.defaults.imageModel` 该兜底指向哪个模型：目录里的默认模型，
+/// 且必须是目录**明确写了 image** 的 —— 默认模型不收图就返回 `None`（宁可不兜底，不指向一个收不了图的模型）。
 ///
-/// 2026-09-16 跑道实测（`skills/vision/SKILL.md` / `see-image.mjs` 同一夹具）：
-/// `deepseek-v4-flash` 收得了图、真看了，只是偏弱且抖（证照/大图合计 62%，长截图 4 次全 0）；
-/// `deepseek-v4-pro` **收不了图**（三种问法全回「我无法查看这张图片」）。产品决策
-/// （2026-09-24）：不为识图单独切模型（保持主模型一致、不增路由复杂度），
-/// 复用 deepseek-v4-flash 的原生视觉能力即可，不引入 qwen 系列。
-const XIAPAN_VISION_CAPABLE_MODEL: &str = OPENCLAW_SMALL_FAST_MODEL;
+/// 以前这里是个写死的常量（= deepseek-v4-flash），同一件事又在 DSH 那边单独写了一遍，
+/// 两处靠人记着同步。现在「收不收图」和「默认是谁」都只认模型目录（`model_catalog.rs`，可热下发）。
+/// 产品决策（2026-09-24）仍然有效：不为识图单独切到别的路由/供应商，复用默认模型的原生视觉。
+fn xiapan_image_fallback_model() -> Option<String> {
+    let d = model_catalog::default_model();
+    model_catalog::accepts_image(&d).then_some(d)
+}
 
 /// 判断 `agents.defaults.imageModel`（字符串 `"provider/model"` 或对象 `{primary,...}`
 /// 两种写法，见 openclaw docs/gateway/config-agents/models.md）当前的 primary 是否指向
@@ -6002,29 +6109,39 @@ fn apply_openclaw_agent_to_home(
     let mut provider_models = vec![model_entry.clone()];
     provider_models.extend(fallback_models);
 
-    // 只在虾盘云自己的路由上做识图声明 —— 别家供应商的 deepseek-v4-flash id 不一定是同一个模型，
+    // 只在虾盘云自己的路由上做识图声明 —— 别家供应商的同名 id 不一定是同一个模型，
     // 硬声明 input:["text","image"] 就是伪能力（镜像 openclaw_fallback_chain 的同款边界判断，
     // 但比对真正的 account_id，不是派生键 prov —— 见下方注释）。
+    // 谁收图问模型目录（`model_catalog::accepts_image`），不在这里写死模型名。
     let is_xiapan_managed = account_id == XIAPAN_MANAGED_ACCOUNT;
+    // 主模型收不了图（目录写 text，或不在目录里）时才需要 imageModel 兜底；兜底模型 = 目录默认模型（若它收图）。
+    let image_fallback: Option<String> = if is_xiapan_managed && !model_catalog::accepts_image(model) {
+        xiapan_image_fallback_model()
+    } else {
+        None
+    };
     if is_xiapan_managed {
-        // 已在数组里的 deepseek-v4-flash（无论是主模型还是兜底）补上 input 声明。
-        let mut has_vision_model = false;
+        // provider models 数组里（主模型 + 兜底链引用的模型）凡目录里收图的，都补上 input 声明。
         for entry in provider_models.iter_mut() {
-            if entry.get("id").and_then(Value::as_str) == Some(XIAPAN_VISION_CAPABLE_MODEL) {
+            let id = entry.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+            if model_catalog::accepts_image(&id) {
                 if let Some(obj) = entry.as_object_mut() {
                     obj.insert("input".into(), json!(["text", "image"]));
                 }
-                has_vision_model = true;
             }
         }
-        // 主模型不是 flash 时（如 deepseek-v4-pro），imageModel 兜底要指向它，
-        // 但它得先在 provider 的 models 数组里声明，否则引擎解析不到这个引用。
-        if !has_vision_model {
-            provider_models.push(json!({
-                "id": XIAPAN_VISION_CAPABLE_MODEL,
-                "name": XIAPAN_VISION_CAPABLE_MODEL,
-                "input": ["text", "image"],
-            }));
+        // imageModel 兜底指向的模型得先在 provider 的 models 数组里声明，否则引擎解析不到这个引用。
+        if let Some(vm) = &image_fallback {
+            let declared = provider_models
+                .iter()
+                .any(|e| e.get("id").and_then(Value::as_str) == Some(vm.as_str()));
+            if !declared {
+                provider_models.push(json!({
+                    "id": vm,
+                    "name": vm,
+                    "input": ["text", "image"],
+                }));
+            }
         }
     }
 
@@ -6079,19 +6196,18 @@ fn apply_openclaw_agent_to_home(
 
         // 识图路由（`agents.defaults.imageModel`，官方文档：主模型原生支持图片时引擎
         // 直接用主模型，只有主模型收不了图才会去看这个字段）：
-        //   - 当前路由不是虾盘云、或主模型本身就是 deepseek-v4-flash（能原生收图）
+        //   - 当前路由不是虾盘云、或主模型本身收图（目录写了 image）、或目录默认模型自己都不收图
         //     → 不需要我们写的 imageModel；若这里还留着上一版托管值（比如切主模型
         //     前指过别的托管 provider，或本次直接切到了非虾盘云供应商），清掉它，
         //     免得指向一个已经不再声明/不再是这条路由的托管 provider（同 `model.primary`
         //     每次都跟着当前路由整体改写的做法，只是「改写」在这里等价于「清空」，
         //     因为非虾盘云路由上我们没有把握声明它有 image input 的模型）。
-        //   - 虾盘云路由 + 主模型是别的模型（如 deepseek-v4-pro，收不了图）→ 兜底指到
-        //     deepseek-v4-flash（上面已保证它在 provider models 数组里声明了 image input）。
+        //   - 虾盘云路由 + 主模型收不了图（如 deepseek-v4-pro）→ 兜底指到目录默认模型
+        //     （上面已保证它在 provider models 数组里声明了 image input）。
         // 两种「改写」都只在「缺失」或「上次是我们写的」时才动——客户自己配的 imageModel
-        // （指向非托管 provider）绝不覆盖（宪法第 10 条）。
-        let vision_applicable = is_xiapan_managed && model != XIAPAN_VISION_CAPABLE_MODEL;
-        if vision_applicable {
-            let vision_ref = format!("{prov}/{XIAPAN_VISION_CAPABLE_MODEL}");
+        // （指向非托管 provider）绝不覆盖（宪法第 10 条：不碰用户真实状态）。
+        if let Some(vm) = &image_fallback {
+            let vision_ref = format!("{prov}/{vm}");
             let should_set = match defaults.get("imageModel") {
                 None => true,
                 Some(v) if v.is_null() => true,

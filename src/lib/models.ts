@@ -1,162 +1,73 @@
 /**
- * 虾盘云可选模型清单 —— Manager「换模型」下拉 + MyAI/ToolAppView 的 ProviderSwitch 共用。
- * 单一来源，改一处全生效。
+ * 虾盘云可选模型清单 —— Manager「换模型」下拉 + MyAI/ToolAppView 的 ProviderSwitch + U-Chat 模型菜单共用。
+ *
+ * ## 数据在哪（2026-10-03 起）
+ * 单一来源是 `src-tauri/models/xiapan-models.json`；Rust 端 `model_catalog.rs` 也 `include_str!` 同一份，
+ * `providers.rs` 里「哪个模型声明能收图」问的就是它。这里在**编译期**直接 import 它生成 `XIAPAN_MODELS`：
+ *   · 离线 / 后端没起来 / 纯 vite 预览时，下拉照样有内容（内嵌兜底）；
+ *   · 前端**不再手写第二份**模型清单（以前改一个模型要改三十处，必然漏——客户机实测过 DSH 因此发不了图，
+ *     下拉里还挂着上游已下线的 gemini-3.5-flash）。`scripts/check-model-catalog-sync.mjs` 在 build 里卡着；
+ *   · 线上热下发的更新版走 `useXiapanModels()`（读后端只读动作 `runtime.model_catalog.inspect`），
+ *     版本比内嵌大才覆盖，失败就继续用这份内嵌的。
+ * 选 import 而不是 build 时再读：vite 原生支持 JSON import，零脚本零生成物（同类先例 `lib/freeGuide.ts`）。
+ *
+ * ## 改清单前先看这几条（从原先手写版里搬过来的教训，JSON 里放不了注释）
+ *  · 改 id 前先真调一次 `/v1/chat/completions`，**别信 `/v1/models` 列表**。虾盘云 `/v1/models` 同时列
+ *    裸名（直连渠道）和 `anthropic/` `openai/` 这类中转前缀名，两者不等价：这份清单只收裸名 —— 前缀名
+ *    走的是中转商，中转商一欠费就整片 403，不该拿它当客户的默认推荐。
+ *  · `input` 只写**逐个真请求实测过**的（拿含已知文字的测试图问，读得出才算 `image`）。发图给纯文本模型
+ *    有的**不报错**，会返回一个编出来的答案 —— 所以宁可不声明，不许谎报能收图。
+ *  · deepseek-v4-flash 必须在列表里且是推荐项：它就是 providers.rs 虾盘云 preset 的默认模型。
+ *    曾经**只列 pro 不列 flash**，还把 pro 标成「最快最省」，客户随手一点就从便宜换成贵的，
+ *    而 pro 是推理模型，输出预算一紧就把 token 烧在 reasoning 上、正文返回空（2026-07-10 实锤）。
+ *  · 换模型 / 上下线某个模型：改线上目录 JSON（抬高 version）即可，不用发版。
  */
+import catalogJson from "../../src-tauri/models/xiapan-models.json";
+
+export type ModelInput = "text" | "image";
 /** 单个模型项。
  *  - label：下拉里显示的名字（含一句话定位）
  *  - desc：给小白看的「人话说明」——它擅长啥、什么时候选它，下拉里以小字展示
- *  - recommend：是否打「推荐」标，给没主意的客户指一条默认路 */
-export type ModelItem = { id: string; label: string; desc?: string; recommend?: boolean };
-export type ModelGroup = { group: string; items: ModelItem[] };
+ *  - recommend：是否打「推荐」标，给没主意的客户指一条默认路
+ *  - input：输入模态，`["text","image"]` = 实测能收图 */
+export type ModelItem = { id: string; label: string; desc?: string; recommend?: boolean; input?: ModelInput[] };
+/** pricey：这一组是「更聪明、更费额度」的贵档，U-Chat 模型菜单把它折进「更多」。 */
+export type ModelGroup = { group: string; items: ModelItem[]; pricey?: boolean };
 
-/** ⚠️ 改这里的 id 前先真调一次 `/v1/chat/completions`（最后一次全量核对：2026-08-01）。
- *  虾盘云 `/v1/models` 会同时列**裸名**（直连渠道）和 `anthropic/` `openai/` 这类**中转前缀名**，
- *  两者不等价：实测 `claude-opus-5` 裸名 503（没建直连渠道）、`anthropic/claude-opus-5` 才 200。
- *  这份清单只收裸名 —— 前缀名走的是中转商，中转商一欠费就整片 403（见 memory
- *  `xiapan-easyrouter-drain-openrouter-failover`），不该拿它当客户的默认推荐。 */
-export const XIAPAN_MODELS: ModelGroup[] = [
-  {
-    group: "性价比之选",
-    items: [
-      // ⚠️ flash 必须在列表里、必须是推荐项 —— 它就是 providers.rs 虾盘云 preset 的默认
-      // 模型（开箱即用的那个）。这里曾经**只列 pro 不列 flash**，还把 pro 标成「最快最省」：
-      // 客户实际在用 flash，可下拉里找不到它，唯一带★的又是更贵的 pro，随手点一下就从
-      // 便宜换成贵的 —— 而 pro 是推理模型，输出预算一紧就把 token 烧在 reasoning 上、
-      // 正文返回空（2026-07-10 一台 Mac 客户机实锤「无法生成回复，请重试」）。
-      {
-        id: "deepseek-v4-flash",
-        label: "DeepSeek V4 Flash · 最快最省（默认）",
-        desc: "不知道选啥就用它，装好就是它。国产、速度快、最省额度，日常聊天问答写文章都够用。",
-        recommend: true,
-      },
-      {
-        id: "deepseek-v4-pro",
-        label: "DeepSeek V4 Pro · 满血推理",
-        desc: "同门的「深思」版，遇到难题会先想一大段再答，复杂推理更强，但更慢也更费额度。日常别用它，卡住了再切。",
-      },
-      {
-        id: "kimi-k3",
-        label: "Kimi K3 · 超长上下文",
-        desc: "能一口气读很长的文档/几十页 PDF，做长文总结、整本资料分析时选它。月之暗面最新一代。",
-      },
-      {
-        id: "MiniMax-M3",
-        label: "MiniMax M3 · 海螺",
-        desc: "国产通用模型，写作、对话表现均衡，可作 DeepSeek 之外的备选。",
-      },
-      {
-        id: "glm-5.3",
-        label: "GLM-5.3 · 智谱旗舰",
-        desc: "清华系国产旗舰，1M 超长上下文，中文理解到位，写报告、改公文比较顺手。（2026-09-12 起替代 5.2 成为主推）",
-      },
-      {
-        id: "glm-5.3-flash",
-        label: "GLM-5.3 Flash · 智谱性价比",
-        desc: "5.3 的轻量版，更快更省，日常任务够用。",
-      },
-      {
-        id: "qwen3.7-max",
-        label: "Qwen3.7 Max · 通义",
-        desc: "阿里通义旗舰，中文和代码都强，国产里偏「聪明」的一档。注意它只吃文字、不收图，要发图请用下面的看图模型。",
-      },
-      {
-        id: "gemini-3.5-flash",
-        label: "Gemini 3.5 Flash · 极速",
-        desc: "谷歌的轻快版，回答又快又便宜，适合简单问答、批量处理。",
-      },
-    ],
-  },
-  /** ⚠️ 这一组的★曾经挂在 `qwen-vl-max` 上、文案写「看图最准」——**跟我们自己的跑道反着**。
-   *  `skills/vision/scripts/bench.mjs`（三类合成夹具、带 ground truth）实测合计命中率：
-   *    qwen3.7-flash 100% · qwen3-vl-flash 97% · qwen3.7-plus 95% · qwen3.6-flash 92% ·
-   *    qwen-vl-max 91% · qwen-vl-plus 86% · qwen3.5-ocr 69% · MiniMax-M3 66%
-   *  长截图（2400×2908）一项差距最大：qwen3.7-flash 4/4，而 **qwen-vl-max 只有 13%**。
-   *  ——「名字里带 max 就最强」是错的，★ 已按数字移到 qwen3.7-flash。改这一组前先跑一遍 bench。
-   *
-   *  🔴 同样重要：**别把「plus」当成「能看图」的标志**。虾盘云上 `qwen-plus` / `qwen-turbo` /
-   *  `qwen3.7-max` 都是纯文本，且发图给它们**不报错**——会返回一个编出来的答案
-   *  （2026-08-16 实测：问执照上的法定代表人，正解「张示例」，两个都答「张三」）。
-   *  所以纯文本模型一律不进这一组，`qwen3.7-max` 的 desc 里也明写了它不收图。 */
-  {
-    group: "📷 看图识图（能读图片 / 截图 / CAD 图纸）",
-    items: [
-      {
-        id: "qwen3.7-flash",
-        label: "通义 Qwen3.7 Flash · 看图最准（默认）",
-        desc: "既能聊天又能「看懂」图片——照片、截图、CAD 图纸、表格、票据都认得，长截图也不漏。发图就选它，还最省额度。（DeepSeek 等纯文本模型看不了图）",
-        recommend: true,
-      },
-      {
-        id: "qwen3.7-plus",
-        label: "通义 Qwen3.7 Plus · 看图更能想",
-        desc: "同代的加强版，看得准之外更会分析推理，复杂图表 / 需要动脑的图交给它。比 Flash 慢一倍、贵一些。",
-      },
-      {
-        id: "qwen3-vl-plus",
-        label: "通义 Qwen3-VL Plus · 专职识图",
-        desc: "专做识图的一支，逐字转录整页文档时输出更省。（2026-08-01 真图实测通过）",
-      },
-      {
-        id: "qwen-vl-max",
-        label: "通义 Qwen-VL Max · 老版识图",
-        desc: "上一代识图模型，普通图片够用；但很长的截图容易漏读，长图请用上面的 Qwen3.7 Flash。",
-      },
-    ],
-  },
-  {
-    group: "全球旗舰（更聪明，更费额度）",
-    items: [
-      {
-        id: "claude-sonnet-5",
-        label: "Claude Sonnet 5 · 编程之王",
-        desc: "写代码、改 bug 最强的一档，程序员首选。比国产费额度。",
-      },
-      {
-        id: "claude-opus-4-8",
-        label: "Claude Opus 4.8 · 顶配旗舰",
-        desc: "最聪明、最会思考，复杂分析/难题/大工程交给它。也最费额度。（Opus 5 目前只有中转渠道、裸名调不通，所以这里仍推 4.8）",
-        recommend: true,
-      },
-      {
-        id: "claude-opus-4-7",
-        label: "Claude Opus 4.7 · 强力推理",
-        desc: "比 4.8 稍早一代，依然很聪明，费额度比 4.8 略低。",
-      },
-      {
-        id: "claude-haiku-4-5",
-        label: "Claude Haiku 4.5 · 轻快",
-        desc: "Claude 家的快版，比 Sonnet 便宜，日常用又快又稳。",
-      },
-      {
-        id: "gpt-5.4",
-        label: "GPT-5.4 · OpenAI 旗舰",
-        desc: "ChatGPT 同款旗舰，综合能力强、知识面广，什么都能聊。",
-      },
-      {
-        id: "gpt-5.4-mini",
-        label: "GPT-5.4 Mini",
-        desc: "GPT 的小号，便宜不少，简单任务用它省额度。",
-      },
-      {
-        id: "gemini-3.1-pro-preview",
-        label: "Gemini 3.1 Pro",
-        desc: "谷歌最强旗舰，长文档和多模态理解好，知识更新快。",
-      },
-      {
-        id: "grok-4.5",
-        label: "Grok 4.5 · xAI",
-        desc: "马斯克 xAI 的模型，风格直接、时事跟得紧，想换口味可以试。",
-      },
-    ],
-  },
-];
+/**
+ * 把目录里的 `groups` 收成 `ModelGroup[]`。后端交过来的数据也走这一道：形状不对的条目 / 分组整条丢弃，
+ * 一条都不剩就返回 `[]`（调用方据此回落内嵌）。`input` 缺失或写坏时按纯文本算 —— 宁可不声明。
+ */
+export function parseModelGroups(raw: unknown): ModelGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ModelGroup[] = [];
+  for (const g of raw) {
+    if (!g || typeof g !== "object") continue;
+    const { group, items, pricey } = g as { group?: unknown; items?: unknown; pricey?: unknown };
+    if (typeof group !== "string" || !group || !Array.isArray(items)) continue;
+    const list: ModelItem[] = [];
+    for (const it of items) {
+      if (!it || typeof it !== "object") continue;
+      const { id, label, desc, recommend, input } = it as Record<string, unknown>;
+      if (typeof id !== "string" || !id || typeof label !== "string" || !label) continue;
+      const modes = Array.isArray(input) ? input.filter((x): x is ModelInput => x === "text" || x === "image") : [];
+      list.push({
+        id,
+        label,
+        ...(typeof desc === "string" && desc ? { desc } : {}),
+        ...(recommend === true ? { recommend: true } : {}),
+        input: modes.length ? modes : ["text"],
+      });
+    }
+    if (list.length) out.push({ group, items: list, ...(pricey === true ? { pricey: true } : {}) });
+  }
+  return out;
+}
 
-/** 「一键切看图模型」该切到哪个 —— 从上面看图组里取带★的那条。
- *
- *  🔴 **界面上别再写第二个 id 出来。** ProviderSwitch 那个「发图识别引导」按钮原本硬编码
- *  `qwen-vl-max`：等这份清单的★按跑道数据换掉之后，按钮还在继续把客户切到旧模型，
- *  而下拉里显示的推荐是另一个 —— 两处说法不一致，且只看界面永远查不出（同类事故 pc-***）。
- *  取不到就返回 null，调用方该显式处理，不许再兜一个字面量上去。 */
+/** 内嵌目录的版本号；`useXiapanModels()` 只在后端给出**更大**的版本时才覆盖内嵌。 */
+export const XIAPAN_CATALOG_VERSION: number = (catalogJson as { version: number }).version;
+export const XIAPAN_MODELS: ModelGroup[] = parseModelGroups((catalogJson as { groups: unknown }).groups);
+
 /**
  * 把**本地清单**和**服务端 `/v1/models` 实际有的**合到一起。
  *
@@ -185,17 +96,17 @@ export const XIAPAN_MODELS: ModelGroup[] = [
  * 这时原样返回本地清单 —— 宁可多显示几个，也不能让客户打开下拉发现一片空白、
  * 以为产品坏了。★ 同 readiness 那条：不知道就说不知道，别把「没测到」渲染成「没有」。
  */
-export function mergeModels(live: string[] | null | undefined): ModelGroup[] {
-  if (!live || live.length === 0) return XIAPAN_MODELS; // 不知道 ≠ 没有
+export function mergeModels(live: string[] | null | undefined, base: ModelGroup[] = XIAPAN_MODELS): ModelGroup[] {
+  if (!live || live.length === 0) return base; // 不知道 ≠ 没有
   const liveSet = new Set(live);
   const known = new Set<string>();
   const groups: ModelGroup[] = [];
-  for (const g of XIAPAN_MODELS) {
+  for (const g of base) {
     const items = g.items.filter((m) => {
       known.add(m.id);
       return liveSet.has(m.id);
     });
-    if (items.length) groups.push({ group: g.group, items });
+    if (items.length) groups.push({ ...g, items });
   }
   // 服务端有、清单没收的 —— 不藏起来，但也不假装懂它，只给裸 id。
   // 过滤掉明显不是对话模型的（作图 / 视频 / 语音 / OCR），那些有各自的入口，
@@ -213,10 +124,16 @@ export function mergeModels(live: string[] | null | undefined): ModelGroup[] {
   return groups;
 }
 
-export function recommendedVisionModel(): ModelItem | null {
-  const g = XIAPAN_MODELS.find((x) => x.group.startsWith("📷"));
-  if (!g || !g.items.length) return null;
-  return g.items.find((m) => m.recommend) || g.items[0];
+/** 「一键切看图模型」该切到哪个 —— 从目录里**明确写了 image** 的条目中取带★的那条，没有★就取第一个。
+ *
+ *  🔴 **界面上别再写第二个 id 出来。** ProviderSwitch 那个「发图识别引导」按钮原本硬编码
+ *  `qwen-vl-max`：等这份清单的★按跑道数据换掉之后，按钮还在继续把客户切到旧模型，
+ *  而下拉里显示的推荐是另一个 —— 两处说法不一致，且只看界面永远查不出（同类事故 pc-***）。
+ *  取不到就返回 null，调用方该显式处理，不许再兜一个字面量上去。
+ *  （以前认「📷 看图识图」那一组的★；那一组随目录收敛到 8 个模型而取消，现在直接看数据里的 `input`。） */
+export function recommendedVisionModel(groups: ModelGroup[] = XIAPAN_MODELS): ModelItem | null {
+  const sees = groups.flatMap((g) => g.items).filter((m) => m.input?.includes("image"));
+  return sees.find((m) => m.recommend) ?? sees[0] ?? null;
 }
 
 /**

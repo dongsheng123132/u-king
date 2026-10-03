@@ -22,6 +22,13 @@
  *  2. **同一裸名有矛盾条目时放行**：559 个裸名里 5 个自相矛盾（如 `qwen3.6-plus` img6/txt1）。
  *  3. **catalog 出任何问题都当「不知道」**：dsh 没装（= 本跑道的 catalog-off 档）必须照常工作。
  *
+ * ## 2026-10-03 的实测更新（DeepSeek 系）
+ * 在虾盘云 `/v1/chat/completions` 用同一张含 58273 的测试图逐个实测：`deepseek-flash` / `deepseek-chat` /
+ * `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` **读出来了**，`deepseek-v4-pro` 回答「无法查看图片」。
+ * 所以闸门放行前四个、继续拦 v4-pro 及没实测过的其余 deepseek（v3.x、reasoner、带厂商前缀的变体）。
+ * 这条跑道同时钉死两件事：放行的**两档都放行**（含被 catalog 记成纯文本、靠 CATALOG_OVERRIDE_ALLOW 翻案的），
+ * 以及 `whyBlocked` 不再对它们说「会编答案」。
+ *
  * **验不到**：模型实际会不会编答案 —— 那要真花钱调用，且答案随问法变。这条只钉「该拦的拦住了」。
  *
  * 用法：`node scripts/check-vision-gate.mjs`（不联网、不花额度、毫秒级）
@@ -52,10 +59,19 @@ const section = src.slice(from, toLine);
 function gateWith(fakeHome) {
   const factory = new Function(
     "existsSync", "readdirSync", "readFileSync", "join", "homedir",
-    `${section}\nreturn { textOnlyModel, textOnlyRegex, catalogSaysTextOnly, loadCatalog };`,
+    `${section}\nreturn { textOnlyModel, textOnlyRegex, catalogSaysTextOnly, loadCatalog, CATALOG_OVERRIDE_ALLOW };`,
   );
   return factory(existsSync, readdirSync, readFileSync, join, () => fakeHome);
 }
+
+// ── whyBlocked 也从真源码里切（拦截理由写错 = 用户被一句与实测相反的话误导）──
+const whyFrom = src.indexOf("function whyBlocked");
+const whyTo = src.indexOf("// 「收下了图但没看」");
+if (whyFrom < 0 || whyTo < 0 || whyTo < whyFrom) {
+  console.error("❌ 在 see-image.mjs 里找不到 whyBlocked（`function whyBlocked` … `// 「收下了图但没看」`）—— 跑道过期了。");
+  process.exit(1);
+}
+const whyBlocked = new Function(`${src.slice(whyFrom, whyTo)}\nreturn whyBlocked;`)();
 
 const REAL_HOME = homedir();
 const EMPTY_HOME = mkdtempSync(join(tmpdir(), "uking-no-dsh-"));
@@ -68,8 +84,11 @@ console.log(`catalog: ${catalogSize} 个裸名${catalogSize ? "" : "（🔴 本�
 
 // ── ① 手写清单：两档都必须拦（它不依赖 catalog）──
 const BY_REGEX = ["qwen-plus", "qwen-turbo", "qwen3.7-max", "qwen3-coder-plus",
-  "deepseek-v3.2", "deepseek-chat", "deepseek-v4-pro", "glm-5", "glm-5.1", "glm-5.2", "minimax-m1", "minimax-m2"];
-console.log("\n[1/4] 手写清单点名的，两档都必须拦…");
+  // deepseek：v4-pro 实测收不了图；v3.x / reasoner 没实测过、按家族默认拦；
+  // 带厂商前缀的 flash/chat 变体不是虾盘云那条路，没实测过，也照旧拦（2026-10-03 只放行了裸名）
+  "deepseek-v3.2", "deepseek-reasoner", "deepseek-v4-pro", "deepseek/deepseek-chat", "deepseek/deepseek-flash",
+  "glm-5", "glm-5.1", "glm-5.2", "minimax-m1", "minimax-m2"];
+console.log("\n[1/5] 手写清单点名的，两档都必须拦…");
 for (const id of BY_REGEX) {
   if (!on.textOnlyModel(id)) fails.push(`[清单] ${id} 没被拦（catalog-on）`);
   if (!off.textOnlyModel(id)) fails.push(`[清单] ${id} 没被拦（catalog-off）—— 手写清单不该依赖 catalog`);
@@ -79,8 +98,11 @@ if (!fails.length) console.log(`     ✓ ${BY_REGEX.length} 个全拦住，且�
 // ── ② 会看图的：两档都必须放行（拦错 = 主力路径当场死）──
 const VISION = ["qwen3.7-flash", "qwen3.7-plus", "qwen3-vl-flash", "qwen3-vl-plus", "qwen-vl-max",
   "kimi-k3", "z-ai/glm-5v-turbo", "gemini-3.5-flash", "claude-sonnet-5", "gpt-5.4", "deepseek-ocr",
-  "deepseek-v4-flash"]; // 2026-09-24 起产品默认，见 see-image.mjs DEFAULT_MODEL
-console.log("[2/4] 会看图的，两档都必须放行…");
+  "deepseek-v4-flash", // 2026-09-24 起产品默认，见 see-image.mjs DEFAULT_MODEL
+  // 2026-10-03 在虾盘云用含 58273 的测试图实测读出了内容的 deepseek 系；
+  // deepseek-flash / deepseek-chat 被 dsh catalog 记成纯文本，靠 CATALOG_OVERRIDE_ALLOW 翻案 —— catalog-on 也必须放行
+  "deepseek-flash", "deepseek-chat", "deepseek-v4-flash-vision-exp"];
+console.log("[2/5] 会看图的，两档都必须放行…");
 {
   const before = fails.length;
   for (const id of VISION) {
@@ -91,7 +113,7 @@ console.log("[2/4] 会看图的，两档都必须放行…");
 }
 
 // ── ③ catalog 独有的：on 必须拦、off 必须放行 ← 这一对就是变异验证 ──
-console.log("[3/4] 变异验证：catalog 独有的纯文本模型，开 catalog 必拦 / 关 catalog 必放…");
+console.log("[3/5] 变异验证：catalog 独有的纯文本模型，开 catalog 必拦 / 关 catalog 必放…");
 if (!catalogSize) {
   console.log("     ⏭ 本机没装 dsh，跳过（末尾会算作「没验到」，不算绿）");
 } else {
@@ -100,7 +122,8 @@ if (!catalogSize) {
   const picks = [];
   for (const [id, v] of idx) {
     if (picks.length >= 8) break;
-    if (v.txt > 0 && v.img === 0 && !on.textOnlyRegex(id) && id.length > 6) picks.push(id);
+    // 显式翻案的 id（CATALOG_OVERRIDE_ALLOW）不能当「catalog 独有的纯文本」样本 —— 它们开着 catalog 也是放行的
+    if (v.txt > 0 && v.img === 0 && !on.textOnlyRegex(id) && !on.CATALOG_OVERRIDE_ALLOW.has(id.toLowerCase()) && id.length > 6) picks.push(id);
   }
   if (!picks.length) {
     fails.push("[catalog] 一个「catalog 独有」的样本都挑不出来 —— 第 ② 源等于没接上，或 catalog 结构变了");
@@ -116,7 +139,7 @@ if (!catalogSize) {
 }
 
 // ── ④ 铁律 2：裸名自相矛盾时必须放行（宁可漏不可误杀）──
-console.log("[4/4] 同一裸名有矛盾条目时必须放行…");
+console.log("[4/5] 同一裸名有矛盾条目时必须放行…");
 if (!catalogSize) {
   console.log("     ⏭ 同上，跳过");
 } else {
@@ -128,6 +151,24 @@ if (!catalogSize) {
   }
   if (fails.length === before)
     console.log(`     ✓ ${conflicts.length} 个矛盾裸名全部放行${conflicts.length ? `（如 ${conflicts.slice(0, 2).map(([i]) => i).join(", ")}）` : ""}`);
+}
+
+// ── ⑤ 拦截理由必须与实测相符 ──
+console.log("[5/5] whyBlocked 的拦截理由与 2026-10-03 实测相符…");
+{
+  const before = fails.length;
+  const WRONG = "编出来的答案";
+  const proWhy = whyBlocked("deepseek-v4-pro");
+  if (!/收不了图/.test(proWhy) || proWhy.includes(WRONG)) fails.push(`[理由] deepseek-v4-pro 应说「收不了图」而不是「会编答案」：${proWhy}`);
+  // 带前缀变体被拦时，不许说它「纯文本会编答案」—— 实测它们的裸名能读图
+  for (const id of ["deepseek/deepseek-chat", "deepseek/deepseek-flash"]) {
+    const why = whyBlocked(id);
+    if (why.includes(WRONG) || /是纯文本模型/.test(why)) fails.push(`[理由] ${id} 的拦截理由还在说纯文本/会编答案（与实测相反）：${why}`);
+    if (!/裸名/.test(why)) fails.push(`[理由] ${id} 的拦截理由没指路到裸名：${why}`);
+  }
+  // 真正会编答案的那批，原判词保留
+  if (!whyBlocked("qwen-plus").includes(WRONG)) fails.push("[理由] qwen-plus 的原判词（收下图不报错、会编答案）被误改了");
+  if (fails.length === before) console.log("     ✓ v4-pro 说「收不了图」；带前缀的 flash/chat 指路到裸名且不再说「编答案」；qwen-plus 原判词保留");
 }
 
 if (fails.length) {

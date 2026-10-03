@@ -50,7 +50,8 @@ import { ProviderLogo } from "./components/ProviderLogo";
 import { resolveProviderPresentation } from "./lib/providerPresentation";
 import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult, type FreeRouteContext } from "./components/CustomProviderModal";
 import type { ProviderPreset } from "./Wizard";
-import { XIAPAN_MODELS, priceyModelHint, codexProtocolHint } from "./lib/models";
+import { type ModelGroup, priceyModelHint, codexProtocolHint } from "./lib/models";
+import { useXiapanModels } from "./lib/useXiapanModels";
 import { ShareButton } from "./components/ShareCard";
 import { FreerouterCard } from "./components/FreerouterCard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./lib/providerTemplates";
@@ -371,7 +372,7 @@ function toolInstalledOf(driver: DriverStatus | null, target: string): boolean {
 
 /**
  * 某供应商在某工具下的「模型候选」= 内置候选 + 动态拉到的真实清单（去重，内置在前）。
- * - 虾盘云：内置候选用 `XIAPAN_MODELS`（带人话说明）；Codex 链路再置顶 codex_model。
+ * - 虾盘云：内置候选用模型目录（`catalogGroups`，带人话说明）；Codex 链路再置顶 codex_model。
  * - 其它供应商：内置候选 = 预设默认 model；Codex 链路再置顶 codex_model（若有）。
  * UI 的输入框始终可手填任意 id，这里只是给「下拉提示」用。
  */
@@ -380,6 +381,8 @@ function modelOptionsFor(
   target: string,
   remote: string[],
   tr: (zh: string, vars?: Record<string, string | number>) => string,
+  /** 虾盘云的内置候选清单（`useXiapanModels()` 给的：内嵌版 + 线上更新版）。 */
+  catalogGroups: ModelGroup[],
 ): { id: string; label: string }[] {
   const out: { id: string; label: string }[] = [];
   const seen = new Set<string>();
@@ -393,7 +396,7 @@ function modelOptionsFor(
   if (target === "codex" && p.codex_model)
     add(p.codex_model, tr("{model}（Codex 推荐）", { model: p.codex_model }));
   if (p.builtin_recharge) {
-    for (const g of XIAPAN_MODELS) {
+    for (const g of catalogGroups) {
       // label 过一遍 tr()：这份清单是 lib/models.ts 的共享数据，工作台输入框的模型下拉
       // 也读它。以前这里直出中文，英文界面下整个「换模型」列表是中文的。
       for (const m of g.items) add(m.id, `${m.recommend ? "★ " : ""}${tr(m.label)}`);
@@ -2935,6 +2938,7 @@ function ToolProviderList({
   onMove: (id: string, dir: -1 | 1) => void;
 }) {
   const { t } = useI18n();
+  const { groups: catalogGroups } = useXiapanModels(); // 内嵌清单 + 线上更新版（见 useXiapanModels）
   const installed = toolInstalledOf(driver, target);
   const activeId = toolActiveOf(driver, target);
   const activeModel = toolModelOf(driver, target);
@@ -3155,7 +3159,7 @@ function ToolProviderList({
                     <ModelPicker
                       listId={`models-${mkey}`}
                       value={curModel}
-                      options={modelOptionsFor(p, target, remoteModels[p.id] ?? [], t)}
+                      options={modelOptionsFor(p, target, remoteModels[p.id] ?? [], t, catalogGroups)}
                       fetching={fetchingModels === p.id}
                       disabled={rowBusy}
                       onChange={(v) => onModelSel(mkey, v)}

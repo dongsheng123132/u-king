@@ -164,6 +164,25 @@ node scripts/see-image.mjs bench/fixtures/longpage.png \
 分块」缓解），`TEXT_ONLY` 闸门相应放行了它；`qwen3.7-flash`（95%，上表更准的一档）降级为可选，
 `--model qwen3.7-flash` 可显式切回。`deepseek-v4-pro` 仍被拦（收不了图）。基准数字是历史值，见上表。
 
+**2026-10-03 更新（逐个实测，闸门随之改）**：在虾盘云 `/v1/chat/completions` 用**同一张已知内容的测试图**
+（图里文字含 `58273`，外加一个红圆、一个蓝方块）逐个问，**读出 58273 才算能看图**。这是「收不收图」的
+通过/不通过判定，**不是准确率跑分**（没测大图小字 / 长截图，所以不要拿它去改上面 62% 那组数字）：
+
+| 模型 | 结果 | 闸门 |
+|---|---|---|
+| `deepseek-v4-flash` | 读出 58273 | 放行（默认，同前） |
+| `deepseek-flash` | 读出 58273 | **放行**（之前被当纯文本拦） |
+| `deepseek-chat` | 读出 58273 | **放行**（之前被当纯文本拦） |
+| `deepseek-v4-flash-vision-exp` | 读出 58273 | 放行（同前，名字里带 `v4-flash`） |
+| `deepseek-v4-pro` | 回答「无法查看图片」 | 继续拦（老实拒答，不编） |
+
+之前 `whyBlocked` 对 `deepseek-flash` / `deepseek-chat` 的说法是「纯文本、收下图会编答案」，**与这次实测相反**，
+已改掉：它们现在不会被拦；只有带厂商前缀的变体（如 `deepseek/deepseek-chat`，不是虾盘云这条路、没实测过）
+仍按家族默认拦，拦的时候会指路到裸名。其余没实测过的 deepseek（v3.x、reasoner 等）照旧拦。
+`dsh` 的 pi-ai catalog 仍把 `deepseek-flash` / `deepseek-chat` 记成纯文本（厂商官方基座的声明，不是虾盘云这条代理的），
+所以它们跟 `deepseek-v4-flash` 一样靠 `CATALOG_OVERRIDE_ALLOW` 显式翻案 —— 这张表只加有直连实测背书的 id。
+跑道 `scripts/check-vision-gate.mjs` 钉死了这批的放行/拦截与拦截理由。
+
 模型会更新，跑道自己复跑（几分钱、几十次调用）：
 
 ```bash

@@ -242,7 +242,7 @@ export const backfill: Record<string, string> = {
   // Codex 模型提示的三段拼接已下线 —— 整句收进 lib/models.ts::codexProtocolHint，
   // 译文见 i18n/en/settings.ts（拼接式文案本来也没法好好翻，语序在英文里是反的）。
   "要识别图片 / 截图？": "Need to analyze images/screenshots?",
-  "DeepSeek 等纯文本模型看不了图": "Text-only models like DeepSeek cannot view images",
+  "DeepSeek V4 Pro 等纯文本模型看不了图": "Text-only models like DeepSeek V4 Pro cannot view images",
   "，切到看图模型即可。": ", switch to a vision model.",
   "看图模型清单为空，请在「换模型」里手选": "Vision model list is empty. Please manually select in “Change Model”",
   "没找到虾盘云内置驱动，请先在「AI 设置」配置": "Xiapan Cloud built-in provider not found. Please configure in “AI Settings” first",

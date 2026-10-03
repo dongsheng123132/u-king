@@ -11,7 +11,8 @@
  *   "version": "1.3.2",
  *   "artifactDir": "D:/release/1.3.2",
  *   "websiteDir": "D:/work/u-king/website",
- *   "targets": [{ "host": "release-host", "downloadDir": "/srv/download", "versionPaths": ["/srv/site/uking/version.json"], "sudo": false }],
+ *   "targets": [{ "host": "release-host", "downloadDir": "/srv/download", "versionPaths": ["/srv/site/uking/version.json"],
+ *     "skillPaths": ["/srv/site/uking/install-windows.json"], "modelCatalogPaths": ["/srv/site/uking/xiapan-models.json"], "sudo": false }],
  *   "oss": { "binary": "ossutil", "bucketPrefix": "oss://example-bucket/uking" }
  * }
  */
@@ -179,6 +180,11 @@ async function readConfig(configArg) {
       skillPaths: target.skillPaths === undefined ? [] : (() => {
         if (!Array.isArray(target.skillPaths)) fail(`config.targets[${index}].skillPaths 必须是数组`);
         return target.skillPaths.map((entry, pathIndex) => requireRemotePath(entry, `config.targets[${index}].skillPaths[${pathIndex}]`));
+      })(),
+      // 虾盘云模型目录（xiapan-models.json）的热下发落点，跟 skillPaths 同一套部署路径（线上 /uking/ 目录）。
+      modelCatalogPaths: target.modelCatalogPaths === undefined ? [] : (() => {
+        if (!Array.isArray(target.modelCatalogPaths)) fail(`config.targets[${index}].modelCatalogPaths 必须是数组`);
+        return target.modelCatalogPaths.map((entry, pathIndex) => requireRemotePath(entry, `config.targets[${index}].modelCatalogPaths[${pathIndex}]`));
       })(),
     };
   });
@@ -423,7 +429,29 @@ async function freezeReleaseInputs(inspected, websiteVersion, config) {
     await fs.writeFile(skillPath, skillBuffer, { flag: "wx" });
     skill = { name: "install-windows.json", path: skillPath, bytes: skillBuffer.length, sha256: await sha256(skillPath) };
   }
-  return { snapshotDir, artifacts, metadata, skill, macZipInfoPlistVersion: inspected.macZipInfoPlistVersion, macReleaseProof: inspected.macReleaseProof };
+  // 虾盘云模型目录：跟装机清单同款三份校验（源码 website / 部署目录 / 内嵌），一份不一致就中止——
+  // 内嵌那份编进了这次要发的 exe，线上那份是热下发副本，两边对不上 = 客户拿到的目录和测过的不是同一份。
+  let modelCatalog = null;
+  if (config.targets.some((target) => target.modelCatalogPaths.length > 0)) {
+    const hostedBuffer = await fs.readFile(path.join(ROOT, "website", "skills", "xiapan-models.json"));
+    const deployedBuffer = await fs.readFile(path.join(config.websiteDir, "skills", "xiapan-models.json"));
+    if (!hostedBuffer.equals(deployedBuffer)) fail("部署模型目录与源码不一致");
+    const embeddedCatalogBuffer = await fs.readFile(path.join(ROOT, "src-tauri", "models", "xiapan-models.json"));
+    if (!hostedBuffer.equals(embeddedCatalogBuffer)) fail("官网模型目录与内嵌目录不一致");
+    let parsedCatalog;
+    try {
+      parsedCatalog = JSON.parse(hostedBuffer.toString("utf8"));
+    } catch (error) {
+      fail(`xiapan-models.json 不是合法 JSON：${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (parsedCatalog?.catalog !== "xiapan-models" || !Number.isInteger(parsedCatalog?.version) || parsedCatalog.version < 1) {
+      fail("xiapan-models.json 的 catalog/version 字段不合法；先跑 node scripts/check-model-catalog-sync.mjs");
+    }
+    const catalogPath = path.join(snapshotDir, "xiapan-models.json");
+    await fs.writeFile(catalogPath, hostedBuffer, { flag: "wx" });
+    modelCatalog = { name: "xiapan-models.json", path: catalogPath, bytes: hostedBuffer.length, sha256: await sha256(catalogPath), version: parsedCatalog.version };
+  }
+  return { snapshotDir, artifacts, metadata, skill, modelCatalog, macZipInfoPlistVersion: inspected.macZipInfoPlistVersion, macReleaseProof: inspected.macReleaseProof };
 }
 
 async function ossDownloadedHash(oss, objectPath, localDir) {
@@ -489,7 +517,24 @@ async function publish(config, plan, journal, persistJournal) {
       await persistJournal();
     }
   }
-  console.log("二进制与装机清单已核验；现在发布 version.json…");
+  if (plan.modelCatalog) {
+    console.log("二进制已核验；同步模型目录 xiapan-models.json…");
+    for (let index = 0; index < config.targets.length; index += 1) {
+      const target = config.targets[index];
+      if (target.modelCatalogPaths.length === 0) continue;
+      const staged = [];
+      for (const remotePath of target.modelCatalogPaths) {
+        staged.push(await remoteStage(target, plan.modelCatalog.path, remotePath, plan.modelCatalog.sha256, releaseId));
+      }
+      journal.inFlight = { phase: "target-model-catalog", targetIndex: index };
+      await persistJournal();
+      await remoteCommit(target, staged);
+      journal.modelCatalogTargetsCommitted.push(index);
+      journal.inFlight = null;
+      await persistJournal();
+    }
+  }
+  console.log("二进制、装机清单与模型目录已核验；现在发布 version.json…");
   for (let index = 0; index < config.targets.length; index += 1) {
     const target = config.targets[index];
     const staged = [];
@@ -560,6 +605,7 @@ async function main() {
     macZipInfoPlistVersion: frozen.macZipInfoPlistVersion,
     macReleaseProof: frozen.macReleaseProof,
     ...(frozen.skill ? { installSkill: { bytes: frozen.skill.bytes, sha256: frozen.skill.sha256 } } : {}),
+    ...(frozen.modelCatalog ? { modelCatalog: { version: frozen.modelCatalog.version, bytes: frozen.modelCatalog.bytes, sha256: frozen.modelCatalog.sha256 } } : {}),
     artifacts: frozen.artifacts.map(({ name, kind, bytes, sha256, fileVersion }) => ({ name, kind, bytes, sha256, ...(fileVersion ? { fileVersion } : {}) })),
   };
   const outputRoot = path.join(config.artifactDir, MANIFEST_DIR_NAME);
@@ -570,6 +616,8 @@ async function main() {
   await writeNewJson(manifestPath, manifest);
   console.log(`发布计划就绪：${config.version}，已校验 4 个产物、Windows FileVersion 与 Mac 构建证明。`);
   console.log(`manifest: ${manifestPath}`);
+  if (!frozen.modelCatalog) console.log("提示：配置里没有 modelCatalogPaths，本次不发布 xiapan-models.json（模型目录热下发副本不会更新）。");
+  else console.log(`模型目录 xiapan-models.json v${frozen.modelCatalog.version} 已校验（源码 / 部署目录 / 内嵌三份一致）。`);
   if (args.mode === "publish") {
     const releaseId = `${config.version}-${randomUUID()}`;
     const journalPath = path.join(outputRoot, `release-journal-${config.version}-${releaseId.slice(config.version.length + 1)}.json`);
@@ -582,6 +630,7 @@ async function main() {
       status: "publishing",
       binaryTargetsCommitted: [],
       skillTargetsCommitted: [],
+      modelCatalogTargetsCommitted: [],
       ossBinariesVerified: [],
       metadataTargetsCommitted: [],
       ossMetadataVerified: false,

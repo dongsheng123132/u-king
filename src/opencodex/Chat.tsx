@@ -20,7 +20,8 @@ import { Bot, Check, ChevronRight, Copy, Eye, FileText, Film, FolderOpen, Folder
 import { cn } from "../lib/cn";
 import { trimHistoryForPayload } from "./historyTrim";
 import { useViewport } from "../lib/useViewport";
-import { XIAPAN_MODELS, priceyModelHint } from "../lib/models";
+import { priceyModelHint } from "../lib/models";
+import { useXiapanModels } from "../lib/useXiapanModels";
 import { copyToClipboard } from "../lib/clipboard";
 import { useDropZone, pathsToText } from "../lib/fileDrop";
 import { describeImages, fileLabel, ImageDescribeError, isImageFile, visionErrorText } from "../lib/vision";
@@ -362,10 +363,11 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
    */
   const encodeModel = (pid: string, m: string) => `${pid}::${m}`;
   const uk = engine === "uking";
-  /** 虾盘云的模型清单来自共享的 `XIAPAN_MODELS`；别家就用它在「AI 设置」里填的那个默认模型。 */
+  /** 虾盘云的模型清单来自共享的模型目录（`useXiapanModels`：内嵌版 + 线上更新版）；别家就用它在「AI 设置」里填的那个默认模型。 */
+  const { groups: xiapanGroups } = useXiapanModels();
   const xiapanId = chatProviders.find((p) => p.builtin_recharge)?.id ?? "xiapan";
   const commonModels = [
-    ...XIAPAN_MODELS.filter((g) => !g.group.includes("全球旗舰"))
+    ...xiapanGroups.filter((g) => !g.pricey)
       .flatMap((g) => g.items)
       .map((m) => ({ id: encodeModel(xiapanId, m.id), label: t(m.label) })),
     // 客户自己配的那些家。没填 model 的不列 —— 列一个空模型只会打出一个看不懂的 400。
@@ -373,18 +375,28 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
       .filter((p) => !p.builtin_recharge && p.id !== "official" && p.model)
       .map((p) => ({ id: encodeModel(p.id, p.model), label: `${t(p.name)} · ${p.model}` })),
   ];
+  const pickerList = uk
+    ? commonModels
+    : xiapanGroups.filter((g) => !g.pricey).flatMap((g) => g.items).map((m) => ({ id: m.id, label: t(m.label) }));
+  // 贵的 = 目录里标了 `pricey` 的那组（海外旗舰）—— 数据里显式写着，不再靠组名里带不带「全球旗舰」认。
+  const pickerPricey = xiapanGroups.filter((g) => g.pricey)
+    .flatMap((g) => g.items)
+    .map((m) => ({ id: uk ? encodeModel(xiapanId, m.id) : m.id, label: t(m.label) }));
+  const pickerValue = uk ? encodeModel(providerId, model) : (panelModel[engine] ?? "");
+  // 🔴 当前值可能是目录里已经没有的模型（客户以前选过，后来目录收敛/下线了它；localStorage 里还记着）。
+  // 菜单只按列表找当前项的名字，找不到会显示成「跟随驱动设置」—— 实际发出去的却还是那个旧模型。
+  // 所以当前值不在列表里时，把它原样（裸 id）补成第一项，让界面如实说出正在用的是谁。
+  const pickerListWithCurrent = pickerValue && ![...pickerList, ...pickerPricey].some((m) => m.id === pickerValue)
+    ? [{ id: pickerValue, label: uk ? model : pickerValue }, ...pickerList]
+    : pickerList;
   const modelPicker = brainTakesModel
     ? {
-        value: uk ? encodeModel(providerId, model) : (panelModel[engine] ?? ""),
+        value: pickerValue,
         allowFollow: !uk,
-        // 常用 = 前面那些组 + 客户自己的供应商；贵的 = 组名带「全球旗舰」的那组
+        // 常用 = 前面那些组 + 客户自己的供应商；贵的 = 目录里标了 pricey 的那组
         //（`lib/models.ts` 里本来就这么分的，我们不另立判据 —— 另立一份就会漂）。
-        list: uk
-          ? commonModels
-          : XIAPAN_MODELS.filter((g) => !g.group.includes("全球旗舰")).flatMap((g) => g.items).map((m) => ({ id: m.id, label: t(m.label) })),
-        pricey: XIAPAN_MODELS.filter((g) => g.group.includes("全球旗舰"))
-          .flatMap((g) => g.items)
-          .map((m) => ({ id: uk ? encodeModel(xiapanId, m.id) : m.id, label: t(m.label) })),
+        list: pickerListWithCurrent,
+        pricey: pickerPricey,
         onChange: (v: string) => {
           if (!uk) { setPanelModel(engine, v); return; }
           // 空 = 「跟随驱动设置」，uking 档不给这个选项，兜底回默认模型。

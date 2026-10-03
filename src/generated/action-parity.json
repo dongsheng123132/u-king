@@ -295,6 +295,47 @@
       "bindings": [
         {
           "surface": "cli",
+          "target": "cli:action run runtime.model_catalog.inspect --json --no-input"
+        }
+      ],
+      "description": "Read the effective Xiapan model catalog (grouped chat models, which ones accept image input, default and strong model, plus the separate image-generation model list) plus where it came from (embedded / cache / online) and its version. Reads only; the online refresh runs in the background at startup.",
+      "effects": {
+        "audit_required": false,
+        "class": "read",
+        "confirmation": "never",
+        "reversible": true,
+        "risk": "low"
+      },
+      "execution": {
+        "cancellable": false,
+        "headless": true,
+        "idempotent": true,
+        "progress_events": false,
+        "timeout_ms": 5000
+      },
+      "id": "runtime.model_catalog.inspect",
+      "input_schema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "output_schema": {
+        "required": [
+          "catalog",
+          "version",
+          "source",
+          "default",
+          "strong",
+          "groups",
+          "image_models"
+        ],
+        "type": "object"
+      },
+      "title": "Inspect the Xiapan model catalog"
+    },
+    {
+      "bindings": [
+        {
+          "surface": "cli",
           "target": "cli:action run runtime.hardware.inspect --json --no-input"
         }
       ],
@@ -6021,6 +6062,7 @@
       "runtime.crash.inspect",
       "runtime.instance.inspect",
       "runtime.stack.inspect",
+      "runtime.model_catalog.inspect",
       "runtime.hardware.inspect",
       "runtime.codex.inspect",
       "runtime.driver.inspect",

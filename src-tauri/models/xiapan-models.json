@@ -1,0 +1,94 @@
+{
+  "catalog": "xiapan-models",
+  "version": 1,
+  "updated": "2026-10-03",
+  "default": "deepseek-v4-flash",
+  "strong": "deepseek-v4-pro",
+  "groups": [
+    {
+      "group": "国产",
+      "items": [
+        {
+          "id": "deepseek-v4-flash",
+          "label": "DeepSeek V4 Flash · 最快最省（默认）",
+          "desc": "不知道选啥就用它，装好就是它。国产、速度快、最省额度，日常聊天问答写文章都够用，也能直接发图片给它（读大图里的小字偏弱）。",
+          "recommend": true,
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "label": "DeepSeek V4 Pro · 满血推理",
+          "desc": "同门的「深思」版，遇到难题会先想一大段再答，复杂推理更强，但更慢也更费额度。日常别用它，卡住了再切。注意：它不能看图，要发图请换 DeepSeek V4 Flash。",
+          "input": ["text"],
+          "verified": "2026-10-03"
+        },
+        {
+          "id": "kimi-k3",
+          "label": "Kimi K3 · 超长上下文",
+          "desc": "能一口气读很长的文档/几十页 PDF，做长文总结、整本资料分析时选它，也能看图。月之暗面最新一代。",
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        },
+        {
+          "id": "glm-5.3-flash",
+          "label": "GLM-5.3 Flash · 智谱性价比",
+          "desc": "智谱的轻量版，更快更省，中文理解到位，日常任务够用，也能看图。",
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        }
+      ]
+    },
+    {
+      "group": "海外",
+      "pricey": true,
+      "items": [
+        {
+          "id": "claude-sonnet-5-5",
+          "label": "Claude Sonnet 5.5 · 编程之王",
+          "desc": "写代码、改 bug 最强的一档，程序员首选，也能看图。比国产费额度。",
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        },
+        {
+          "id": "claude-opus-5-5",
+          "label": "Claude Opus 5.5 · 顶配旗舰",
+          "desc": "最聪明、最会思考，复杂分析/难题/大工程交给它，也能看图。也最费额度。",
+          "recommend": true,
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        },
+        {
+          "id": "gpt-6-astra",
+          "label": "GPT-6 Astra · OpenAI 新一代",
+          "desc": "OpenAI 新一代旗舰，综合能力强、知识面广，什么都能聊，也能看图。比国产费额度，用量大时留意余额。",
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        },
+        {
+          "id": "gpt-6.1-sol",
+          "label": "GPT-6.1 Sol · OpenAI 前沿旗舰",
+          "desc": "OpenAI 前沿旗舰，能力强但费额度，日常别用它，确有需要再选，用量大时留意余额。也能看图。",
+          "input": ["text", "image"],
+          "verified": "2026-10-03"
+        }
+      ]
+    }
+  ],
+  "image_models": [
+    {
+      "id": "gpt-image-2",
+      "label": "GPT Image 2 · OpenAI",
+      "desc": "最稳定、最听话，改图 / 多图融合最强，标准图还最便宜。",
+      "recommend": true,
+      "edits": true,
+      "verified": "2026-08-01"
+    },
+    {
+      "id": "gpt-image-2.5-1k",
+      "label": "GPT Image 2.5 · 1K · OpenAI",
+      "desc": "OpenAI 作图模型的 2.5 版，出 1K 规格的图。目前只用来画新图；要改图（带参考图）请用 GPT Image 2。",
+      "edits": false
+    }
+  ]
+}

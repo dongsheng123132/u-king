@@ -421,6 +421,14 @@ export const settings: Record<string, string> = {
   "GPT-5.4 · OpenAI 旗舰": "GPT-5.4 · OpenAI flagship",
   "Gemini 3.1 Pro": "Gemini 3.1 Pro",
   "Grok 4.5 · xAI": "Grok 4.5 · xAI",
+  // 2026-10-03 模型目录（src-tauri/models/xiapan-models.json）收敛后新增的分组名 / 条目
+  国产: "Domestic",
+  海外: "Overseas",
+  "GLM-5.3 Flash · 智谱性价比": "GLM-5.3 Flash · Zhipu value pick",
+  "Claude Sonnet 5.5 · 编程之王": "Claude Sonnet 5.5 · best at coding",
+  "Claude Opus 5.5 · 顶配旗舰": "Claude Opus 5.5 · top-tier flagship",
+  "GPT-6 Astra · OpenAI 新一代": "GPT-6 Astra · OpenAI next generation",
+  "GPT-6.1 Sol · OpenAI 前沿旗舰": "GPT-6.1 Sol · OpenAI frontier flagship",
 
   // 切换回验（2026-08-24）。措辞刻意区分三种状态：读到了 / 被压着 / 没读到。
   // 「没读到」绝不能翻成任何听起来像「没问题」的词 —— 空结果有两义，

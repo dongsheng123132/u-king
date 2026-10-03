@@ -19,6 +19,7 @@ import { Check, ChevronDown, Pencil, Trash2, Plus, Settings2 } from "lucide-reac
 import type { ProviderPreset } from "../Wizard";
 import type { DeviceKey, DriverStatus } from "../lib/types";
 import { mergeModels, priceyModelHint, recommendedVisionModel, codexProtocolHint } from "../lib/models";
+import { useXiapanModels } from "../lib/useXiapanModels";
 import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 
@@ -89,7 +90,10 @@ export function ProviderSwitch({
       alive = false;
     };
   }, [deviceKey?.key]);
-  const modelGroups = mergeModels(liveModels);
+  // 清单底稿：内嵌版先上，后端拿到线上更新版就换（模型下线 / 新增不用等发版，见 useXiapanModels）。
+  const { groups: catalogGroups } = useXiapanModels();
+  const modelGroups = mergeModels(liveModels, catalogGroups);
+  const visionModel = recommendedVisionModel(catalogGroups);
   // 虾盘云类卡片选中的模型（key=provider id）
   const [modelSel, setModelSel] = useState<Record<string, string>>({});
   const [modelOpen, setModelOpen] = useState<string | null>(null);
@@ -210,23 +214,23 @@ export function ProviderSwitch({
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/[0.07] px-2.5 py-1.5 text-[11px] leading-snug text-ink-2">
           <span>
             🖼️ {t("要识别图片 / 截图？")}
-            <b className="text-ink-1">{t("DeepSeek 等纯文本模型看不了图")}</b>
+            <b className="text-ink-1">{t("DeepSeek V4 Pro 等纯文本模型看不了图")}</b>
             {t("，切到看图模型即可。")}
           </span>
           <button
             onClick={() => {
-              const vision = recommendedVisionModel();
+              const vision = visionModel;
               if (!vision) return onToast(t("看图模型清单为空，请在「换模型」里手选"));
               const xp = providers.find((p) => p.builtin_recharge);
               if (xp) void doSwitch(xp, vision.id);
               else onToast(t("没找到虾盘云内置驱动，请先在「AI 设置」配置"));
             }}
-            disabled={!!busy || !recommendedVisionModel()}
+            disabled={!!busy || !visionModel}
             className="ml-auto inline-flex items-center gap-1 px-2 h-6 rounded-md bg-accent text-white text-[10.5px] font-medium hover:bg-accent-600 disabled:opacity-50 shrink-0"
           >
             {/* 名字跟着 models.ts 的★走，别写死 —— 写死过一次，跑道换默认后按钮把客户切到了旧模型 */}
             {t("一键切 {name}（看图）", {
-              name: (recommendedVisionModel()?.label || "").split(" · ")[0],
+              name: (visionModel?.label || "").split(" · ")[0],
             })}
           </button>
         </div>

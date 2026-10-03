@@ -16,7 +16,8 @@ const BASE = "https://api.u-claw.org.cn"; // 国内可达域名（.org 子域被
 //   deepseek-v4-flash 合计 62%（证照/大图小字尚可，长截图 4 次全 0——已靠下面「长图分块」缓解）；
 //   qwen3.7-flash（原默认）合计 95%，仍是更准的一档，想要更高准确率可 `--model qwen3.7-flash`
 //   显式切回（see-image.mjs 支持 --model 覆盖，选了就不自动降级）。
-// deepseek-v4-pro（收不了图）与其余非 flash 的 deepseek 聊天模型仍在下面 TEXT_ONLY 闸门里被拦。
+// deepseek-v4-pro（收不了图）与其余 deepseek 模型（v3.x 等没实测过的）仍在下面 TEXT_ONLY 闸门里被拦；
+// 2026-10-03 虾盘云逐个实测后，deepseek-flash / deepseek-chat / deepseek-v4-flash-vision-exp 也放行（见闸门注释）。
 // 历史：旧默认曾是 MiniMax-M3，2026-08-16 因「宽截图整页编造」（泛问三遍全 0/7，还编出不存在的
 // 按钮和账号）换成 qwen3.7-flash（同批 `node scripts/bench.mjs` 实测：qwen3.7-flash 100%、
 // qwen3-vl-flash 97%、qwen-vl-max 91%、qwen-vl-plus 86%、qwen3.5-ocr 69%、MiniMax-M3 66%）。
@@ -235,14 +236,26 @@ const TEXT_ONLY = [
   /^qwen-(?:plus|turbo)$/i,              // 实测：一个装懂、一个编名字
   /^qwen3\.7-max$/i,                     // catalog text-only；同族 qwen3.7-plus 才收图
   /^qwen3-coder/i,
-  // deepseek 系：deepseek-ocr（识图专用）和 deepseek-v4-flash（2026-09-24 起产品默认，弱但能看，
-  // 62% 合计）放行；其余（v4-pro、deepseek-chat、deepseek-v3.2 等纯聊天模型）仍拦——v4-pro 真收
-  // 不了图，其余没实测过、按家族默认当纯文本处理更安全。理由文案见 whyBlocked()。
+  // deepseek 系：放行的是实测过能读图的那几个（见下方 DEEPSEEK_SEES_IMAGES 与 CATALOG_OVERRIDE_ALLOW）：
+  //   deepseek-ocr（识图专用）、deepseek-v4-flash（2026-09-24 起产品默认，弱但能看，62% 合计）、
+  //   deepseek-v4-flash-vision-exp、deepseek-flash、deepseek-chat。
+  // 其余（v4-pro、v3.2 等）仍拦——v4-pro 真收不了图，其余没实测过、按家族默认当纯文本处理更安全。
+  // 理由文案见 whyBlocked()。
   /^(?:[\w.-]+\/)?deepseek(?!.*(?:ocr|v4-flash))/i,
   /^(?:z-ai\/)?glm-5(?:\.\d+)?$/i,       // glm-5/5.1/5.2 纯文本；带 v 的 glm-5v-turbo 才收图
   /^(?:[\w.-]+\/)?minimax-m[12]/i,       // M3 才收图
 ];
-const textOnlyRegex = (id) => TEXT_ONLY.some((re) => re.test(String(id || "").trim()));
+// 2026-10-03 在虾盘云 `/v1/chat/completions` 用同一张已知内容的测试图（文字含 58273 + 红圆 + 蓝方）逐个实测，
+// 读出 58273 才算能看图：deepseek-flash、deepseek-chat 都读出来了。之前这两个被上面那条 deepseek 正则
+// 一并当纯文本拦掉（whyBlocked 还说它们「会编答案」）——与实测相反。
+// 只放这两个**裸名**：带厂商前缀的（如 openrouter 风格的 `deepseek/deepseek-chat`）不是虾盘云这条路，
+// 没实测过，照旧按家族默认拦。deepseek-v4-pro 同日复测仍回答「无法查看图片」，继续拦。
+const DEEPSEEK_SEES_IMAGES = /^deepseek-(?:flash|chat)$/i;
+const textOnlyRegex = (id) => {
+  const s = String(id || "").trim();
+  if (DEEPSEEK_SEES_IMAGES.test(s)) return false;
+  return TEXT_ONLY.some((re) => re.test(s));
+};
 
 // ══ 第二源：运行时查 catalog（补黑名单的 fail-open 缺口）══
 //
@@ -325,30 +338,37 @@ function catalogSaysTextOnly(id) {
 // completions 实测：这个裸名**确实收图、确实读了**（合计 62%，不是「收图不报错却编答案」那类
 // 危险——弱是弱，但答案基于图内容，不是凭空编）。catalog 说的是别家渠道的能力声明，跟虾盘云这条
 // 代理实际服务的模型不是一回事，所以这一条上我们自己直连实测优先于 catalog。
-// 仅此一个例外：别在这张表上加别的 id，除非也这样先直连实测过（铁律见 catalogSaysTextOnly 上方三条）。
-const CATALOG_OVERRIDE_ALLOW = new Set(["deepseek-v4-flash"]);
+// 2026-10-03 起加入 deepseek-flash / deepseek-chat：同样是直连虾盘云、用含 58273 的测试图实测读出了内容，
+// 而 catalog 把它们记成纯文本（厂商官方基座的能力声明，不是虾盘云这条代理的）。
+// 别在这张表上加别的 id，除非也这样先直连实测过（铁律见 catalogSaysTextOnly 上方三条）。
+const CATALOG_OVERRIDE_ALLOW = new Set(["deepseek-v4-flash", "deepseek-flash", "deepseek-chat"]);
 const textOnlyModel = (id) => {
   const raw = String(id || "").trim().toLowerCase();
   if (CATALOG_OVERRIDE_ALLOW.has(raw)) return textOnlyRegex(id); // 只让手写清单管它，catalog 管不着
   return textOnlyRegex(id) || catalogSaysTextOnly(id);
 };
 
-// 按模型给准确的拦截理由（2026-09-16 跑道实测），取代过去写死的「全系纯文本」一句话。
-// 2026-09-24 起 deepseek-v4-flash 已从 TEXT_ONLY 正则放行（产品决定改回 DeepSeek 原生识图，
+// 按模型给准确的拦截理由（2026-09-16 / 2026-10-03 实测），取代过去写死的「全系纯文本」一句话。
+// deepseek-v4-flash 已从 TEXT_ONLY 正则放行（2026-09-24 产品决定改回 DeepSeek 原生识图，
 // 见 DEFAULT_MODEL 处注释）；下面这条分支留着是防第二源（catalog，只加拦不放行）在某台机器上
 // 把它判成纯文本——真出现这句话说明是 catalog 那道防线触发的，不是这条正则又把它拦住了。
-// deepseek 系两个成员失败模式完全不同，不能用同一句话描述：
+// deepseek 系各成员失败模式完全不同，不能用同一句话描述：
 //   v4-flash：**能**收图，只是弱且抖（合计 62%，长截图 0/4，带意图问法大图小字跨度 0~6）；
-//   v4-pro  ：**收不了图**（三种问法全回「我无法查看这张图片」），好在老实拒答、不编。
+//   flash / chat：**能**收图（2026-10-03 同一张测试图读出了 58273）——被拦只可能是带厂商前缀的变体 id；
+//   v4-pro  ：**收不了图**（2026-09-16 三种问法全回「我无法查看这张图片」，2026-10-03 复测同样），
+//             好在老实拒答、不编。
 // 其余名单（qwen-plus/turbo、qwen3.7-max、qwen3-coder、glm-5 系、minimax-m1/m2）维持原判词：
 // 收图不报错、会给一个编出来的答案。
 function whyBlocked(id) {
   const s = String(id || "").trim();
   if (/^(?:[\w.-]+\/)?deepseek-v4-flash/i.test(s))
-    return `${s} 其实收得了图，但 2026-09-16 实测很弱且抖（证照/大图合计 62%，长截图 4 次全 0，`
-      + `带意图问法在大图小字上跨度 0~6）——别当识图主力，请换视觉模型。`;
+    return `${s} 其实收得了图（2026-10-03 实测读出了测试图里的文字），但 2026-09-16 跑道实测很弱且抖（证照/大图合计 62%，`
+      + `长截图 4 次全 0，带意图问法在大图小字上跨度 0~6）——别当识图主力，请换视觉模型。`;
+  if (/^(?:[\w.-]+\/)?deepseek-(?:flash|chat)$/i.test(s))
+    return `${s} 在虾盘云上其实收得了图（2026-10-03 实测读出了测试图里的文字），这里被拦是因为它带了厂商前缀、`
+      + `不是虾盘云那条路，没实测过——请改用裸名（${s.replace(/^.*\//, "")}）或下面列的视觉模型。`;
   if (/^(?:[\w.-]+\/)?deepseek-v4-pro/i.test(s))
-    return `${s} 收不了图（三种问法全回「我无法查看这张图片」），好在它老实拒答、不编 —— 但结果里不会有图片内容，请换视觉模型。`;
+    return `${s} 收不了图（三种问法全回「我无法查看这张图片」，2026-10-03 复测同样），好在它老实拒答、不编 —— 但结果里不会有图片内容，请换视觉模型。`;
   return `${s} 是纯文本模型，看不了图 —— 但它收下图片后**不会报错**，会给你一个编出来的答案。`;
 }
 
@@ -444,7 +464,7 @@ async function runChain(key, chain, mode, imageUrl, prompt, t0, tag) {
     }
     const refused = refusalOf(c);
     if (refused) {
-      lastErr = `${m} 收下了图但没看：「${refused}」—— 它多半是纯文本模型（qwen-plus / qwen3.7-max / deepseek-* 都是），换带视觉的（qwen3.7-flash / qwen3.7-plus / qwen3-vl-flash）再试。`;
+      lastErr = `${m} 收下了图但没看：「${refused}」—— 它多半是纯文本模型（qwen-plus / qwen3.7-max / deepseek-v4-pro 都是），换带视觉的（qwen3.7-flash / qwen3.7-plus / qwen3-vl-flash）再试。`;
       logE(`  ✖ ${tag}${m}：拒答（收图不报错，已判失败）`); continue;
     }
     model = m; text = c.trim();
