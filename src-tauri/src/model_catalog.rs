@@ -444,7 +444,7 @@ mod tests {
         assert!(!embedded().groups.is_empty(), "embedded() 退化成空目录了 —— 内嵌 JSON 其实没解析成功");
     }
 
-    /// 2026-10-03 逐个实测的结论，钉死在内嵌目录里。目录只收 8 个对话模型：
+    /// 2026-10-03 逐个实测的结论，钉死在内嵌目录里。目录只收 7 个对话模型（glm-5.3-flash 10-04 下架）：
     /// 收图的声明 image，deepseek-v4-pro 实测拒绝看图只声明 text；目录外的一律不声明。
     #[test]
     fn embedded_encodes_the_2026_10_03_measurements() {
@@ -452,13 +452,13 @@ mod tests {
         assert_eq!(
             ids,
             [
-                "deepseek-v4-flash", "deepseek-v4-pro", "kimi-k3", "glm-5.3-flash",
+                "deepseek-v4-flash", "deepseek-v4-pro", "kimi-k3",
                 "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol",
             ],
-            "目录就是这 8 个对话模型，顺序即下拉顺序"
+            "目录就是这 7 个对话模型，顺序即下拉顺序"
         );
         for id in [
-            "deepseek-v4-flash", "kimi-k3", "glm-5.3-flash",
+            "deepseek-v4-flash", "kimi-k3",
             "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol",
         ] {
             assert!(accepts_image(id), "{id} 实测能看图，目录里必须声明 image");

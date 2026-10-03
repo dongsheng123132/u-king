@@ -4089,11 +4089,11 @@ mod managed_provider_identity_tests {
     }
 
     /// 「收不收图」问的是模型目录，不是某个写死的 id：目录里写了 image 的任何主模型
-    /// （kimi-k3 / glm-5.3-flash / claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）
+    /// （kimi-k3 / claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）
     /// 都要声明 `input:["text","image"]`，且因为主模型自己能收图，不该再写 imageModel 兜底。
     #[test]
     fn xiapan_route_declares_image_for_every_catalog_vision_primary() {
-        for (n, id) in ["kimi-k3", "glm-5.3-flash", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"]
+        for (n, id) in ["kimi-k3", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"]
             .into_iter()
             .enumerate()
         {
@@ -4967,23 +4967,23 @@ mod dsh_provider_tests {
         });
     }
 
-    /// 「收不收图」问模型目录：目录里写了 image 的（deepseek-v4-flash / kimi-k3 / glm-5.3-flash /
+    /// 「收不收图」问模型目录：目录里写了 image 的（deepseek-v4-flash / kimi-k3 /
     /// claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）DSH 都要声明；写了 text 的
-    /// （deepseek-v4-pro）和压根不在目录里的（qwen3.7-max、glm-5.3、deepseek-flash、手填 id）
-    /// 一律不声明 —— 目录只回答它收录的 8 个，其余宁可不声明。
+    /// （deepseek-v4-pro）和压根不在目录里的（qwen3.7-max、glm-5.3、10-04 下架的 glm-5.3-flash、
+    /// deepseek-flash、手填 id）一律不声明 —— 目录只回答它收录的 7 个，其余宁可不声明。
     #[test]
     fn dsh_xiapan_declares_image_exactly_for_catalog_vision_models() {
         crate::testsandbox::with_sandbox("dsh-vision-catalog", &[".dsh", ".uking"], |root| {
             let settings_path = root.join(".dsh").join("settings.yaml");
             let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
             let image_input = Some(vec!["text".to_string(), "image".to_string()]);
-            for id in ["kimi-k3", "glm-5.3-flash", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol", "deepseek-v4-flash"] {
+            for id in ["kimi-k3", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol", "deepseek-v4-flash"] {
                 apply_dsh(&p, "sk-device-secret", id).unwrap();
                 let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
                 assert_eq!(models.len(), 1, "{id}: {models:?}");
                 assert_eq!(model_input(&models[0]), image_input, "{id} 目录里收图，必须声明：{models:?}");
             }
-            for id in ["deepseek-v4-pro", "qwen3.7-max", "glm-5.3", "deepseek-flash", "some-user-typed-model"] {
+            for id in ["deepseek-v4-pro", "qwen3.7-max", "glm-5.3", "glm-5.3-flash", "deepseek-flash", "some-user-typed-model"] {
                 apply_dsh(&p, "sk-device-secret", id).unwrap();
                 let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
                 assert_eq!(models.len(), 1, "{id}: {models:?}");
