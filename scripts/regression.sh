@@ -100,7 +100,9 @@ chk_cfg() {  # $1=文件 $2=描述 $3=grep正则(期望存在)
 }
 chk_cfg "$SANDBOX/.claude/settings.json"        "Claude → cn 镜像"   'api\.u-claw\.org\.cn'
 chk_cfg "$SANDBOX/.codex/config.toml"           "Codex → cn 镜像"    'api\.u-claw\.org\.cn/v1'
-chk_cfg "$SANDBOX/.codex/config.toml"           "Codex model=正确id" 'model = "gpt-5\.3-codex"'
+# 默认模型以 providers.rs 虾盘云 preset 的 codex_model 为准（2026-08-02 起是 deepseek-v4-flash-codex，
+# gpt-5.3-codex 贵约 6 倍、只在「换模型」里显式选）。旧断言一直查 gpt-5.3-codex，每次发版都假红。
+chk_cfg "$SANDBOX/.codex/config.toml"           "Codex model=正确id" 'model = "deepseek-v4-flash-codex"'
 chk_cfg "$SANDBOX/.openclaw/openclaw.json"      "OpenClaw → cn 镜像" 'api\.u-claw\.org\.cn'
 chk_cfg "$SANDBOX/ClawX/clawx-providers.json"   "ClawX → cn 镜像"    'api\.u-claw\.org\.cn'
 # selfcheck 自报版本
