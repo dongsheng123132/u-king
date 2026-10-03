@@ -485,6 +485,8 @@ export const settings: Record<string, string> = {
   "余额偏低": "Balance is low",
   "去充值": "Top up",
   "钱包状态读取失败，请重试体检": "Could not read wallet status — run the checkup again",
+  // 2026-10-03 收敛方案 §3.6：体检卡「未充值」去红，改成中性说明（BYOK 用户钱包为空是常态）。
+  "未充值（用自己的 Key 可忽略）": "Not topped up (ignore if you use your own key)",
   "运行环境": "Environment",
   "未检测到": "Not detected",
   "便携 Node ✓": "Portable Node ✓",

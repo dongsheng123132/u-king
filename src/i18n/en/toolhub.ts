@@ -101,4 +101,9 @@ export const toolhub: Record<string, string> = {
   // 无障碍修复新增：详情条 `role="region"` 的 `aria-label`，读屏器用来播报这块区域是谁的详情，
   // 跟瓷砖 `aria-controls` 指向的是同一个元素（详情条 id 由 `detailIdFor()` 统一拼）。
   "{name} 详情": "{name} details",
+
+  // 2026-10-03 收敛方案 §3.2：「可安装」区分三组。「推荐」复用中央字典已有条目
+  // （tools.ts / onboarding.ts），这里只补两个带数量的折叠组标题。
+  "更多 AI 工具（{n}）": "More AI tools ({n})",
+  "日常软件（{n}）": "Everyday software ({n})",
 };

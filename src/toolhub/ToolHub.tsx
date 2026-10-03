@@ -24,6 +24,10 @@
  * 让第二下 click/dblclick 落在挪位后新出现的别的按钮上"（复审 medium：确认属实的竞态，
  * 曾经拿分体按钮"体检修复"这类次要按钮举例）。已装/可装两个网格共享
  * 「同一时刻只展开一个」——因为一个工具只可能在其中一个网格里。
+ * 2026-10-03（收敛方案 §3.2）：「可安装」区在「分类 = 全部」且非多选时再切成三组
+ * （推荐 / 更多 AI 工具 / 日常软件，后两组默认折叠，名单见 App.tsx `RECOMMENDED_TOOLS` /
+ * `DAILY_APPS`）。三组互斥，所以上面那句「一个工具只在一个网格里」仍然成立；选了分类标签
+ * 或进了多选就退回单个平铺网格，什么都不藏。
  * 详情条的水平位置和插入点都是算出来的，不是猜的：`TileGrid` 用 `ResizeObserver` 量自己的
  * 容器宽度换算每行能摆几列，据此定位「该在第几个瓷砖后面插详情条」以及「小三角该落在哪个
  * 横坐标」——视口一变、换行了，这两个数字跟着重算，详情条永远贴着被点的那块瓷砖。
@@ -47,6 +51,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   Cpu,
   Download,
   LayoutGrid,
@@ -63,6 +68,8 @@ import {
 } from "lucide-react";
 import {
   LAB_TOOLS,
+  RECOMMENDED_TOOLS,
+  DAILY_APPS,
   toolTargets,
   currentModelFor,
   configurationLabelFor,
@@ -117,6 +124,12 @@ const CATS: { id: Category; label: string }[] = [
   { id: "agent", label: "智能体" },
   { id: "lab", label: "实验室" },
 ];
+
+/** 「可安装」区折叠组标题按钮的样式（「更多 AI 工具」「日常软件」共用一份，别各写一遍）。
+ *  字号跟推荐组的小标题（`h3`）对齐，hover 提亮、键盘焦点环同瓷砖。 */
+const GROUP_TOGGLE_CLASS =
+  "inline-flex items-center gap-1 rounded text-[12px] font-medium text-ink-2 hover:text-ink-0 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
 /** 详情条的 DOM id——瓷砖 `aria-controls` 和详情条外壳的 `id` 各写一次，用同一个函数拼，
  *  不让两处各自拼字符串漂开（宪法第 8 条）。已装/可装两个网格是分开渲染的、一个工具只会
@@ -249,12 +262,32 @@ export function ToolHub({
     [visibleTools],
   );
   const installableAll = useMemo(() => visibleTools.filter((t) => !t.installed), [visibleTools]);
+  // 「可安装」区三组（2026-10-03 收敛方案 §3.2）：推荐 / 更多 AI 工具 / 日常软件。
+  // 三组由 `installableAll` 一次性切开、互斥——优先级 推荐 > 日常软件 > 其余，所以一个工具
+  // 只会出现在一个网格里（`detailIdFor` 的 DOM id 才不会撞，`selectedId` 也只会在一处展开）。
+  // 推荐组按 `RECOMMENDED_TOOLS` 的名单顺序（不是后端目录顺序），且只列未装的——全装完整组消失。
+  const installableGroups = useMemo(() => {
+    const recommended = RECOMMENDED_TOOLS
+      .map((id) => installableAll.find((t) => t.id === id))
+      .filter((t): t is ToolInfo => !!t);
+    const recommendedIds = new Set(recommended.map((t) => t.id));
+    const daily = installableAll.filter((t) => !recommendedIds.has(t.id) && DAILY_APPS.has(t.id));
+    const more = installableAll.filter((t) => !recommendedIds.has(t.id) && !DAILY_APPS.has(t.id));
+    return { recommended, more, daily };
+  }, [installableAll]);
+  // 两个折叠组默认收起；纯视图状态，不持久化（每次进「我的 AI」都从收起开始，
+  // 推荐组之外的东西不抢首屏——方案 §3.2 的本意）。
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [dailyOpen, setDailyOpen] = useState(false);
   // 分类 chip 只过滤「可安装」分区，已安装网格不受它影响——已装的工具本来就没几个，
   // 全部摆出来一眼看完比再筛一层更直接。
   const installableFiltered = useMemo(
     () => installableAll.filter((t) => category === "all" || categoryOf(t) === category),
     [installableAll, category],
   );
+  // 只有「分类 = 全部」且不在多选模式才分三组；用户点了分类标签、或进了多选，就是在主动找东西，
+  // 此时平铺、什么都不藏（折叠组里的工具要能被勾选/被筛出来）。
+  const groupedInstallable = category === "all" && !batchMode;
 
   // 「当前模型」里 DriverStatus 读不到的那批（有 target、但 DriverStatus 没有它的 *_model 字段——
   // 目前是 pi / opencode）：有这类工具已装才去调一次只读回读动作，按 target 缓存；一个都没装
@@ -1021,6 +1054,68 @@ export function ToolHub({
         {installableFiltered.length === 0 ? (
           <div className="rounded-card border border-dashed border-white/[0.12] px-4 py-6 text-center text-[12px] text-ink-4">
             {tr("这个分类下暂时没有工具")}
+          </div>
+        ) : groupedInstallable ? (
+          <div className="space-y-4">
+            {installableGroups.recommended.length > 0 && (
+              <div data-testid="toolhub-group-recommended" className="space-y-2">
+                <h3 className="text-[12px] font-medium text-ink-2">{tr("推荐")}</h3>
+                <TileGrid
+                  tiles={installableGroups.recommended}
+                  selectedId={installableSelectedId}
+                  renderTile={renderInstallableTile}
+                  renderDetail={(t, caretLeft) => detailShell(t, caretLeft, renderInstallableDetail(t))}
+                />
+              </div>
+            )}
+            {installableGroups.more.length > 0 && (
+              <div className="space-y-2">
+                <button
+                  data-testid="toolhub-group-more"
+                  aria-expanded={moreOpen}
+                  aria-controls="toolhub-group-more-panel"
+                  onClick={() => setMoreOpen((v) => !v)}
+                  className={GROUP_TOGGLE_CLASS}
+                >
+                  {moreOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {tr("更多 AI 工具（{n}）", { n: installableGroups.more.length })}
+                </button>
+                {moreOpen && (
+                  <div id="toolhub-group-more-panel">
+                    <TileGrid
+                      tiles={installableGroups.more}
+                      selectedId={installableSelectedId}
+                      renderTile={renderInstallableTile}
+                      renderDetail={(t, caretLeft) => detailShell(t, caretLeft, renderInstallableDetail(t))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {installableGroups.daily.length > 0 && (
+              <div className="space-y-2">
+                <button
+                  data-testid="toolhub-group-daily"
+                  aria-expanded={dailyOpen}
+                  aria-controls="toolhub-group-daily-panel"
+                  onClick={() => setDailyOpen((v) => !v)}
+                  className={GROUP_TOGGLE_CLASS}
+                >
+                  {dailyOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {tr("日常软件（{n}）", { n: installableGroups.daily.length })}
+                </button>
+                {dailyOpen && (
+                  <div id="toolhub-group-daily-panel">
+                    <TileGrid
+                      tiles={installableGroups.daily}
+                      selectedId={installableSelectedId}
+                      renderTile={renderInstallableTile}
+                      renderDetail={(t, caretLeft) => detailShell(t, caretLeft, renderInstallableDetail(t))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <TileGrid

@@ -375,14 +375,23 @@ export function DoctorCard({
             <span className="text-ink-3 w-20 shrink-0">{t("虾盘云余额")}</span>
             {report.wallet ? (
               <>
-                <span className={cn("font-mono", report.wallet.charged ? "text-ink-2" : "text-red-300")}>
-                  {report.wallet.balance?.text ?? t("待充值")}
+                {/* 🔴 2026-10-03 收敛方案 §3.6：**没充值不是错误**。用自己 Key（BYOK）的用户钱包
+                    永远是空的，原来的红字「待充值」+ 实心描边「去充值」按钮是在催一个根本不欠的费，
+                    正是「干扰大家用 AI」的地方（同 `doctorHealth.ts` 顶部：钱包没充值不算故障、
+                    不拉黄折叠条 —— 这里的展开行也该跟着降级，别自己又标红）。
+                    所以：未充值 → 中性灰字 + 说明「用自己的 Key 可忽略」，「去充值」降成同行小号
+                    文字链接（`onRecharge` 行为不变）；已充值 / `low_balance` 的显示原样不动。
+                    真正「余额不足调用失败」才提示，那条走 `errorKind.ts`，不在体检卡里催。 */}
+                <span className={report.wallet.charged ? "font-mono text-ink-2" : "text-ink-3 text-[11px]"}>
+                  {report.wallet.charged
+                    ? (report.wallet.balance?.text ?? t("待充值"))
+                    : t("未充值（用自己的 Key 可忽略）")}
                 </span>
                 {report.wallet.low_balance && <span className="text-amber-500 text-[11px]">{t("余额偏低")}</span>}
                 {!report.wallet.charged && onRecharge && (
                   <button
                     onClick={() => onRecharge(report.wallet?.recharge_url)}
-                    className="px-2 h-6 rounded-md border border-accent/40 text-accent hover:bg-accent/[0.08]"
+                    className="text-[11px] text-accent hover:underline"
                   >
                     {t("去充值")}
                   </button>
