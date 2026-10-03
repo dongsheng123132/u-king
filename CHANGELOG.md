@@ -14,6 +14,7 @@
 - 修复自动更新重启后新建对话消失、会话 id 跨重启撞号；无对话内容的会话有文件夹即落盘。
 - 拖入的图片当场暂存副本，坏附件可单张移除，识图失败不再死循环重发。
 - 虾盘云模型目录热下发：一份 `xiapan-models.json` 管对话 / 作图下拉清单与「能不能看图」（内嵌兜底 + 线上 version 更大才覆盖）；对话模型 7 个，下架 GLM-5.3 / 5.3-flash 与上游已下线的 gemini-3.5-flash，作图 2.5 换为可出图的 gpt-image-2.5-flare。DSH / OpenClaw 的识图声明改读目录，DSH + 虾盘云 deepseek-v4-flash 可发图。
+- 工作台对话的「大脑」只留 Claude Code（只藏不删）：下拉换成静态标签；海报·短视频、作图、视频、文案、翻译 5 位专家默认改用 Claude Code。「让 AI 帮我修」三个入口仍走 U-King 轻助手直连兜底（要修的可能正是 Claude Code），这类会话与任务护照交接落到其他大脑时，下拉保留切回 Claude Code 的一项。
 - Claude Code 失败卡片优先显示真正的 API 错误，不再被 `[claude-code:unrecognized_model]` 诊断行顶掉。
 - 补齐 MiMo Code、CodeBuddy Code、Qoder CN 等 8 个工具的品牌图标；点启动只探测单个工具，开终端不再顺带下载便携 PowerShell 7。
 - 闸门：新增模型目录两份一致检查与会话 id 撞号断言；泄漏检查跳过 `.gitignore` 已挡目录，i18n 棘轮修到 0 条时不再提前退出。

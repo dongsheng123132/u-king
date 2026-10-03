@@ -411,7 +411,7 @@ export const EXPERTS: Expert[] = [
     persona:
       "你是视觉设计总监。做海报/配图调 generate_image（提醒用户：扩散模型做不准中文长文案，文字建议后期加）。做短视频直接调 generate_video 工具（异步出片、自动进右侧预览），配音用 gen-tts.mjs（run_command，需工作文件夹）。先问清风格/尺寸/用途再动手，成果进右侧预览。",
     skills: ["uking-aigc"],
-    enginePolicy: { default: "uking" },
+    enginePolicy: { default: "claude" }, // 10-04 U-Chat 只留 Claude Code
     quickPrompts: [
       { label: "活动海报", template: "帮我画一张周年庆活动海报，喜庆红金风" },
       { label: "公众号封面", template: "帮我做一张公众号封面图，科技风" },
@@ -432,7 +432,7 @@ export const EXPERTS: Expert[] = [
     persona:
       "你是 AI 绘画师。用户给一句话，你先把它扩成具体的画面描述（主体+风格+光影+构图+背景），再调 generate_image。图会进右侧预览。用户要调整就改描述重出。",
     skills: ["uking-aigc"],
-    enginePolicy: { default: "uking" },
+    enginePolicy: { default: "claude" }, // 10-04 U-Chat 只留 Claude Code
     route: "draw", // 单步作图：召唤直达「AI 作图」页（= 用户praise的「直接调用」，比绕对话更好）
     quickPrompts: [
       { label: "戴墨镜橘猫", template: "画一只戴墨镜的橘猫，卡通风格" },
@@ -454,7 +454,7 @@ export const EXPERTS: Expert[] = [
     persona:
       "你是 AI 视频师。用户给描述，你直接调 generate_video 工具生成视频（火山 Seedance 文生视频，异步出片、自动落盘并进右侧预览）。先确认画面/时长再动手，告诉用户视频出片要等一会。",
     skills: ["uking-aigc"],
-    enginePolicy: { default: "uking" },
+    enginePolicy: { default: "claude" }, // 10-04 U-Chat 只留 Claude Code
     route: "video", // 单步出片：召唤直达「AI 视频」页（异步任务专门页体验更好）
     quickPrompts: [
       { label: "猫在月球", template: "生成一段小猫在月球上散步的视频" },
@@ -495,7 +495,7 @@ export const EXPERTS: Expert[] = [
     persona:
       "你是资深新媒体文案。方法：先问清平台（小红书/公众号/朋友圈/抖音）、主题、目标人群，再按该平台调性写——小红书要吸睛标题+emoji+话题标签+分点正文；公众号要有钩子的标题+结构化正文。要配图就调 generate_image。要有网感，别又长又空。",
     skills: ["uking-aigc"],
-    enginePolicy: { default: "uking" },
+    enginePolicy: { default: "claude" }, // 10-04 U-Chat 只留 Claude Code
     quickPrompts: [
       { label: "小红书笔记", template: "帮我写一篇小红书笔记，主题是（主题），带标题和话题标签" },
       { label: "公众号推文", template: "帮我写一篇公众号推文，主题是：" },
@@ -516,7 +516,7 @@ export const EXPERTS: Expert[] = [
     persona:
       "你是专业翻译+母语润色。方法：翻译要地道、符合目标语言表达习惯（别生硬直译），保留原意和语气；用户要润色就在保持原意下改得更通顺专业。纯文本长文用 read_file 读、write_file 存；**给的是 Word/PDF/PPT 就用 read-doc.py**（read_file 读二进制只会得到乱码）。先确认目标语言/语气/用途再动手。",
     skills: ["uking-office-read"],
-    enginePolicy: { default: "uking" },
+    enginePolicy: { default: "claude" }, // 10-04 U-Chat 只留 Claude Code
     quickPrompts: [
       { label: "中译英", template: "帮我把这段中文翻译成地道英文：" },
       { label: "英译中", template: "帮我把这段英文翻译成中文：" },

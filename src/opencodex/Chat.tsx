@@ -68,6 +68,9 @@ export const ENGINES: { id: Engine; label: string }[] = [
   { id: "claude-cli", label: "Claude Code 终端（原味 TUI·老手推荐）" },
   { id: "hermes", label: "Hermes 终端（自带记忆）" },
 ];
+// 2026-10-04 用户拍板：U-Chat 只留 Claude Code、保持简单。其余引擎走「冻→藏→摘」先藏：
+// ENGINES / Engine 类型 / 各面板代码都不动（还要拿 ENGINES 查 label），只是顶栏「大脑」下拉不再提供入口。
+export const PICKABLE_ENGINES: Engine[] = ["claude"];
 
 type TextItem = { type: "text"; role: "user" | "assistant"; content: string };
 type ToolItem = { type: "tool"; name: string; phase: "running" | "done" | "error"; prompt?: string; path?: string; command?: string; output?: string; b64?: string; url?: string; message?: string; oldStr?: string; newStr?: string; isNew?: boolean };
@@ -214,7 +217,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   // 1366×768 上各自都还占着宽松间距，而对话正文只剩三四行。
   const { short } = useViewport();
   // 对话大脑：默认 Claude Code（世界级 agent，底层走虾盘云 deepseek·同计费·免配置）；专家按 enginePolicy 定，
-  // 通用工作台无专家时也默认 claude。想省钱/纯作图可在下拉切「U-King 轻助手」。没装 Claude 时下方会引导一键装。
+  // 通用工作台无专家时也默认 claude。2026-10-04 起大脑下拉只提供 Claude Code（其余引擎先藏不删）。没装 Claude 时下方会引导一键装。
   const [engine, setEngine] = useState<Engine>(expert?.enginePolicy.default ?? "claude");
   // 专家的系统提示（persona + 可用技能）；无专家时是 base。engine 影响作图技能提示（原生工具 vs 跑脚本）。
   const systemText = useMemo(() => buildSystemPrompt(expert, engine), [expert, engine]);
@@ -315,10 +318,21 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
    * 「哪个模型」是 19 选 1、而且绝大多数人一辈子就用「跟随驱动设置」。
    * 常驻位给前者，抽屉给后者。
    */
-  const brainSelect = (
+  // 2026-10-04：可选 = PICKABLE_ENGINES + 「当前 engine」（若不在其中）。
+  // 后者是留给任务护照交接的逃生口：`takeHandoff` → `setEngine(h.engine)` 仍可能把会话落在 codex/uking 上，
+  // 下拉里必须还能切回 Claude Code，不能做成死路。
+  const brainOptions = ENGINES.filter((e) => PICKABLE_ENGINES.includes(e.id) || e.id === engine);
+  const brainSelect = brainOptions.length <= 1 ? (
+    // 只剩一个大脑：不渲染下拉，只放一个不可点的静态标签（外观同 ComposerSelect tone="accent"，去掉箭头）
+    <span className="inline-flex items-center gap-1 h-7 rounded-lg border text-[11px] px-2 bg-accent/[0.12] border-accent/30 text-ink-1"
+      title={t("用哪个大脑干这活")}>
+      <Bot size={12} className="shrink-0 text-ink-4" />
+      <span className="truncate">{t(brainOptions[0]?.label ?? "").split("（")[0]}</span>
+    </span>
+  ) : (
     <ComposerSelect value={engine} onChange={(v) => setEngine(v as Engine)} icon={Bot} tone="accent"
       title={t("用哪个大脑干这活")}>
-      {ENGINES.map((e) => (
+      {brainOptions.map((e) => (
         <option key={e.id} value={e.id}>{t(e.label).split("（")[0]}</option>
       ))}
     </ComposerSelect>
