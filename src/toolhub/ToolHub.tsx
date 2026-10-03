@@ -193,7 +193,6 @@ export function ToolHub({
   onAskAiToFix,
   onGoSetup,
   onGoDoctor,
-  onGoToolbox,
   onGoChat,
   onGoTermWb,
 }: {
@@ -236,7 +235,6 @@ export function ToolHub({
   /** 页头次要链接「装机 · 体检 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
    *  （装机漏斗 + 体检/卸载）。 */
   onGoDoctor: () => void;
-  onGoToolbox: () => void;
   /** 详情条「想在 U-King 里用？」→「对话工作台」→ App.tsx 的 `setTab("chat")`。 */
   onGoChat: () => void;
   /** 同上，→「终端工作台」→ App.tsx 的 `setTab("termwb")`。 */
@@ -963,10 +961,9 @@ export function ToolHub({
           >
             {tr("装机 · 体检 →")}
           </button>
-          <button data-testid="toolhub-go-toolbox" onClick={onGoToolbox}
-            className="inline-flex items-center gap-1 px-2 h-8 text-[12.5px] text-accent hover:text-accent-600">
-            {tr("日常软件与环境 →")}
-          </button>
+          {/* 2026-10-03 收敛方案：原「日常软件与环境 →」链接撤掉——它指向的是厨具工具箱
+              （ffmpeg/Chrome 等能力工具，名不副实），该页已冻结（理由见 Sidebar.tsx LAB 里那条）。
+              日常软件现在在下方「可安装」区自己的折叠组里。 */}
         </div>
       </div>
 

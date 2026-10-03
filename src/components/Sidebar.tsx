@@ -8,7 +8,6 @@ import { useState } from "react";
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
 // 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）随入口撤下一并去掉，
 // 恢复入口时连同对应图标加回 import（见 MORE / LAB 里被注释的两行）。
-// Wand2 仍留着——`NavItem.icon` 的类型是 `typeof Wand2`，不是只给 airuntime 那一行用的。
 import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
@@ -181,11 +180,8 @@ const MORE: NavItem[] = [
   // 「省钱三件套」按 量 → 调 → 压 的顺序摆在一起：先有表看得见，调和压才有得对照。
   // 水电表是这条线的地基（原本只是「AI 设置」页里一个折叠小节，没人找得到）。
   { id: "meter", label: "Token 水电表", sub: "所有 AI 用了多少 token · 花在哪 · 怎么省", icon: Gauge },
-  // 🔴 2026-10-03 收敛方案 §5 第 1 步：「AI 优化大师」**冻**（撤入口，保页面）。
-  // 理由（§3.1）：无需求证据 + 依赖外部环境（成功率不稳），且与上面「水电表」叙事重叠。
-  // `tab === "airuntime"` 渲染分支原样在 App.tsx，ukrt.exe / macopt 后端和动作一个没动。
-  // 恢复：解除下面这行注释；同时把 `moreItems` 那段平台过滤（见 Sidebar 函数体）一并解除注释。
-  // { id: "airuntime", label: "AI 优化大师", sub: "让 AI 工具跑得更稳、更省 token", icon: Wand2 },
+  // 2026-10-03 收敛方案初稿判「冻」，同日产品负责人裁决**保留**（「AI 优化大师我感觉还可以留下」）。
+  { id: "airuntime", label: "AI 优化大师", sub: "让 AI 工具跑得更稳、更省 token", icon: Wand2 },
   // 「Token 压缩机」2026-08-10 降到实验室（Issue #376，客户机 macOS 0.9.94 实锤）：
   // 它的 hook 把每条命令改写成裸 `rtk …`，而 Mac 上我们从没把 shim 接进过 PATH
   // → 那台机器上**每一条 Bash 命令**退出码 127，整台机器的 AI 变废。
@@ -264,8 +260,10 @@ const LAB: NavItem[] = [
   // 「网站 GEO 体检」2026-08-23 从这里升到「更多」—— 它带付费下单漏斗，是变现口子，
   // 藏在默认折叠的实验室里等于没有。理由和退出条件写在 MORE 那条上面。
   // 🔴 2026-10-03 收敛方案 §5 第 1 步：「厨具工具箱」**冻**（撤入口，保页面）。
-  // 理由（§3.1）：与「装好 AI」主线无关，属方案第 2 问答不上来。页面仍可从「我的 AI」
-  // 右上「日常软件与环境 →」进（`onGoToolbox` → `setTab("toolbox")`），渲染分支原样保留。
+  // 理由（§3.1）：与「装好 AI」主线无关，属方案第 2 问答不上来；产品负责人同日补充：
+  // 「好像也没什么用，AI 自己会安装」。「我的 AI」右上那条「日常软件与环境 →」链接（名不副实，
+  // 指向的其实就是本页）一并撤掉，所以本页现在**没有任何界面入口**——等于冻结，
+  // `tab === "toolbox"` 渲染分支与 toolbox.rs 原样保留，留待第 4 步按证据删除。
   // 恢复：解除下面这行注释，并把 `Wrench` 加回顶部 lucide import。
   // { id: "toolbox", label: "厨具工具箱", sub: "给 AI 装 ffmpeg/Chrome 等能力工具", icon: Wrench },
   // 🔴 2026-08-22 摘掉四条（F1，docs/需求榜.md 当日批次）：rtk「Token 压缩机」·
@@ -285,9 +283,7 @@ export function Sidebar({
   onSelect,
   version,
   onShowChangelog,
-  // platform 曾给 airuntime 的平台过滤用；2026-10-03 入口撤下后无人读，保留 prop 但显式弃用
-  // （App.tsx 仍传，别删签名——恢复 airuntime 入口时要用，见函数体里被注释的 `moreItems`）。
-  /* platform, */
+  platform,
   onOpenSite,
   theme = "light",
   onToggleTheme,
@@ -353,16 +349,10 @@ export function Sidebar({
   const { short } = useViewport();
   // 「AI 优化大师」：Windows 走 ukrt.exe 薄壳，macOS 走原生 macopt（lib.rs 路由，同一份 UI）。
   // 两个平台都放出；其它平台（linux 等）暂无实现 → 仍隐藏，免得点开报错。
-  //
-  // 2026-10-03：airuntime 入口已撤出 MORE（见上方 MORE 里被注释的那一行），这段平台过滤
-  // 没有对象可滤，收起以免留一条永远不命中的死分支；`platform` prop 保留弃用（App.tsx 仍传，
-  // 别删签名，同 `updatePct` 的处理）。恢复 airuntime 入口时把下面整段解除注释、删掉
-  // 紧随其后的 `const moreItems = MORE;`：
-  // const moreItems =
-  //   platform && platform !== "windows" && platform !== "macos"
-  //     ? MORE.filter((m) => m.id !== "airuntime")
-  //     : MORE;
-  const moreItems = MORE;
+  const moreItems =
+    platform && platform !== "windows" && platform !== "macos"
+      ? MORE.filter((m) => m.id !== "airuntime")
+      : MORE;
 
   // 「更多」默认折叠；若当前页在「更多」组里则自动展开，保证高亮可见。
   const activeInMore = moreItems.some((m) => m.id === active);

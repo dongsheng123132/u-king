@@ -1420,7 +1420,6 @@ export function App() {
                 }}
                 onGoSetup={startInstallAll}
                 onGoDoctor={() => setTab("myai")}
-                onGoToolbox={() => setTab("toolbox")}
                 onGoChat={() => setTab("chat")}
                 onGoTermWb={() => setTab("termwb")}
               />
