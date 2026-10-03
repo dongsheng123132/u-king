@@ -4,10 +4,11 @@
  * 持久化：任务列表落 ~/.opencodex/tasks.json（后端 tasks.rs）。面板布局只在内存，不落盘。
  * 任务来源（应用内选文件夹 / --open-dir 透传）统一经 addTask 写进同一份 tasks.json。
  */
-import { createContext, useContext, useEffect, useReducer, useCallback, useRef } from "react";
+import { createContext, useContext, useEffect, useReducer, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { PanelLayout, RightKind, Task, TaskSource, TaskStatus } from "./types";
 import { dirBasename, normDir, taskIdFromDir } from "./types";
+import { diskTask, isDurableSession, newSessionId } from "./session";
 import type { Expert } from "./experts";
 
 type State = {
@@ -138,9 +139,10 @@ type Ctx = {
   addTask: (dir: string, source?: TaskSource, reuse?: boolean) => Promise<string>;
   /** 「召唤」一个 AI 专家：在 dir 下新开会话并绑定专家 id（persona/引擎/技能由 experts.ts 恢复）。 */
   addExpertTask: (expert: Expert, dir: string) => Promise<void>;
-  /** 在某项目（dir）下新开一个绑工具的会话（claude/codex/openclaw…）。 */
+  /** 在某项目（dir）下新开一个绑工具的会话（claude/codex/openclaw…；「新建对话」也走这里）。
+   *  dir 非空会落盘、重启后还在；是否落盘的判据只有 `isDurableSession`（session.ts）。 */
   addSession: (dir: string, tool: string, name: string, startupCmd: string) => void;
-  /** 启动一个工具型会话（无项目文件夹，从「我的 AI」运行面板点启动）。 */
+  /** 启动一个工具型会话（无项目文件夹，从「我的 AI」运行面板点启动）。dir 为空 = 临时实例，不落盘。 */
   addToolSession: (tool: string, name: string, startupCmd: string, dir?: string) => void;
   removeTask: (id: string) => Promise<void>;
   /** 删除整个项目下的所有会话（一次性，二次确认在 UI 层）。仍不动磁盘文件夹。 */
@@ -175,8 +177,6 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
     loaded: false,
   });
 
-  const seq = useRef(0);
-
   // 启动：拉取持久化任务（旧 tasks.json 补 project/kind 默认，向后兼容）
   useEffect(() => {
     invoke<Task[]>("list_tasks")
@@ -205,7 +205,8 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
           return existing.id;
         }
       }
-      const id = `sess-${taskIdFromDir(dir)}-${++seq.current}`;
+      // 后缀跨重启唯一（见 session.ts）：原来的内存计数器每次启动从 0 起，重启后新会话会拿到旧会话的 id。
+      const id = newSessionId(`sess-${taskIdFromDir(dir)}`);
       const task: Task = {
         id,
         name: dirBasename(dir),
@@ -234,7 +235,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
   const addExpertTask = useCallback(async (expert: Expert, dir: string) => {
     const proj = normDir(dir);
     const now = Date.now();
-    const id = `sess-${taskIdFromDir(dir)}-${++seq.current}`;
+    const id = newSessionId(`sess-${taskIdFromDir(dir)}`);
     const task: Task = {
       id, name: expert.name, dir, status: "idle", source: "manual",
       assignee: null, external_ref: null, last_opened_at: now, created_at: now,
@@ -248,11 +249,20 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 在某项目（dir）下新开一个绑工具的会话（不落盘，运行时实例）
+  // 在某项目（dir）下新开一个绑工具的会话（「新建对话」/ 项目 + 菜单都走这里）。
+  //
+  // 🔴 有文件夹的要落盘（`isDurableSession` 是「对话会话 vs 临时工具会话」的唯一判据）。
+  // 以前这里只 dispatch、从不 upsert_task，注释还写「不落盘，运行时实例」——于是客户机实测：
+  // U-King 自动更新重启后，刚新建、还没聊过的对话整个消失（聊过的只是顺着改名/状态那两条
+  // 顺手落盘的路才留下来，纯属运气）。没文件夹的（「我的 AI」运行面板起的 gateway 之类）
+  // 仍是跑完即弃，`upsert_task` 对空 dir 本来就拒收。
+  //
+  // 内存里保持 `status: "running"`（既有语义：终端开着），落盘副本经 `diskTask` 落成 idle ——
+  // 运行状态只活在内存。落盘失败不回滚内存，同 addTask 的兜底：本轮先能用，下次重启才会丢。
   const addSession = useCallback((dir: string, tool: string, name: string, startupCmd: string) => {
     const now = Date.now();
     const task: Task = {
-      id: `sess-tool-${tool}-${++seq.current}`,
+      id: newSessionId(`sess-tool-${tool}`),
       name,
       dir,
       status: "running",
@@ -267,6 +277,9 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
       project: dir ? normDir(dir) : null,
     };
     dispatch({ type: "upsert", task });
+    if (isDurableSession(task)) {
+      void invoke("upsert_task", { task: diskTask(task) }).catch(() => {});
+    }
   }, []);
 
   // 无项目文件夹的工具会话（运行面板点启动）
@@ -286,7 +299,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
       });
       const now = Date.now();
       const proj = normDir(repoDir); // 和主仓库任务同一项目分组
-      const id = `sess-${taskIdFromDir(newPath)}-${++seq.current}`;
+      const id = newSessionId(`sess-${taskIdFromDir(newPath)}`);
       const task: Task = {
         id,
         name: branch,
@@ -323,12 +336,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
   // 归档恢复（2026-08-25）：按归档清单里记下的原目录/原名重建任务。dir 为空（旧清单
   // 或未绑定文件夹的会话）只挪文件不建卡——前端归档区此时不显示恢复按钮。
   const restoreTask = useCallback(async (a: { id: string; name: string; dir: string | null }) => {
-    // 恢复的是历史 id，可能比本轮 seq 大：推进去，防止之后新会话生成撞号。
-    const m = /-(\d+)$/.exec(a.id);
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (Number.isFinite(n) && n >= seq.current) seq.current = n + 1;
-    }
+    // 沿用历史 id。新会话的 id 带时间戳+随机后缀（session.ts），不会跟它撞，无需再推进什么计数器。
     const dir = a.dir ?? "";
     const now = Date.now();
     const task: Task = {
@@ -360,7 +368,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
     for (const id of ids) await invoke("remove_task", { id }).catch(() => {});
   }, []);
 
-  // 重排：先动内存让 UI 立刻跟手，再把 id 顺序丢给后端落盘（工具会话 id 后端会自动忽略）。
+  // 重排：先动内存让 UI 立刻跟手，再把 id 顺序丢给后端落盘（没落过盘的临时工具会话 id 后端会自动忽略）。
   const reorderTasks = useCallback((ids: string[]) => {
     dispatch({ type: "reorder", ids });
     void invoke("reorder_tasks", { ids }).catch(() => {});
@@ -384,8 +392,8 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
     if (status === "running") return;
     const cur = state.tasks.find((x) => x.id === id);
     if (!cur || cur.status === status) return; // 没变就不写，省掉一次整份回写
-    // 工具型会话后端不存（同 renameTask）；失败也不回滚内存 —— 状态是展示用的，
-    // 下次重启顶多回到旧值，不值得为它闪一次 UI。
+    if (!isDurableSession(cur)) return; // 临时工具会话（无文件夹）不落盘，省一次必被后端拒的 IPC
+    // 失败不回滚内存 —— 状态是展示用的，下次重启顶多回到旧值，不值得为它闪一次 UI。
     void invoke("upsert_task", { task: { ...cur, status } }).catch(() => {});
   }, [state.tasks]);
 
@@ -397,9 +405,11 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
       if (!cur || cur.name === next) return;
       const task = { ...cur, name: next };
       dispatch({ type: "upsert", task });
-      // 工具型会话不落盘（后端只存任务型），失败也不回滚内存：名字是纯展示，
-      // 下次重启顶多回到旧名，不值得为它闪一次 UI。
-      await invoke("upsert_task", { task }).catch(() => {});
+      if (!isDurableSession(task)) return; // 临时工具会话（无文件夹）只改内存名
+      // 对话会话（含「新建对话」）的改名要落盘，否则重启后客户改的名字又回到「新对话」。
+      // 经 diskTask：工具型会话内存里是 running，不能顺着 `{ ...cur }` 漏进 tasks.json。
+      // 失败不回滚内存：名字是纯展示，下次重启顶多回到旧名，不值得为它闪一次 UI。
+      await invoke("upsert_task", { task: diskTask(task) }).catch(() => {});
     },
     [state.tasks],
   );

@@ -194,3 +194,138 @@ pub fn remove_task(id: String) -> Result<(), String> {
     f.tasks.retain(|t| t.id != id);
     write_file(&f)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 把 `uking_home()` 指进沙箱。本模块认的是 `USERPROFILE`/`HOME`（不认 `UKING_TEST_HOME`），
+    /// 所以走 `enter_raw`：只借全进程唯一那把锁 + 出作用域时还原这两个变量，家目录自己指。
+    fn sandboxed(tag: &str) -> crate::testsandbox::Sandbox {
+        let sb = crate::testsandbox::enter_raw(tag);
+        std::env::set_var("USERPROFILE", sb.root());
+        std::env::set_var("HOME", sb.root());
+        sb
+    }
+
+    /// 一条「对话会话」：前端 `addSession` 建的那种（kind=tool，绑 claude）。
+    fn chat_session(id: &str, dir: &str) -> Task {
+        Task {
+            id: id.into(),
+            name: "新对话".into(),
+            dir: dir.into(),
+            status: "idle".into(),
+            source: "manual".into(),
+            assignee: None,
+            external_ref: None,
+            last_opened_at: 0,
+            created_at: 0,
+            tool: Some("claude".into()),
+            startup_cmd: Some("claude".into()),
+            kind: "tool".into(),
+            order: 0,
+            expert: None,
+        }
+    }
+
+    /// 旧版 tasks.json（Phase 7 之前，没有 tool / startup_cmd / kind / order / expert 这几个键）
+    /// 必须照样读得出来，且新增语义字段都落在默认值上 —— 老用户升级后任务一条都不能少。
+    #[test]
+    fn legacy_tasks_json_without_session_fields_still_loads() {
+        let sb = sandboxed("tasks-legacy-format");
+        std::fs::create_dir_all(sb.root().join(".uking")).unwrap();
+        let legacy = r#"{
+          "version": 1,
+          "tasks": [
+            {"id":"sess-tabc-1","name":"demo","dir":"D:/demo","status":"idle","source":"manual",
+             "assignee":null,"external_ref":null,"last_opened_at":200,"created_at":100},
+            {"id":"sess-tabc-2","name":"demo2","dir":"D:/demo2","last_opened_at":100}
+          ]
+        }"#;
+        std::fs::write(sb.root().join(".uking").join("tasks.json"), legacy).unwrap();
+
+        let got = list_tasks();
+        assert_eq!(got.len(), 2, "旧格式任务不许丢: {got:?}");
+        for t in &got {
+            assert_eq!(t.kind, "task", "旧任务 kind 缺省必须是 task: {t:?}");
+            assert!(t.tool.is_none() && t.startup_cmd.is_none() && t.expert.is_none(), "{t:?}");
+            assert_eq!(t.order, 0, "{t:?}");
+        }
+        // 缺 status/source 的那条走缺省值，而不是整份文件解析失败
+        let second = got.iter().find(|t| t.id == "sess-tabc-2").unwrap();
+        assert_eq!((second.status.as_str(), second.source.as_str()), ("idle", "manual"));
+    }
+
+    /// 「新建对话」落盘 → 读回，kind / tool / startup_cmd / name 一个不丢；
+    /// 改名（同 id 再 upsert）仍是一行，created_at 保留；remove_task 能删干净。
+    #[test]
+    fn chat_session_roundtrips_rename_and_remove() {
+        let _sb = sandboxed("tasks-chat-session-roundtrip");
+        let saved = upsert_task(chat_session("sess-tool-claude-mgabc123x9z1", "D:/demo")).unwrap();
+        assert!(saved.created_at > 0, "首次写入要补 created_at");
+
+        let got = list_tasks();
+        assert_eq!(got.len(), 1);
+        let t = &got[0];
+        assert_eq!(t.id, "sess-tool-claude-mgabc123x9z1");
+        assert_eq!(t.kind, "tool");
+        assert_eq!(t.tool.as_deref(), Some("claude"));
+        assert_eq!(t.startup_cmd.as_deref(), Some("claude"));
+        assert_eq!(t.name, "新对话");
+        assert_eq!(t.dir, "D:/demo");
+
+        // 改名：前端 renameTask 用 `{ ...cur, name }` 整条回写
+        let mut renamed = t.clone();
+        renamed.name = "修登录 bug".into();
+        let again = upsert_task(renamed).unwrap();
+        assert_eq!(again.created_at, saved.created_at, "改名不许重置 created_at");
+        let got = list_tasks();
+        assert_eq!(got.len(), 1, "同 id 改名必须原位更新，不许多出一行");
+        assert_eq!(got[0].name, "修登录 bug");
+        assert_eq!(got[0].tool.as_deref(), Some("claude"), "改名不许丢 tool");
+        assert_eq!(got[0].kind, "tool");
+
+        remove_task("sess-tool-claude-mgabc123x9z1".into()).unwrap();
+        assert!(list_tasks().is_empty(), "关闭/归档走 remove_task，必须能删掉新落盘的会话");
+    }
+
+    /// 同 id upsert 按 id 去重（既有语义，也是「重启后计数器归零 → 新会话覆盖旧会话」的机理）；
+    /// 前端改用跨重启唯一的 id 之后，同文件夹下的多个对话必须各占一行、互不覆盖。
+    #[test]
+    fn same_id_dedupes_but_distinct_ids_in_one_folder_coexist() {
+        let _sb = sandboxed("tasks-id-dedupe");
+        let mut old = chat_session("sess-tool-claude-1", "D:/demo");
+        old.name = "上一段对话".into();
+        upsert_task(old).unwrap();
+
+        // 旧计数器的撞号场景：同 id → 覆盖，只剩一行（这是后端的既有语义，不改）
+        let mut collide = chat_session("sess-tool-claude-1", "D:/demo");
+        collide.name = "重启后的新对话".into();
+        upsert_task(collide).unwrap();
+        let got = list_tasks();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].name, "重启后的新对话", "同 id 就是覆盖 —— 所以前端 id 必须唯一");
+
+        // 新 id 格式：同文件夹再开一个，两行并存，旧的那行原样还在
+        let mut fresh = chat_session("sess-tool-claude-mgabc123x9z1", "D:/demo");
+        fresh.name = "又一个对话".into();
+        upsert_task(fresh).unwrap();
+        let got = list_tasks();
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert!(got.iter().any(|t| t.id == "sess-tool-claude-1" && t.name == "重启后的新对话"));
+        assert!(got.iter().any(|t| t.id == "sess-tool-claude-mgabc123x9z1" && t.name == "又一个对话"));
+    }
+
+    /// 「对话会话 vs 临时工具会话」的后端侧底线：没有文件夹的拒收（前端 `isDurableSession` 与之同口径），
+    /// 被拒也不能把已有的任务文件写坏。
+    #[test]
+    fn empty_dir_is_rejected_and_leaves_file_intact() {
+        let _sb = sandboxed("tasks-empty-dir");
+        upsert_task(chat_session("sess-tool-claude-keep", "D:/demo")).unwrap();
+        assert!(upsert_task(chat_session("sess-tool-openclaw-gw", "")).is_err());
+        assert!(upsert_task(chat_session("sess-tool-openclaw-gw", "   ")).is_err());
+        let got = list_tasks();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, "sess-tool-claude-keep");
+    }
+}
