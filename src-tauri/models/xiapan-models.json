@@ -1,7 +1,7 @@
 {
   "catalog": "xiapan-models",
-  "version": 1,
-  "updated": "2026-10-03",
+  "version": 2,
+  "updated": "2026-10-04",
   "default": "deepseek-v4-flash",
   "strong": "deepseek-v4-pro",
   "groups": [
@@ -27,13 +27,6 @@
           "id": "kimi-k3",
           "label": "Kimi K3 · 超长上下文",
           "desc": "能一口气读很长的文档/几十页 PDF，做长文总结、整本资料分析时选它，也能看图。月之暗面最新一代。",
-          "input": ["text", "image"],
-          "verified": "2026-10-03"
-        },
-        {
-          "id": "glm-5.3-flash",
-          "label": "GLM-5.3 Flash · 智谱性价比",
-          "desc": "智谱的轻量版，更快更省，中文理解到位，日常任务够用，也能看图。",
           "input": ["text", "image"],
           "verified": "2026-10-03"
         }
@@ -85,10 +78,11 @@
       "verified": "2026-08-01"
     },
     {
-      "id": "gpt-image-2.5-1k",
-      "label": "GPT Image 2.5 · 1K · OpenAI",
-      "desc": "OpenAI 作图模型的 2.5 版，出 1K 规格的图。目前只用来画新图；要改图（带参考图）请用 GPT Image 2。",
-      "edits": false
+      "id": "gpt-image-2.5-flare",
+      "label": "GPT Image 2.5 · OpenAI",
+      "desc": "OpenAI 作图模型的 2.5 版。目前只用来画新图；要改图（带参考图）请用 GPT Image 2。",
+      "edits": false,
+      "verified": "2026-10-04"
     }
   ]
 }

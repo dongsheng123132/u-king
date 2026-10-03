@@ -485,14 +485,15 @@ mod tests {
     #[test]
     fn embedded_image_models_are_separate_and_conservative() {
         let ids: Vec<&str> = embedded().image_models.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, ["gpt-image-2", "gpt-image-2.5-1k"]);
+        // 2.5 选 flare 不选 1k：2026-10-04 实测 2.5-1k 只走百度渠道、9/27 后再没成功过，flare 另有可用渠道。
+        assert_eq!(ids, ["gpt-image-2", "gpt-image-2.5-flare"]);
         for id in &ids {
             assert!(!accepts_image(id), "{id} 是作图模型，不属于「对话模型收不收图」");
         }
         let by_id = |id: &str| embedded().image_models.iter().find(|m| m.id == id).cloned().unwrap();
         assert!(by_id("gpt-image-2").edits, "gpt-image-2 是已验证的改图默认模型");
-        assert!(!by_id("gpt-image-2.5-1k").edits, "2.5-1k 的 edits 端点没实测过，不许声明支持改图");
-        assert_eq!(by_id("gpt-image-2.5-1k").verified, "", "没实测过就留空，不许编日期");
+        assert!(!by_id("gpt-image-2.5-flare").edits, "2.5 只实测了文生图，改图端点没测过，不许声明支持改图");
+        assert_eq!(by_id("gpt-image-2.5-flare").verified, "2026-10-04", "verified 只写真实测过的日期");
     }
 
     #[test]
