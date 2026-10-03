@@ -6,9 +6,10 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-// 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）/ SquareTerminal（终端工作台）
-// 随入口撤下一并去掉，恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
+// 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）/ SquareTerminal（终端工作台）/
+// Sparkles（装机 · 体检）随入口撤下一并去掉，恢复入口时连同对应图标加回 import
+// （见 CORE / MORE / LAB 里被注释的行）。
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -64,6 +65,10 @@ type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
 const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
   // 2a：终端态的工作台仍是「工作台」这一项
   termwb: "chat",
+  // 2b：「装机 · 体检」(myai) 降为「我的 AI」的子页「体检 · 升级」，装机向导 (setup) 本来就是
+  // 「我的 AI」点安装后进的流程页——它们激活时都高亮「我的 AI」(toolhub)。
+  myai: "toolhub",
+  setup: "toolhub",
 };
 
 /** 核心 4 项 —— 按「客户每天真正干什么」排，不是按「我们做了什么」排。
@@ -97,9 +102,12 @@ const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
  */
 const CORE: NavItem[] = [
   // 「我的 AI」（原「AI 工具中心」，2026-09-29 改名）：已装工具卡片网格，换模型、
-  // 一键启动。跟下面「装机 · 体检」（原「我的 AI」）的分工——那页是**装机漏斗**
-  // （引导装、体检、卸载），这页是**日常启动台**，两者数据源相同（tools/driver），
-  // 互不重实现。
+  // 一键启动。
+  //
+  // 🔴 2026-10-03 收敛方案 §5 第 2b 步：「装机 · 体检」(myai) / 「装机向导」(setup) 的侧栏入口都撤了，
+  // 由这一项兜住（§3.4）：myai 页保留，改名「体检 · 升级」，从本页页头链接进、页内有「← 返回我的 AI」；
+  // 装机向导是点安装后进的流程页。两者激活时侧栏照样高亮本项（见 NAV_ALIAS）。
+  // 页面渲染分支一个没删，两页数据源仍是同一份 tools/driver，互不重实现。
   { id: "toolhub", label: "我的 AI", sub: "已装工具 · 换模型 · 一键启动", icon: LayoutGrid },
   // U-Workspace（AI 工作台）= 主交互面：对话 + 终端 + 作图预览，全都在 U-King 内，交互尽量不外跳。
   //
@@ -144,7 +152,10 @@ const CORE: NavItem[] = [
   // 🔴 2026-09-29 再改名「装机 · 体检」——「我的 AI」这个名字挪给了上面的 toolhub
   // （现在是天天用的落地页），这页还是原来那套装机漏斗（装/体检/卸载），
   // id 和页面实现都没动，只是换了个跟内容对得上的名字，避免两条侧栏都叫「我的 AI」。
-  { id: "myai", label: "装机 · 体检", sub: "装新工具 · 体检修复 · 卸载", icon: Sparkles },
+  // 🔴 2026-10-03 收敛方案 §5 第 2b 步：**撤入口，保页面**——改名「体检 · 升级」降为「我的 AI」的子页
+  // （入口见 ToolHub 页头「体检 · 升级 →」）。恢复：解除下面这行注释，把 `Sparkles` 加回顶部 lucide import，
+  // 并把 NAV_ALIAS 里 myai / setup 两行去掉。
+  // { id: "myai", label: "体检 · 升级", sub: "体检修复 · 一键升级 · 卸载", icon: Sparkles },
   // 「AI 设置」2026-08-31 升回核心第 4 位（用户拍板，见上方 CORE 组注释）。
   // 体检/升级 2026-09-04 按动词分家搬去「我的 AI」，这里的牌子 09-06 才跟上——
   // 副标题只写这页真有的东西：配模型、看余额（用户反馈「体检在有些地方冒出来」）。

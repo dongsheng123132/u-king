@@ -227,7 +227,7 @@ export function AgentRepair({
                 {rows.some((r) => r.fix) && (
                   <div className="flex gap-2 mt-2.5">
                     <button
-                      onClick={() => (onGoSetup ? onGoSetup() : onToast?.(t("请到「首页 · 我的 AI」装机")))}
+                      onClick={() => (onGoSetup ? onGoSetup() : onToast?.(t("请到「我的 AI」装机")))}
                       className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-accent/[0.12] border border-accent/30 text-[11.5px] text-accent hover:bg-accent/[0.2]"
                     >
                       <Wrench size={12} /> {t("去装 / 重装")}

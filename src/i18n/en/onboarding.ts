@@ -303,8 +303,8 @@ export const onboarding: Record<string, string> = {
   "去充值（打开充值页，已带 Key）": "Top up (open top-up page, key included)",
   "用我自己的 Key": "Use my own key",
   "先跳过，回头再充": "Skip for now, top up later",
-  "好，先把配置接好。余额为 0 时模型不回话，想用了到「首页 · 我的 AI」或侧栏「虾盘云 · 充值」补上就行。":
-    "OK, let's get the config wired up first. With a 0 balance the model won't reply — when you're ready, top up from “Home · My AI” or the sidebar's “Xiapan Cloud · Top up”.",
+  "好，先把配置接好。余额为 0 时模型不回话，想用了到「我的 AI」或侧栏「虾盘云 · 充值」补上就行。":
+    "OK, let's get the config wired up first. With a 0 balance the model won't reply — when you're ready, top up from “My AI” or the sidebar's “Xiapan Cloud · Top up”.",
   "到账！余额 {bal}。用内置 Key 继续。": "Received! Balance {bal}. Continuing with the built-in key.",
   "还没查到余额（到账一般几秒到几分钟），充值完稍等再点「查余额」。":
     "No balance found yet (it usually arrives in seconds to minutes); after topping up, wait a moment and click “Check balance”.",
@@ -370,8 +370,8 @@ export const onboarding: Record<string, string> = {
     "Here we go — installing only what Claude Code actually needs in order to work: Claude Code itself plus a sane terminal.",
   "全程走国内加速 + 自动验证修复。装完自动接好虾盘云驱动，并当场自检一遍能不能用。":
     "China mirrors throughout, with automatic verify-and-repair. When it finishes we wire up the built-in provider and immediately self-check that it really works.",
-  "（自检没跑成，不影响使用；到「首页 · 我的 AI」可以再点一次。）":
-    "(The self-check didn't run — harmless. You can run it again from Home.)",
+  "（自检没跑成，不影响使用；到「我的 AI → 体检 · 升级」可以再点一次。）":
+    "(The self-check didn't run — harmless. You can run it again from “My AI → Checkup · Upgrade”.)",
   "🔎 自检通过：Claude Code 真跑得起来、驱动已接、余额可用、技能包已就位 —— 可以去 U-Workspace 干活了。":
     "🔎 Self-check passed: Claude Code really runs, the provider is wired up, there's balance, and the skill packs are in place — U-Workspace is ready.",
   "🔎 自检发现 {n} 件事还没到位（其余都好了）：":

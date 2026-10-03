@@ -1005,7 +1005,7 @@ export function Wizard({
     }
     setBusy(false);
     if (!r?.checks?.length) {
-      push({ role: "uking", text: t("（自检没跑成，不影响使用；到「首页 · 我的 AI」可以再点一次。）") });
+      push({ role: "uking", text: t("（自检没跑成，不影响使用；到「我的 AI → 体检 · 升级」可以再点一次。）") });
       return;
     }
     const bad = r.checks.filter((c) => !c.ok);
@@ -1262,7 +1262,7 @@ export function Wizard({
               push({
                 role: "uking",
                 text: t(
-                  "好，先把配置接好。余额为 0 时模型不回话，想用了到「首页 · 我的 AI」或侧栏「虾盘云 · 充值」补上就行。",
+                  "好，先把配置接好。余额为 0 时模型不回话，想用了到「我的 AI」或侧栏「虾盘云 · 充值」补上就行。",
                 ),
               });
               ctx.current.apiKey = dk.key;

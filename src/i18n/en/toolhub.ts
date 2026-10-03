@@ -65,7 +65,8 @@ export const toolhub: Record<string, string> = {
 
   // 2026-09-29 首页改版新增（已装/可装两段网格 + 每卡自带换模型下拉）
   "已装 {n} 个工具": "{n} tool(s) installed",
-  "装机 · 体检 →": "Install · Checkup →",
+  // 2026-10-03 收敛 2b：页头链接「装机 · 体检 →」改名「体检 · 升级 →」（myai 降为本页子页）
+  "体检 · 升级 →": "Checkup · Upgrade →",
   "已安装（{n}）": "Installed ({n})",
   "可安装（{n}）": "Available ({n})",
   "使用工具自带账号": "Uses the tool's own account",

@@ -1,10 +1,13 @@
 /**
  * 「我的 AI」—— 已装工具 Launchpad 式 logo 墙：软件是主角,不是启动按钮。
  *
- * 定位区别（跟侧栏另一个入口「装机 · 体检」`MyAI`(App.tsx) 分工——2026-09-29 首页改版，
- * 两边都改了名，id 和页面实现都没动）：
- *  · `myai`（侧栏「装机 · 体检」）是**装机漏斗**——引导装、体检、卸载，给刚接触 U-King 的人看。
- *  · 这里（`toolhub`，侧栏现在也叫「我的 AI」）是**日常启动台**——已经装好工具的人天天回来的
+ * 定位区别（跟 `MyAI`(App.tsx) 分工——2026-09-29 首页改版，两边都改了名，id 和页面实现都没动）：
+ *  · `myai`（原侧栏「装机 · 体检」）是**装机漏斗**——引导装、体检、卸载，给刚接触 U-King 的人看。
+ *    🔴 2026-10-03 收敛 2b：它的侧栏入口撤了，改名「体检 · 升级」降为本页的子页（页头链接进，
+ *    页内「← 返回我的 AI」回来）；它独有而本页缺的两样——已装工具的「升级 / 修复」重装口、
+ *    终端快照「一键重开」条——已搬到本页（见 `renderInstalledDetail` / `termSnapshot` 那条）。
+ *    体检卡**没有**搬来：它挂载即联网体检，搬上默认落地页会把「启动全量体检」带回来。
+ *  · 这里（`toolhub`，侧栏「我的 AI」）是**日常启动台**——已经装好工具的人天天回来的
  *    落脚点：看一眼装了什么、换个模型、点一下启动。也是全站默认落地页（见 App.tsx
  *    `refresh()` 里的落点逻辑：首次打开和回访统一落这里）。
  * 两者共用同一批数据源（`tools`/`driver`/`deviceKey`）和同一条业务通路
@@ -63,6 +66,7 @@ import {
   Settings2,
   Sparkles,
   Stethoscope,
+  Terminal as TerminalIcon,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -77,6 +81,7 @@ import {
   needsEffectiveReadback,
   discoveryNameFor,
   canUninstallTool,
+  type TermSnapshotInfo,
   type ToolInfo,
 } from "../App";
 import type { DeviceKey, DriverStatus, EffectiveConfig } from "../lib/types";
@@ -195,6 +200,11 @@ export function ToolHub({
   onGoDoctor,
   onGoChat,
   onGoTermWb,
+  termSnapshot,
+  recoveringTermSnapshot,
+  failedTermRestoreCount = 0,
+  onRestoreTermSnapshot,
+  onDismissTermSnapshot,
 }: {
   tools: ToolInfo[];
   driver: DriverStatus | null;
@@ -232,19 +242,28 @@ export function ToolHub({
    *  只会按「一个 AI 都没装」条件自动拉起「逐个选装」，跟按钮文案「一键」对不上
    *  （复审 medium #6：这是曾经的回归，2026-09-29 改回）。 */
   onGoSetup: () => void;
-  /** 页头次要链接「装机 · 体检 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
-   *  （装机漏斗 + 体检/卸载）。 */
+  /** 页头次要链接「体检 · 升级 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
+   *  （体检 + 一键升级 + 装机漏斗；2026-10-03 起是本页的子页，不再有侧栏入口）。 */
   onGoDoctor: () => void;
   /** 详情条「想在 U-King 里用？」→「在工作台对话」→ App.tsx 的 `setTab("chat")`。 */
   onGoChat: () => void;
   /** 同上，→「在工作台开终端」→ App.tsx 的 `setTab("termwb")`（同一个工作台，落终端态）。 */
   onGoTermWb: () => void;
+  /** 上次自升级时留下的终端快照（后端 `term_snapshot_pending`）。有就在页顶显示「一键重开」条。
+   *  2026-10-03 收敛 2b 从 `MyAI` 搬来——本页是默认落地页，放在 myai 等于大多数人看不到。
+   *  五个 props 都由 App.tsx 传入、沿用原来 MyAI 那组回调，本组件不碰快照的读写。 */
+  termSnapshot?: TermSnapshotInfo | null;
+  recoveringTermSnapshot?: boolean;
+  failedTermRestoreCount?: number;
+  onRestoreTermSnapshot?: () => void;
+  onDismissTermSnapshot?: () => void;
 }) {
   const { t: tr } = useI18n();
   const [category, setCategory] = useState<Category>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
+  const resumableSessionCount = termSnapshot?.sessions.filter((session) => !!session.resumeHint).length ?? 0;
 
   const visibleTools = useMemo(() => tools.filter((t) => !t.hidden), [tools]);
   // 「已装」只数主线工具——`LAB_TOOLS`（Open365 等）不算。Open365 后端 `installed` 恒 true
@@ -871,6 +890,21 @@ export function ToolHub({
           >
             <Stethoscope size={12} /> {tr("体检修复")}
           </button>
+          {/* 「升级 / 修复」重装口（2026-10-03 收敛 2b 从 MyAI 搬来，条件与文案跟那边一致）。
+              已装判错时它是唯一出路（线上 issue #237：卸载了还显示已装、点了只能打开）——
+              原来只在 myai 子页里有，而默认落地页是本页，大多数人找不到。调用同一个 `onOpen(t)`，
+              只是重新走一遍安装；装机清单里除 DSH 外都不锁版本，所以同时就是升级到最新版。 */}
+          {t.action === "install" && (
+            <button
+              data-testid="toolhub-reinstall"
+              data-tool-id={t.id}
+              onClick={() => onOpen(t)}
+              title={tr("重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里")}
+              className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11.5px] text-ink-3 hover:text-accent-400 hover:bg-white/[0.04]"
+            >
+              <Download size={12} /> {tr("升级 / 修复")}
+            </button>
+          )}
           {canUninstallTool(t.id) && (
             <button
               data-testid="toolhub-uninstall"
@@ -959,13 +993,47 @@ export function ToolHub({
             onClick={onGoDoctor}
             className="inline-flex items-center gap-1 px-2 h-8 text-[12.5px] text-accent hover:text-accent-600"
           >
-            {tr("装机 · 体检 →")}
+            {tr("体检 · 升级 →")}
           </button>
           {/* 2026-10-03 收敛方案：原「日常软件与环境 →」链接撤掉——它指向的是厨具工具箱
               （ffmpeg/Chrome 等能力工具，名不副实），该页已冻结（理由见 Sidebar.tsx LAB 里那条）。
               日常软件现在在下方「可安装」区自己的折叠组里。 */}
         </div>
       </div>
+
+      {/* 终端快照「一键重开」条（2026-10-03 收敛 2b 从 MyAI 搬来，渲染逻辑原样）：
+          U-King 自升级是硬退出、旧 PTY 活不过去，升级前把开着的终端记成快照，这里给一个轻量的重开入口。
+          只在有快照时才出现；不新增任何探测——快照由 App.tsx 启动时读一次（`term_snapshot_pending`）。 */}
+      {termSnapshot && termSnapshot.sessions.length > 0 && (
+        <section
+          data-testid="toolhub-term-snapshot"
+          className="flex flex-wrap items-center gap-3 rounded-card border border-accent/30 bg-accent/[0.07] px-4 py-3"
+        >
+          <TerminalIcon size={18} className="text-accent shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-semibold text-ink-0">
+              {failedTermRestoreCount > 0 ? tr("{n} 条重开失败", { n: failedTermRestoreCount }) : tr("上次升级时有 {n} 个终端", { n: termSnapshot.sessions.length })}
+              {resumableSessionCount > 0 && <span className="ml-1.5 text-[11px] font-normal text-ink-3">{tr("含 {n} 个可续接会话", { n: resumableSessionCount })}</span>}
+            </div>
+            <div className="mt-0.5 text-[11.5px] text-ink-3">{failedTermRestoreCount > 0 ? tr("快照已保留；不会自动重试，请确认后手动重试。") : tr("可重开同样目录和命令的终端；原来的屏幕内容和运行现场不会回来。")}</div>
+          </div>
+          <button
+            data-testid="toolhub-term-restore"
+            onClick={onRestoreTermSnapshot}
+            disabled={recoveringTermSnapshot}
+            className="h-8 rounded-lg bg-accent px-3 text-[12px] font-semibold text-white hover:bg-accent-600 disabled:opacity-60"
+          >
+            {recoveringTermSnapshot ? tr("正在重开…") : failedTermRestoreCount > 0 ? tr("重试") : tr("一键重开")}
+          </button>
+          <button
+            data-testid="toolhub-term-dismiss"
+            onClick={onDismissTermSnapshot}
+            className="h-8 rounded-lg px-2.5 text-[12px] text-ink-3 hover:bg-white/[0.06] hover:text-ink-1"
+          >
+            {tr("不再提醒")}
+          </button>
+        </section>
+      )}
 
       {installed.length === 0 && (
         <div className="rounded-card border border-accent/30 bg-accent/[0.06] p-5">

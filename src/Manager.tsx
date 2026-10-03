@@ -2105,7 +2105,9 @@ export function Manager({
             <div className="mt-5 pt-4 border-t border-white/[0.06] flex flex-wrap items-center gap-2 text-[11.5px] text-ink-4">
               {t("装 / 启动 / 卸载在「我的 AI」页")}
               <button
-                onClick={() => onGoPage?.("myai")}
+                // 2026-10-03 收敛 2b：落点从 myai（已降为「我的 AI」的子页「体检 · 升级」）改成 toolhub
+                // （侧栏「我的 AI」本体）——文案说的是「装 / 启动 / 卸载在我的 AI」，这几样都在 toolhub。
+                onClick={() => onGoPage?.("toolhub")}
                 className="text-accent hover:underline font-medium"
               >
                 {t("去我的 AI")}

@@ -70,7 +70,7 @@ export const backfill: Record<string, string> = {
   "专治「装着却用不了」——装没装、起不起得来、配没配对，分三行说清楚": "Fixes “installed but unusable” — clearly shows installation status, launch capability, and provider config in three lines.",
   "重新体检": "Re-run Health Check",
   "正在体检…": "Running health check…",
-  "请到「首页 · 我的 AI」装机": "Please go to “Home · My AI” to setup",
+  "请到「我的 AI」装机": "Please go to “My AI” to set up",
   "去装 / 重装": "Install / Reinstall",
   "请到「AI 设置」配驱动": "Configure provider in “AI Settings”",
   "体检全程只读，不改你机器上任何配置；「起不起得来」那一项会真起一次进程再立刻关掉，不消耗 token。": "Health check is read-only and won't modify any system config. The “can it start” test briefly launches a process then closes it immediately, consuming no tokens.",

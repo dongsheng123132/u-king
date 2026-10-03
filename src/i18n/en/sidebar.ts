@@ -15,8 +15,6 @@ export const sidebar: Record<string, string> = {
   "装机 · 体检 · 启动": "Install · Checkup · Launch",
   // 2026-09-29 首页改版：toolhub 改名「我的 AI」，原「我的 AI」（myai）改名「装机 · 体检」
   "已装工具 · 换模型 · 一键启动": "Installed tools · Switch models · One-click launch",
-  "装机 · 体检": "Install · Checkup",
-  "装新工具 · 体检修复 · 卸载": "Install new tools · Checkup & repair · Uninstall",
   "AI 创作": "AI Studio",
   "作图 · 视频 · 海报二维码": "Images · Video · Poster QR",
   "换模型 · 余额 · 用自己的 Key": "Switch models · Balance · Your own key",

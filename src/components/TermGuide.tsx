@@ -76,7 +76,7 @@ export function TermGuide({ onRun, onClose }: Props) {
       </div>
 
       <div className="mt-1.5 text-[11px] text-ink-4">
-        没装 Claude？去「首页 · 我的 AI」一键装 · 点右上角 × 永久关闭本引导（以后可在标签栏小灯泡重新打开）
+        没装 Claude？去「我的 AI」一键装 · 点右上角 × 永久关闭本引导（以后可在标签栏小灯泡重新打开）
       </div>
     </div>
   );

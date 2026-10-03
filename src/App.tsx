@@ -117,7 +117,8 @@ type InstallResult = {
 };
 
 type TermSnapshotSession = { cwd: string | null; cmd: string | null; tool: string | null; resumeHint?: string | null; restoreKey?: number };
-type TermSnapshotInfo = { sessions: TermSnapshotSession[] };
+// 导出给 `toolhub/ToolHub.tsx`：终端快照「一键重开」条 2026-10-03（收敛 2b）从 MyAI 搬到「我的 AI」首页。
+export type TermSnapshotInfo = { sessions: TermSnapshotSession[] };
 
 // 导出给 `toolhub/ToolHub.tsx` 用（AI 工具中心页复用同一份类型，不重开一份平行定义）。
 export type ToolInfo = {
@@ -362,8 +363,8 @@ export function App() {
       // 首页落点（2026-09-29 改，首页改版第 1 步）：不再按「首次/回访」「装没装」分流，
       // 统一落 toolhub（现在叫「我的 AI」）——它自己的空态已经带了装机引导
       // （见 ToolHub.tsx 的「还没装 AI 工具」区块 + 「一键装好推荐组合」按钮），
-      // 不用在这一层先猜用户是新是老再挑页面。旧的装机漏斗页（myai，现改名「装机·体检」）
-      // 仍在侧栏，找得到。uking.seenGuide 已经不影响落地页选择，但保留置位，
+      // 不用在这一层先猜用户是新是老再挑页面。旧的装机漏斗页（myai，2026-10-03 起改名
+      // 「体检 · 升级」、降为「我的 AI」的子页）从页头「体检 · 升级 →」进，找得到。uking.seenGuide 已经不影响落地页选择，但保留置位，
       // 万一以后别处要判断「是不是第一次打开」不必再补一次埋点。
       if (localStorage.getItem("uking.seenGuide") !== "1") {
         localStorage.setItem("uking.seenGuide", "1");
@@ -1339,7 +1340,7 @@ export function App() {
               <div className="space-y-6">
                 <SkillPack deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
                 <div className="border-t border-white/[0.06]" />
-                <Tutorial onGoMyAI={() => setTab("myai")} />
+                <Tutorial onGoMyAI={() => setTab("toolhub")} />
               </div>
             ) : tab === "dshplugins" ? (
               <DshPlugins
@@ -1399,10 +1400,10 @@ export function App() {
               />
             ) : tab === "toolhub" ? (
               // 「我的 AI」（2026-09-29 首页改版前叫「AI 工具中心」）——已装工具卡片网格，
-              // 换模型、一键启动，也是全站默认落地页。跟侧栏「装机 · 体检」(myai，改版前
-              // 就叫「我的 AI」) 不是同一页：myai 是装机漏斗（大卡引导 + 已装/可装两段网格），
-              // toolhub 是给已经装过工具的人用的日常启动台，两者共用同一批 tools/driver 数据源，
-              // 互不重实现（同一个 launchTool/openTool/apply_provider 路径）。
+              // 换模型、一键启动，也是全站默认落地页。跟 myai（改版前就叫「我的 AI」，2026-10-03 起
+              // 改名「体检 · 升级」、降为本页的子页）不是同一页：myai 是装机漏斗（大卡引导 + 体检 +
+              // 已装/可装两段网格），toolhub 是给已经装过工具的人用的日常启动台，两者共用同一批
+              // tools/driver 数据源，互不重实现（同一个 launchTool/openTool/apply_provider 路径）。
               <ToolHub
                 tools={tools}
                 driver={driver}
@@ -1427,6 +1428,25 @@ export function App() {
                 onGoDoctor={() => setTab("myai")}
                 onGoChat={() => setTab("chat")}
                 onGoTermWb={() => setTab("termwb")}
+                // 终端快照「一键重开」条 2026-10-03（收敛 2b）从 myai 搬到这里：toolhub 是默认落地页，
+                // 放在 myai 等于大多数人看不到。回调原样沿用，MyAI 那份已去掉（同一个条只在一处出现）。
+                termSnapshot={termSnapshot}
+                recoveringTermSnapshot={recoveringTermSnapshot}
+                failedTermRestoreCount={failedTermRestores?.length ?? 0}
+                onRestoreTermSnapshot={() => {
+                  if (!termSnapshot) return;
+                  setRecoveringTermSnapshot(true);
+                  setPendingTermRestores(() => failedTermRestores?.length
+                    ? failedTermRestores.map((session) => ({ ...session }))
+                    : termSnapshot.sessions.map((session, restoreKey) => ({ ...session, restoreKey })));
+                  setTab("terminal");
+                }}
+                onDismissTermSnapshot={() => {
+                  void invoke("term_snapshot_consume").catch(() => {});
+                  setPendingTermRestores(null);
+                  setFailedTermRestores(null);
+                  setTermSnapshot(null);
+                }}
               />
             ) : tab === "myai" ? (
               <MyAI
@@ -1451,23 +1471,8 @@ export function App() {
                 onSelfUpdate={doSelfUpdate}
                 onManageProviders={(editId) => setProviderMgr({ editId })}
                 onRefreshDriver={refresh}
-                termSnapshot={termSnapshot}
-                recoveringTermSnapshot={recoveringTermSnapshot}
-                failedTermRestoreCount={failedTermRestores?.length ?? 0}
-                onRestoreTermSnapshot={() => {
-                  if (!termSnapshot) return;
-                  setRecoveringTermSnapshot(true);
-                  setPendingTermRestores(() => failedTermRestores?.length
-                    ? failedTermRestores.map((session) => ({ ...session }))
-                    : termSnapshot.sessions.map((session, restoreKey) => ({ ...session, restoreKey })));
-                  setTab("terminal");
-                }}
-                onDismissTermSnapshot={() => {
-                  void invoke("term_snapshot_consume").catch(() => {});
-                  setPendingTermRestores(null);
-                  setFailedTermRestores(null);
-                  setTermSnapshot(null);
-                }}
+                // 2026-10-03 收敛 2b：本页降为「我的 AI」的子页「体检 · 升级」，顶部给一条回去的路。
+                onBackToHub={() => setTab("toolhub")}
               />
             ) : tab === "usbgenie" ? (
               <UsbToolDisk onToast={flash} />
@@ -2256,11 +2261,7 @@ function MyAI({
   onImportXiapan,
   onRecharge,
   onSelfUpdate,
-  termSnapshot,
-  recoveringTermSnapshot,
-  failedTermRestoreCount,
-  onRestoreTermSnapshot,
-  onDismissTermSnapshot,
+  onBackToHub,
 }: {
   tools: ToolInfo[];
   /** 每个工具当前配的模型 —— 卡片上要显示它（见下面 currentModel 那段注释）。 */
@@ -2283,11 +2284,9 @@ function MyAI({
   onRecharge: () => void;
   /** 本体一键升级（App 的 doSelfUpdate，带进度/失败账本/重启流程）—— 传给顶部 DoctorCard。 */
   onSelfUpdate?: () => void;
-  termSnapshot: TermSnapshotInfo | null;
-  recoveringTermSnapshot: boolean;
-  failedTermRestoreCount: number;
-  onRestoreTermSnapshot: () => void;
-  onDismissTermSnapshot: () => void;
+  /** 「← 返回我的 AI」→ `setTab("toolhub")`。本页 2026-10-03（收敛 2b）起是「我的 AI」的子页
+   *  「体检 · 升级」，侧栏没有自己的入口了，所以页内必须有一条回去的路。 */
+  onBackToHub: () => void;
   onManageProviders: (editId?: string) => void;
   onRefreshDriver: () => void;
 }) {
@@ -2326,36 +2325,27 @@ function MyAI({
     coreIds.has(t.id) ? CORE_TRIO.findIndex((c) => c.id === t.id) : (RANK_AFTER_CORE[t.id] ?? 99);
   const installed = mainline.filter((t) => t.installed).sort((a, b) => rank(a) - rank(b));
   const notYet = mainline.filter((t) => !t.installed).sort((a, b) => rank(a) - rank(b));
-  const resumableSessionCount = termSnapshot?.sessions.filter((session) => !!session.resumeHint).length ?? 0;
 
   return (
     <div className="space-y-6 pb-2">
+      {/* 2026-10-03 收敛方案 §5 第 2b 步：本页原来叫「装机 · 体检」、占一条侧栏入口；现在是「我的 AI」
+          的子页「体检 · 升级」（入口：「我的 AI」页头「体检 · 升级 →」/ 已装详情条「体检修复」），
+          侧栏高亮跟着「我的 AI」走。页内一条回去的路，免得用户进来出不去。 */}
+      <div>
+        <button
+          data-testid="myai-back-to-hub"
+          onClick={onBackToHub}
+          className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:text-accent-600"
+        >
+          {tr("← 返回我的 AI")}
+        </button>
+      </div>
       {/* 一键体检 / 一键升级（2026-09-04 从「AI 设置」页顶部搬来）：按动词分家后，
           「我的 AI」= 装/启动/卸载/体检/升级，「AI 设置」只配。默认折叠（`collapsedByDefault`），
           全绿时不占地方，有问题才自动展开。 */}
       <DoctorCard collapsedByDefault onRecharge={() => onRecharge()} onSelfUpdate={onSelfUpdate} />
-      {termSnapshot && termSnapshot.sessions.length > 0 && (
-        <section className="flex flex-wrap items-center gap-3 rounded-card border border-accent/30 bg-accent/[0.07] px-4 py-3">
-          <TerminalIcon size={18} className="text-accent shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold text-ink-0">
-              {failedTermRestoreCount > 0 ? tr("{n} 条重开失败", { n: failedTermRestoreCount }) : tr("上次升级时有 {n} 个终端", { n: termSnapshot.sessions.length })}
-              {resumableSessionCount > 0 && <span className="ml-1.5 text-[11px] font-normal text-ink-3">{tr("含 {n} 个可续接会话", { n: resumableSessionCount })}</span>}
-            </div>
-            <div className="mt-0.5 text-[11.5px] text-ink-3">{failedTermRestoreCount > 0 ? tr("快照已保留；不会自动重试，请确认后手动重试。") : tr("可重开同样目录和命令的终端；原来的屏幕内容和运行现场不会回来。")}</div>
-          </div>
-          <button
-            onClick={onRestoreTermSnapshot}
-            disabled={recoveringTermSnapshot}
-            className="h-8 rounded-lg bg-accent px-3 text-[12px] font-semibold text-white hover:bg-accent-600 disabled:opacity-60"
-          >
-            {recoveringTermSnapshot ? tr("正在重开…") : failedTermRestoreCount > 0 ? tr("重试") : tr("一键重开")}
-          </button>
-          <button onClick={onDismissTermSnapshot} className="h-8 rounded-lg px-2.5 text-[12px] text-ink-3 hover:bg-white/[0.06] hover:text-ink-1">
-            {tr("不再提醒")}
-          </button>
-        </section>
-      )}
+      {/* 终端快照「一键重开」条 2026-10-03（收敛 2b）搬去「我的 AI」首页（toolhub 是默认落地页），
+          这里不再渲染——同一个条不在两处出现，免得两边各点一次重复恢复。 */}
       {/* 🔴 充值引导上移到这（2026-09-06 用户拍板：「虾盘云充值放前面」）—— 充值是从
           装好到能用的最后一步、也是唯一收费的一步，压在两张安装大卡下面等于把漏斗
           出口藏在页脚。组件内部自带两条护栏，前移不影响老用户：usingOwnKey → 组件
