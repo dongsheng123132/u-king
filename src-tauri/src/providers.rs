@@ -3629,12 +3629,25 @@ fn apply_dsh(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
             .map(|id| !is_managed_provider_id(id))
             .unwrap_or(true)
     });
+    // 识图声明：DSH 的 pi-ai 适配层对没写 `input` 的自定义模型默认当纯文本，
+    // 带图直接本地抛 `does not support image input` —— 请求根本到不了虾盘云
+    // （客户机实测：DSH + 虾盘云 deepseek-v4-flash 发不出图）。OpenClaw 那边早就对同一个
+    // 模型声明了 `input:["text","image"]`（见 `apply_openclaw_agent_to_home`），这里补齐。
+    // 判定依据和 OpenClaw 同款：拿 `managed_provider_id(p)`（= 真正的账号/路由 id）比
+    // `XIAPAN_MANAGED_ACCOUNT`，只认虾盘云自己的路由 —— 别家供应商的 deepseek-v4-flash id
+    // 不一定是同一个模型，硬声明就是伪能力。
+    // 主模型不是 flash（如 v4-pro，收不了图）时什么都不加：DSH 没有 imageModel 兜底，
+    // 产品要求 DSH 只做最低限度配置，不额外塞模型。
+    let mut model_entry = json!({ "id": model, "name": model });
+    if route_id == XIAPAN_MANAGED_ACCOUNT && model == XIAPAN_VISION_CAPABLE_MODEL {
+        model_entry["input"] = json!(["text", "image"]);
+    }
     let profile = serde_yaml::to_value(json!({
         "displayName": p.name,
         "apiKeyEnv": DSH_UKING_CREDENTIAL,
         "api": "openai-completions",
         "baseURL": base,
-        "models": [{ "id": model, "name": model }]
+        "models": [model_entry]
     }))
     .map_err(|e| format!("生成 DSH provider 配置失败: {e}"))?;
     providers.insert(yaml_key(&route_id), profile);
@@ -4810,6 +4823,132 @@ mod dsh_provider_tests {
         });
     }
 
+    /// 读回某条 route 的 `models` 数组（沙箱里的 settings.yaml，不碰真实 ~/.dsh）。
+    fn dsh_route_models(settings_path: &std::path::Path, route: &str) -> Vec<YamlValue> {
+        let settings: YamlValue =
+            serde_yaml::from_str(&std::fs::read_to_string(settings_path).unwrap()).unwrap();
+        at(&settings, &["llm-pi-ai", "providers", route, "models"])
+            .and_then(YamlValue::as_sequence)
+            .unwrap_or_else(|| panic!("route {route} 应有 models 数组：{settings:?}"))
+            .clone()
+    }
+
+    /// 把一个 model 条目的 `input` 读成字符串列表；没有 `input` 字段返回 None。
+    fn model_input(entry: &YamlValue) -> Option<Vec<String>> {
+        entry.as_mapping()?.get(&yaml_key("input")).map(|v| {
+            v.as_sequence()
+                .expect("input 必须是数组")
+                .iter()
+                .map(|s| s.as_str().expect("input 元素必须是字符串").to_string())
+                .collect()
+        })
+    }
+
+    /// DSH 的 pi-ai 适配层对没写 `input` 的自定义模型默认纯文本、带图本地直接拒绝，
+    /// 所以虾盘云 + deepseek-v4-flash（唯一原生能收图的那个）必须声明 `["text","image"]`。
+    #[test]
+    fn dsh_xiapan_flash_declares_image_input() {
+        crate::testsandbox::with_sandbox("dsh-vision-flash", &[".dsh", ".uking"], |root| {
+            let settings_path = root.join(".dsh").join("settings.yaml");
+            let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
+            apply_dsh(&p, "sk-device-secret", "deepseek-v4-flash").unwrap();
+
+            let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+            assert_eq!(models.len(), 1, "只该写主模型这一条，不额外塞模型：{models:?}");
+            assert_eq!(
+                at(&models[0], &["id"]).and_then(YamlValue::as_str),
+                Some("deepseek-v4-flash")
+            );
+            assert_eq!(
+                model_input(&models[0]),
+                Some(vec!["text".to_string(), "image".to_string()]),
+                "虾盘云 flash 必须声明能收图：{models:?}",
+            );
+        });
+    }
+
+    /// v4-pro 收不了图（2026-09-16 实测），不许谎报；DSH 也没有 imageModel 兜底，
+    /// 按产品要求只做最低限度配置——不额外塞一个 flash 进来。
+    #[test]
+    fn dsh_xiapan_pro_declares_no_input_and_adds_no_extra_model() {
+        crate::testsandbox::with_sandbox("dsh-vision-pro", &[".dsh", ".uking"], |root| {
+            let settings_path = root.join(".dsh").join("settings.yaml");
+            let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
+            apply_dsh(&p, "sk-device-secret", "deepseek-v4-pro").unwrap();
+
+            let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+            assert_eq!(models.len(), 1, "只该写主模型这一条，不额外塞 flash：{models:?}");
+            assert_eq!(
+                at(&models[0], &["id"]).and_then(YamlValue::as_str),
+                Some("deepseek-v4-pro")
+            );
+            assert_eq!(model_input(&models[0]), None, "v4-pro 收不了图，不该声明 input：{models:?}");
+        });
+    }
+
+    /// 别家供应商的 `deepseek-v4-flash` id 不一定是同一个模型，不能照搬虾盘云的识图声明。
+    #[test]
+    fn dsh_non_xiapan_provider_never_declares_input_even_for_flash_model_id() {
+        crate::testsandbox::with_sandbox("dsh-vision-other", &[".dsh", ".uking"], |root| {
+            let settings_path = root.join(".dsh").join("settings.yaml");
+            let base = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
+            for (id, name, url, route) in [
+                ("custom-openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "uking-openrouter"),
+                ("deepseek", "DeepSeek 官方", "https://api.deepseek.com/v1", "uking-deepseek"),
+            ] {
+                let other = ProviderPreset {
+                    id: id.into(),
+                    name: name.into(),
+                    openai_base: url.into(),
+                    model: "deepseek-v4-flash".into(),
+                    ..base.clone()
+                };
+                apply_dsh(&other, "sk-other", "deepseek-v4-flash").unwrap();
+                let models = dsh_route_models(&settings_path, route);
+                assert_eq!(models.len(), 1, "{route}: {models:?}");
+                assert_eq!(
+                    at(&models[0], &["id"]).and_then(YamlValue::as_str),
+                    Some("deepseek-v4-flash"),
+                    "{route}: 前提：用的就是同名 flash id",
+                );
+                assert_eq!(
+                    model_input(&models[0]),
+                    None,
+                    "{route} 不是虾盘云自己的路由，不许声明 input：{models:?}",
+                );
+            }
+        });
+    }
+
+    /// 重复 apply / 来回换模型：每次整条 route 重写，`input` 不许重复、变形，
+    /// 切到 v4-pro 后也不许残留上一次 flash 的声明。
+    #[test]
+    fn dsh_vision_input_is_idempotent_and_follows_the_current_model() {
+        crate::testsandbox::with_sandbox("dsh-vision-idempotent", &[".dsh", ".uking"], |root| {
+            let settings_path = root.join(".dsh").join("settings.yaml");
+            let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
+            let image_input = Some(vec!["text".to_string(), "image".to_string()]);
+
+            apply_dsh(&p, "sk-a", "deepseek-v4-flash").unwrap();
+            let first = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+            apply_dsh(&p, "sk-b", "deepseek-v4-flash").unwrap();
+            apply_dsh(&p, "sk-b", "deepseek-v4-flash").unwrap();
+            let again = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+            assert_eq!(again, first, "重复 apply 不许改变 models 内容");
+            assert_eq!(again.len(), 1);
+            assert_eq!(model_input(&again[0]), image_input, "input 不许重复或变形：{again:?}");
+
+            apply_dsh(&p, "sk-b", "deepseek-v4-pro").unwrap();
+            let pro = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+            assert_eq!(pro.len(), 1);
+            assert_eq!(model_input(&pro[0]), None, "换成 v4-pro 后不许残留 flash 的识图声明：{pro:?}");
+
+            apply_dsh(&p, "sk-b", "deepseek-v4-flash").unwrap();
+            let back = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
+            assert_eq!(back, first, "换回 flash 应与首次写出的完全一致");
+        });
+    }
+
     #[test]
     fn dsh_invalid_yaml_is_refused_without_overwrite() {
         crate::testsandbox::with_sandbox("dsh-driver-invalid", &[".dsh", ".uking"], |root| {
@@ -5792,17 +5931,18 @@ fn openclaw_fallback_chain(account_id: &str, primary_model: &str) -> Vec<String>
 const OPENCLAW_SMALL_FAST_MODEL: &str = "deepseek-v4-flash";
 
 /// 虾盘云在 ClawX 账号层的托管 id（= managed_provider_id(xiapan)；slug 规则下原样保留）。
+/// DSH 的 route 键用的也是 `managed_provider_id(p)`，所以 `apply_dsh` 拿它判「是不是虾盘云自己的路由」。
 const XIAPAN_MANAGED_ACCOUNT: &str = "uking-xiapan";
 
-/// 虾盘云路由上**原生能收图**的模型 —— 用来给 `agents.defaults.imageModel` 兜底路由，
-/// 也是唯一被声明 `input: ["text","image"]` 的那个模型 id。
+/// 虾盘云路由上**原生能收图**的模型 —— OpenClaw 用它给 `agents.defaults.imageModel` 兜底路由，
+/// OpenClaw / DSH 两边都只给这一个模型 id 声明 `input: ["text","image"]`。
 ///
 /// 2026-09-16 跑道实测（`skills/vision/SKILL.md` / `see-image.mjs` 同一夹具）：
 /// `deepseek-v4-flash` 收得了图、真看了，只是偏弱且抖（证照/大图合计 62%，长截图 4 次全 0）；
 /// `deepseek-v4-pro` **收不了图**（三种问法全回「我无法查看这张图片」）。产品决策
 /// （2026-09-24）：不为识图单独切模型（保持主模型一致、不增路由复杂度），
 /// 复用 deepseek-v4-flash 的原生视觉能力即可，不引入 qwen 系列。
-const OPENCLAW_VISION_CAPABLE_MODEL: &str = OPENCLAW_SMALL_FAST_MODEL;
+const XIAPAN_VISION_CAPABLE_MODEL: &str = OPENCLAW_SMALL_FAST_MODEL;
 
 /// 判断 `agents.defaults.imageModel`（字符串 `"provider/model"` 或对象 `{primary,...}`
 /// 两种写法，见 openclaw docs/gateway/config-agents/models.md）当前的 primary 是否指向
@@ -5870,7 +6010,7 @@ fn apply_openclaw_agent_to_home(
         // 已在数组里的 deepseek-v4-flash（无论是主模型还是兜底）补上 input 声明。
         let mut has_vision_model = false;
         for entry in provider_models.iter_mut() {
-            if entry.get("id").and_then(Value::as_str) == Some(OPENCLAW_VISION_CAPABLE_MODEL) {
+            if entry.get("id").and_then(Value::as_str) == Some(XIAPAN_VISION_CAPABLE_MODEL) {
                 if let Some(obj) = entry.as_object_mut() {
                     obj.insert("input".into(), json!(["text", "image"]));
                 }
@@ -5881,8 +6021,8 @@ fn apply_openclaw_agent_to_home(
         // 但它得先在 provider 的 models 数组里声明，否则引擎解析不到这个引用。
         if !has_vision_model {
             provider_models.push(json!({
-                "id": OPENCLAW_VISION_CAPABLE_MODEL,
-                "name": OPENCLAW_VISION_CAPABLE_MODEL,
+                "id": XIAPAN_VISION_CAPABLE_MODEL,
+                "name": XIAPAN_VISION_CAPABLE_MODEL,
                 "input": ["text", "image"],
             }));
         }
@@ -5949,9 +6089,9 @@ fn apply_openclaw_agent_to_home(
         //     deepseek-v4-flash（上面已保证它在 provider models 数组里声明了 image input）。
         // 两种「改写」都只在「缺失」或「上次是我们写的」时才动——客户自己配的 imageModel
         // （指向非托管 provider）绝不覆盖（宪法第 10 条）。
-        let vision_applicable = is_xiapan_managed && model != OPENCLAW_VISION_CAPABLE_MODEL;
+        let vision_applicable = is_xiapan_managed && model != XIAPAN_VISION_CAPABLE_MODEL;
         if vision_applicable {
-            let vision_ref = format!("{prov}/{OPENCLAW_VISION_CAPABLE_MODEL}");
+            let vision_ref = format!("{prov}/{XIAPAN_VISION_CAPABLE_MODEL}");
             let should_set = match defaults.get("imageModel") {
                 None => true,
                 Some(v) if v.is_null() => true,
