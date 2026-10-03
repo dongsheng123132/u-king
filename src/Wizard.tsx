@@ -1262,7 +1262,7 @@ export function Wizard({
               push({
                 role: "uking",
                 text: t(
-                  "好，先把配置接好。余额为 0 时模型不回话，想用了到「我的 AI」或侧栏「虾盘云 · 充值」补上就行。",
+                  "好，先把配置接好。余额为 0 时模型不回话，想用了到「AI 设置 → 账号 · 充值」补上就行。",
                 ),
               });
               ctx.current.apiKey = dk.key;

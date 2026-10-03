@@ -554,7 +554,12 @@ export const settings: Record<string, string> = {
   "免填密钥，充值后在工具分配中启用": "No key needed — top up, then enable it under Tools",
   "余额读取中": "Loading balance…",
   "暂未取得余额 · 重试": "Couldn't load balance · Retry",
-  "钱包管理": "Wallet",
+  // 2026-10-03 收敛 2c：页顶折叠的「钱包管理」撤掉（钱包只住「账号 · 充值」），原「钱包管理」词条随之删除；
+  // 新增子 tab「账号 · 充值」、页顶指路链接、用量子 tab 里水电表那一段的标题。
+  "钱包管理 → 账号 · 充值": "Wallet → Account · Top up",
+  "账号 · 充值": "Account · Top up",
+  "余额 · 充值 · 内置 Key · 一键配好": "Balance · Top up · Built-in key · One-click setup",
+  "Token 水电表 · 所有 AI 工具": "Token Meter · All AI tools",
   "加回": "Add back",
   "待填密钥": "Key not set",
   "暂不支持此协议测速": "Latency test isn't supported for this protocol",

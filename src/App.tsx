@@ -50,6 +50,7 @@ import type { LaunchPlan } from "./components/LaunchBlocked";
 import { DoctorCard } from "./components/DoctorCard";
 import { AnchoredMenu } from "./components/AnchoredMenu";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
+import type { SettingsTab } from "./Manager";
 import { getLaunchPref } from "./toolhub/launchPref";
 import { LaunchFolderDialog } from "./toolhub/LaunchFolderDialog";
 import { ensureDefaultDriver } from "./lib/ensureDriver";
@@ -189,9 +190,15 @@ export function App() {
   // 「我的 AI」首页免费模型导流卡 → 跳「AI 设置」时要落到哪个分区（2026-09-06）。
   // 默认 "tools"（原行为不变）；点导流卡时置成 "free" 再切 tab，Manager 只在挂载时读一次
   // （它外层有 key={tab} 边界，每次进页都是全新挂载）。
-  const [manageInitialTab, setManageInitialTab] = useState<
-    "tools" | "providers" | "free" | "usage" | "advanced"
-  >("tools");
+  // 2026-10-03 收敛 2c：类型换成 Manager 导出的 `SettingsTab`（多了 "account" = 账号 · 充值），
+  // 「去充值」类深链用 `setManageInitialTab("account")` + `setTab("manage")`。
+  const [manageInitialTab, setManageInitialTab] = useState<SettingsTab>("tools");
+  // 深链是**一次性**的：离开「AI 设置」就复位成默认分区。以前置成 "free" 之后一直不复位，之后从侧栏
+  // 点「AI 设置」仍会落在「免费算力」——「账号 · 充值」也走这条深链，不复位的话会变成每次进设置都落在充值页。
+  // 切 tab 与置值在同一批里，进页那一帧 tab 已是 "manage"，不会被这条 effect 误清。
+  useEffect(() => {
+    if (tab !== "manage") setManageInitialTab("tools");
+  }, [tab]);
   /**
    * 「自己管高度」的页面（测试报告 #005：AI 创作区出现两条滚动条）。
    *
@@ -1313,6 +1320,26 @@ export function App() {
                 // 「我的 AI」首页免费模型导流卡跳过来时指定打开「免费算力」分区，其余入口
                 // 仍走默认 "tools"（manageInitialTab 初值不变）。
                 initialSettingsTab={manageInitialTab}
+                // 2026-10-03 收敛 2c：钱包只认全局这一份（App 的 deviceKey）——在「账号 · 充值」里充值、
+                // 刷新后页顶余额跟着动；Manager 自己取到的值仍经上面的 onDeviceKeyChange 推回来，不变。
+                deviceKey={deviceKey}
+                // 「账号 · 充值」子 tab 的内容 = 原侧栏「虾盘云 · 充值」页（Guide，下面 tab === "xiapan" 那支
+                // 原样保留）。用 render prop 注入，免得把 Guide 依赖的一串回调穿进 Manager。
+                renderAccount={(goSubtab) => (
+                  <Suspense fallback={<PageFallback />}>
+                    <Guide
+                      deviceKey={deviceKey}
+                      onToast={flash}
+                      onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
+                      onRefreshBalance={() => refreshDeviceKey(false)}
+                      onDeviceKeyChange={setDeviceKey}
+                      onApplyXiapan={applyXiapan}
+                      // 「我有自己的 API Key」本来是 setTab("manage")（跳去设置页）；现在本来就在设置页里，
+                      // 直接切到「供应商库」子 tab（粘 Key 的地方）。
+                      onUseOwnKey={() => goSubtab("providers")}
+                    />
+                  </Suspense>
+                )}
               />
             ) : tab === "create" ? (
               <Create deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />

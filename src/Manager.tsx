@@ -9,7 +9,7 @@
  *  - 每行可「测试连通」（让模型真回一句话）
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
@@ -25,6 +25,7 @@ import {
   ChevronUp,
   Cpu,
   ExternalLink,
+  Gauge,
   Gift,
   Image as ImageIcon,
   KeyRound,
@@ -51,7 +52,6 @@ import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult, type FreeRouteC
 import type { ProviderPreset } from "./Wizard";
 import { XIAPAN_MODELS, priceyModelHint, codexProtocolHint } from "./lib/models";
 import { ShareButton } from "./components/ShareCard";
-import { WalletCard } from "./components/WalletCard";
 import { FreerouterCard } from "./components/FreerouterCard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./lib/providerTemplates";
 import { FREE_GUIDE, type FreeGuide } from "./lib/freeGuide";
@@ -62,6 +62,14 @@ import type { DeviceKey, DrawRoute, DriverStatus, EffectiveConfig } from "./lib/
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
+
+// Token 水电表（2026-10-03 收敛 2c 并进「用量账单」子 tab 的第一段）。照 App.tsx 的写法懒加载：
+// 只在切到 usage 子 tab 时才挂载——不在 usage 时不挂 Meter，它的 `query_usage_meter` 读表也就不会跑。
+const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
+
+/** 「AI 设置」页内分区 id。导出给 App.tsx（`manageInitialTab` 深链 + `renderAccount` 的跳转回调）共用一份。
+ *  2026-10-03 收敛 2c 新增 `account`（账号 · 充值）。 */
+export type SettingsTab = "tools" | "providers" | "free" | "account" | "usage" | "advanced";
 
 // `EffectiveConfig`（回验结论：`readable === false` 是「不知道」不是「没配置」）的定义搬到了
 // `lib/types.ts`——「我的 AI」(toolhub/ToolHub.tsx) 也要读它，同一份类型只留一处（宪法第 8 条）。
@@ -406,6 +414,8 @@ export function Manager({
   tools,
   onAskAI,
   initialSettingsTab,
+  deviceKey: deviceKeyProp,
+  renderAccount,
 }: {
   onGoCodex?: () => void;
   onGoAdvanced?: () => void;
@@ -429,7 +439,19 @@ export function Manager({
   /** 从「我的 AI」首页的免费模型导流卡深链进来时指定要打开的分区（如 "free"）；
    *  不传就照旧默认 "tools"。本组件外层有 `key={tab}` 边界，每次进页都是全新挂载，
    *  用 useState 初值接这个 prop 足够，不需要额外的 effect 同步。 */
-  initialSettingsTab?: "tools" | "providers" | "free" | "usage" | "advanced";
+  initialSettingsTab?: SettingsTab;
+  /**
+   * 全局那份设备钱包（App 的 `deviceKey`）。2026-10-03 收敛 2c：本页自己持有一份 `deviceKey` 并自取，
+   * 跟 App 那份不同步——在「账号 · 充值」里充完值、App 那份刷新了，页顶余额却不动。
+   * 现在 prop 一变就同步进本页 state（`onDeviceKeyChange` 往上推的那条原样不变），钱包只认一个来源。
+   */
+  deviceKey?: DeviceKey | null;
+  /**
+   * 「账号 · 充值」子 tab 的内容，由 App 提供（render prop）：它是原来的「虾盘云 · 充值」页（`Guide`），
+   * 依赖 App 里的 `openRechargeAndWatch` / `refreshDeviceKey` / `applyXiapan` 一串东西，
+   * 不把它们穿进本组件。`goSubtab` 让它能切回本页别的分区（如「我有自己的 Key」→ 供应商库）。
+   */
+  renderAccount?: (goSubtab: (tab: SettingsTab) => void) => ReactNode;
 }) {
   const { t } = useI18n();
   /**
@@ -442,9 +464,7 @@ export function Manager({
    * 改成分区后每次只呈现一件事。**不动任何一段的内部实现** —— 只是把它们分到 4 个 tab，
    * 所以这不是重写，是把已有的东西摆正（用户：「不要大改原来的」）。
    */
-  const [settingsTab, setSettingsTab] = useState<"tools" | "providers" | "free" | "usage" | "advanced">(
-    initialSettingsTab ?? "tools",
-  );
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(initialSettingsTab ?? "tools");
   /** 「供应商库」右栏快速添加：两 tab（模型厂商／模型平台）当前选中哪个 + 各自是否已展开
    *  全部（超过 8 家才有「展开」）。状态放在 Manager 顶层，不能在下面按 tab 条件渲染的
    *  IIFE 里加 Hook（宪法：Hook 必须无条件调用同一顺序）。 */
@@ -491,9 +511,14 @@ export function Manager({
   const [deviceKey, setDeviceKey] = useState<DeviceKey | null>(null);
   /** A2：区分「还没查到」和「查过但失败」——不知道就不许显示成 0 或空白，两种状态要长得不一样。 */
   const [deviceKeyFailed, setDeviceKeyFailed] = useState(false);
-  /** 供应商库里哪张卡展开了设备钱包。钱包是虾盘云这家供应商的一部分（余额/Key 都是它的），
-   *  所以它长在卡片上、跟着卡片一起消失 —— 不做全屏 modal：那会让它看着又像个全局功能。 */
-  const [walletOpen, setWalletOpen] = useState(false);
+  // 全局钱包变了（如在「账号 · 充值」里充值后 App 刷新了它）→ 同步进来，页顶余额跟着动。
+  // 本页自己取到的值会经 `onDeviceKeyChange` 推回 App 再作为 prop 回流，是同一个对象引用，
+  // `setDeviceKey` 同值不会重渲染，不会成环。
+  useEffect(() => {
+    if (!deviceKeyProp) return;
+    setDeviceKey(deviceKeyProp);
+    setDeviceKeyFailed(false);
+  }, [deviceKeyProp]);
   const [trend, setTrend] = useState<UsageTrend | null>(() => initialSnapshot?.trend ?? null);
   const [breakdown, setBreakdown] = useState<UsageBreakdown | null>(null);
   // 用量看板：时间窗口（7/30 天，用 ref 让 fetch 保持稳定不吃闭包）+ 是否按工具分组视图
@@ -1488,44 +1513,20 @@ export function Manager({
           </div>
         )}
 
-        {/* 钱包管理 —— 折叠入口，收纳原来常驻的今日/近7天迷你数字 + WalletCard（充值/换Key/用量）。
-            只有虾盘云还在当前工具列表里才有钱包可管；被移除时上面那行「加回」已经是唯一动作。 */}
-        {xiapanInList && (
+        {/* 钱包管理 —— 2026-10-03 收敛方案 §5 第 2c 步：原来这里是个折叠块（今日/近 7 天 + 一份 WalletCard），
+            而「账号 · 充值」子 tab 里的 `Guide` 已经有同一份 WalletCard——同一页不能出现两份钱包卡（§3.6：
+            钱包只住一处）。折叠块撤掉，今日/近 7 天统计挪进「账号 · 充值」子 tab，这里只留一行指路。
+            仍只在虾盘云还在当前工具列表里才露出；已经在「账号 · 充值」里时不用再指一遍。 */}
+        {xiapanInList && settingsTab !== "account" && (
           <div className="pt-3 border-t border-white/[0.06]">
             <button
-              onClick={() => setWalletOpen((v) => !v)}
+              data-testid="manager-wallet-link"
+              onClick={() => setSettingsTab("account")}
               className="flex items-center gap-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
             >
               <Wallet size={12} className="text-accent" />
-              {t("钱包管理")}
-              {walletOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {t("钱包管理 → 账号 · 充值")}
             </button>
-            {walletOpen && (
-              <div className="mt-2 space-y-2">
-                <div className="flex items-center gap-2 text-[11px] font-mono">
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
-                    {t("今日")} <span className="text-accent font-semibold">{fmtTok(trend?.today_tokens ?? 0, t("万"))}</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
-                    {t("近 7 天")} <span className="text-success-400 font-semibold">{fmtTok(trend?.week_tokens ?? 0, t("万"))}</span>
-                  </span>
-                  <span className="ml-auto font-mono text-ink-5 text-[10px]">
-                    {deviceKey ? `${deviceKey.key.slice(0, 8)}…${deviceKey.key.slice(-4)}` : ""}
-                  </span>
-                </div>
-                <WalletCard
-                  deviceKey={deviceKey}
-                  onDeviceKeyChange={(dk) => {
-                    setDeviceKey(dk);
-                    onDeviceKeyChange?.(dk);
-                  }}
-                  onRecharge={() =>
-                    onRecharge ? onRecharge(deviceKey?.recharge_url) : openRecharge(deviceKey?.recharge_url)
-                  }
-                  onToast={flash}
-                />
-              </div>
-            )}
           </div>
         )}
       </section>
@@ -1535,16 +1536,20 @@ export function Manager({
           用量（想起来才看）→ 高级（基本不看）。
           2026-08-25 用户：「这几个栏目有点低调，怕有人不好找，其实里边都比较重量级」——
           每个分区配图标 + 加高一档（h-9→h-10），选中态加重，让它们像五个正经入口而不是一行小字。 */}
-      <div className="inline-flex p-1 gap-0.5 rounded-xl border border-white/[0.08] bg-bg-1/60">
+      {/* 2026-10-03 收敛 2c：新增「账号 · 充值」（原侧栏「虾盘云 · 充值」页并进来），放在「免费算力」
+          之后、「用量账单」之前——都是跟钱有关的，按「配 → 充 → 看」排。`flex-wrap`：加到六个后窄窗口不再撑破。 */}
+      <div className="inline-flex flex-wrap max-w-full p-1 gap-0.5 rounded-xl border border-white/[0.08] bg-bg-1/60">
         {([
           ["tools", t("工具分配"), t("哪个 AI 用哪家、用什么模型"), Plug],
           ["providers", t("供应商库"), t("增删改各家 API，所有 AI 共用一份"), KeyRound],
           ["free", t("免费算力"), t("国内稳定额度 + 海外/第三方免费路线"), Gift],
+          ["account", t("账号 · 充值"), t("余额 · 充值 · 内置 Key · 一键配好"), Wallet],
           ["usage", t("用量账单"), t("钱花在哪了"), BarChart3],
           ["advanced", t("高级"), t("桌面 App / Codex 专区"), Settings],
         ] as const).map(([id, label, hint, Icon]) => (
           <button
             key={id}
+            data-testid={`manager-subtab-${id}`}
             onClick={() => setSettingsTab(id)}
             title={hint}
             className={cn(
@@ -1659,6 +1664,54 @@ export function Manager({
           </div>
           </section>
         </>
+      )}
+
+      {/* 账号 · 充值（2026-10-03 收敛 2c）：原侧栏「虾盘云 · 充值」页（`Guide`：钱包 / 充值 / 自动配好 /
+          各平台接入示例）并进来，内容由 App 经 `renderAccount` 注入。钱包卡只此一份——页顶那块折叠的
+          「钱包管理」已撤，换成一行指到这里的小链接。上面两个统计是从那个折叠块搬来的（今日 / 近 7 天）。
+          自己再包一层 Suspense：`Guide` 是懒加载块，别让它的加载态把整个设置页换成占位。 */}
+      {settingsTab === "account" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-[11px] font-mono">
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
+              {t("今日")} <span className="text-accent font-semibold">{fmtTok(trend?.today_tokens ?? 0, t("万"))}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] text-ink-3">
+              {t("近 7 天")} <span className="text-success-400 font-semibold">{fmtTok(trend?.week_tokens ?? 0, t("万"))}</span>
+            </span>
+          </div>
+          <Suspense fallback={<div className="py-10 text-center text-[12px] text-ink-4">{t("加载中…")}</div>}>
+            {renderAccount?.(setSettingsTab)}
+          </Suspense>
+        </div>
+      )}
+
+      {/* Token 水电表（2026-10-03 收敛 2c 从侧栏独立页并进来）：用量子 tab 的第一段，下面是原来的「用量账单」。
+          🔴 两者**不能去重**：水电表读各 AI 工具自己的本地会话日志（`query_usage_meter`，覆盖所有工具、
+          按项目/缓存分账），用量账单读虾盘云设备钱包的服务端流水（`query_local_usage` 等）——口径、后端都不同。
+          条件渲染保持：不在 usage 子 tab 时不挂 Meter（它挂载即读表）。 */}
+      {settingsTab === "usage" && (
+        <details open className="group/meter rounded-card border border-white/[0.08] bg-bg-1/70 shadow-card overflow-hidden">
+          <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none text-[13px] font-medium text-ink-1 hover:bg-white/[0.02]">
+            <Gauge size={14} className="text-accent" />
+            {t("Token 水电表 · 所有 AI 工具")}
+            <ChevronDown size={15} className="ml-auto text-ink-4 transition-transform group-open/meter:rotate-180" />
+          </summary>
+          <div className="px-3 pb-4 pt-1">
+            <Suspense fallback={<div className="py-10 text-center text-[12px] text-ink-4">{t("加载中…")}</div>}>
+              <Meter
+                onToast={flash}
+                // 水电表建议卡里的两个跳转：「去开 Token 压缩机」是别的全屏页 → onGoPage("rtk")；
+                // 「去换模型」本来就是回「AI 设置」——现在水电表已经在这页里了，所以落到本页「工具分配」子 tab
+                // （哪个 AI 用哪家、用什么模型），不再整页跳走。其余 id 一律交给 onGoPage。
+                onGoto={(tab) => {
+                  if (tab === "manage") setSettingsTab("tools");
+                  else onGoPage?.(tab);
+                }}
+              />
+            </Suspense>
+          </div>
+        </details>
       )}
 
       {/* 用量账单 —— 每日消耗 + 「钱花在哪了」明细。

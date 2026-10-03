@@ -683,7 +683,7 @@ export function CodexZone({
       // 把后端原始报错翻成人话，别让小白对着英文/状态码发懵
       const raw = String(e);
       const msg = /quota|not enough|insufficient|余额不足|billing|403/i.test(raw)
-        ? t("接入失败：虾盘云余额不足，请去「② 虾盘云·充值」补充余额后再试")
+        ? t("接入失败：虾盘云余额不足，请去「AI 设置 → 账号 · 充值」补充余额后再试")
         : /401|invalid|unauthorized|key/i.test(raw)
           ? t("接入失败：Key 暂时不可用，请先充值后刷新；仍不行再重新接入虾盘云驱动")
         : /timeout|timed out|超时/i.test(raw)

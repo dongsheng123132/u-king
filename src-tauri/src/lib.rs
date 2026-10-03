@@ -3756,7 +3756,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                         let has = dk.charged;
                         chk("balance", "账户有余额", has,
                             if has { format!("余额 {n}") } else { "余额为 0 或还没充值".into() },
-                            "去「虾盘云 · 充值」充一点；工具本身免费，只有真调 AI 才扣。");
+                            "去「AI 设置 → 账号 · 充值」充一点；工具本身免费，只有真调 AI 才扣。");
                     }
                     Err(e) => chk("balance", "账户有余额", false,
                         format!("**没查到**（不代表没有）：{e}"), "多半是网络/代理，连上网再点一次自检。"),
@@ -7583,7 +7583,7 @@ fn build_and_write_health_report() -> Result<String, String> {
                 let bal = d.balance.as_ref().map(|b| b.text.clone()).unwrap_or_else(|| "可用".into());
                 let _ = writeln!(r, "  开通状态       ✅ 已开通 · 余额 {bal}");
             } else {
-                let _ = writeln!(r, "  开通状态       ❌ 未开通（到「② 虾盘云·充值」点\"充值开通\"）");
+                let _ = writeln!(r, "  开通状态       ❌ 未开通（到「AI 设置 → 账号 · 充值」点\"充值开通\"）");
             }
         }
         None => { let _ = writeln!(r, "  内置 Key       ⚠️ 暂时取不到（多为网络问题，稍后重试）"); }
@@ -7606,7 +7606,7 @@ fn build_and_write_health_report() -> Result<String, String> {
         tips += 1;
     }
     if claude_chan.is_none() {
-        let _ = writeln!(r, "  · Claude 还是\"官方默认\" → 到「② 虾盘云·充值」点\"一键接入虾盘云\"，国内直连。");
+        let _ = writeln!(r, "  · Claude 还是\"官方默认\" → 到「AI 设置 → 账号 · 充值」点\"一键接入虾盘云\"，国内直连。");
         tips += 1;
     }
     if dk.as_ref().map(|d| !d.charged).unwrap_or(false) {

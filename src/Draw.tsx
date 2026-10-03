@@ -296,7 +296,7 @@ async function runGenerate(onToast: (s: string) => void, onDone: () => void, t: 
     // 余额/Key/网络/服务端过载/安全审核都不是 bug —— 别污染 bug 仓库，给人话。
     // 判据下沉到 lib/errorKind.ts（原来这里和 Video.tsx 各有一份正则，漏的是同一批）。
     const { actionable, hint } = classifyError(msg);
-    // 🔴 `hint` 那几句人话是**为虾盘云写的**（「去「虾盘云 · 充值」充一点」）。作图改走
+    // 🔴 `hint` 那几句人话是**为虾盘云写的**（「去「AI 设置 → 账号 · 充值」充一点」）。作图改走
     // 客户自己那家之后，钱不在虾盘云扣、Key 也不是我们发的 —— 照着念就是把人往反方向指。
     // 后端在这条路上已经按供应商翻好了话（providers.rs::friendlier_image_error），原样透出即可。
     // 不改 errorKind.ts 本身：那份规则还被视频侧共用，而视频仍是虾盘云独占（本次不动）。

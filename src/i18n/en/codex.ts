@@ -50,8 +50,8 @@ export const codex: Record<string, string> = {
   "请检查余额/网络": "please check balance / network",
   "已把 Codex 接到虾盘云，并通过 responses 实测":
     "Codex is now connected to Xiapan Cloud and verified live via responses",
-  "接入失败：虾盘云余额不足，请去「② 虾盘云·充值」补充余额后再试":
-    "Connection failed: Xiapan Cloud balance is too low — top up under “② Xiapan Cloud · Top up” and try again",
+  "接入失败：虾盘云余额不足，请去「AI 设置 → 账号 · 充值」补充余额后再试":
+    "Connection failed: Xiapan Cloud balance is too low — top up under “AI Settings → Account · Top up” and try again",
   "接入失败：Key 暂时不可用，请先充值后刷新；仍不行再重新接入虾盘云驱动":
     "Connection failed: the key is temporarily unavailable — top up, refresh, and if it still fails, reconnect the Xiapan Cloud driver",
   "接入失败：连接超时，检查下网络再试一次":

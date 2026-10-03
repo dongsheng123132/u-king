@@ -86,8 +86,8 @@ export const onboarding: Record<string, string> = {
   // Integration examples
   "③ 各平台接入示例": "③ Integration examples per platform",
   "Claude Code（命令行）": "Claude Code (command line)",
-  "提示：U-King「虾盘云·充值」里点「自动配好」即可写入 ClawX / OpenClaw，不用手动填。":
-    "Tip: in U-King’s “Xiapan Cloud · Top up”, click “Auto-configure” to write it into ClawX / OpenClaw — no manual entry needed.",
+  "提示：U-King「AI 设置 → 账号 · 充值」里点「自动配好」即可写入 ClawX / OpenClaw，不用手动填。":
+    "Tip: in U-King’s “AI Settings → Account · Top up”, click “Auto-configure” to write it into ClawX / OpenClaw — no manual entry needed.",
   "Codex（~/.codex/config.toml）": "Codex (~/.codex/config.toml)",
   "ClawX / 其它 OpenAI 兼容工具": "ClawX / other OpenAI-compatible tools",
   "添加供应商 → 接入模式选「纯 API / OpenAI 兼容」→ Base URL 填":
@@ -303,8 +303,8 @@ export const onboarding: Record<string, string> = {
   "去充值（打开充值页，已带 Key）": "Top up (open top-up page, key included)",
   "用我自己的 Key": "Use my own key",
   "先跳过，回头再充": "Skip for now, top up later",
-  "好，先把配置接好。余额为 0 时模型不回话，想用了到「我的 AI」或侧栏「虾盘云 · 充值」补上就行。":
-    "OK, let's get the config wired up first. With a 0 balance the model won't reply — when you're ready, top up from “My AI” or the sidebar's “Xiapan Cloud · Top up”.",
+  "好，先把配置接好。余额为 0 时模型不回话，想用了到「AI 设置 → 账号 · 充值」补上就行。":
+    "OK, let's get the config wired up first. With a 0 balance the model won't reply — when you're ready, top up under “AI Settings → Account · Top up”.",
   "到账！余额 {bal}。用内置 Key 继续。": "Received! Balance {bal}. Continuing with the built-in key.",
   "还没查到余额（到账一般几秒到几分钟），充值完稍等再点「查余额」。":
     "No balance found yet (it usually arrives in seconds to minutes); after topping up, wait a moment and click “Check balance”.",

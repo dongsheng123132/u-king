@@ -7,9 +7,9 @@ import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
 // 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）/ SquareTerminal（终端工作台）/
-// Sparkles（装机 · 体检）随入口撤下一并去掉，恢复入口时连同对应图标加回 import
-// （见 CORE / MORE / LAB 里被注释的行）。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
+// Sparkles（装机 · 体检）/ Wallet（虾盘云 · 充值）/ Gauge（Token 水电表）随入口撤下一并去掉，
+// 恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -69,6 +69,10 @@ const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
   // 「我的 AI」点安装后进的流程页——它们激活时都高亮「我的 AI」(toolhub)。
   myai: "toolhub",
   setup: "toolhub",
+  // 2c：「虾盘云 · 充值」(xiapan) 并成「AI 设置 → 账号 · 充值」子 tab，「Token 水电表」(meter)
+  // 并成「AI 设置 → 用量账单」里的第一段——两个旧页面渲染分支保留（深链仍可达），激活时高亮「AI 设置」。
+  xiapan: "manage",
+  meter: "manage",
 };
 
 /** 核心 4 项 —— 按「客户每天真正干什么」排，不是按「我们做了什么」排。
@@ -194,7 +198,10 @@ const MORE: NavItem[] = [
   // 的页面，和本次一起摘的 rtk / dshplugins / localllm 同一批：侧栏挤不是因为东西该塞进
   // chat，是配置页太多（docs/需求榜.md 2026-08-22 批次 F1）。
   // 虾盘云专页保留可达（充值中心 + 接入指南）—— 首页状态卡已覆盖主流程，这里是深度入口
-  { id: "xiapan", label: "虾盘云 · 充值", sub: "内置 Key · 充值 · 一键配好", icon: Wallet },
+  // 🔴 2026-10-03 收敛方案 §5 第 2c 步：**撤入口，保页面**。充值中心 + 接入指南（`Guide`）并进
+  // 「AI 设置 → 账号 · 充值」子 tab（钱包从此只住那一处，§3.6），App.tsx 的 `tab === "xiapan"` 渲染分支原样保留。
+  // 恢复：解除下面这行注释，把 `Wallet` 加回顶部 lucide import，并把 NAV_ALIAS 里 xiapan 一行去掉。
+  // { id: "xiapan", label: "虾盘云 · 充值", sub: "内置 Key · 充值 · 一键配好", icon: Wallet },
   // 🔴 「AI 专家」和「AI 技能 / 上手」两条 1.0.3 从侧栏**撤掉**（用户 2026-08-18：
   // 「左侧的专家和 uchat 里的专家合并，左侧无专家和 ai 技能了」）。
   //
@@ -213,7 +220,10 @@ const MORE: NavItem[] = [
   // 注：AI 优化大师规划做成「独立开源工具箱」，故暂不与厨具工具箱合并（保持互不污染，2026-07-23）。
   // 「省钱三件套」按 量 → 调 → 压 的顺序摆在一起：先有表看得见，调和压才有得对照。
   // 水电表是这条线的地基（原本只是「AI 设置」页里一个折叠小节，没人找得到）。
-  { id: "meter", label: "Token 水电表", sub: "所有 AI 用了多少 token · 花在哪 · 怎么省", icon: Gauge },
+  // 🔴 2026-10-03 收敛方案 §5 第 2c 步：**撤入口，保页面**。水电表并进「AI 设置 → 用量账单」子 tab
+  // 的第一段（与下面的「用量账单」后端不同，不去重）；`tab === "meter"` 渲染分支原样保留。
+  // 恢复：解除下面这行注释，把 `Gauge` 加回顶部 lucide import，并把 NAV_ALIAS 里 meter 一行去掉。
+  // { id: "meter", label: "Token 水电表", sub: "所有 AI 用了多少 token · 花在哪 · 怎么省", icon: Gauge },
   // 2026-10-03 收敛方案初稿判「冻」，同日产品负责人裁决**保留**（「AI 优化大师我感觉还可以留下」）。
   { id: "airuntime", label: "AI 优化大师", sub: "让 AI 工具跑得更稳、更省 token", icon: Wand2 },
   // 「Token 压缩机」2026-08-10 降到实验室（Issue #376，客户机 macOS 0.9.94 实锤）：

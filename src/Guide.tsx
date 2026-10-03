@@ -70,7 +70,7 @@ function buildConfigBlob(key: string): string {
     "",
     "## 重要：作图 / 视频不是只填 API 就够",
     "如果要让 ClawX/OpenClaw 自己会「画图、改图、生成视频、图生视频」，需要安装 U-King AIGC 技能包（SKILL.md + scripts），不是只记住上面的模型名。",
-    "在 U-King 里点「② 虾盘云·充值」→「自动配好」会自动释放技能包；也可以打开「AI 技能包」页点「一键装进已装的 AI 工具」。",
+    "在 U-King 里打开「AI 设置 → 账号 · 充值」→ 点「自动配好」会自动释放技能包；也可以打开「AI 技能包」页点「一键装进已装的 AI 工具」。",
     "技能包常见位置：",
     "- 主位置：~/.uking/skills/uking-aigc/",
     "- ClawX / OpenClaw：~/.openclaw/skills/uking-aigc/",
@@ -408,7 +408,7 @@ export function Guide({
             text={`export ANTHROPIC_BASE_URL=${BASE_ANTHROPIC}\nexport ANTHROPIC_AUTH_TOKEN=${key}`}
             onToast={onToast}
           />
-          <div className="text-[11px] text-ink-4">{t("提示：U-King「虾盘云·充值」里点「自动配好」即可写入 ClawX / OpenClaw，不用手动填。")}</div>
+          <div className="text-[11px] text-ink-4">{t("提示：U-King「AI 设置 → 账号 · 充值」里点「自动配好」即可写入 ClawX / OpenClaw，不用手动填。")}</div>
         </div>
 
         <div className="space-y-1.5">

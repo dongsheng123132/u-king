@@ -35,10 +35,14 @@ export const media: Record<string, string> = {
   "用这家自己的 Key 计费": "Billed with that provider's own key",
 
   // 报错分类给出的人话（lib/errorKind.ts）—— 这些不是软件 bug，不上报，直接告诉用户怎么办
-  "额度不够了，去「虾盘云 · 充值」充一点就能继续。":
-    "You're out of credit. Top up under \"Xiapan Cloud · Recharge\" and you can keep going.",
-  "这个 Key 用不了（无效或还没建档）。去「虾盘云 · 充值」页确认一下 Key。":
-    "This key isn't usable (invalid, or not registered on the server yet). Check it on the \"Xiapan Cloud · Recharge\" page.",
+  // 2026-10-03 收敛 2c：「虾盘云 · 充值」页并进「AI 设置 → 账号 · 充值」，三条指路文案同步
+  // （第二条「账户额度已耗尽…」此前一直没有英文词条，顺手补上）。
+  "额度不够了，去「AI 设置 → 账号 · 充值」充一点就能继续。":
+    "You're out of credit. Top up under “AI Settings → Account · Top up” and you can keep going.",
+  "账户额度已耗尽或已被冻结（Key 本身有效）。去「AI 设置 → 账号 · 充值」充值即可恢复。":
+    "Your credit is used up or the account is frozen (the key itself is valid). Top up under “AI Settings → Account · Top up” to recover.",
+  "这个 Key 用不了（无效或还没建档）。去「AI 设置 → 账号 · 充值」确认一下 Key。":
+    "This key isn't usable (invalid, or not registered on the server yet). Check it under “AI Settings → Account · Top up”.",
   "服务器这会儿忙不过来，等一两分钟再试。不是你电脑的问题。":
     "The server is overloaded right now — try again in a minute or two. It's not your computer.",
   "网络连不上服务器。检查一下网络，或换个网络（有的公司网/校园网会挡）。":
