@@ -18,7 +18,7 @@ export const sidebar: Record<string, string> = {
   "AI 创作": "AI Studio",
   "作图 · 视频 · 海报二维码": "Images · Video · Poster QR",
   "换模型 · 余额 · 用自己的 Key": "Switch models · Balance · Your own key",
-  "换模型 · 余额": "Models · Balance",
+  "换模型 · 充值 · 用量": "Models · Top-up · Usage",
   "上手教程": "Getting Started",
   "技能市场 · 怎么用 AI": "Skill market · How to use AI",
   "挑个专家帮你干活": "Pick an expert to work for you",

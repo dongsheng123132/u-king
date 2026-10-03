@@ -202,8 +202,8 @@ export const misc: Record<string, string> = {
   "几步开始用 AI · 完全不用懂电脑": "Start using AI in a few steps · no computer skills needed",
   "U-King 是一个「AI 管家」。它已经帮你把全球最强的 AI 都装好、配好了，你只要照下面几步点一点，就能像微信聊天一样跟 AI 对话——让它写文章、写代码、做表格、查资料、画图，都行。":
     "U-King is an “AI butler”. It has already installed and configured the world's best AI for you — just follow the steps below and click a few times, and you can chat with AI like on WeChat: writing articles, code, spreadsheets, research, drawing, all of it.",
-  "用装机向导一键装好 Claude Code（最强编程 agent）+ 终端环境":
-    "Use the setup wizard to install Claude Code (the strongest coding agent) + a terminal environment, in one click",
+  "在「我的 AI」一键装好 Claude Code（最强编程 agent）+ 终端环境":
+    "Install Claude Code (the strongest coding agent) + terminal environment in one click from “My AI”",
   "新手首选 ": "The top pick for beginners is ",
   "——全球公认最强的编程 AI，在「我的 AI」里点一键安装，U-King 会帮你":
     " — the coding AI widely regarded as the strongest in the world. Click one-click install in “My AI” and U-King will ",
@@ -222,7 +222,8 @@ export const misc: Record<string, string> = {
   "第一次用，先充值开通（¥20 起，够聊很久）": "First time: top up to activate (from ¥20, enough for a long time)",
   "AI 是按量计费的，": "AI is billed by usage; ",
   "第一次使用前需要先充值开通": "you need to top up to activate before first use",
-  "。在「我的 AI」或「接入指南」页右上角点": ". In the top-right of “My AI” or the “Setup Guide” page, click ",
+  "。在「AI 设置 → 账号 · 充值」里点":
+    ". In “AI Settings → Account & Top-up”, click ",
   "「充值」": "“Top up”",
   "，会自动填好你这台电脑的专属 Key，微信扫码即可，": " — it auto-fills this PC's dedicated key; just scan with WeChat to pay. ",
   "¥20 起充，¥1 = 50 万 token": "From ¥20, ¥1 = 500,000 tokens",
@@ -258,13 +259,14 @@ export const misc: Record<string, string> = {
   "要花钱吗？怎么才能开始用？": "Does it cost money? How do I get started?",
   "用 AI 是按量计费的（说几句话花几分钱）。": "AI is billed by usage (a few sentences cost a few cents). ",
   "第一次使用需要先充值开通": "You need to top up to activate before first use",
-  "——充值入口在「我的 AI」和「接入指南」页右上角，": " — the top-up entry is in the top-right of “My AI” and the “Setup Guide” page. ",
+  "——充值入口在「AI 设置 → 账号 · 充值」，":
+    " — the top-up entry is in “AI Settings → Account & Top-up”. ",
   "¥20 起充": "From ¥20",
   "，到账即时、余额永久有效、不用不扣，¥20 通常够聊很久。":
     " — credited instantly, balance never expires, no charge when unused; ¥20 usually lasts a long time.",
   "Claude Code 图标是灰色的、点不动？": "The Claude Code icon is grey and won't click?",
-  "那是还没装好。点一下装机向导，U-King 会自动帮你下载安装（会显示进度），等它装完就能在工作台里用了。":
-    "That means it isn't installed yet. Click the setup wizard and U-King will download and install it automatically (with progress shown); once done you can use it in the workspace.",
+  "那是还没装好。在「我的 AI」里点它的「安装」，U-King 会自动帮你下载安装（会显示进度），等它装完就能在工作台里用了。":
+    "It isn't installed yet. Click its “Install” in “My AI” and U-King will download and install it for you (with progress); once done you can use it in the Workbench.",
   "装了 ClawX 但一直转圈、连不上 AI？": "Installed ClawX but it keeps spinning and can't connect to the AI?",
   "八成是第一次打开时那个「是否允许访问网络」的窗口被点了「取消」。解决：关掉 ClawX，回 U-King 重新点「打开 ClawX」，这次弹窗点【允许访问】即可。详见盘内《第一次打开 ClawX 必看》。ClawX 是可选的图形界面，不装它同样能用 Claude Code。":
     "Most likely the “Allow network access?” dialog on first launch was clicked “Cancel”. Fix: close ClawX, go back to U-King and click “Open ClawX” again, and this time click [Allow access] on the popup. See “Read Me First When Opening ClawX” on the drive. ClawX is an optional GUI — you can use Claude Code just fine without it.",
@@ -272,8 +274,8 @@ export const misc: Record<string, string> = {
   "回到「AI 设置」点一下「测试连通 / 查询余额」刷新一下。还不行就看盘内《常见故障排查手册》，或按《远程协助看这里》联系我们远程帮你弄。":
     "Go back to “AI Settings” and click “Test connection / Check balance” to refresh. If it still fails, see “Troubleshooting Handbook” on the drive, or follow “Remote Help Here” to contact us for remote assistance.",
   "怎么看还剩多少额度？怎么充值？": "How do I see my remaining balance? How do I top up?",
-  "在「我的 AI」首页右上角就显示余额（多少万 token）。要充值点旁边的「高级 / 余额」或「接入指南」里的充值按钮，会打开充值页、自动填好你的 Key，微信扫码即可，¥20 起充，到账即时、永久有效。":
-    "The balance (in hundreds of thousands of tokens) is shown in the top-right of the “My AI” home page. To top up, click “Advanced / Balance” next to it or the top-up button in the “Setup Guide”; it opens the top-up page with your key pre-filled — scan with WeChat, from ¥20, credited instantly, never expires.",
+  "余额显示在「AI 设置」页顶部（多少万 token）。要充值去「AI 设置 → 账号 · 充值」点充值按钮，会打开充值页、自动填好你的 Key，微信扫码即可，¥20 起充，到账即时、永久有效。":
+    "Your balance (in tokens) is shown at the top of “AI Settings”. To top up, go to “AI Settings → Account & Top-up” and click the top-up button — it opens the top-up page with your key pre-filled; pay by WeChat QR, from ¥20, credited instantly and never expires.",
   "家里 / 单位几台电脑能共用吗？": "Can several PCs at home / work share it?",
   "可以。同一个 Key（额度）能同时配到多台电脑、手机 App 上用，额度共享、一起扣。在「接入指南」里复制 Key，按上面的说明配到别的设备即可。":
     "Yes. The same key (quota) can be configured on multiple PCs and phone apps at once, sharing and drawing down the same quota. Copy the key in “Setup Guide” and set it up on other devices per the instructions above.",

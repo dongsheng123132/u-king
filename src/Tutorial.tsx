@@ -77,7 +77,7 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
 
       {/* 三步走 */}
       <section className="rounded-card border border-white/[0.06] bg-bg-2/70 px-5 py-5">
-        <Step n={1} icon={MousePointerClick} title={t("用装机向导一键装好 Claude Code（最强编程 agent）+ 终端环境")}>
+        <Step n={1} icon={MousePointerClick} title={t("在「我的 AI」一键装好 Claude Code（最强编程 agent）+ 终端环境")}>
           {t("新手首选 ")}<b className="text-ink-1">Claude Code</b>{t("——全球公认最强的编程 AI，在「我的 AI」里点一键安装，U-King 会帮你")}<b className="text-ink-1">{t("自动下载、安装、配好 AI")}</b>{t("，你只要等它装完。想要图形界面（像微信一样点点就能用）也可以额外装")}<b className="text-ink-1">🦞 ClawX</b>{t("，在「进阶 / App 版」页可装，非必须。")}
           <button
             onClick={onGoMyAI}
@@ -91,7 +91,7 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
           <b className="text-ink-1">{t("一定要点【允许访问】")}</b>{t("，不然 AI 连不上。")}
         </Step>
         <Step n={3} icon={Wallet} title={t("第一次用，先充值开通（¥20 起，够聊很久）")}>
-          {t("AI 是按量计费的，")}<b className="text-ink-1">{t("第一次使用前需要先充值开通")}</b>{t("。在「我的 AI」或「接入指南」页右上角点")}<b className="text-ink-1">{t("「充值」")}</b>{t("，会自动填好你这台电脑的专属 Key，微信扫码即可，")}
+          {t("AI 是按量计费的，")}<b className="text-ink-1">{t("第一次使用前需要先充值开通")}</b>{t("。在「AI 设置 → 账号 · 充值」里点")}<b className="text-ink-1">{t("「充值」")}</b>{t("，会自动填好你这台电脑的专属 Key，微信扫码即可，")}
           <b className="text-accent-400">{t("¥20 起充，¥1 = 50 万 token")}</b>{t("，到账即时、余额永久有效、不用不扣。")}
         </Step>
         <Step n={4} icon={MessageSquare} title={t("像聊天一样打字，回车发送")}>
@@ -143,7 +143,7 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
           q={t("要花钱吗？怎么才能开始用？")}
           a={
             <>
-              {t("用 AI 是按量计费的（说几句话花几分钱）。")}<b className="text-ink-1">{t("第一次使用需要先充值开通")}</b>{t("——充值入口在「我的 AI」和「接入指南」页右上角，")}
+              {t("用 AI 是按量计费的（说几句话花几分钱）。")}<b className="text-ink-1">{t("第一次使用需要先充值开通")}</b>{t("——充值入口在「AI 设置 → 账号 · 充值」，")}
               <span className="inline-flex items-center gap-0.5">
                 <Wallet size={11} className="text-accent" /> {t("¥20 起充")}
               </span>
@@ -151,7 +151,7 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
             </>
           }
         />
-        <Faq q={t("Claude Code 图标是灰色的、点不动？")} a={t("那是还没装好。点一下装机向导，U-King 会自动帮你下载安装（会显示进度），等它装完就能在工作台里用了。")} />
+        <Faq q={t("Claude Code 图标是灰色的、点不动？")} a={t("那是还没装好。在「我的 AI」里点它的「安装」，U-King 会自动帮你下载安装（会显示进度），等它装完就能在工作台里用了。")} />
         <Faq
           q={t("装了 ClawX 但一直转圈、连不上 AI？")}
           a={t("八成是第一次打开时那个「是否允许访问网络」的窗口被点了「取消」。解决：关掉 ClawX，回 U-King 重新点「打开 ClawX」，这次弹窗点【允许访问】即可。详见盘内《第一次打开 ClawX 必看》。ClawX 是可选的图形界面，不装它同样能用 Claude Code。")}
@@ -162,7 +162,7 @@ export function Tutorial({ onGoMyAI }: { onGoMyAI: () => void }) {
         />
         <Faq
           q={t("怎么看还剩多少额度？怎么充值？")}
-          a={t("在「我的 AI」首页右上角就显示余额（多少万 token）。要充值点旁边的「高级 / 余额」或「接入指南」里的充值按钮，会打开充值页、自动填好你的 Key，微信扫码即可，¥20 起充，到账即时、永久有效。")}
+          a={t("余额显示在「AI 设置」页顶部（多少万 token）。要充值去「AI 设置 → 账号 · 充值」点充值按钮，会打开充值页、自动填好你的 Key，微信扫码即可，¥20 起充，到账即时、永久有效。")}
         />
         <Faq
           q={t("家里 / 单位几台电脑能共用吗？")}

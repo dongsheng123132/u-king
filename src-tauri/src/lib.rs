@@ -7606,7 +7606,7 @@ fn build_and_write_health_report() -> Result<String, String> {
         tips += 1;
     }
     if claude_chan.is_none() {
-        let _ = writeln!(r, "  · Claude 还是\"官方默认\" → 到「AI 设置 → 账号 · 充值」点\"一键接入虾盘云\"，国内直连。");
+        let _ = writeln!(r, "  · Claude 还是\"官方默认\" → 到「AI 设置 → 账号 · 充值」点\"① 自动配好已装工具\"，国内直连。");
         tips += 1;
     }
     if dk.as_ref().map(|d| !d.charged).unwrap_or(false) {
