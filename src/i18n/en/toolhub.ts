@@ -10,6 +10,11 @@
  *  +「AI 设置」出口（后者复用中央字典已有的「AI 设置」键，这里不重复翻）。
  *  「使用工具自带账号」这一条从此不再被引用，同上一条一起留着不删。 */
 export const toolhub: Record<string, string> = {
+  // 「正在启动…」= 工具中心启动按钮的行内状态（无工具名）；下面那条带 {tool} 的是终端里的
+  // 「正在启动 mimo…」。两条文案不同、都要翻 —— 只加带 {tool} 的那条会让英文界面露出中文。
+  "正在启动…": "Starting…",
+  "正在启动 {tool}…": "Starting {tool}…",
+  "启动仍在进行；如果一直没有输出，可点上方重开。": "Still starting. If no output appears, use Restart above.",
   "桌面版模型配置说明": "Desktop model configuration guide",
   "配置与登录说明": "Configuration and sign-in guide",
   "开始安装 {tool}（官方下载，装完自动验证）…": "Installing {tool} from the official source and verifying it…",

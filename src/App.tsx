@@ -131,6 +131,7 @@ export type ToolInfo = {
   launch_cmd: string;
   launch_app: string;
   version?: string | null;
+  launch_mode?: "gui_app" | "external_term" | "embedded_pty" | "route_tab" | "url" | "none";
   // 后端标记的隐藏工具（Codex CLI / OpenClaw CLI）—— 前端统一过滤掉，不在市场/Dock 露出
   hidden?: boolean;
   /** 归属的驱动配置目标（`apply_provider` 的 target，如 claude/codex/clawx/hermes/dsh/pi/opencode）。
@@ -883,7 +884,7 @@ export function App() {
       });
       return;
     }
-    void runLaunchAction(t);
+    return runLaunchAction(t);
   };
 
   // 卸载一个 AI 工具：删本体 + 一切会被探测成"已装"的残留（修「删了还检测到、重装又冒出来」）。

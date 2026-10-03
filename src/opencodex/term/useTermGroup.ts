@@ -717,15 +717,28 @@ export function useTermGroup(opts: {
     if (s.sessionId) return s.sessionId;
     if (s.pending) return s.pending;
     s.pending = (async () => {
+      let firstOutput = true;
+      const toolName = s.initialCmd?.split(/\s+/)[0];
+      s.term.writeln(translate("正在启动 {tool}…", { tool: toolName || translate("终端") }));
+      const slowStart = setTimeout(() => {
+        if (!s.closed && firstOutput) s.term.writeln(translate("启动仍在进行；如果一直没有输出，可点上方重开。"));
+      }, 10_000);
       try {
         const onData = new Channel<number[]>();
         onData.onmessage = (bytes) => {
           // 标签已关 → xterm 已 dispose，后端的收尾帧再往里写会抛（Channel 回调里抛 = 无人接）
           if (s.closed) return;
+          if (firstOutput && bytes.length > 0) {
+            firstOutput = false;
+            clearTimeout(slowStart);
+            s.term.clear();
+          }
           // ★ 空帧 = 后端 reader 收尾发的 EOF 哨兵（正常输出读到 0 字节时后端是 break 不发送的，
           // 见 term.rs），表示对面进程已经退了。以前后端什么都不发、前端也就毫无感知：
           // 标签绿点照亮、敲什么都没反应，只能自己关掉重开。
           if (bytes.length === 0) {
+            clearTimeout(slowStart);
+            firstOutput = false;
             s.dead = true;
             s.input.disconnect();
             if (s.sessionId) releaseSession(s.sessionId); // 对面进程已退，别再给它报平安
@@ -755,6 +768,7 @@ export function useTermGroup(opts: {
         claimSession(sid); // 登记归属：心跳靠它告诉后端「这个会话还有人用」
         return sid;
       } catch (e) {
+        clearTimeout(slowStart);
         s.input.clear();
         s.lastError = String(e);
         s.term.writeln(`\x1b[31m打开终端失败: ${String(e)}\x1b[0m`);
@@ -844,7 +858,7 @@ export function useTermGroup(opts: {
     const launchCmd = rawLaunchCmd ? preserveCodexScrollback(rawLaunchCmd) : null;
     s = {
       key,
-      title: `终端 ${key}`,
+      title: launchCmd?.split(/\s+/)[0] || `终端 ${key}`,
       term,
       fit,
       webgl,

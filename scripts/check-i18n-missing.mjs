@@ -77,12 +77,15 @@ for (const file of walk(ROOT)) {
 
 if (missing.size === 0) {
   console.error(`--- ${ROOT}: 字面量 t("…") 没有漏翻 ---`);
-  process.exit(0);
+  // ⚠️ 这里**不能提前 return** —— 棘轮也得在「修到 0 条」时跑一遍。
+  // 2026-10-03 实测：修到 0 时从这儿 exit(0)，基线永远停在旧值 1，下一条新漏翻刚好
+  // 满足「1 > 1 不成立」被静默放行 —— 当天新加的 `正在启动…` 就是这么漏进英文界面的。
+} else {
+  // stdout 只出可直接粘进 en/*.ts 的行；文件归属走 stderr，别污染管道
+  for (const [key] of missing) console.log(JSON.stringify(key) + ": " + JSON.stringify(key) + ",");
+  console.error(`--- ${ROOT}: 漏翻 ${missing.size} 条 ---`);
+  for (const [key, files] of missing) console.error(`  ${files.join(", ")}  ←  ${key.slice(0, 40)}`);
 }
-// stdout 只出可直接粘进 en/*.ts 的行；文件归属走 stderr，别污染管道
-for (const [key] of missing) console.log(JSON.stringify(key) + ": " + JSON.stringify(key) + ",");
-console.error(`--- ${ROOT}: 漏翻 ${missing.size} 条 ---`);
-for (const [key, files] of missing) console.error(`  ${files.join(", ")}  ←  ${key.slice(0, 40)}`);
 
 /**
  * 棘轮：判**涨没涨**，不判有没有。
@@ -119,7 +122,8 @@ if (missing.size > baseline) {
 if (missing.size < baseline) {
   fs.writeFileSync(BASELINE_FILE, JSON.stringify({ missing: missing.size }, null, 2) + "\n");
   console.error(`\n✅ 漏翻降了：${baseline} → ${missing.size}，基线已收紧`);
-} else {
+} else if (missing.size > 0) {
+  // 0 条且基线也是 0 时不必再念一遍「0 条存量漏翻」——上面已经报过「没有漏翻」了。
   console.error(`\n⚠️ ${missing.size} 条存量漏翻（= 基线，不阻断）。这些是别名扫描补上后才露出来的历史欠账。`);
 }
 process.exit(0);

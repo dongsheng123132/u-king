@@ -1,15 +1,16 @@
 // ⚠️ 必须排在所有 import 之前：垫片要在任何懒加载 chunk（pdf.js 等）跑起来之前装好。
 // 老 WebView2（客户机常年停在 Chrome 120）缺 Promise.try / withResolvers，见 issue #291。
 import "./lib/polyfills";
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
-import { App } from "./App";
-import { TerminalWindow } from "./TerminalWindow";
 import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ownedSessions } from "./opencodex/term/registry";
 import "./globals.css";
+
+const App = lazy(() => import("./App").then((m) => ({ default: m.App })));
+const TerminalWindow = lazy(() => import("./TerminalWindow").then((m) => ({ default: m.TerminalWindow })));
 
 // 全局兜底：ErrorBoundary 只兜 React 渲染期的错；异步/事件回调/Promise 里抛的错它管不到。
 // 这里把未捕获的 error + unhandledrejection 也静默上报（去重，best-effort），让现场黑屏/卡死
@@ -107,7 +108,9 @@ const isTerminalWindow = new URLSearchParams(location.search).get("pane") === "t
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <I18nProvider>{isTerminalWindow ? <TerminalWindow /> : <App />}</I18nProvider>
+      <Suspense fallback={<div className="h-screen grid place-items-center bg-bg-0 text-ink-2" role="status">U-King…</div>}>
+        <I18nProvider>{isTerminalWindow ? <TerminalWindow /> : <App />}</I18nProvider>
+      </Suspense>
     </ErrorBoundary>
   </React.StrictMode>,
 );

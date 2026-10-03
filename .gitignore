@@ -17,6 +17,9 @@ uking-*.json
 
 # 临时调试产物（截图 / 一次性 json / 脚本，本地保留不入库）
 .tmp-*
+# 本地临时工作区 + pnpm 内容寻址 store（体积大、纯本地；闸门的 SKIP_DIRS 也已认它）
+.scratch/
+.pnpm-store/
 # 电商上架素材（淘宝/拼多多主图 + 上架方案，营销产物本地保留不入库）
 ecommerce-assets/
 dist-compare/
@@ -35,7 +38,16 @@ shots/
 /board-probe.json
 /*.png
 /*.jpg
-/shots/
+
+# 本地工作文档：内部交接稿 / 计划 / 分享草稿，未对外公开 —— 防 `git add -A` 把它们带进公开仓。
+# CLAUDE.md 也先按本地文档忽略。若要让外部贡献者也拿到它，就该显式提交它本身，
+# 而不是靠「碰巧一直没被 add」——公开仓里出现什么，只应该由决定出现的东西决定。
+PLAN_FIRST.md
+TASK_HANDOFF_*.md
+tmp-chatgpt-share.md
+teamai-tencent-cloud-readonly-handoff.md
+CLAUDE.md
+花瑶花开-发布资料包/
 
 # OTLP collector / replay 的运行凭据；报告和冻结数据集另行入库。
 /otel-traces/
@@ -61,6 +73,13 @@ token*.json
 *.log.*
 .DS_Store
 Thumbs.db
+# AI agent 在本机留下的状态（worktrees/、settings.local.json、plans/、cargo.err…）——
+# 全是机器本地的东西：公开仓里不该出现，也不该被 `git add -A` 顺走。
+.claude/
+.hermes/
+# Python 字节码缓存（scripts/*.py 被跑过就会留）
+__pycache__/
+*.pyc
 .idea/
 .vscode/
 *.swp

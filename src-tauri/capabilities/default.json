@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "U-King 简化版主窗口权限",
-  "windows": ["main", "recharge"],
+  "windows": ["main", "recharge", "uking-term-*"],
   "permissions": [
     "core:default",
     "core:window:allow-show",

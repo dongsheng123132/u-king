@@ -13,7 +13,8 @@ const tools = [
   { id: 'mimo-code', name: 'MiMo Code', installed: false, launch_cmd: 'mimo', launch_app: '', config_target: null, kind: 'standalone', target: 'https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code' },
   { id: 'codebuddy-code', name: 'CodeBuddy Code', installed: false, launch_cmd: 'codebuddy', launch_app: '', config_target: null, kind: 'standalone' },
   { id: 'qoder-cn', name: 'Qoder CN CLI', installed: false, launch_cmd: 'qodercn', launch_app: '', config_target: null, kind: 'standalone' },
-].map(t => ({ action: 'install', target: '', ...t, hidden: false, summary: t.name }));
+  ...['muse-code', 'antigravity-cli', 'obsidian', 'clawx'].map(id => ({ id, name: id, installed: false, launch_cmd: '', launch_app: id, config_target: null, kind: 'standalone' })),
+].map(t => ({ action: 'install', target: '', ...t, launch_mode: t.launch_app ? 'gui_app' : 'embedded_pty', hidden: false, summary: t.name }));
 const browser = await chromium.launch();
 const errors = [];
 let page;
@@ -71,7 +72,14 @@ try {
   }, { tools, folder });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.locator('h1', { hasText: '我的 AI' }).waitFor();
+  assert.equal(await page.evaluate(() => window.testCalls.filter(c => c.args?.request?.action_id === 'runtime.tool.inspect').length), 0, 'Rendering launch buttons must not trigger a full health inspection');
   const tile = id => page.locator(`[data-testid="toolhub-tile"][data-tool-id="${id}"]`);
+  for (const id of ['kimi-code', 'grok-build', 'mimo-code', 'codebuddy-code', 'qoder-cn', 'muse-code', 'antigravity-cli', 'obsidian', 'clawx']) {
+    const icon = tile(id).locator('[data-icon-source="brand"] img');
+    await icon.waitFor();
+    await icon.evaluate(img => img.decode());
+    assert.ok(await icon.evaluate(img => img.complete && img.naturalWidth > 0), `${id}: brand artwork must load locally`);
+  }
   await tile('claude-code').click();
   await page.getByText('官方登录', { exact: true }).first().waitFor();
   await tile('hermes').dblclick();

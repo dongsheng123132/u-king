@@ -52,6 +52,7 @@ import {
   LayoutGrid,
   Play,
   Plus,
+  Loader2,
   RefreshCw,
   Rocket,
   Settings2,
@@ -187,7 +188,7 @@ export function ToolHub({
   driver: DriverStatus | null;
   deviceKey: DeviceKey | null;
   /** 已装工具的启动通路（=App.tsx 的 `launchTool`，含运行时判定 + U-CLI/系统终端分流）。 */
-  onLaunch: (t: ToolInfo) => void;
+  onLaunch: (t: ToolInfo) => void | Promise<void>;
   /** 未装工具的一键安装通路 / GUI 应用直开（=App.tsx 的 `openTool`）。 */
   onOpen: (t: ToolInfo) => void;
   onInstallSelection: (ids: string[]) => void;
@@ -321,13 +322,23 @@ export function ToolHub({
 
   // 真正启动一个工具——记「上次启动」+ 调用真正的启动通路。瓷砖双击、详情条主按钮、
   // 分体按钮的两个子项都走这一个函数，不各写一份（默认展开要读的就是这里写的记录）。
-  function handleLaunch(t: ToolInfo) {
+  const [launchingId, setLaunchingId] = useState<string | null>(null);
+  const launchInFlight = useRef(false);
+  async function handleLaunch(t: ToolInfo) {
+    if (launchInFlight.current) return;
+    launchInFlight.current = true;
+    setLaunchingId(t.id);
     try {
       localStorage.setItem(LAST_TOOL_KEY, t.id);
     } catch {
       /* 写不进去就只影响下次默认展开，不阻断这次启动 */
     }
-    onLaunch(t);
+    try {
+      await onLaunch(t);
+    } finally {
+      launchInFlight.current = false;
+      setLaunchingId(null);
+    }
   }
 
   // 已装瓷砖单击/双击消歧——浏览器双击会先后派发 click→click→dblclick，如果每次 click 都
@@ -493,34 +504,12 @@ export function ToolHub({
     setLaunchPref(v);
   };
 
-  // 每个工具真正的启动方式（`tools::LaunchMode`，经 `runtime.tool.inspect` 序列化过来）——
-  // 只有 `LaunchMode::EmbeddedPty` 才会读 `launchPref` 分流到系统终端/U-CLI；`RouteTab`
-  // （如 hermes，跳 U-King 内的专属页）和 `ExternalTerm`（如 harness-doctor，后端无条件开
-  // 系统终端）不受这个偏好影响，「打开方式」文案和分体 ▾ 只应该对 EmbeddedPty 那批工具出现
-  // （复审 medium 修复：旧版只用 `t.launch_app` 是否非空二分"桌面应用/走 launchPref"，
-  // 漏了 RouteTab/ExternalTerm 这两类既非 GUI、又不听 launchPref 的工具，详情条会说一句不真实
-  // 的「打开方式」，分体 ▾ 里两项效果还完全一样、点了还顺手改掉全局偏好）。跟 `ToolAppView.tsx`
-  // 同一个只读动作、同一种一次性拉全量再按 id 查表的写法，不新开一条判定逻辑；只在挂载时拉
-  // 一次——`LaunchMode` 是编译期定死在 `TOOL_SPECS` 里的常量，不会随驱动/安装状态变化，没必要
-  // 跟着 `tools`/`onRefreshTools` 重新拉。
-  const [launchModes, setLaunchModes] = useState<Record<string, LaunchPlan["mode"]>>({});
-  useEffect(() => {
-    let alive = true;
-    callAction(ACTION.RUNTIME_TOOL_INSPECT, {})
-      .then((env) => {
-        if (!alive || !env.ok) return;
-        const list = (env.result as unknown as { tools: LaunchPlan[] }).tools ?? [];
-        const map: Record<string, LaunchPlan["mode"]> = {};
-        for (const p of list) map[p.tool_id] = p.mode;
-        setLaunchModes(map);
-      })
-      .catch(() => {
-        /* 拉不到就维持空表——下面渲染对"未知模式"有安全的兜底（只显示单按钮，不猜分体） */
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // Launch mode is static metadata. Rendering a button must not run a full tool inspection.
+  const launchModes = useMemo(() => {
+    const modes: Record<string, LaunchPlan["mode"]> = {};
+    for (const tool of tools) if (tool.launch_mode) modes[tool.id] = tool.launch_mode;
+    return modes;
+  }, [tools]);
 
   // 分体按钮右侧 ▾ 弹出的「在系统终端打开 / 在 U-King 内置终端打开」——只有两项的静态菜单，
   // 不需要像换模型下拉那样跨工具缓存，存整个 ToolInfo 而不是 id，点了直接拿来启动。
@@ -682,6 +671,7 @@ export function ToolHub({
     // 真实文案、单按钮；还没拉到（`mode` 为 `undefined`）时按 `t.launch_app` 是否非空兜底判断
     // 桌面应用（这条兜底跟 `gui_app` 的现有数据口径一致，不会猜错），其余场景宁可先不显示
     // 「打开方式」小字、也不猜一句可能不真实的话。
+    const launching = launchingId === t.id;
     const mode = launchModes[t.id];
     const isGuiApp = mode ? mode === "gui_app" : !!t.launch_app;
     const isEmbeddedPty = mode === "embedded_pty";
@@ -725,10 +715,10 @@ export function ToolHub({
                 data-testid="toolhub-launch-main"
                 data-tool-id={t.id}
                 onClick={() => handleLaunch(t)}
-                disabled={applying}
+                disabled={applying || launchingId !== null}
                 className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 disabled:opacity-60"
               >
-                <Play size={14} /> {applying ? tr("正在应用配置…") : tr("打开")}
+                {launching ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} {launching ? tr("正在启动…") : applying ? tr("正在应用配置…") : tr("打开")}
               </button>
             ) : isEmbeddedPty ? (
               <>
@@ -738,10 +728,10 @@ export function ToolHub({
                     data-testid="toolhub-launch-main"
                     data-tool-id={t.id}
                     onClick={() => handleLaunch(t)}
-                    disabled={applying}
+                    disabled={applying || launchingId !== null}
                     className="inline-flex items-center gap-1.5 px-4 h-9 bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 disabled:opacity-60"
                   >
-                    <Play size={14} /> {applying ? tr("正在应用配置…") : tr("启动")}
+                    {launching ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} {launching ? tr("正在启动…") : applying ? tr("正在应用配置…") : tr("启动")}
                   </button>
                   <button
                     ref={splitAnchorRef}
@@ -750,7 +740,7 @@ export function ToolHub({
                     aria-haspopup="menu"
                     aria-expanded={splitMenuTool?.id === t.id}
                     onClick={() => setSplitMenuTool((cur) => (cur?.id === t.id ? null : t))}
-                    disabled={applying}
+                    disabled={applying || launchingId !== null}
                     className="inline-flex items-center justify-center w-7 h-9 bg-accent border-l border-white/20 text-white hover:bg-accent-600 disabled:opacity-60"
                   >
                     <ChevronDown size={13} />
@@ -768,10 +758,10 @@ export function ToolHub({
                   data-testid="toolhub-launch-main"
                   data-tool-id={t.id}
                   onClick={() => handleLaunch(t)}
-                  disabled={applying}
+                  disabled={applying || launchingId !== null}
                   className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 disabled:opacity-60"
                 >
-                  <Play size={14} /> {applying ? tr("正在应用配置…") : tr("启动")}
+                  {launching ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} {launching ? tr("正在启动…") : applying ? tr("正在应用配置…") : tr("启动")}
                 </button>
                 {openMethodText && <span className="text-[10px] text-ink-3">{openMethodText}</span>}
               </>
@@ -787,7 +777,7 @@ export function ToolHub({
             data-testid="toolhub-model-trigger"
             data-tool-id={t.id}
             onClick={() => openModelMenu(t)}
-            disabled={applying}
+            disabled={applying || launchingId !== null}
             className="w-full flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05] px-2 h-8 text-[11.5px] disabled:opacity-60"
           >
             <Cpu size={12} className="text-accent/70 shrink-0" />

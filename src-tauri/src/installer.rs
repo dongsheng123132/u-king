@@ -1738,7 +1738,10 @@ pub fn tool_installed(cmd: &str) -> bool {
     } else {
         &[""]
     };
-    for dir in search_paths(portable_node_dir().as_deref()) {
+    let mut paths = search_paths(portable_node_dir().as_deref());
+    // Tools installed on the inherited PATH can be found without starting each CLI.
+    if let Some(path) = std::env::var_os("PATH") { paths.extend(std::env::split_paths(&path)); }
+    for dir in paths {
         for ext in exts {
             if dir.join(format!("{cmd}{ext}")).exists() {
                 return true;

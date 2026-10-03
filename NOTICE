@@ -46,7 +46,7 @@ limited to:
 - OpenClaw, ClawX — their respective project authors
 - pi — Earendil Inc. and contributors (per the pi.dev site footer)
 - OpenCode — the opencode project (github.com/anomalyco/opencode)
-- Obsidian — Obsidian and its owner (name only; no Obsidian logo is shipped, see Icon sources)
+- Obsidian — Obsidian and its owner (official logo used to identify the supported application)
 - UU Remote (UU远程) — NetEase (网易)
 - Doubao (豆包), Volcengine (火山引擎) — ByteDance (字节跳动)
 - QwenWork (千问办公), Bailian (百炼), ModelScope (魔搭) — Alibaba (阿里巴巴)
@@ -89,7 +89,7 @@ Copyright (c) 2023 LobeHub), package @lobehub/icons-static-svg:
   icons/codex.svg)
 
 Existing model-brand SVGs in `src/assets/logos/` (no header): `claude.svg`,
-`gemini.svg`, `deepseek.svg`, `kimi.svg`, `minimax.svg`, `zhipu.svg`,
+`gemini.svg`, `deepseek.svg`, `kimi.svg` (legacy provider asset), `minimax.svg`, `zhipu.svg`,
 `chatglm.svg`, `openai.svg`, `codex.svg`. Their markup has the lobe-icons static
 SVG shape (`<title>`, `height="1em"`, `flex:none`); `claude.svg`, `deepseek.svg`
 and `zhipu.svg` are byte-identical (ignoring line breaks) to lobe-icons v1.95.1
@@ -97,16 +97,27 @@ and `zhipu.svg` are byte-identical (ignoring line breaks) to lobe-icons v1.95.1
 from v1.95.1 (older release or locally recolored). Provenance is therefore
 inferred as lobe-icons (MIT), exact source and version 来源待核.
 
-Obsidian: no Obsidian logo is shipped. The owner's brand page
-(https://obsidian.md/brand) says the logo must not be edited, recolored or
-reconfigured, and that commercial use of Obsidian assets requires contacting
-the owner first. U-King is a commercial product and has no such permission, so
-Obsidian entries use the initial-letter fallback tile. If permission is
-obtained, use the original from the owner's site
-(https://obsidian.md/images/obsidian-logo-gradient.svg), unmodified, and update
-this file.
+Obsidian: the original gradient mark is used unchanged to identify the supported
+application. The mark remains the owner's trademark; this project grants no
+rights to reuse it. Brand guidelines: https://obsidian.md/brand.
 
 Icons from official product sites or repositories:
+
+Artwork verified on 2026-10-03 (unmodified; product identification only):
+- `src/assets/logos/clawx.svg` — https://github.com/ValueCell-ai/ClawX/blob/main/resources/icons/icon.svg (MIT; full text in `third_party/licenses/clawx-MIT.txt`). ClawX has its own application mark and is not represented by the OpenClaw lobster.
+- `src/assets/logos/kimi-code.png` — https://raw.githubusercontent.com/MoonshotAI/kimi-cli/main/web/public/logo.png
+- `src/assets/logos/mimo.svg` — https://mimo.mi.com/static/mimo-code.a1594b207bbc4bee.svg
+- `src/assets/logos/codebuddy.svg` — https://download.codebuddy.cn/web/website/a156fee78f35e874d407848198e5f96a4cf383ef/assets/logo.svg
+- `src/assets/logos/qoder.svg` — https://qoder.cn/favIcon.svg
+- `src/assets/logos/grok.svg` — https://grok.com/images/favicon.svg
+- `src/assets/logos/antigravity.svg` — https://www.antigravity.google/favicon.svg
+- `src/assets/logos/muse.ico` — https://dev.meta.ai/favicon.ico?favicon.0o~z3n2dfavrq.ico
+- `src/assets/logos/obsidian.svg` — https://obsidian.md/images/obsidian-logo-gradient.svg
+
+These are brand assets, not artwork relicensed under Apache-2.0. All marks
+remain owned by their respective owners. Kimi Code's official repository is
+Apache-2.0. SVG geometry and colors are preserved, including for uninstalled
+tools. Source URLs are recorded here instead of modifying the original files.
 
 - `src/assets/logos/pi.svg` — official favicon of pi (https://pi.dev/favicon.svg).
   The mark path comes from the official file; the dark rounded tile behind it
@@ -134,7 +145,9 @@ Icons from official product sites or repositories:
   the UU Remote official site (uuyc.163.com), converted from ICO to PNG. Brand
   asset of its owner (NetEase), no open-source license; nominative use only.
 - `src/assets/logos/hermes.png` — Nous Research's Hermes mascot avatar per the
-  code comment in `ToolIcon.tsx`; download URL and license 来源待核.
+    code comment in `ToolIcon.tsx`; the mascot was visually verified against
+    https://hermes-agent.nousresearch.com/icon.png on 2026-10-03. Brand asset;
+    no separate artwork license was found.
 - OpenClaw lobster (`OpenClawLobster` in `ToolIcon.tsx`) — the code comment says
   it was borrowed from the ccswitch build's `claw.svg`; original source and
   license 来源待核.

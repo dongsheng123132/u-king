@@ -8176,9 +8176,20 @@ async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<S
     } else {
         format!("{} · U-CLI", dir.rsplit(['\\', '/']).next().unwrap_or(&dir))
     };
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(title)
-        .inner_size(960.0, 640.0)
+        .inner_size(960.0, 640.0);
+    // WebView2 windows sharing a data directory must use the same browser arguments.
+    // Read the main window config so build-time overrides apply to terminals too.
+    #[cfg(windows)]
+    let builder = match app.config().app.windows.iter()
+        .find(|window| window.label == "main")
+        .and_then(|window| window.additional_browser_args.as_deref())
+    {
+        Some(args) => builder.additional_browser_args(args),
+        None => builder,
+    };
+    builder
         .build()
         .map_err(|e| format!("拉出终端窗口失败: {e}"))?;
     Ok("opened")

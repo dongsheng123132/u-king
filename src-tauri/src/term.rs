@@ -458,7 +458,33 @@ fn build_path() -> String {
 /// 上（`tool_installed` 的 ① 分支能兜到），但 `build_path()` 理论上也含系统 `PATH`，只有当
 /// 系统 `PATH` 本身缺失/异常时两者才会分叉——分叉出现就正是这个函数存在的意义。
 pub fn resolve_on_terminal_path(prog: &str) -> Option<String> {
-    terminal_path_candidates(prog).into_iter().next()
+    resolve_on_path(prog, &terminal_path())
+}
+
+pub(crate) fn terminal_path_snapshot() -> String {
+    terminal_path()
+}
+
+pub(crate) fn resolve_on_path(prog: &str, path: &str) -> Option<String> {
+    let prog = prog.trim();
+    if prog.is_empty() {
+        return None;
+    }
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let exts: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd", ".bat", ".ps1"]
+    } else {
+        &[""]
+    };
+    for dir in path.split(sep).filter(|dir| !dir.is_empty()) {
+        for ext in exts {
+            let candidate = Path::new(dir).join(format!("{prog}{ext}"));
+            if candidate.is_file() {
+                return Some(candidate.display().to_string());
+            }
+        }
+    }
+    None
 }
 
 /// 终端 PATH 上所有同名候选，按 PATH 顺序（第一个就是终端里敲 `prog` 会跑到的那个）。
@@ -475,7 +501,7 @@ pub fn terminal_path_candidates(prog: &str) -> Vec<String> {
     let path = terminal_path();
     let sep = if cfg!(windows) { ';' } else { ':' };
     let exts: &[&str] = if cfg!(windows) {
-        &["", ".cmd", ".exe", ".bat", ".ps1"]
+        &[".exe", ".cmd", ".bat", ".ps1"]
     } else {
         &[""]
     };
@@ -775,6 +801,26 @@ fn shell_builder() -> CommandBuilder {
     cmd
 }
 
+
+/// Tool launches bypass slow user profiles and enter the command as a shell startup argument.
+/// An ordinary terminal still loads the user's profile. The caller validates the command first.
+fn launch_shell_builder(initial_cmd: Option<&str>) -> CommandBuilder {
+    #[cfg(windows)]
+    if let Some(command) = initial_cmd {
+        let exe = crate::installer::find_pwsh()
+            .unwrap_or_else(|| crate::installer::system_tool("powershell"));
+        let mut builder = CommandBuilder::new(exe);
+        let (program, args) = command.split_once(char::is_whitespace).unwrap_or((command, ""));
+        let resolved = resolve_on_terminal_path(program).unwrap_or_else(|| program.to_string());
+        let command = format!("& '{}' {}", resolved.replace('\'', "''"), args);
+        builder.args(["-NoLogo", "-NoProfile", "-NoExit", "-Command", &command]);
+        return builder;
+    }
+    #[cfg(not(windows))]
+    let _ = initial_cmd;
+    shell_builder()
+}
+
 /// 无头自检：起一个 PTY 跑一条命令，把输出收集回来（验证 PATH 注入 + ConPTY 正常）。
 /// 给 `--term-test <cmd>` 用，不依赖 GUI / xterm。
 pub fn headless_run(cmd: &str, timeout_ms: u64) -> Result<String, String> {
@@ -912,7 +958,11 @@ pub async fn headless_session_test() -> Result<String, String> {
     for _ in 0..100 {
         sleep(100);
         if let Ok(actual) = std::fs::read_to_string(&cwd_result) {
-            cwd_ok = actual.trim() == selected_dir.to_string_lossy();
+            // PowerShell expands Windows 8.3 paths; compare the directories, not their spelling.
+            cwd_ok = match (std::fs::canonicalize(actual.trim()), std::fs::canonicalize(&selected_dir)) {
+                (Ok(actual), Ok(expected)) => actual == expected,
+                _ => false,
+            };
             break;
         }
     }
@@ -1163,69 +1213,6 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
     }
 }
 
-/// PowerShell 7 的准备状态（进程内共享）。
-///
-/// ★ 为什么要有这道闸：`ensure_pwsh` 要下 **106MB**。原来 `term_open_pty` 每次被调都无条件跑一遍
-/// —— 连开三个标签就是三个**并发**的 106MB 下载；而下载失败（慢网客户的常态）更糟：没有任何
-/// 失败记忆，**每开一个新终端就整个重来一次**，客户的体感就是「每次开终端都卡在下载上」。
-///
-/// 两件事：① 一把闸串行化 —— 后来的调用者等第一个下完，直接复用它的结果，不再重复下载；
-/// ② 失败后进冷却期，期内不再重试。**不是永久放弃** —— 网好了下一次照样会自己起来。
-#[cfg(windows)]
-struct PwshGate {
-    ready: bool,
-    failed_at: Option<std::time::Instant>,
-}
-
-#[cfg(windows)]
-fn pwsh_gate() -> &'static Mutex<PwshGate> {
-    static G: OnceLock<Mutex<PwshGate>> = OnceLock::new();
-    G.get_or_init(|| {
-        Mutex::new(PwshGate {
-            ready: false,
-            failed_at: None,
-        })
-    })
-}
-
-#[cfg(windows)]
-const PWSH_RETRY_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-
-/// 准备 PS7（**阻塞**，必须在 `spawn_blocking` 里调）。`say` 把进度打进发起这次的终端窗格。
-#[cfg(windows)]
-fn prepare_pwsh_once(say: &(dyn Fn(&str) + Send + Sync)) {
-    let mut g = match pwsh_gate().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    // 能走到这儿说明已经拿到闸：前一个调用者若已经下完，这里直接复用，不再下第二遍
-    if g.ready || crate::installer::find_pwsh().is_some() {
-        g.ready = true;
-        return;
-    }
-    if let Some(t) = g.failed_at {
-        if t.elapsed() < PWSH_RETRY_COOLDOWN {
-            say("\x1b[33m! 上次没能装上 PowerShell 7，本次先用系统自带的 5.1（稍后会自动再试）。\x1b[0m\n\n");
-            return;
-        }
-    }
-    say("\x1b[36m⏳ 正在准备 PowerShell 7 环境（仅首次，约 106MB，请稍候）…\x1b[0m\n");
-    let logger = |_lvl: &str, msg: &str| say(&format!("  {msg}\n"));
-    match crate::installer::ensure_pwsh(&logger, false) {
-        Ok(_) => {
-            g.ready = true;
-            g.failed_at = None;
-            say("\x1b[32m✓ PowerShell 7 就绪。\x1b[0m\n\n");
-        }
-        Err(e) => {
-            g.failed_at = Some(std::time::Instant::now());
-            say(&format!(
-                "\x1b[33m! 暂未能准备 PowerShell 7（{e}），本次先用系统自带 PowerShell 5.1。\x1b[0m\n\n"
-            ));
-        }
-    }
-}
-
 /// 起一个 PTY 会话。返回 session_id；输出通过 `on_data` Channel 流回前端。
 ///
 /// **不带 `#[tauri::command]`、且刻意不叫 `term_open`** —— 注册的是 `lib.rs` 里的
@@ -1259,23 +1246,8 @@ pub async fn term_open_pty(
 
     let resolved_cwd = resolve_cwd(cwd)?;
 
-    // 首次开终端且客户机没有 PowerShell 7 时，下发便携 PS7（很多老机器只有 5.1，中文易乱码、
-    // 无 PSReadLine）。进度直接写进本终端窗格（on_data 已就绪），下完这一次之后 shell_builder
-    // 里的 find_pwsh 就命中便携版、秒开。下载失败回落 5.1，终端照常能开。
-    #[cfg(windows)]
-    if crate::installer::find_pwsh().is_none() {
-        // 进度提示、成功/失败文案全部放进 prepare_pwsh_once —— 只有真要下载的那一次才刷屏，
-        // 后来的调用者拿到闸时已经就绪，安安静静秒开。
-        let on_data_log = on_data.clone();
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            let say = move |s: &str| {
-                let _ = on_data_log.send(s.replace('\n', "\r\n").into_bytes());
-            };
-            prepare_pwsh_once(&say);
-        })
-        .await;
-    }
-
+    // Opening a terminal is offline: use the installed shell or the Windows fallback.
+    // PowerShell upgrades belong to the explicit runtime installer.
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -1286,7 +1258,7 @@ pub async fn term_open_pty(
         })
         .map_err(|e| format!("openpty 失败: {e}"))?;
 
-    let mut builder = shell_builder();
+    let mut builder = launch_shell_builder(initial_cmd.as_deref());
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
     for (name, value) in tool_launch_env(initial_cmd.as_deref()) { builder.env(name, value); }
@@ -1419,6 +1391,7 @@ pub async fn term_open_pty(
     spawn_watchdog();
 
     // 待运行命令（白名单校验：放宽到带参命令，挡 shell 注入，见 validate_cmd）
+    #[cfg(not(windows))]
     if let Some(cmd) = initial_cmd {
         let mut line = cmd.into_bytes();
         line.extend_from_slice(b"\r\n");
@@ -1900,6 +1873,26 @@ pub fn openclaw_webui_url() -> String {
 mod tests {
     use super::{bat_escape_percent, codebuddy_default_env, parse_env_dump, sh_single_quote, term_open_pty, validate_cmd};
     use tauri::ipc::Channel;
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_launcher_ignores_unix_shims_and_respects_path_order() {
+        let root = std::env::temp_dir().join(format!("uking-launcher-path-{}", std::process::id()));
+        let first = root.join("demo's first folder");
+        let second = root.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(first.join("demo"), "#!/bin/sh\n").unwrap();
+        std::fs::write(first.join("demo.cmd"), "@echo demo").unwrap();
+        std::fs::write(second.join("demo.exe"), "demo fixture").unwrap();
+        let path = format!("{};{}", first.display(), second.display());
+        assert_eq!(super::resolve_on_path("demo", &path), Some(first.join("demo.cmd").display().to_string()));
+        std::fs::remove_file(first.join("demo.cmd")).unwrap();
+        assert_eq!(super::resolve_on_path("demo", &path), Some(second.join("demo.exe").display().to_string()));
+        assert_eq!(super::resolve_on_path("demo", &first.display().to_string()), None);
+        assert_eq!(super::resolve_on_path("", &path), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn requested_working_folder_never_silently_falls_back_to_home() {

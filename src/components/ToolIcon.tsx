@@ -1,26 +1,4 @@
-/**
- * 工具/模型品牌图标 —— 品牌 logo（SVG 资源，Vite 打包为 URL，<img> 渲染）。
- *
- * 着色规则：彩色 = 已装/可用；灰色 = 未装（CSS grayscale + 降透明度，无需备两套素材）。
- * OpenClaw 没有现成官方 SVG，用内联龙虾（品牌红）。自家产品用内联字形。其余按下面的来源分组用 logo 资源。
- *
- * 覆盖（来源以 NOTICE「Icon sources」段为准，这里只按来源性质分组）：
- *   官方站/官方仓库原件（<img> 资源，src/assets/logos/）：pi(pi.dev 官方标记 + 深色底块) /
- *       opencode(官方 mark，自带深色底) / qwenwork(千问办公) / workbuddy / uu-remote(UU远程，仅 64px PNG)。
- *   lobe-icons（MIT，第三方重绘，不是品牌方官方素材）：doubao(豆包)；另 claude / gemini / deepseek /
- *       kimi(moonshot) / glm(zhipu) / minimax 的 SVG 按 NOTICE 也是推断出自 lobe-icons，来源待核。
- *   来源待核：hermes(Nous Research 吉祥物头像 PNG)。
- *   内联组件：codex(lobe-icons 标记，单色 + 深色圆角块) / openclaw(clawx，龙虾) /
- *       自家品牌：xiapan(虾盘云) / harness-doctor(体检) / open365(电脑管家) / uu-switch(模型切换器)。
- *   未知 → 首字母方块兜底（例：crush / qwen-code / uking / obsidian）。
- *
- * Obsidian 故意不放图标：官方品牌页（obsidian.md/brand）明令不得改色/变形，商用须先联系官方；
- * 之前那份 lobe-icons 平涂单色版就是被改色的第三方重绘。拿到官方许可后，用官方站原件
- * （obsidian.md/images/obsidian-logo-gradient.svg）接入，并同步改 NOTICE。
- *
- * 图标来源与许可（含 lobe-icons MIT 声明）统一登记在仓库根目录 NOTICE 的「Icon sources」段；
- * 新增图标时同步更新那里。各 SVG 文件首行注释也写了来源。
- */
+/** Brand artwork is bundled locally. Sources and trademark attribution are in NOTICE. */
 import { useId } from "react";
 import claudeLogo from "../assets/logos/claude.svg";
 import openaiLogo from "../assets/logos/openai.svg";
@@ -28,7 +6,7 @@ import openaiLogo from "../assets/logos/openai.svg";
 // —— 白图标在浅色主题浅底上发暗/看不见（客户反馈「codex 图标是暗的」）。
 import geminiLogo from "../assets/logos/gemini.svg";
 import deepseekLogo from "../assets/logos/deepseek.svg";
-import kimiLogo from "../assets/logos/kimi.svg";
+import kimiLogo from "../assets/logos/kimi-code.png";
 import zhipuLogo from "../assets/logos/zhipu.svg";
 import minimaxLogo from "../assets/logos/minimax.svg";
 import hermesLogo from "../assets/logos/hermes.png"; // Nous Research 官方吉祥物头像
@@ -39,10 +17,27 @@ import qwenworkLogo from "../assets/logos/qwenwork.svg";
 import workbuddyLogo from "../assets/logos/workbuddy.svg";
 import uuRemoteLogo from "../assets/logos/uu-remote.png"; // 官网只有 64px 位图；2x 屏略糊，有矢量源再换
 
+import mimoLogo from "../assets/logos/mimo.svg";
+import codebuddyLogo from "../assets/logos/codebuddy.svg";
+import qoderLogo from "../assets/logos/qoder.svg";
+import grokLogo from "../assets/logos/grok.svg";
+import antigravityLogo from "../assets/logos/antigravity.svg";
+import museLogo from "../assets/logos/muse.ico";
+import obsidianLogo from "../assets/logos/obsidian.svg";
+import clawxLogo from "../assets/logos/clawx.svg";
+
 type Props = { tool: string; size?: number; active?: boolean; className?: string };
 
 /** tool/provider id → 官方 logo URL。 */
 const LOGO: Record<string, string> = {
+  "mimo-code": mimoLogo,
+  "codebuddy-code": codebuddyLogo,
+  "qoder-cn": qoderLogo,
+  "grok-build": grokLogo,
+  "muse-code": museLogo,
+  "antigravity-cli": antigravityLogo,
+  obsidian: obsidianLogo,
+  clawx: clawxLogo,
   claude: claudeLogo,
   openai: openaiLogo,
   gemini: geminiLogo,
@@ -205,7 +200,8 @@ function normTool(tool: string): string {
   const t = tool.toLowerCase();
   if (t.includes("claude")) return "claude";
   if (t.includes("codex") || t === "openai") return "codex";
-  if (t.includes("openclaw") || t === "clawx" || t.includes("claw")) return "openclaw";
+  if (t === "clawx") return "clawx";
+  if (t.includes("openclaw") || t.includes("claw")) return "openclaw";
   if (t.includes("hermes")) return "hermes";
   if (t === "dsh" || t.includes("deepseek-harness")) return "deepseek";
   if (t.includes("gemini")) return "gemini";
@@ -229,7 +225,7 @@ function normTool(tool: string): string {
   return t;
 }
 
-/** 一个工具/模型图标。active=false（未装）→ 灰显。 */
+/** 一个工具/模型图标。安装状态由卡片的下载标记表达，品牌素材始终保留原色。 */
 export function ToolIcon({ tool, size = 24, active = true, className = "" }: Props) {
   const id = normTool(tool);
   let inner: React.ReactNode;
@@ -261,7 +257,7 @@ export function ToolIcon({ tool, size = 24, active = true, className = "" }: Pro
         width={size}
         height={size}
         alt={id}
-        style={{ width: size, height: size, borderRadius: ROUNDED_IMG.has(id) ? "24%" : undefined }}
+        style={{ width: size, height: size, objectFit: "contain", borderRadius: ROUNDED_IMG.has(id) ? "24%" : undefined }}
       />
     );
   } else {
@@ -279,7 +275,9 @@ export function ToolIcon({ tool, size = 24, active = true, className = "" }: Pro
   return (
     <span
       className={"inline-flex items-center justify-center shrink-0 transition-all " + className}
-      style={active ? undefined : { filter: "grayscale(1)", opacity: 0.45 }}
+      data-tool-icon={id}
+      data-icon-source={LOGO[id] ? "brand" : "inline"}
+      data-installed={active}
       title={tool}
     >
       {inner}
