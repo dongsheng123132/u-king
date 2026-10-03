@@ -235,9 +235,9 @@ export function ToolHub({
   /** 页头次要链接「装机 · 体检 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
    *  （装机漏斗 + 体检/卸载）。 */
   onGoDoctor: () => void;
-  /** 详情条「想在 U-King 里用？」→「对话工作台」→ App.tsx 的 `setTab("chat")`。 */
+  /** 详情条「想在 U-King 里用？」→「在工作台对话」→ App.tsx 的 `setTab("chat")`。 */
   onGoChat: () => void;
-  /** 同上，→「终端工作台」→ App.tsx 的 `setTab("termwb")`。 */
+  /** 同上，→「在工作台开终端」→ App.tsx 的 `setTab("termwb")`（同一个工作台，落终端态）。 */
   onGoTermWb: () => void;
 }) {
   const { t: tr } = useI18n();
@@ -896,11 +896,11 @@ export function ToolHub({
         <div className="text-[11px] text-ink-3">
           {tr("想在 U-King 里用？")}{" "}
           <button data-testid="toolhub-go-chat" onClick={onGoChat} className="text-accent-400 hover:underline">
-            {tr("对话工作台")}
+            {tr("在工作台对话")}
           </button>
           {" · "}
           <button data-testid="toolhub-go-termwb" onClick={onGoTermWb} className="text-accent-400 hover:underline">
-            {tr("终端工作台")}
+            {tr("在工作台开终端")}
           </button>
         </div>
       </>

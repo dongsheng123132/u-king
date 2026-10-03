@@ -74,6 +74,12 @@ try {
   await page.locator('h1', { hasText: '我的 AI' }).waitFor();
   assert.equal(await page.evaluate(() => window.testCalls.filter(c => c.args?.request?.action_id === 'runtime.tool.inspect').length), 0, 'Rendering launch buttons must not trigger a full health inspection');
   const tile = id => page.locator(`[data-testid="toolhub-tile"][data-tool-id="${id}"]`);
+  // 收敛第 1 步（bd6d84231）起「可安装」区分成 推荐 / 更多 AI 工具 / 日常软件，后两组默认折叠：
+  // 先展开，下面才点得到那些瓷砖（进多选后会平铺，但图标检查在多选之前）。
+  for (const group of ['toolhub-group-more', 'toolhub-group-daily']) {
+    const toggle = page.getByTestId(group);
+    if (await toggle.count()) await toggle.click();
+  }
   for (const id of ['kimi-code', 'grok-build', 'mimo-code', 'codebuddy-code', 'qoder-cn', 'muse-code', 'antigravity-cli', 'obsidian', 'clawx']) {
     const icon = tile(id).locator('[data-icon-source="brand"] img');
     await icon.waitFor();

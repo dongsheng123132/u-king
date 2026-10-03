@@ -34,10 +34,10 @@ export const sidebar: Record<string, string> = {
   "技能市场 · 上手教程": "Skill market · Getting-started guide",
   "对话 + 终端 + 作图，一站干活": "Chat + terminal + image gen, all in one",
   "对话 · 终端 · 作图出片，一站干活": "Chat · Terminal · Create, all in one place",
-  "对话工作台": "Chat Workbench",
-  "U-Chat · 会话 · 看板 · 专家": "U-Chat · Sessions · Board · Experts",
-  "终端工作台": "Terminal Workbench",
-  "U-CLI · 同一批项目，只见终端": "U-CLI · Same projects, terminal only",
+  // 2026-10-03 收敛方案 2a：「对话工作台」「终端工作台」合成一个「工作台」入口，
+  // 旧的四条英文随入口一起删（恢复入口时要连这几条一起加回，见 Sidebar.tsx CORE 注释）。
+  "工作台": "Workbench",
+  "对话 · 终端 · 会话 · 看板": "Chat · Terminal · Sessions · Board",
   "U-Chat 对话 · U-CLI 终端 · 作图，一站干活": "U-Chat · U-CLI terminal · image gen, all in one",
   "AI 专家": "AI Experts",
   "挑个专家帮你干活 · 更多去 skillhub": "Pick an expert to work for you · more on skillhub",

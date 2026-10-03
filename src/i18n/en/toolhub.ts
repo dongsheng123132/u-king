@@ -89,8 +89,12 @@ export const toolhub: Record<string, string> = {
   "在 U-King 里打开": "Open inside U-King",
   // 详情条次要操作「体检修复」→ App.tsx 的 `setTab("myai")`（装机漏斗页）。
   "体检修复": "Checkup & repair",
-  // 详情条底部「想在 U-King 里用？」+「对话工作台」「终端工作台」两个链接引导。
+  // 详情条底部「想在 U-King 里用？」+「在工作台对话」「在工作台开终端」两个链接引导。
+  // 2026-10-03 收敛方案 2a：侧栏「对话工作台」「终端工作台」合成一个「工作台」，
+  // 这两个链接改成动词短语，落点仍是同一个工作台的对话态 / 终端态。
   "想在 U-King 里用？": "Want to use it inside U-King?",
+  "在工作台对话": "Chat in the Workbench",
+  "在工作台开终端": "Open a terminal in the Workbench",
 
   // 换模型下拉按钮在「读不到当前模型」时的两种文案（pi/opencode 这类回读失败/被挡住；
   // 「读取中…」复用中央字典已有条目）。不说「还没配模型」——读不到不等于没配。

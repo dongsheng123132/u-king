@@ -1102,7 +1102,12 @@ export function App() {
         <PanelBoundary name="sidebar" variant="chrome">
         <Sidebar
           active={tab}
-          onSelect={setTab}
+          // 2026-10-03 收敛方案 2a：侧栏只剩一个「工作台」入口（id=chat），termwb 是它的终端态。
+          // 已经在终端态（tab=termwb）时再点它**不切换**——一旦 setTab("chat")，下面 UWorkspace 的
+          // paneMode 会从 cli 变 chat，把所有会话从终端态收回对话态，等于点了一下就把用户的终端藏了。
+          // 想回对话态：点终端面板头的「展开对话列」，再点顶栏 [对话｜终端] 里的「对话」（页内操作，不动 tab）。
+          // 其余 tab 照常切换；从别的页点进来落对话态，ToolHub「在工作台开终端」仍直达 termwb。
+          onSelect={(next) => setTab((cur) => (cur === "termwb" && next === "chat" ? cur : next))}
           version={APP_VERSION}
           onShowChangelog={() => setChangelogOpen(true)}
           platform={env?.platform}
@@ -1143,7 +1148,7 @@ export function App() {
         </PanelBoundary>
 
         {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢）。
-            「对话工作台」（chat）和「终端工作台」（termwb）是**同一个 UWorkspace 实例**——
+            侧栏「工作台」的对话态（chat）和终端态（termwb）是**同一个 UWorkspace 实例**——
             同一批会话，唯一区别是 paneMode 决定每个会话默认停在对话态还是终端态（见 UWorkspace.tsx）。
             **绝不能渲染第二个 UWorkspace**：scripts/check-panel-boundary.mjs 要求它在本文件里只出现一次。 */}
         <main

@@ -6,9 +6,9 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-// 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）随入口撤下一并去掉，
-// 恢复入口时连同对应图标加回 import（见 MORE / LAB 里被注释的两行）。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, SquareTerminal, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
+// 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）/ SquareTerminal（终端工作台）
+// 随入口撤下一并去掉，恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
+import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Gauge, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sparkles, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -54,6 +54,18 @@ export type TabId =
 
 type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
 
+/**
+ * 侧栏高亮别名：这些 tab 已经**没有自己的侧栏项**（入口撤了或并进别的项），
+ * 激活它们时高亮它们所属的那一项——否则深链跳进去后侧栏一个高亮都没有，像迷路。
+ * 页面渲染分支一个没删，这里只管「谁亮」。
+ *
+ * 2026-10-03 收敛方案 §5 第 2 步按子步骤逐条加入，恢复某个入口时把对应行删掉即可。
+ */
+const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
+  // 2a：终端态的工作台仍是「工作台」这一项
+  termwb: "chat",
+};
+
 /** 核心 4 项 —— 按「客户每天真正干什么」排，不是按「我们做了什么」排。
  *
  * 0.9.83 依测试报告 #010 重排：原来 U-Workspace 排第三、「AI 设置」占着核心位。
@@ -98,11 +110,22 @@ const CORE: NavItem[] = [
   //   · **U-Chat** = 工作台里那个 GUI 对话框（`opencodex/Chat.tsx` + `panels/ChatPanel.tsx`）。
   //   · **U-CLI**  = 工作台里那个终端界面（`panels/TermPanel.tsx` + `term/useTermGroup.ts`）。
   // 面向客户的文案保留「对话 / 终端」这类人话，代号只用来**指认是哪一块**。
-  { id: "chat", label: "对话工作台", sub: "U-Chat · 会话 · 看板 · 专家", icon: MessageSquare },
+  //
+  // 🔴 2026-10-03 收敛方案 §5 第 2a 步：「对话工作台」「终端工作台」**合成一个「工作台」入口**。
+  // 两个入口本来就是同一个 UWorkspace 实例（App.tsx 里 chat / termwb 共用一个 <main>），页内顶栏
+  // 早有 [对话｜终端] 分段控件——侧栏再摆两条等于同一件事两个入口（§3.3）。
+  // 只动入口：`termwb` 这个 tab id 和 `paneMode` 逻辑原样保留（「我的 AI」详情条的
+  // 「在工作台开终端」仍 `setTab("termwb")` 直达终端态），`src/opencodex/` 一行没改——
+  // 终端 PTY 只在 TermPanel 卸载时才杀，入口合并碰不到它。激活 `termwb` 时本项照样高亮
+  // （见下方 NAV_ALIAS）；在 termwb 下再点本项**不切换**（App.tsx 的 onSelect 拦截），
+  // 否则 paneMode 会被推回 chat，把用户正在看的终端态会话全收回对话态。
+  { id: "chat", label: "工作台", sub: "对话 · 终端 · 会话 · 看板", icon: MessageSquare },
   // 「终端工作台」（2026-09-06 拆分自 U-Workspace）：跟「对话工作台」是**同一批会话**，
   // 同一份 SessionList/store —— 唯一区别是每个会话默认停在终端态（相当于自动收起
   // U-Chat 对话列，只见 U-CLI 终端）。不建第二套会话列表，见 UWorkspace.tsx 的 paneMode。
-  { id: "termwb", label: "终端工作台", sub: "U-CLI · 同一批项目，只见终端", icon: SquareTerminal },
+  // 2026-10-03 撤入口（见上）。恢复：解除下面这行注释，并把 `SquareTerminal` 加回顶部 lucide import，
+  // 同时把上面 chat 项改回「对话工作台」、把 NAV_ALIAS 里的 termwb 一行去掉。
+  // { id: "termwb", label: "终端工作台", sub: "U-CLI · 同一批项目，只见终端", icon: SquareTerminal },
   // 「AI 创作」2026-08-23 **回到核心位**（用户拍板：「客户希望留」）。
   //
   // 它 08-21 被 `6bb9409` 摘掉，理由写的是「它和 U-Chat 是同一件事的两个入口，收进
@@ -345,6 +368,8 @@ export function Sidebar({
   showTerminal?: boolean;
 }) {
   const { t, lang, setLang } = useI18n();
+  /** 高亮用的 tab：没有自己侧栏项的 tab 映射到所属项（见 NAV_ALIAS）。 */
+  const navActive: TabId = NAV_ALIAS[active] ?? active;
   /** 矮屏（1366×768 笔记本客户区 ≈ 696px）：这一栏装不下自己。见下方 `short &&` 各处。 */
   const { short } = useViewport();
   // 「AI 优化大师」：Windows 走 ukrt.exe 薄壳，macOS 走原生 macopt（lib.rs 路由，同一份 UI）。
@@ -355,13 +380,13 @@ export function Sidebar({
       : MORE;
 
   // 「更多」默认折叠；若当前页在「更多」组里则自动展开，保证高亮可见。
-  const activeInMore = moreItems.some((m) => m.id === active);
+  const activeInMore = moreItems.some((m) => m.id === navActive);
   const [moreOpen, setMoreOpen] = useState(activeInMore);
   const showMore = moreOpen || activeInMore;
 
   // 实验室同理：默认折叠，但当前页就在里面时必须自动展开 ——
   // 否则用户从别处（首页卡片、深链）跳进某个实验功能，侧栏会一个高亮都没有，像迷路。
-  const activeInLab = LAB.some((m) => m.id === active);
+  const activeInLab = LAB.some((m) => m.id === navActive);
   const [labOpen, setLabOpen] = useState(activeInLab);
   const showLab = labOpen || activeInLab;
 
@@ -405,7 +430,7 @@ export function Sidebar({
   // 图标统一 16px；选中态本来就是 bg-accent/12 + 左侧 2px accent 线 + ink-0 半粗名称 +
   // accent 图标，这次没改；普通悬停统一 bg-2。
   const NavButton = (n: NavItem, compact = false) => {
-    const on = active === n.id;
+    const on = navActive === n.id;
     const Icon = n.icon;
     return (
       <button
@@ -435,7 +460,7 @@ export function Sidebar({
   // 把整条侧栏从 208px 压到 52px，右侧终端/工作区拿到最大空间。
   if (railed) {
     const RailButton = (n: NavItem) => {
-      const on = active === n.id;
+      const on = navActive === n.id;
       const Icon = n.icon;
       return (
         <button
