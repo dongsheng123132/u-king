@@ -116,6 +116,10 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     ("chrome_missing:", "chrome_missing", Blame::User, false),
     ("browser_start_failed:", "browser_start_failed", Blame::User, false),
     ("version_mismatch:", "version_mismatch", Blame::User, false),
+    // 图片附件在发送前就已不在原位置：客户机实测，从截图工具窗口直接拖出的图是临时文件，
+    // 被系统清理后识图只会得到「找不到文件」。不归类的话落成 unknown+bug，被当成程序坏了去上报；
+    // 它其实是用户侧状态，处置是重新拖入这张图 —— 重试同一个路径永远是同一个答案。
+    ("image_missing:", "image_missing", Blame::User, false),
     // 读文档链（read-doc.py）两个转换器（markitdown / pandoc）全不在时的原话。
     // 🔴 这是**缺可选依赖**不是程序坏了：归 `bug` 会让 CLI / MCP / 远端影子去上报，
     // 而正确处置是引导客户装转换器。pc-*** 实测：CSV 一读，落到 unknown+bug 还带乱码。
@@ -278,6 +282,7 @@ fn hint_for(code: &str) -> &'static str {
         "chrome_missing" => "到「厨具工具箱」安装 Google Chrome 后再试",
         "browser_start_failed" => "Chrome 已安装但没能启动；重试启动，仍失败再查看错误详情或联系技术支持",
         "version_mismatch" => "浏览器运行时版本不匹配；在浏览器面板安装固定版本后再试",
+        "image_missing" => "图片文件已不在原位置 —— 让用户重新选一次图片，重试同一个路径没用",
         "refused" => "核心按规矩挡下了，不是故障 —— 换个做法，重试没用",
         "network" | "timeout" => "本机到网络这一段的问题，换网络或稍后重试",
         "upstream_transient" | "rate_limited" => "上游抖动，重试多半就好",
@@ -2031,6 +2036,17 @@ mod tests {
             assert!(!e.worth_reporting());
             assert!(!e.hint.is_empty());
         }
+
+        // 出处：客户机实测（2026-10-03）。截图工具拖出的临时图片被系统清掉后，每次发送都落到这句；
+        // 以前没归类，成了 unknown+bug。这是用户侧状态，重试同一个路径没用。
+        let e = ActionError::classify(
+            "image_missing: 图片文件已经不在原来的位置了（被移走、删除，或是截图工具自动清理掉的临时文件），请重新拖入这张图。",
+        );
+        assert_eq!(e.code, "image_missing");
+        assert_eq!(e.blame, Blame::User);
+        assert!(!e.retriable);
+        assert!(!e.worth_reporting());
+        assert!(!e.hint.is_empty());
 
         // 核心按规矩挡下的操作：**不是 bug**。归不上类的话会落成 blame=bug + code=unknown，
         // CLI / MCP / 远端影子看到会以为程序坏了去上报 —— 而它正是核心在正常工作。

@@ -601,4 +601,9 @@ export const workbench: Record<string, string> = {
   "有上次没跑成的任务": "Some tasks failed last time",
   "图片识别失败: {e}": "Image recognition failed: {e}",
   "⚠️ 图片识别失败：{e}。图片没有交给当前对话模型。": "⚠️ Image recognition failed: {e}. The image was not sent to the current chat model.",
+  // 图片附件暂存（PendingImages.tsx）：拖入当场复制副本，原文件被清掉也不影响；× 可自己摘掉
+  "⚠️ 图片「{name}」已经不在原来的位置了（被移走或删除），已从附件里去掉。重新拖入这张图再发送就行。":
+    "⚠️ Image \"{name}\" is no longer where it was (moved or deleted) and has been removed from attachments. Drag it in again and resend.",
+  "⚠️ 图片「{name}」没能附上：{e}": "⚠️ Couldn't attach image \"{name}\": {e}",
+  "移除图片 {name}": "Remove image {name}",
 };

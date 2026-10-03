@@ -12,7 +12,8 @@ import { FileEdit, Terminal as TermIcon, Eye, Globe, Wrench, RotateCcw, AlertTri
 import { DiffView } from "./DiffView";
 import { copyToClipboard } from "../../lib/clipboard";
 import { useDropZone, pathsToText } from "../../lib/fileDrop";
-import { describeImages, fileLabel, isImageFile } from "../../lib/vision";
+import { describeImages, fileLabel, ImageDescribeError, isImageFile, visionErrorText } from "../../lib/vision";
+import { PendingImageChips, usePendingImages } from "../PendingImages";
 import { MiniMd } from "../../lib/miniMd";
 import { QuickPrompts, type Best } from "../QuickPrompts";
 import { useComposerMenu } from "../ComposerMenu";
@@ -426,15 +427,19 @@ export function ChatPanel({
   }, [agent, codexProvider, codexModels, model]);
   // 拖文件/文件夹进对话 = 把真实路径贴进输入框（含空格自动加引号），跟内嵌终端一个套路。
   // dragDropEnabled:true 下 HTML5 拖放整体失效，必须走 Tauri 原生事件（useDropZone）。
-  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  // 图片不是只记路径：拖入当场复制成暂存副本（见 PendingImages.tsx），不然临时文件被系统清掉后这一轮就发不出去。
+  const { images: pendingImages, addImages, remove: removeImage, take: takeImages, restore: restoreImages } = usePendingImages({
+    setInput,
+    onStageError: (name, e) =>
+      setItems((prev) => [...prev, { kind: "text", role: "assistant", text: t("⚠️ 图片「{name}」没能附上：{e}", { name, e }) }]),
+  });
   const insertPaths = useCallback((paths: string[]) => {
     const images = paths.filter(isImageFile);
     const ordinary = paths.filter((p) => !isImageFile(p));
-    if (images.length) setPendingImages((old) => [...old, ...images.filter((p) => !old.includes(p))]);
-    const labels = images.map((p) => `【已附图片：${fileLabel(p)}，发送时先识图】`).join(" ");
-    setInput((v) => [v.trimEnd(), ordinary.length ? pathsToText(ordinary).trimEnd() : "", labels].filter(Boolean).join(" ") + " ");
+    if (ordinary.length) setInput((v) => [v.trimEnd(), pathsToText(ordinary).trimEnd()].filter(Boolean).join(" ") + " ");
+    if (images.length) void addImages(images);
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
+  }, [addImages]);
   const { ref: dropRef, over: dragOver } = useDropZone<HTMLDivElement>(insertPaths);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState<ReadyState>(null);
@@ -653,20 +658,25 @@ export function ChatPanel({
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || busy) return;
-    const images = pendingImages;
+    const images = takeImages();
     setInput("");
-    setPendingImages([]);
     let prepared = text;
     try {
-      if (images.length) prepared += `\n\n${await describeImages(images, text)}`;
+      if (images.length) prepared += `\n\n${await describeImages(images.map((i) => i.path), text)}`;
     } catch (e) {
-      setInput(text);
-      setPendingImages(images);
-      setItems((prev) => [...prev, { kind: "text", role: "assistant", text: t("⚠️ 图片识别失败：{e}。图片没有交给当前对话模型。", { e: String(e) }) }]);
+      const say = (msg: string) => setItems((prev) => [...prev, { kind: "text", role: "assistant", text: msg }]);
+      if (e instanceof ImageDescribeError && e.code === "image_missing") {
+        // 这张图已经没了：把它从附件和文字里摘掉再放回其余内容，不然用户只会对着同一张坏图一遍遍失败。
+        restoreImages(text, images, e.image);
+        say(t("⚠️ 图片「{name}」已经不在原来的位置了（被移走或删除），已从附件里去掉。重新拖入这张图再发送就行。", { name: fileLabel(e.image) }));
+      } else {
+        restoreImages(text, images);
+        say(t("⚠️ 图片识别失败：{e}。图片没有交给当前对话模型。", { e: visionErrorText(e) }));
+      }
       return;
     }
     await runTurn(prepared);
-  }, [input, busy, runTurn, pendingImages, t]);
+  }, [input, busy, runTurn, takeImages, restoreImages, t]);
 
   /**
    * 护照交接的第一轮：宿主投进来一段状态，这里发一次就够。
@@ -864,6 +874,7 @@ export function ChatPanel({
         {/* 输入框卡片（WorkBuddy / Codex 式）：左下角是能力，右下角是动作。
             工具条上的每一项都必须能真改变这一轮怎么跑 —— 摆好看的一律不要。 */}
         <div className="max-w-2xl mx-auto">
+          <PendingImageChips images={pendingImages} onRemove={removeImage} />
           <Composer
             value={input}
             onChange={setInput}

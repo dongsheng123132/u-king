@@ -23,7 +23,8 @@ import { useViewport } from "../lib/useViewport";
 import { XIAPAN_MODELS, priceyModelHint } from "../lib/models";
 import { copyToClipboard } from "../lib/clipboard";
 import { useDropZone, pathsToText } from "../lib/fileDrop";
-import { describeImages, fileLabel, isImageFile } from "../lib/vision";
+import { describeImages, fileLabel, ImageDescribeError, isImageFile, visionErrorText } from "../lib/vision";
+import { PendingImageChips, usePendingImages } from "./PendingImages";
 import { MiniMd } from "../lib/miniMd";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
 import { FilesPanel } from "./panels/FilesPanel";
@@ -483,15 +484,18 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
 
   // 拖文件/文件夹进对话 = 把真实路径贴进输入框（含空格自动加引号），跟内嵌终端一个套路。
   // dragDropEnabled:true 下 HTML5 拖放整体失效，必须走 Tauri 原生事件（useDropZone）。
-  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  // 图片不是只记路径：拖入/粘贴当场复制成暂存副本（见 PendingImages.tsx），不然临时文件被系统清掉后这一轮就发不出去。
+  const { images: pendingImages, addImages, remove: removeImage, take: takeImages, restore: restoreImages } = usePendingImages({
+    setInput,
+    onStageError: (name, e) => onToast?.(t("⚠️ 图片「{name}」没能附上：{e}", { name, e })),
+  });
   const insertPaths = useCallback((paths: string[]) => {
     const images = paths.filter(isImageFile);
     const ordinary = paths.filter((p) => !isImageFile(p));
-    if (images.length) setPendingImages((old) => [...old, ...images.filter((p) => !old.includes(p))]);
-    const labels = images.map((p) => `【已附图片：${fileLabel(p)}，发送时先识图】`).join(" ");
-    setInput((v) => [v.trimEnd(), ordinary.length ? pathsToText(ordinary).trimEnd() : "", labels].filter(Boolean).join(" ") + " ");
+    if (ordinary.length) setInput((v) => [v.trimEnd(), pathsToText(ordinary).trimEnd()].filter(Boolean).join(" ") + " ");
+    if (images.length) void addImages(images);
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
+  }, [addImages]);
   const { ref: dropRef, over: dragOver } = useDropZone<HTMLDivElement>(insertPaths);
 
   // 粘贴图片（Ctrl+V 截图）= 落盘转路径、走跟拖图片一样的 insertPaths（同一套 pendingImages/识图流程），
@@ -924,21 +928,25 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
           : t("还没拿到设备 Key，稍等一下再试"),
       );
     }
-    const images = pendingImages;
+    const images = takeImages();
     setInput("");
-    setPendingImages([]);
     let prepared = text;
     try {
-      if (images.length) prepared += `\n\n${await describeImages(images, text)}`;
+      if (images.length) prepared += `\n\n${await describeImages(images.map((i) => i.path), text)}`;
     } catch (e) {
-      setInput(text);
-      setPendingImages(images);
-      onToast?.(t("图片识别失败: {e}", { e: String(e) }));
+      if (e instanceof ImageDescribeError && e.code === "image_missing") {
+        // 这张图已经没了：把它从附件和文字里摘掉再放回其余内容，不然用户只会对着同一张坏图一遍遍失败。
+        restoreImages(text, images, e.image);
+        onToast?.(t("⚠️ 图片「{name}」已经不在原来的位置了（被移走或删除），已从附件里去掉。重新拖入这张图再发送就行。", { name: fileLabel(e.image) }));
+      } else {
+        restoreImages(text, images);
+        onToast?.(t("图片识别失败: {e}", { e: visionErrorText(e) }));
+      }
       return;
     }
     if (busy) { setQueue((q) => [...q, prepared]); return; } // 忙 → 入队
     void runChat(prepared);
-  }, [input, busy, runChat, onToast, t, pendingImages]);
+  }, [input, busy, runChat, onToast, t, takeImages, restoreImages]);
   useEffect(() => {
     // 空闲且有排队 → 自动发下一条
     if (!busy && queue.length > 0) {
@@ -1387,6 +1395,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
             {/* 输入框卡片（WorkBuddy / Codex 式）：左下角能力（+ 附件 · 模型 · 审批档），
                 右下角动作（清空 · 发送）。跟 Claude/Codex 那侧是**同一个外壳组件**。
                 忙的时候不禁用输入：这边有提示词队列，边跑边写下一条是它的用法。 */}
+            <PendingImageChips images={pendingImages} onRemove={removeImage} />
             <Composer
               value={input}
               onChange={setInput}

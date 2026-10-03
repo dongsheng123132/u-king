@@ -5,17 +5,29 @@
 
 use serde::Serialize;
 use std::{
+    ffi::{OsStr, OsString},
     io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Arc, Mutex, OnceLock,
+    },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const MAX_BYTES: u64 = 20 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(180);
+/// 附件暂存目录（系统临时目录下）。粘贴图片的 `uking-paste` 由 `fs::save_pasted_image` 管，这里只认它是「自己人」。
+const STAGE_DIR: &str = "uking-attach";
+const PASTE_DIR: &str = "uking-paste";
+/// 复制一张 ≤20MB 的图正常是毫秒级；超过这个数基本是 OneDrive「仅在线」文件在现下载。
+const STAGE_TIMEOUT: Duration = Duration::from_secs(60);
+/// 暂存副本保留多久。对话里一张图从拖入到发送不会隔几天，3 天足够宽松又不堆积。
+const STAGE_KEEP: Duration = Duration::from_secs(3 * 24 * 3600);
+static STAGE_SEQ: AtomicU64 = AtomicU64::new(0);
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"];
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,9 +60,16 @@ fn checked_image(path: &str) -> Result<PathBuf, String> {
     if !is_image_path(path) {
         return Err("只支持 PNG/JPG/WEBP/GIF/BMP/HEIC 图片；普通文件会按原样交给对话。".into());
     }
-    let p = Path::new(path)
-        .canonicalize()
-        .map_err(|e| format!("找不到图片文件: {e}"))?;
+    let p = Path::new(path).canonicalize().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            // 客户机实测：从截图工具窗口直接拖出的图是临时文件，过一阵会被系统清掉。
+            // 不拼系统原文 —— 它跟着系统语言走（法语系统上是法语），既看不懂也没法归类；
+            // `image_missing:` 前缀交给 actions::ERR_RULES 归成「用户侧、不可重试」。
+            "image_missing: 图片文件已经不在原来的位置了（被移走、删除，或是截图工具自动清理掉的临时文件），请重新拖入这张图。".to_string()
+        } else {
+            format!("读取图片路径失败: {e}")
+        }
+    })?;
     let meta = std::fs::metadata(&p).map_err(|e| format!("读取图片属性失败: {e}"))?;
     if !meta.is_file() {
         return Err("图片路径必须是一个普通文件。".into());
@@ -59,6 +78,130 @@ fn checked_image(path: &str) -> Result<PathBuf, String> {
         return Err(format!("图片超过 20MB（当前 {}MB），请先压缩后再发。", meta.len() / 1024 / 1024));
     }
     Ok(p)
+}
+
+// ───────────────────────── 附件暂存 ─────────────────────────
+//
+// 拖入对话的图片原先只记下拖放时的路径，到发送那一刻才去读。客户机实测：从截图工具窗口直接
+// 拖出来的是临时文件，用过几次后被系统清掉，此后每次发送都「找不到文件」，这一轮永远发不出去。
+// 所以图片一拖入就复制一份到我们自己的目录，后面识图读的是副本，原文件之后怎么样都不相干。
+
+/// `p`（须是已 canonicalize 的路径）是否落在 `base` 之下。
+/// Windows 上 canonicalize 带 `\\?\` 前缀，所以 `base` 也要 canonicalize 才可比；`base` 不存在就当不在其下。
+fn is_under(base: &Path, p: &Path) -> bool {
+    base.canonicalize().map(|b| p.starts_with(b)).unwrap_or(false)
+}
+
+/// 把拖入/选择的图片复制成一份暂存副本，返回副本的路径（之后识图、展示都用它）。
+/// 已经是我们自己的副本（暂存目录或粘贴图片目录里）就原样返回，不重复复制。
+pub fn stage_image(path: &str) -> Result<String, String> {
+    stage_image_in(&std::env::temp_dir().join(STAGE_DIR), path)
+}
+
+/// [`stage_image`] 的可测试内核：暂存根目录由参数给，测试传自建的临时目录
+/// （不用环境变量覆盖 —— cargo test 并行跑，环境变量是进程级的会串）。
+fn stage_image_in(root: &Path, path: &str) -> Result<String, String> {
+    // 复用识图前的同一套校验：扩展名 / 存在 / 普通文件 / ≤20MB。
+    let src = checked_image(path)?;
+    if is_under(root, &src) || is_under(&std::env::temp_dir().join(PASTE_DIR), &src) {
+        return Ok(path.to_string());
+    }
+    // 保留原文件名：界面标签和识图结果的 source 都靠它。
+    let name: OsString = Path::new(path)
+        .file_name()
+        .or_else(|| src.file_name())
+        .map(OsStr::to_os_string)
+        .ok_or_else(|| "读取图片文件名失败".to_string())?;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let seq = STAGE_SEQ.fetch_add(1, Ordering::Relaxed);
+    // 每张图独占一个子目录：不同来源的同名文件（常见的 image.png）不会互相覆盖。
+    let dir = root.join(format!("{stamp}-{}-{seq}", std::process::id()));
+    let dest = dir.join(&name);
+
+    // 复制放线程里、这边带超时等：OneDrive「仅在线」文件一复制就会触发下载，能卡很久，
+    // 不能让它把调用方（进而把界面里的发送按钮）一直拖着。
+    let (tx, rx) = mpsc::channel::<Result<(), String>>();
+    let worker = {
+        let (dir, root) = (dir.clone(), root.to_path_buf());
+        thread::Builder::new().name("uking-stage-image".into()).spawn(move || {
+            let r = copy_into(&src, &dir, &name);
+            if tx.send(r).is_err() {
+                // 调用方已经超时走人了，这份迟到的副本没人会用。
+                let _ = std::fs::remove_dir_all(&dir);
+            }
+            prune_stale(&root, STAGE_KEEP);
+        })
+    };
+    if let Err(e) = worker {
+        return Err(format!("启动复制图片任务失败: {e}"));
+    }
+    match rx.recv_timeout(STAGE_TIMEOUT) {
+        Ok(Ok(())) => Ok(dest.display().to_string()),
+        Ok(Err(e)) => Err(e),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            let _ = std::fs::remove_dir_all(&dir);
+            Err("复制图片超过 60 秒还没完成（如果是 OneDrive「仅在线」文件，先在资源管理器里右键「始终保留在此设备上」再拖）。".into())
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = std::fs::remove_dir_all(&dir);
+            Err("复制图片的任务意外中断，请重新拖入这张图。".into())
+        }
+    }
+}
+
+/// 复制到 `dir/name`；任何一步失败都尽力把整个唯一子目录删掉，不留半截文件。
+fn copy_into(src: &Path, dir: &Path, name: &OsStr) -> Result<(), String> {
+    let r = copy_verified(src, dir, name);
+    if r.is_err() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    r
+}
+
+fn copy_verified(src: &Path, dir: &Path, name: &OsStr) -> Result<(), String> {
+    let want = std::fs::metadata(src).map_err(|e| format!("读取图片属性失败: {e}"))?.len();
+    std::fs::create_dir_all(dir).map_err(|e| format!("建暂存目录失败: {e}"))?;
+    // 先写 `.part` 再 rename：正式文件名一旦出现，内容就一定是完整的。
+    let mut part_name = OsString::from(".");
+    part_name.push(name);
+    part_name.push(".part");
+    let part = dir.join(part_name);
+    let copied = std::fs::copy(src, &part).map_err(|e| format!("复制图片失败: {e}"))?;
+    let on_disk = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    if copied != want || on_disk != want {
+        return Err(format!("复制图片不完整（应为 {want} 字节，实际 {on_disk} 字节），请重新拖入这张图。"));
+    }
+    std::fs::rename(&part, dir.join(name)).map_err(|e| format!("保存图片副本失败: {e}"))
+}
+
+/// 尽力清掉 `root` 下修改时间超过 `max_age` 的暂存子目录；失败一律忽略，不阻塞任何人。
+fn prune_stale(root: &Path, max_age: Duration) {
+    let Ok(rd) = std::fs::read_dir(root) else { return };
+    for e in rd.flatten() {
+        let old = e
+            .metadata()
+            .ok()
+            .filter(|m| m.is_dir())
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.elapsed().ok())
+            .map(|d| d >= max_age)
+            .unwrap_or(false);
+        if old {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
+/// 前端「拖入/粘贴图片」调用：把图片暂存成副本并返回副本路径。
+/// 这是界面附件管道，不是业务动作，所以不进 ActionSpec 动作表。
+///
+/// **必须 async + spawn_blocking**：复制可能很慢（见 [`stage_image_in`]），同步 command 会跑在主线程上冻住界面
+/// （同 lib.rs 里 `list_tools` 那段注释的道理）。
+#[tauri::command]
+pub async fn stage_image_attachment(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || stage_image(&path))
+        .await
+        .map_err(|e| format!("暂存图片任务失败: {e}"))?
 }
 
 fn temp_script_path() -> PathBuf {
@@ -186,5 +329,128 @@ mod tests {
     #[test]
     fn error_redacts_key_like_tokens() {
         assert!(!trim_error("bad sk-secret-value").contains("sk-secret-value"));
+    }
+
+    /// 测试用的唯一临时目录，Drop 时清理（断言失败也会清）。
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new(tag: &str) -> Self {
+            let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+            let seq = STAGE_SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("uking-vision-test-{tag}-{}-{nonce}-{seq}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("建临时目录失败 {}: {e}", dir.display()));
+            Scratch(dir)
+        }
+        fn path(&self) -> &Path { &self.0 }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    }
+
+    const FAKE_PNG: &[u8] = b"\x89PNG\r\n\x1a\nfake-image-bytes";
+
+    fn subdirs(root: &Path) -> Vec<PathBuf> {
+        std::fs::read_dir(root)
+            .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn stage_copies_keeps_name_and_survives_source_removal() {
+        let tmp = Scratch::new("copy");
+        let src_dir = tmp.path().join("src");
+        let root = tmp.path().join("root");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let name = "Capture d'écran 2026-10-03 175508.png";
+        let src = src_dir.join(name);
+        std::fs::write(&src, FAKE_PNG).unwrap();
+
+        let staged = stage_image_in(&root, src.to_str().unwrap()).unwrap();
+        assert!(!staged.starts_with(r"\\?\"), "返回的不应是 \\\\?\\ 形式：{staged}");
+        assert_eq!(Path::new(&staged).file_name().and_then(|s| s.to_str()), Some(name));
+        assert!(Path::new(&staged).starts_with(&root));
+        assert_eq!(std::fs::read(&staged).unwrap(), FAKE_PNG);
+        // 正式名出现时 .part 一定已经 rename 掉了。
+        let dir = Path::new(&staged).parent().unwrap();
+        assert_eq!(std::fs::read_dir(dir).unwrap().count(), 1, "暂存目录里不该留 .part");
+
+        // 这就是这次要修的场景：源文件被系统清掉之后，副本照样能过识图前的校验。
+        std::fs::remove_file(&src).unwrap();
+        assert!(checked_image(path_str(&src)).unwrap_err().starts_with("image_missing:"));
+        assert!(checked_image(&staged).is_ok());
+    }
+
+    fn path_str(p: &Path) -> &str { p.to_str().unwrap() }
+
+    #[test]
+    fn stage_missing_source_is_image_missing() {
+        let tmp = Scratch::new("missing");
+        let root = tmp.path().join("root");
+        let gone = tmp.path().join("gone.png");
+        let err = stage_image_in(&root, path_str(&gone)).unwrap_err();
+        assert!(err.starts_with("image_missing:"), "{err}");
+        assert!(!err.contains("os error"), "不该拼系统原文：{err}");
+        assert!(!root.exists(), "校验失败时不该建暂存目录");
+    }
+
+    #[test]
+    fn stage_is_idempotent_for_files_already_under_root() {
+        let tmp = Scratch::new("idem");
+        let root = tmp.path().join("root");
+        let src = tmp.path().join("a.png");
+        std::fs::write(&src, FAKE_PNG).unwrap();
+
+        let staged = stage_image_in(&root, path_str(&src)).unwrap();
+        assert_eq!(subdirs(&root).len(), 1);
+        let again = stage_image_in(&root, &staged).unwrap();
+        assert_eq!(again, staged, "已是自己的副本就原样返回");
+        assert_eq!(subdirs(&root).len(), 1, "不该再新增子目录");
+    }
+
+    #[test]
+    fn stage_leaves_paste_copies_alone() {
+        // 粘贴图片已经是 save_pasted_image 落的自家副本，不该再复制一遍。
+        let paste = std::env::temp_dir().join(PASTE_DIR);
+        let existed = paste.exists();
+        std::fs::create_dir_all(&paste).unwrap();
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let file = paste.join(format!("test-stage-{}-{nonce}.png", std::process::id()));
+        std::fs::write(&file, FAKE_PNG).unwrap();
+
+        let tmp = Scratch::new("paste");
+        let root = tmp.path().join("root");
+        let r = stage_image_in(&root, path_str(&file));
+        let _ = std::fs::remove_file(&file);
+        if !existed { let _ = std::fs::remove_dir(&paste); }
+        assert_eq!(r.unwrap(), path_str(&file));
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn stage_rejects_non_image_extension() {
+        let tmp = Scratch::new("ext");
+        let root = tmp.path().join("root");
+        for name in ["notes.txt", "a.png.exe", "noext"] {
+            let f = tmp.path().join(name);
+            std::fs::write(&f, b"hello").unwrap();
+            let err = stage_image_in(&root, path_str(&f)).unwrap_err();
+            assert!(err.contains("只支持"), "{name}: {err}");
+        }
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn prune_removes_only_expired_dirs() {
+        let tmp = Scratch::new("prune");
+        let root = tmp.path().join("root");
+        std::fs::create_dir_all(root.join("one")).unwrap();
+        std::fs::write(root.join("one").join("a.png"), FAKE_PNG).unwrap();
+        std::fs::write(root.join("stray.txt"), b"x").unwrap();
+
+        prune_stale(&root, Duration::from_secs(3600));
+        assert!(root.join("one").exists(), "没到期的不能动");
+        prune_stale(&root, Duration::ZERO);
+        assert!(!root.join("one").exists());
+        assert!(root.join("stray.txt").exists(), "只清子目录，不碰散落文件");
     }
 }

@@ -10469,6 +10469,7 @@ pub fn run() {
             fs::read_text_file,
             fs::read_file_data_url,
             fs::save_pasted_image,
+            vision::stage_image_attachment,
             fs::produced_file_info,
             fs::open_produced_file,
             fs::reveal_produced_file,
