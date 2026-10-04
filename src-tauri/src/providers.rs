@@ -224,61 +224,6 @@ pub fn xiapan_codex_model() -> String {
         .unwrap_or_else(|| "deepseek-v4-flash-codex".into())
 }
 
-/// Resolve a provider for the isolated OpenClaw2 adapter. This is deliberately
-/// read-only: it neither calls `apply_provider` nor changes any shared tool
-/// configuration. `device_key` is supplied by lib.rs, the composition root.
-pub(crate) fn resolve_openai_route_for_openclaw2(
-    provider_id: &str,
-    model_override: Option<&str>,
-    explicit_key: Option<&str>,
-    device_key: Option<&str>,
-) -> Result<crate::model_route::OpenClaw2ModelRoute, String> {
-    let provider = all_providers()
-        .into_iter()
-        .find(|p| p.id == provider_id)
-        .ok_or("invalid_input: OpenClaw2 未知 provider_id")?;
-    let base = provider.openai_base.trim().to_string();
-    let model = model_override
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| value.trim().to_string())
-        .unwrap_or_else(|| provider.model.trim().to_string());
-    if provider.id == "official" || base.is_empty() || model.is_empty() {
-        return Err("invalid_input: OpenClaw2 provider 必须有 OpenAI endpoint 和对话模型".into());
-    }
-    let (key, key_source) = if let Some(key) = explicit_key.filter(|key| !key.trim().is_empty()) {
-        (key.trim().to_string(), "explicit")
-    } else if provider.builtin_recharge && is_xiapan_endpoint(&base) {
-        let key = device_key
-            .filter(|key| !key.trim().is_empty())
-            .ok_or("not_ready: OpenClaw2 虾盘云设备钱包不可用")?;
-        (key.trim().to_string(), "device_wallet")
-    } else if !provider.builtin && !provider.api_key.trim().is_empty() {
-        (provider.api_key.trim().to_string(), "stored")
-    } else if is_loopback_openai_base(&base) {
-        ("openclaw2-loopback".into(), "loopback_placeholder")
-    } else {
-        return Err("invalid_input: OpenClaw2 远程 provider 需要显式或已保存 API Key".into());
-    };
-    Ok(crate::model_route::OpenClaw2ModelRoute {
-        source_id: provider.id,
-        source_name: provider.name,
-        base,
-        model,
-        key,
-        key_source: key_source.into(),
-    })
-}
-
-fn is_loopback_openai_base(base: &str) -> bool {
-    let lower = base.trim().to_ascii_lowercase();
-    let Some((scheme, rest)) = lower.split_once("://") else { return false };
-    if scheme != "http" && scheme != "https" { return false; }
-    let host = rest.split(['/', '?', '#', '\\']).next().unwrap_or("")
-        .rsplit_once('@').map(|(_, host)| host).unwrap_or(rest);
-    let host = host.split(':').next().unwrap_or(host).trim_matches(['[', ']']);
-    matches!(host, "localhost" | "127.0.0.1" | "::1")
-}
-
 /// 给对话页「委派 `claude -p` / `codex exec`」用：把虾盘云端点 + 对话当前 Key 拼成子进程 env，
 /// 让委派出去的编程 agent **免配置**直接用同一套计费（客户没单独配过 Claude/Codex 也能跑通）。
 /// 端点和模型**全部**读虾盘云 preset —— 这里曾经把 ANTHROPIC_MODEL 单独写死成 `deepseek-v4-pro`
@@ -11326,24 +11271,5 @@ mod draw_route_tests {
             let json = serde_json::to_string(&v).unwrap();
             assert!(!json.contains("sk-secret-abc"), "回显把 Key 带出去了：{json}");
         });
-    }
-
-    #[test]
-    fn openclaw2_route_uses_chat_model_and_fail_closed_key_order() {
-        let xiapan = resolve_openai_route_for_openclaw2("xiapan", None, Some("explicit-key"), Some("device-key")).unwrap();
-        let default_chat_model = builtin_providers()
-            .into_iter()
-            .find(|p| p.id == "xiapan")
-            .map(|p| p.model)
-            .expect("内置虾盘云 preset 必须存在");
-        assert_eq!(xiapan.model, default_chat_model, "OpenClaw2 不得使用 codex_model");
-        assert_eq!(xiapan.key_source, "explicit");
-        let wallet = resolve_openai_route_for_openclaw2("xiapan", None, None, Some("device-key")).unwrap();
-        assert_eq!(wallet.key_source, "device_wallet");
-        assert!(resolve_openai_route_for_openclaw2("official", None, None, None).is_err());
-        assert!(resolve_openai_route_for_openclaw2("deepseek", None, None, None).is_err());
-        assert!(resolve_openai_route_for_openclaw2("deepseek", None, None, Some("device-key")).is_err(), "第三方 provider 不得借用设备钱包 key");
-        let local = resolve_openai_route_for_openclaw2("ollama", None, None, None).unwrap();
-        assert_eq!(local.key_source, "loopback_placeholder");
     }
 }

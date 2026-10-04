@@ -315,12 +315,6 @@ pub const FOOTPRINT_INSPECT: &str = "runtime.footprint.inspect";
 pub const TOOLBOX_INSPECT: &str = "runtime.toolbox.inspect";
 pub const HERMES_BROWSER_INSPECT: &str = "runtime.hermes_browser.inspect";
 pub const CLAWX_INSPECT: &str = "runtime.clawx.inspect";
-pub const OPENCLAW2_INSPECT: &str = "runtime.openclaw2.inspect";
-pub const OPENCLAW2_INSTALL: &str = "runtime.openclaw2.install";
-pub const OPENCLAW2_PREPARE: &str = "runtime.openclaw2.prepare";
-pub const OPENCLAW2_PREFLIGHT: &str = "runtime.openclaw2.preflight";
-pub const OPENCLAW2_LAUNCH: &str = "runtime.openclaw2.launch";
-pub const OPENCLAW2_CONFIGURE_MODEL: &str = "runtime.openclaw2.configure_model";
 pub const USB_GENIE_INSPECT: &str = "runtime.usb_genie.inspect";
 pub const USB_GENIE_DEPLOY: &str = "runtime.usb_genie.deploy";
 pub const USB_GENIE_VERIFY: &str = "runtime.usb_genie.verify";
@@ -399,7 +393,7 @@ pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
     MODEL_CATALOG_INSPECT, HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, HERMES_BROWSER_INSPECT,
-    CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT,
+    CLAWX_INSPECT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT,

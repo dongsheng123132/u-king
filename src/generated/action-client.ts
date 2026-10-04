@@ -89,18 +89,6 @@ export const ACTION = {
   RUNTIME_MODEL_CATALOG_INSPECT: "runtime.model_catalog.inspect",
   /** Read system proxy, process and terminal-shell proxy variables and WSL bridge settings, and check whether local loopback proxy ports are actually listening. Never contacts an external network or changes the machine. */
   RUNTIME_NETWORK_INSPECT: "runtime.network.inspect",
-  /** Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned. */
-  RUNTIME_OPENCLAW2_CONFIGURE_MODEL: "runtime.openclaw2.configure_model",
-  /** Read only U-King's private OpenClaw 2 runtime and state. It never probes ClawX or legacy OpenClaw paths. */
-  RUNTIME_OPENCLAW2_INSPECT: "runtime.openclaw2.inspect",
-  /** Download and verify U-King's pinned private Node and OpenClaw 2 runtime. It never changes PATH, global npm, shims, ClawX, or legacy OpenClaw. */
-  RUNTIME_OPENCLAW2_INSTALL: "runtime.openclaw2.install",
-  /** Launch only U-King's private OpenClaw 2 profile under external supervision. It refuses an externally owned port and never exposes the gateway token. */
-  RUNTIME_OPENCLAW2_LAUNCH: "runtime.openclaw2.launch",
-  /** Run only the private OpenClaw 2 doctor's lint JSON check, plus private gateway RPC status when it is running. It never repairs or migrates anything. */
-  RUNTIME_OPENCLAW2_PREFLIGHT: "runtime.openclaw2.preflight",
-  /** Atomically create U-King's private OpenClaw 2 profile, state, workspace, and token. Existing incompatible configuration is refused rather than overwritten. */
-  RUNTIME_OPENCLAW2_PREPARE: "runtime.openclaw2.prepare",
   /** Run one forward-only repair from the optimizer (fix / optimize / defender) and return its human-readable report. Records a before/after doctor score anchor, so the effect is auditable afterwards. `undo` is deliberately not offered here: it peels one journal layer per call and is therefore not replay-safe. */
   RUNTIME_OPTIMIZER_APPLY: "runtime.optimizer.apply",
   /** Run the read-only optimizer doctor (ukrt on Windows, native on macOS) and return its report. Reads only. */
@@ -218,12 +206,6 @@ export type ActionInputMap = {
   "runtime.localllm.stop": { engine: "ollama" | "llamacpp"; expected_state_version?: string; };
   "runtime.model_catalog.inspect": Record<string, never>;
   "runtime.network.inspect": Record<string, never>;
-  "runtime.openclaw2.configure_model": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
-  "runtime.openclaw2.inspect": Record<string, never>;
-  "runtime.openclaw2.install": { expected_state_version?: string; };
-  "runtime.openclaw2.launch": { expected_state_version?: string; };
-  "runtime.openclaw2.preflight": Record<string, never>;
-  "runtime.openclaw2.prepare": { expected_state_version?: string; port?: number; };
   "runtime.optimizer.apply": { action: "fix" | "optimize" | "defender"; expected_state_version?: string; };
   "runtime.optimizer.inspect": Record<string, never>;
   "runtime.origin.inspect": { compiled?: boolean; task_id?: string; };
@@ -304,12 +286,6 @@ export type ActionOutputMap = {
   "runtime.localllm.stop": Record<string, unknown>;
   "runtime.model_catalog.inspect": Record<string, unknown>;
   "runtime.network.inspect": Record<string, unknown>;
-  "runtime.openclaw2.configure_model": Record<string, unknown>;
-  "runtime.openclaw2.inspect": Record<string, unknown>;
-  "runtime.openclaw2.install": Record<string, unknown>;
-  "runtime.openclaw2.launch": Record<string, unknown>;
-  "runtime.openclaw2.preflight": Record<string, unknown>;
-  "runtime.openclaw2.prepare": Record<string, unknown>;
   "runtime.optimizer.apply": Record<string, unknown>;
   "runtime.optimizer.inspect": Record<string, unknown>;
   "runtime.origin.inspect": Record<string, unknown>;

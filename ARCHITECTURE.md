@@ -256,7 +256,7 @@ launch 和凭据移除。它只管理 `U-King/AI-Genie` 范围，不应扫描或
 | 模型与凭据 | `providers.rs`、`device.rs`、`model_route.rs`、`*_proxy.rs` | 供应商目录、钱包/BYOK、配置写入和协议转换 |
 | 工作台 | `UWorkspace.tsx`、`Chat.tsx`、`ChatPanel.tsx`、`store.tsx`、`tasks.rs`、`chatstore.rs` | 任务、会话、对话、历史和工作目录 |
 | 终端与代理 | `term.rs`、`agent/*` | PTY、CLI 子进程、流式事件、超时/中断和权限询问 |
-| 便携运行时 | `usb_genie.rs`、`openclaw2.rs`、`clawx.rs` | U 盘及便携 AI 的生命周期与状态边界 |
+| 便携运行时 | `usb_genie.rs`、`clawx.rs` | U 盘及便携 AI 的生命周期与状态边界 |
 | 内容能力 | `video.rs`、`vision.rs`、`draw.rs`、`officedoc.rs` | 图片、视频、视觉和办公产物 |
 | 本地数据 | `usage_local.rs`、`metrics.rs`、`journal.rs`、`artifacts.rs` | 本地用量、行为记录和产物索引 |
 

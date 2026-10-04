@@ -15,7 +15,6 @@ mod browser;
 mod chatstore;
 mod cleanup;
 mod clawx;
-mod openclaw2;
 mod usb_genie;
 mod usb_targets;
 mod claude_proxy;
@@ -31,7 +30,6 @@ mod envfp;
 mod feedback;
 mod metrics;
 mod model_catalog;
-mod model_route;
 mod video;
 mod vision;
 mod fs;
@@ -1642,94 +1640,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             5_000,
             &["running"],
             |_, _, _| Ok(serde_json::json!({ "running": clawx::is_running() })),
-        ),
-        actions::readonly(
-            actions::OPENCLAW2_INSPECT,
-            "Inspect the isolated OpenClaw 2 runtime",
-            "Read only U-King's private OpenClaw 2 runtime and state. It never probes ClawX or legacy OpenClaw paths.",
-            5_000,
-            &["schema_version", "ready", "blockers", "installed", "prepared", "running", "state_version", "profile", "paths", "runtime", "gateway"],
-            openclaw2::action_inspect,
-        ),
-        actions::readonly(
-            actions::OPENCLAW2_PREFLIGHT,
-            "Preflight the isolated OpenClaw 2 runtime",
-            "Run only the private OpenClaw 2 doctor's lint JSON check, plus private gateway RPC status when it is running. It never repairs or migrates anything.",
-            // 内部给 doctor 子进程的超时就是 60s（run_oc），声明预算必须留出余量，
-            // 否则 doctor 一慢（真机实测 57s）conformance 就恒撞线。
-            90_000,
-            &["ok", "ready", "blockers", "warnings", "runtime", "config", "doctor", "gateway"],
-            openclaw2::action_preflight,
-        ),
-        actions::with_progress(actions::write(
-            actions::OPENCLAW2_INSTALL,
-            "Install the isolated OpenClaw 2 runtime",
-            "Download and verify U-King's pinned private Node and OpenClaw 2 runtime. It never changes PATH, global npm, shims, ClawX, or legacy OpenClaw.",
-            900_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["changed", "installed", "node_version", "openclaw_version", "integrity_ok", "state_version"],
-            openclaw2::action_install,
-            Some(openclaw2::state_version),
-        )),
-        actions::write(
-            actions::OPENCLAW2_PREPARE,
-            "Prepare the isolated OpenClaw 2 profile",
-            "Atomically create U-King's private OpenClaw 2 profile, state, workspace, and token. Existing incompatible configuration is refused rather than overwritten.",
-            30_000,
-            "required",
-            serde_json::json!({
-                "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "Optional private gateway port. Omit to choose a stable free default." }
-            }),
-            &[],
-            &["changed", "prepared", "profile", "port", "state_version"],
-            openclaw2::action_prepare,
-            Some(openclaw2::state_version),
-        ),
-        actions::write(
-            actions::OPENCLAW2_LAUNCH,
-            "Launch the isolated OpenClaw 2 gateway",
-            "Launch only U-King's private OpenClaw 2 profile under external supervision. It refuses an externally owned port and never exposes the gateway token.",
-            60_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["changed", "running", "ready", "pid", "port", "dashboard_url", "health", "state_version"],
-            openclaw2::action_launch,
-            Some(openclaw2::state_version),
-        ),
-        actions::write(
-            actions::OPENCLAW2_CONFIGURE_MODEL,
-            "Configure an isolated OpenClaw 2 model",
-            "Validate and probe one OpenAI-compatible model in a private OpenClaw 2 transaction. API keys are stored only in a private file secret and never returned.",
-            180_000,
-            "required",
-            serde_json::json!({
-                "provider_id": { "type": "string", "minLength": 1 },
-                "model": { "type": "string" },
-                "api_key": { "type": "string", "writeOnly": true }
-            }),
-            &["provider_id"],
-            &["changed", "configured", "ready", "provider", "model", "validation", "probe", "restart_required", "state_version"],
-            |_, input, _| {
-                let provider_id = input.get("provider_id").and_then(serde_json::Value::as_str)
-                    .ok_or("invalid_input: provider_id 必填")?;
-                let api_key = input.get("api_key").and_then(serde_json::Value::as_str);
-                let device_key = if api_key.is_some_and(|key| !key.trim().is_empty()) {
-                    None
-                } else {
-                    device::device_key_offline().ok()
-                };
-                let route = providers::resolve_openai_route_for_openclaw2(
-                    provider_id,
-                    input.get("model").and_then(serde_json::Value::as_str),
-                    api_key,
-                    device_key.as_deref(),
-                )?;
-                openclaw2::configure_model(route)
-            },
-            Some(openclaw2::state_version),
         ),
         actions::readonly(
             actions::USB_GENIE_INSPECT,
