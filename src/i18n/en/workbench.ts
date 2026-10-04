@@ -454,7 +454,6 @@ export const workbench: Record<string, string> = {
   已结束: "Ended",
   出错: "Error",
   已完成: "Done", // App.tsx 的装机步骤还在用，那里「完成」是真值
-  "任务看板": "Task board",
   "任务护照": "Task Passports",
   "一个任务一张护照，跨 AI 接力；会话运行状态仍在下方看板。":
     "One passport per task, carried across AI harnesses; live session status remains on the board below.",
@@ -470,23 +469,7 @@ export const workbench: Record<string, string> = {
     "Take over task passport {id}: read its current state and next steps first; inherit only verified facts, not the previous AI's chat transcript.",
   "会话谁在跑 / 谁跑完 / 谁挂了，一屏看全；点卡片就打开那个会话":
     "Who is running / who finished / who failed — all on one screen. Click a card to open that session.",
-  "定时任务": "Scheduled tasks",
   "去配置 →": "Configure →",
-  "还没有定时任务 —— 到点让 AI 自己干活，见「自动化」":
-    "No scheduled tasks yet — set AI to work on its own, see “Automations”.",
-  "新建项目": "New project",
-  "无工作文件夹": "No working folder",
-  "没有闲着的": "Nothing idle",
-  "没有在跑的": "Nothing running",
-  "没有等待输入的": "Nothing waiting",
-  "没有已结束的": "Nothing ended",
-  "没有出错的": "Nothing failed",
-  "「已结束」= 那个会话文件近 {s} 秒没被写，不代表事情做完了；「没在跑」= 登记过但当前没有会话在跑。外部 AI 的记录里没有「这次成没成」这种字段，所以永远不进「出错」列 —— 只有本工作台的状态是真值。":
-    "“Ended” means that session file hasn't been written for {s}s — it does NOT mean the work is done. “Idle” means registered but no session currently running. External AI records carry no “did this succeed” field, so they never enter the “Error” column — only this workbench's status is ground truth.",
-  "状态是 AI 自己写在看板上的": "The AI declared this status on its own board",
-  "AI 声明过状态，但太久没更新，已经不能当「现在」用了":
-    "The AI declared a status, but it hasn't been updated in too long to describe the present",
-  "状态按会话文件还在不在被写推的": "Status inferred from whether the session file is still being written",
   "下次 {t}": "Next {t}",
   已停用: "Disabled",
   马上: "now",
@@ -596,7 +579,7 @@ export const workbench: Record<string, string> = {
 
   // 「更多」折叠（2026-08-25）：护照/看板/AI 专家/自动化收进一个折叠入口
   "更多": "More",
-  "护照 / 看板 / AI 专家 / 自动化": "Passports / Board / AI experts / Automation",
+  "护照 / AI 专家 / 自动化": "Passports / AI experts / Automation",
   "当前不在这个视图上": "You're not on the chat view right now",
   "有上次没跑成的任务": "Some tasks failed last time",
   "图片识别失败: {e}": "Image recognition failed: {e}",

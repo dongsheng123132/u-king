@@ -20,10 +20,8 @@ import { SessionList } from "./SessionList";
 import { Chat } from "./Chat";
 import { ExpertGallery } from "./ExpertGallery";
 import { AutomationPanel } from "./AutomationPanel";
-import { TaskBoard } from "./TaskBoard";
 import { PassportBoard } from "./PassportBoard";
 import { queueHandoff, type Handoff } from "./handoff";
-import { queueTermCmd } from "./termInbox";
 import { findExpert, type Expert } from "./experts";
 import { useI18n } from "../i18n";
 
@@ -199,7 +197,7 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
         {/* 功能面板：盖在会话之上（会话没被卸载，只是不显示）。滚动条各自独立。 */}
         {view !== "chat" && (
           view === "passports" ? (
-            // 护照页自带内边距和滚动（同看板），不再套外层 px/py。
+            // 护照页自带内边距和滚动，不再套外层 px/py。
             <div className="absolute inset-0 bg-bg-2">
               <PassportBoard
                 onHandoff={handoffToSession}
@@ -207,26 +205,6 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
                 // 护照没写 scope 时的兜底：当前正开着的那个会话的目录。
                 // 仍然可能是空的 —— 那时护照页会问用户选一个，**不静默挑**。
                 fallbackDir={state.tasks.find((t) => t.id === state.activeId)?.dir}
-              />
-            </div>
-          ) : view === "kanban" ? (
-            // 看板自带内边距和滚动，不再套外层 px/py —— 双重内边距会把五列挤没。
-            <div className="absolute inset-0 bg-bg-2">
-              <TaskBoard
-                onOpenSession={(id) => { activate(id); setView("chat"); }}
-                onOpenAutomation={() => setView("automation")}
-                // 点别家 AI 的卡片 = 拿它的工作目录在这儿开/复用一个会话。
-                // reuse=true：同一个文件夹反复点不会堆出一排重复会话。
-                onOpenFolder={(dir) => { void addTask(dir, "manual", true).then(() => setView("chat")); }}
-                // 「接着干」= 上面那一步 + 把 `claude --resume <sid>` 投进这个会话的终端信箱。
-                // 🔴 **投在 setView 之前**：`Chat` 一挂载就去信箱自取，晚投一步就取空了。
-                // 不替用户回车（见 termInbox.ts）—— 起一次 AI 会话是花钱的写操作。
-                onResume={(dir, cmd) => {
-                  void addTask(dir, "manual", true).then((id) => {
-                    queueTermCmd(id, cmd);
-                    setView("chat");
-                  });
-                }}
               />
             </div>
           ) : (

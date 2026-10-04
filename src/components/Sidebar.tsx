@@ -127,7 +127,7 @@ const CORE: NavItem[] = [
   // 终端 PTY 只在 TermPanel 卸载时才杀，入口合并碰不到它。激活 `termwb` 时本项照样高亮
   // （见下方 NAV_ALIAS）；在 termwb 下再点本项**不切换**（App.tsx 的 onSelect 拦截），
   // 否则 paneMode 会被推回 chat，把用户正在看的终端态会话全收回对话态。
-  { id: "chat", label: "工作台", sub: "对话 · 终端 · 会话 · 看板", icon: MessageSquare },
+  { id: "chat", label: "工作台", sub: "对话 · 终端 · 会话", icon: MessageSquare },
   // 「终端工作台」（2026-09-06 拆分自 U-Workspace）：跟「对话工作台」是**同一批会话**，
   // 同一份 SessionList/store —— 唯一区别是每个会话默认停在终端态（相当于自动收起
   // U-Chat 对话列，只见 U-CLI 终端）。不建第二套会话列表，见 UWorkspace.tsx 的 paneMode。
@@ -257,7 +257,7 @@ const MORE: NavItem[] = [
  */
 const LAB: NavItem[] = [
   // 团队空间/运行中心已移交「本源AI计算机」项目（2026-09-06 裁决），原型代码已删；
-  // 任务可视化的正主是 U-Chat 任务看板（opencodex/TaskBoard.tsx）。
+  // 任务可视化的正主曾是 U-Chat 任务看板，已于 2026-10-04 删除，见收敛方案证据表。
   // 泊舟 AI 小程序（独立应用、自带更新）的入口就在这一页顶部 —— 写进 sub 里，
   // 否则客户根本猜不到「泊舟」藏在「小程序」底下。它按实验室标准归这儿：
   // 是独立发版的外部应用，不在「一键装好你的全部 AI」主线上。

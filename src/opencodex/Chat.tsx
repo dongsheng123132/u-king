@@ -42,7 +42,6 @@ import { AttachButton, Composer, ComposerSelect } from "./Composer";
 import { buildSystemPrompt, type Expert } from "./experts";
 import { allExperts } from "./experts";
 import { deliver, takeHandoff, type Handoff } from "./handoff";
-import { takeTermCmd } from "./termInbox";
 import { releaseYield, reportTermWidth } from "../lib/yieldChain";
 import type { ProviderPreset } from "../Wizard";
 import type { DeviceKey } from "../lib/types";
@@ -698,7 +697,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   }, []);
   /**
    * 把一段文本贴进当前终端（**不回车**，用户自己决定要不要执行）并切到终端面板。
-   * 用它的有：任务看板「接着干」（termInbox）、AI 回答里代码块的「贴进终端」（MiniMd）、
+   * 用它的有：AI 回答里代码块的「贴进终端」（MiniMd）、
    * ChatPanel 的 onRunInTerminal、以及「装 Claude」那类引导按钮。
    */
   const pasteToTerminal = useCallback((text: string) => {
@@ -1005,20 +1004,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     setEngine(h.engine);
     setSeed(h);
   }, [sessionId]);
-
-  /**
-   * 任务看板点了「接着干」→ 把那条续接命令（`claude --resume <sid>`）贴进本会话的终端。
-   *
-   * 走 `pasteToTerminal`：它会把终端面板打开并切过去，终端还没挂载时先存着、
-   * `onReady` 再冲刷 —— 这条路已经被「预览里划一段发给终端 Agent」验过，不另写一份。
-   *
-   * 🔴 **只贴不回车**。见 `termInbox.ts`：起一次 AI 会话是花钱的写操作，
-   * 最后那一下由人按。
-   */
-  useEffect(() => {
-    const cmd = takeTermCmd(sessionId);
-    if (cmd) pasteToTerminal(cmd);
-  }, [sessionId, pasteToTerminal]);
 
   // uking 大脑：本组件自己发。Key 是异步取的，没到手就发会撞「还没拿到 Key」——
   // 等它到位再发，而不是丢一句 toast 让用户自己重来（那又回到「交接得靠人补一刀」）。

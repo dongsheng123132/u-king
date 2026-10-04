@@ -154,28 +154,6 @@ export const backfill20260820: Record<string, string> = {
   "关闭会话（聊过的会先问你，不会删除磁盘文件夹）":
     "Close session (asks first if it has messages; does not delete the folder on disk)",
 
-  "这台电脑上所有 AI 的会话：谁在跑、谁跑完、谁挂了。任务状态在左栏「护照」。":
-    "All AI sessions on this PC: what is running, ended, or failed. Task status is under “Passports” on the left.",
-  "{d} 天": "{d} days",
-  "重新扫一遍本机各家 AI 的任务": "Rescan local AI sessions",
-  "还有 {n} 条 ↓": "{n} more ↓",
-  "会话文件太多，只取了最新的那批 —— 更早的没扫。":
-    "There are too many session files, so only the newest batch was scanned.",
-  "正在扫本机各家 AI 的任务记录…": "Scanning local AI session records…",
-  "没能读到本机其它 AI 的任务记录（下面只显示本工作台的会话）。":
-    "Could not read other local AI session records. Only workbench sessions are shown below.",
-  "这台电脑上还发现了 {n} 条别的 AI 的任务，要一起显示在看板上吗？":
-    "Found {n} sessions from other AI tools on this PC. Show them on the board too?",
-  "加到看板": "Add to board",
-  "先不用": "Not now",
-  "之后随时能在上面那排来源里改": "You can change this later using the source filters above",
-  "这条记录里没有工作目录": "This record has no working folder",
-  "点它：在这个文件夹开个会话，并把「{cmd}」贴进终端（不替你回车）":
-    "Click to open a session in this folder and paste “{cmd}” into the terminal (it will not press Enter)",
-  "这家工具没有可靠的续接命令，点它只开文件夹":
-    "This tool has no reliable resume command; clicking only opens the folder",
-  "接着干 ↩": "Resume ↩",
-  "只开文件夹": "Open folder only",
 
   "挑一个专家 → 当场在这个工作台开一个绑好它的会话，直接干活出成果":
     "Pick an expert → open a ready-to-use session in this workbench and start producing results",

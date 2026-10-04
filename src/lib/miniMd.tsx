@@ -140,7 +140,7 @@ function runnableInTerm(lang: string, code: string): boolean {
  * 而**划漏一个字符的命令报起错来跟环境坏了一模一样** —— 用户会去查错的地方。
  *
  * ## 🔴 只贴，不回车
- * 跟 `termInbox.ts` / `ChatPanel::CommandStrip` 同一条纪律：跑命令是**写**操作，
+ * 跟 `ChatPanel::CommandStrip` 同一条纪律：跑命令是**写**操作，
  * 最后那一下必须由人按。换个入口不等于换掉这条规矩（同影核「写动作必须 `--yes`」：
  * 确认权在核心、不在某个界面的礼貌）。所以这里没有「▷ 直接执行」。
  *

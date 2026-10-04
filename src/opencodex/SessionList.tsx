@@ -11,7 +11,7 @@
  * 点任意会话就回到 chat 视图。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ClipboardList, FolderPlus, GitBranch, GripVertical, LayoutDashboard, MessageSquarePlus, Plus, Trash2, Users, X, Zap } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ClipboardList, FolderPlus, GitBranch, GripVertical, MessageSquarePlus, Plus, Trash2, Users, X, Zap } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Task, WorkView } from "./types";
@@ -144,11 +144,8 @@ function useBackendChatted(taskIds: string[]): Set<string> | null {
 
 /** 左栏功能入口（会话之外的三块）。一份数据驱动展开态和折叠 rail 两处渲染。 */
 const NAV: { id: Exclude<WorkView, "chat">; label: string; hint: string; icon: typeof Users }[] = [
-  // 🔴 这两条以前是**一条**：id=kanban 却叫「护照」，点进去是会话看板、护照缩在页眉一条横条里。
-  // 一名两物 —— 客户点「护照」找不到护照，只能看见一块五列的会话板。现在各自一等：
-  // 「护照」答**事情做到哪**（跨 AI 接力的状态），「看板」答**谁在跑**（会话生命周期）。
+  // 「护照」答**事情做到哪**（跨 AI 接力的状态）。（会话看板 2026-10-04 删除，见收敛方案证据表。）
   { id: "passports", label: "护照", hint: "任务护照：一件事做到哪了，交给 Claude / DeepSeek / Codex 接着干", icon: ClipboardList },
-  { id: "kanban", label: "看板", hint: "这台电脑上所有 AI 的会话「谁在跑 / 谁跑完 / 谁挂了」+ 定时任务", icon: LayoutDashboard },
   { id: "experts", label: "AI 专家", hint: "挑个专家，当场在这里开会话干活", icon: Users },
   { id: "automation", label: "自动化", hint: "定时任务：到点了让 AI 自己把活干了", icon: Zap },
 ];
@@ -203,7 +200,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
   const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
   const [addMenuFor, setAddMenuFor] = useState<string | null>(null);
 
-  // 「更多」折叠（2026-08-25，学 OpenClaw 的渐进式披露）：护照/看板/专家/自动化四个低频
+  // 「更多」折叠（2026-08-25，学 OpenClaw 的渐进式披露）：护照/专家/自动化三个低频
   // 入口默认收起，省出半栏给会话列表。正开着某个视图时收起态亮蓝点，防「状态丢了」的感觉。
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -226,7 +223,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
    * 正在干活的会话「从什么时候开始跑的」+ 每秒走一下表。
    *
    * 起点记在组件里而不是 store：它是**纯展示**（不落盘、别处不读、刷新即重置）。
-   * 塞进 `Task` 会让所有读 tasks 的地方（看板、护照、后端 tasks.json）都多背一个跟
+   * 塞进 `Task` 会让所有读 tasks 的地方（护照、后端 tasks.json）都多背一个跟
    * 业务无关的字段，为一行小灰字不值当。
    *
    * 计时器**只在真有会话在跑时才起**，一个都没跑就一秒都不 tick —— 侧栏是首屏常驻组件，
@@ -667,7 +664,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
       {onView && (
       <div className="px-2.5 pt-1 pb-2 shrink-0 space-y-0.5 border-t border-b border-white/[0.06] mt-1 mb-1">
         {/* 🔴 这一小行标题是分层用的，不是装饰。这一列里挤着**三种不同的东西**：
-            上面是动作（新建对话 / 新建项目）、这里是别的视图（护照 / 看板 / 专家 / 自动化）、
+            上面是动作（新建对话 / 新建项目）、这里是别的视图（护照 / 专家 / 自动化）、
             下面是状态（已打开的项目）。三种平铺成一串没有间隔的按钮时，
             人只能靠逐个点进去才知道哪个会**离开当前对话**——而「已打开的项目」那行早就有标题了，
             缺的只是中间这一层。上下各加一条分隔线，让三段各自成块。 */}
@@ -676,7 +673,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
         <button
           onClick={() => setMoreOpen((v) => !v)}
           className="w-full inline-flex items-center gap-2 h-7 px-2.5 rounded-card text-[12px] text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
-          title={tr("护照 / 看板 / AI 专家 / 自动化")}
+          title={tr("护照 / AI 专家 / 自动化")}
         >
           {moreOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           <span className="flex-1 text-left">{tr("更多")}</span>

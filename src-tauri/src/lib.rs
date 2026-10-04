@@ -10,7 +10,6 @@
 
 mod agent;
 mod airuntime;
-mod aitasks;
 mod artifacts;
 mod browser;
 mod chatstore;
@@ -2483,13 +2482,9 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 action_json(journal::status(days))
             },
         ),
-        // ★ 「这台电脑上的 AI 都在忙什么」。跟下面那条 `usage_local` 读的是**同一批会话日志**，
-        // 但回答的是两个问题：那个答「花了多少钱」，这个答「在干哪些活」——
-        // 55 个动作里以前没有一个能答后者，任务看板也就只看得见我们自己工作台里的会话。
-        // days 可选，喂 {} 也能跑（默认 7 天），所以照样进 conformance 体检。
-        // ★ 任务本象（2Origin 长期存储层）。跟下面那条 `ai_tasks` 分工是整个架构的分界线：
-        // 那个读各家 AI 的**会话记录**（影子 —— 答「谁跑过什么」，换个 harness 接不上），
-        // 这个读**对象状态**（本象 —— 答「世界此刻是什么样、验过什么、下一步是什么」，接得上）。
+        // ★ 任务本象（2Origin 长期存储层）：读**对象状态**（本象 —— 答「世界此刻是什么样、
+        // 验过什么、下一步是什么」，换个 harness 也接得上）。曾与之并列的 `ai_tasks`（读各家 AI
+        // 会话记录的影子）已于 2026-10-04 随任务看板删除。
         actions::readonly_opt(
             actions::ORIGIN_INSPECT,
             "Inspect a task's origin state (2Origin)",
@@ -2647,25 +2642,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         ),
-        actions::readonly_opt(
-            actions::AI_TASKS_INSPECT,
-            "Inspect what every AI on this machine is working on",
-            "List tasks from every AI on this computer — Claude Code, Codex CLI and Hermes session records plus tasks the AI logged itself on the uking-board. Reads local files only; never prompt bodies beyond the first line used as a title, never uploads.",
-            30_000,
-            serde_json::json!({
-                "days": { "type": "integer", "minimum": 1, "maximum": 365, "description": "Look-back window in days (default 7)." }
-            }),
-            &["days", "tasks", "sources", "counts", "notes"],
-            |_, input, _| {
-                let days = input.get("days").and_then(|v| v.as_i64()).unwrap_or(7);
-                action_json(aitasks::inspect(days))
-            },
-        )
-        // ★ 观测记账：这五个来源**各自会独立失败**（路径变了/没权限/对方换了格式），
-        // 所以必须逐个交代死活。声明了它，conformance 就会强制 `sources` 里
-        // 每个来源都有 present/readable/count，且 count==0 时必须写明为什么。
-        // 不声明的话，一个「五个都没读到」的空结果和「这台机器上真没有」长得一模一样。
-        .observing(&["claude", "codex", "hermes", "board", "openclaw"]),
         actions::readonly_opt(
             actions::USAGE_LOCAL_INSPECT,
             "Inspect local AI spend by model",
@@ -6056,17 +6032,6 @@ async fn query_local_usage(days: Option<i64>) -> serde_json::Value {
         None => serde_json::json!({}),
     };
     run_action_input(actions::USAGE_LOCAL_INSPECT, input).await
-}
-
-/// 「这台电脑上的 AI 都在忙什么」—— 各家 AI 自己写的会话记录 + AI 登记在看板上的任务。
-/// 薄壳，真身是影核动作 `runtime.ai_tasks.inspect`（读很多文件，走 spawn_blocking 别卡 UI）。
-#[tauri::command]
-async fn list_ai_tasks(days: Option<i64>) -> serde_json::Value {
-    let input = match days {
-        Some(d) => serde_json::json!({ "days": d }),
-        None => serde_json::json!({}),
-    };
-    run_action_input(actions::AI_TASKS_INSPECT, input).await
 }
 
 /// Token 水电表：按天读数 + 按项目/工具/模型分账 + 缓存账 + 用得多快 + 省钱建议。
@@ -9790,7 +9755,6 @@ pub fn run() {
             query_balance,
             query_usage_breakdown,
             query_local_usage,
-            list_ai_tasks,
             query_usage_meter,
             usage_sources,
             set_usage_sources,

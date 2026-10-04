@@ -36,17 +36,15 @@ export type RightKind = "terminal" | "browser" | "files";
 /**
  * U-Workspace 右侧主区当前显示什么。
  * `chat` = 会话（默认，也是从别处回来的落点）；其余是左栏点进来的功能面板。
- * `kanban` = 任务看板（会话生命周期总览 + 定时任务条）—— 答「**谁在跑**」。
  * `passports` = 任务护照（长程任务状态 + 跨 AI 交接）—— 答「**事情做到哪**」。
  *
- * 🔴 后两个是**两个一等入口，不是一个页里的两块**。会话是「做一件事然后结束」的
- * 生命周期，护照是「跨会话、跨 AI、跨天地活着」的生命周期。以前护照挤在看板页眉上
- * 那条 230px 的横条里，目标 / 已验证事实 / 下一步一个字都露不出来，只剩一串 id ——
- * 摆在别人家的页眉上，它就永远只能是装饰。
+ * 🔴 护照是「跨会话、跨 AI、跨天地活着」的生命周期，所以是一等入口而不是别人页眉上的一条横条
+ * （目标 / 已验证事实 / 下一步在那种位置一个字都露不出来）。
+ * 任务看板（`kanban`，答「谁在跑」）2026-10-04 已删除，见收敛方案证据表。
  *
  * 切到面板时**不卸载任何会话**（Chat 实例照旧 display:none 保活，PTY 不断）。
  */
-export type WorkView = "chat" | "experts" | "automation" | "kanban" | "passports";
+export type WorkView = "chat" | "experts" | "automation" | "passports";
 
 /** 每个会话的三区布局（运行时内存，不落盘）。中=对话恒在；右=可切+收起；下=终端抽屉。 */
 export interface PanelLayout {

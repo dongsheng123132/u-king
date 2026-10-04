@@ -384,7 +384,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
    *
    * 🔴 **`running` 故意不落盘**：它是「此刻这个 Chat 正在跑」的进程内真值，
    * 重启后必然不成立。写进去，下次开机会看到一屋子「进行中」而一个都没在跑 ——
-   * 那正是我们刚在 board 那边修掉的病（`aitasks.rs::DECLARED_FRESH_SECS`），
+   * 那正是我们刚在 board 那边修掉的病（已随任务看板删除的 `aitasks.rs` 里修过同一种病），
    * 不能在自己家里再造一遍。`running` 结束时会喂 `idle`/`error`，那一下才落盘。
    */
   const setTaskStatus = useCallback((id: string, status: TaskStatus) => {

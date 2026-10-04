@@ -345,15 +345,9 @@ pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
 pub const PODAPP_INSPECT: &str = "runtime.podapp.inspect";
 pub const AUTOMATION_INSPECT: &str = "runtime.automation.inspect";
 pub const OPTIMIZER_INSPECT: &str = "runtime.optimizer.inspect";
-/// 本机**各家 AI** 的任务（不只是我们自己工作台里的会话）：Claude Code / Codex CLI /
-/// Hermes 各自的会话记录 + AI 用 `uking-board` 技能包自己登记的任务。
-/// 跟 `USAGE_LOCAL_INSPECT` 读的是同一批会话日志，但回答的是两个问题：
-/// 那个答**花了多少钱**，这个答**在干哪些活**。
 /// 任务本象（2Origin 长期存储层）：这个任务**干到哪了、验过什么、下一步是什么**。
-/// 跟 `AI_TASKS_INSPECT` 分工明确 —— 那个读各家 AI 的**会话记录**（影子，答「谁跑过什么」），
-/// 这个读**对象状态**（本象，答「世界此刻是什么样」）。前者换个 harness 接不上，后者能。
+/// 读的是**对象状态**（本象，答「世界此刻是什么样」），换个 harness 也接得上。
 pub const ORIGIN_INSPECT: &str = "runtime.origin.inspect";
-pub const AI_TASKS_INSPECT: &str = "runtime.ai_tasks.inspect";
 /// 工作台模板：有哪些模板、这个目录现在什么状况、装的话会干什么。
 /// **预览就是安装计划本身**（同一份实现），不是另写一套模拟 —— 模拟会跟真的漂开。
 pub const WORKBENCH_INSPECT: &str = "runtime.workbench.inspect";
@@ -417,7 +411,7 @@ pub const READ_ACTIONS: &[&str] = &[
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
     CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT, PODAPP_INSPECT, AUTOMATION_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
-    OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
+    OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
     LOCALLLM_CATALOG,
@@ -620,6 +614,10 @@ pub struct ActionSpec {
 impl Action {
     /// 声明这个动作**汇总了哪些可独立失败的来源**（影核观测记账）。
     /// 建造器写法，挂在动作登记的尾巴上，不打断 `readonly(...)` 那串参数。
+    ///
+    /// 框架能力，当前没有动作声明它：原唯一用户 `runtime.ai_tasks.inspect` 已于 2026-10-04 随任务看板删除。
+    /// `check_observation` 与 conformance 的校验仍在，下一个聚合多来源的动作可直接用。
+    #[allow(dead_code)]
     pub fn observing(mut self, sources: &'static [&'static str]) -> Self {
         self.spec.observes = sources;
         self

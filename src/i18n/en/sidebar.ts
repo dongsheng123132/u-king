@@ -33,7 +33,7 @@ export const sidebar: Record<string, string> = {
   // 2026-10-03 收敛方案 2a：「对话工作台」「终端工作台」合成一个「工作台」入口，
   // 旧的四条英文随入口一起删（恢复入口时要连这几条一起加回，见 Sidebar.tsx CORE 注释）。
   "工作台": "Workbench",
-  "对话 · 终端 · 会话 · 看板": "Chat · Terminal · Sessions · Board",
+  "对话 · 终端 · 会话": "Chat · Terminal · Sessions",
   "U-Chat 对话 · U-CLI 终端 · 作图，一站干活": "U-Chat · U-CLI terminal · image gen, all in one",
   "AI 专家": "AI Experts",
   "挑个专家帮你干活 · 更多去 skillhub": "Pick an expert to work for you · more on skillhub",

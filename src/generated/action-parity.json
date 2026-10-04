@@ -2764,53 +2764,6 @@
       "bindings": [
         {
           "surface": "cli",
-          "target": "cli:action run runtime.ai_tasks.inspect --json --no-input"
-        }
-      ],
-      "description": "List tasks from every AI on this computer — Claude Code, Codex CLI and Hermes session records plus tasks the AI logged itself on the uking-board. Reads local files only; never prompt bodies beyond the first line used as a title, never uploads.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 30000
-      },
-      "id": "runtime.ai_tasks.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "days": {
-            "description": "Look-back window in days (default 7).",
-            "maximum": 365,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "days",
-          "tasks",
-          "sources",
-          "counts",
-          "notes"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect what every AI on this machine is working on"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.usage_local.inspect --json --no-input"
         }
       ],
@@ -5195,7 +5148,6 @@
       "target.manifest.list",
       "runtime.optimizer.inspect",
       "runtime.origin.inspect",
-      "runtime.ai_tasks.inspect",
       "runtime.usage_local.inspect",
       "runtime.usage_meter.inspect",
       "runtime.diagnostics.collect",
