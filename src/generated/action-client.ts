@@ -13,8 +13,6 @@ export const ACTION = {
   RUNTIME_AITOOL_INSTALL: "runtime.aitool.install",
   /** Remove the npm package / stub, ~/.uking/tools/<x>, shims and leftovers; GUI apps go through their own official uninstaller. */
   RUNTIME_AITOOL_UNINSTALL: "runtime.aitool.uninstall",
-  /** Install U-King's pinned agent-browser runtime, then start its stream and capture an accessibility snapshot. Requires confirmation because it downloads and writes local runtime files. Idempotent when the pinned runtime already verifies. */
-  RUNTIME_BROWSER_INSTALL: "runtime.browser.install",
   /** Read whether a chat turn is running right now, how long it has been silent and which phase it is stuck in, plus how the last few turns ended. Reads only. */
   RUNTIME_CHAT_INSPECT: "runtime.chat.inspect",
   /** ClawX holds its config in memory and flushes it back on exit, so writing while it runs is silently undone. This closes it, writes both config layers, then relaunches. */
@@ -164,7 +162,6 @@ export type ActionInputMap = {
   "runtime.ai_process.inspect": Record<string, never>;
   "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-app" | "claude-code" | "codebuddy-code" | "codex" | "codex-app" | "crush" | "dsh" | "grok-build" | "harness-doctor" | "hermes" | "kimi-code" | "mimo-code" | "muse-code" | "openclaw" | "opencode" | "pi" | "qoder-cn" | "qwen-code"; };
   "runtime.aitool.uninstall": { expected_state_version?: string; tool_id: string; };
-  "runtime.browser.install": { expected_state_version?: string; };
   "runtime.chat.inspect": Record<string, never>;
   "runtime.clawx.apply_managed": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
   "runtime.clawx.inspect": Record<string, never>;
@@ -242,7 +239,6 @@ export type ActionOutputMap = {
   "runtime.ai_process.inspect": Record<string, unknown>;
   "runtime.aitool.install": Record<string, unknown>;
   "runtime.aitool.uninstall": Record<string, unknown>;
-  "runtime.browser.install": Record<string, unknown>;
   "runtime.chat.inspect": Record<string, unknown>;
   "runtime.clawx.apply_managed": Record<string, unknown>;
   "runtime.clawx.inspect": Record<string, unknown>;

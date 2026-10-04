@@ -11,7 +11,6 @@
 mod agent;
 mod airuntime;
 mod artifacts;
-mod browser;
 mod chatstore;
 mod cleanup;
 mod clawx;
@@ -41,8 +40,6 @@ mod instance;
 mod localllm;
 mod advice;
 mod actions;
-/// 浏览器子窗口导航的无头取证（需求榜 P0 #5 的硬那半边）。只在 `--browser-nav-test` 下用。
-mod browser_nav_probe;
 // DeepSeek Harness 官方桌面版（Windows）：装/检测/启动。非 Windows 下各函数直接返回
 // 「不支持」的 Err/false，不需要额外 cfg 隔离整个模块（同 `webview2` 的做法）。
 mod dshdesk;
@@ -750,20 +747,6 @@ async fn optimize_env(app: AppHandle) -> Result<EnvToolsResult, String> {
 
 fn action_json<T: serde::Serialize>(v: T) -> Result<serde_json::Value, String> {
     serde_json::to_value(v).map_err(|e| format!("serialize_action_result: {e}"))
-}
-
-/// 只有缺包/错版能触发 npm；已就绪直接回 `changed:false`，Chrome 会话自身失败则原样报错。
-fn browser_runtime_install_decision(preflight: Result<serde_json::Value, String>) -> Result<Option<serde_json::Value>, String> {
-    match preflight {
-        Ok(ready) => Ok(Some(serde_json::json!({
-            "changed": false,
-            "version": ready["version"],
-            "stream": ready["stream"],
-            "snapshot": ready["snapshot"],
-        }))),
-        Err(e) if e.starts_with("not_installed:") || e.starts_with("version_mismatch:") => Ok(None),
-        Err(e) => Err(e),
-    }
 }
 
 /// 「当前各工具在用哪个驱动」这份状态的版本号。
@@ -2447,45 +2430,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             |_, _, progress| action_json(installer::install_env_tools(progress)),
             None,
         )),
-        // 浏览器面板的运行时安装：同一条有确认门的动作供 GUI / CLI / MCP 调用。
-        // npm 安装成功不等于可用；最后必须用 browser.stream + snapshot 真验 Chrome 与 daemon。
-        actions::with_progress(actions::write(
-            actions::BROWSER_RUNTIME_INSTALL,
-            "Install and verify the managed browser runtime",
-            "Install U-King's pinned agent-browser runtime, then start its stream and capture an accessibility snapshot. Requires confirmation because it downloads and writes local runtime files. Idempotent when the pinned runtime already verifies.",
-            900_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["changed", "version", "stream", "snapshot"],
-            |_, _, progress| {
-                // 已是精确版本且 Chrome/stream/snapshot 均真验通过：不触网、不重装。
-                // Chrome 自身不可用时也不假装「修复」而重下 npm；只有缺包/错版才进入安装流。
-                match browser_runtime_install_decision(browser::runtime_preflight(progress))? {
-                    Some(ready) => return Ok(ready),
-                    None => {
-                        progress("浏览器运行时缺失或版本不匹配，开始安装固定版本…");
-                    }
-                }
-                let skill = installer::load_skill();
-                let installed = installer::install_tool(&skill, "agent-browser", &|phase, line| {
-                    progress(&format!("{phase}: {line}"));
-                });
-                if !installed.ok {
-                    return Err(installed.error.unwrap_or_else(|| "browser runtime install failed".into()));
-                }
-                let verified = browser::runtime_preflight(progress)?;
-                Ok(serde_json::json!({
-                    "changed": true,
-                    // 两条路径都以同一份 preflight 的规范版本字段返回，避免
-                    // `0.27.0` 和 `agent-browser 0.27.0` 让调用方误判成版本变化。
-                    "version": verified["version"],
-                    "stream": verified["stream"],
-                    "snapshot": verified["snapshot"],
-                }))
-            },
-            None,
-        )),
         // —— 「给 AI 的说明书」——
         //
         // **这三个动作的意义**：U-King 的能力早就全是机器可读的（就是这张表），
@@ -2892,246 +2836,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         )),
-        // ── 浏览器操作（browser.*）── 后端 agent-browser CLI（browser.rs，可替换）。
-        // 填表/查资料实测（2026-08-06 Windows）：snapshot 0.45s 返回带 @ref 交互树，
-        // fill/select/check/click 每动作 0.4~0.5s，6 字段表单全流程 ~3s。
-        // 确认门设计：页面内操作（fill/select/check/click）不打断填表流程；
-        // 有外部副作用的提交（发帖/下单/删除）必须走 browser.submit，确认门强制。
-        actions::readonly_req(
-            browser::BROWSER_OPEN,
-            "Open a URL in the agent browser",
-            "Navigate the agent browser to an http(s):// or file:// URL and wait for it to load. Reads only, no external side effects.",
-            60_000,
-            serde_json::json!({ "url": { "type": "string", "description": "http(s):// or file:// URL to open" } }),
-            &["url"],
-            &["ok", "title", "url"],
-            browser::run,
-        ),
-        actions::readonly_opt(
-            browser::BROWSER_SNAPSHOT,
-            "Snapshot the current page (interactive tree with @refs)",
-            "Return a compact accessibility tree of interactive elements with stable @ref ids for click/fill/select. Much cheaper than raw HTML.",
-            30_000,
-            serde_json::json!({ "interactive": { "type": "boolean", "description": "Only interactive elements (default true)" } }),
-            &["ok", "snapshot"],
-            browser::run,
-        ),
-        actions::readonly_req(
-            browser::BROWSER_GET,
-            "Read a value from the page",
-            "Read text / attribute / title / url from an element or the page. what=text|html|title|url|value|attr, selector=@ref or CSS.",
-            30_000,
-            serde_json::json!({
-                "what": { "type": "string", "description": "What to read: text|html|title|url|value|attr" },
-                "selector": { "type": "string", "description": "@ref id from browser.snapshot or CSS selector" }
-            }),
-            &["what", "selector"],
-            &["ok", "value"],
-            browser::run,
-        ),
-        actions::readonly_opt(
-            browser::BROWSER_SCREENSHOT,
-            "Capture a screenshot of the page",
-            "Take a screenshot of the current viewport (or save to path). Useful for vision models.",
-            30_000,
-            serde_json::json!({ "path": { "type": "string", "description": "Optional absolute path to save the screenshot to" } }),
-            &["ok", "path"],
-            browser::run,
-        ),
-        actions::write(
-            browser::BROWSER_CLICK,
-            "Click an element (in-page interaction)",
-            "Click an element by @ref for navigation / expand / select. For submissions with external side effects use browser.submit instead.",
-            30_000,
-            "never",
-            serde_json::json!({ "ref": { "type": "string", "description": "@ref id from browser.snapshot" } }),
-            &["ref"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_SUBMIT,
-            "Submit a form / perform an action with external side effects",
-            "Click the submit element (e.g. 提交/下单/发帖/删除). Requires explicit user confirmation.",
-            30_000,
-            "required",
-            serde_json::json!({ "ref": { "type": "string", "description": "@ref id of the submit button from browser.snapshot" } }),
-            &["ref"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_FILL,
-            "Fill an input field",
-            "Clear and fill a text input / textarea by @ref. In-page state only, no external side effect.",
-            30_000,
-            "never",
-            serde_json::json!({
-                "ref": { "type": "string", "description": "@ref id from browser.snapshot" },
-                "text": { "type": "string", "description": "Text to fill" }
-            }),
-            &["ref", "text"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_SELECT,
-            "Select a dropdown option",
-            "Pick a value from a combobox by @ref. In-page state only.",
-            30_000,
-            "never",
-            serde_json::json!({
-                "ref": { "type": "string", "description": "@ref id from browser.snapshot" },
-                "value": { "type": "string", "description": "Option value (not display text)" }
-            }),
-            &["ref", "value"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_CHECK,
-            "Check a checkbox",
-            "Check a checkbox by @ref. In-page state only.",
-            30_000,
-            "never",
-            serde_json::json!({ "ref": { "type": "string", "description": "@ref id from browser.snapshot" } }),
-            &["ref"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        // ── 直播浏览器面板的动作（面板与人共用同一套 browser.*，见 BrowserPanel.tsx）──
-        // 全部是页面内交互 / 页面导航，无外部副作用，所以 confirmation="never"（同 click/fill）。
-        actions::write(
-            browser::BROWSER_BACK,
-            "Go back in history",
-            "Navigate back one step in the browser history. Page-internal, no external side effect.",
-            30_000,
-            "never",
-            serde_json::json!({}),
-            &[],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_FORWARD,
-            "Go forward in history",
-            "Navigate forward one step in the browser history. Page-internal, no external side effect.",
-            30_000,
-            "never",
-            serde_json::json!({}),
-            &[],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_RELOAD,
-            "Reload the current page",
-            "Reload the current page. Page-internal, no external side effect.",
-            30_000,
-            "never",
-            serde_json::json!({}),
-            &[],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_MOUSE,
-            "Low-level mouse operation",
-            "Move / press / release / wheel the mouse at viewport coordinates. For canvas, maps and elements without @ref.",
-            30_000,
-            "never",
-            serde_json::json!({
-                "action": { "type": "string", "description": "move | down | up | wheel" },
-                "x": { "type": "number", "description": "Viewport x for move" },
-                "y": { "type": "number", "description": "Viewport y for move" },
-                "dx": { "type": "number", "description": "Delta x for wheel" },
-                "dy": { "type": "number", "description": "Delta y for wheel (positive = scroll down)" }
-            }),
-            &["action"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_CLICKAT,
-            "Click at viewport coordinates",
-            "Click at (x, y) viewport coordinates (mouse move + down + up). Use when the element has no @ref.",
-            30_000,
-            "never",
-            serde_json::json!({
-                "x": { "type": "number", "description": "Viewport x" },
-                "y": { "type": "number", "description": "Viewport y" }
-            }),
-            &["x", "y"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_TYPE,
-            "Type text via keyboard",
-            "Type text with real keystrokes into the currently focused element.",
-            30_000,
-            "never",
-            serde_json::json!({ "text": { "type": "string", "description": "Text to type" } }),
-            &["text"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_PRESS,
-            "Press a key",
-            "Press a single key (Enter, Tab, Escape, Control+a, ...) on the focused element / page.",
-            30_000,
-            "never",
-            serde_json::json!({ "key": { "type": "string", "description": "Key name, e.g. Enter / Tab / Escape / Control+a" } }),
-            &["key"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::write(
-            browser::BROWSER_SCROLL,
-            "Scroll the page",
-            "Scroll the page by direction (up/down/left/right) and px.",
-            30_000,
-            "never",
-            serde_json::json!({
-                "direction": { "type": "string", "description": "up | down | left | right" },
-                "px": { "type": "number", "description": "Pixels to scroll (default 100)" }
-            }),
-            &["direction"],
-            &["ok"],
-            browser::run,
-            None,
-        ),
-        actions::readonly_opt(
-            browser::BROWSER_TABS,
-            "List browser tabs",
-            "List all open tabs with ids, titles and URLs.",
-            30_000,
-            serde_json::json!({}),
-            &["ok", "tabs"],
-            browser::run,
-        ),
-        actions::readonly_opt(
-            browser::BROWSER_STREAM,
-            "Get browser live stream info",
-            "Ensure the agent-browser session is up and return the ws:// stream address the panel connects to for the live view. Read-only, no navigation.",
-            15_000,
-            serde_json::json!({}),
-            &["ok", "ws_url", "port"],
-            browser::run,
-        ),
     ];
     t
 }
@@ -3739,44 +3443,6 @@ mod action_parity_adapter_tests {
             rejected.is_err(),
             "enum 外的 tool_id 必须被入参校验挡下，而不是落到 handler 里真跑一次安装"
         );
-    }
-
-    /// 浏览器运行时同样是写动作：没有确认时必须在进入 npm 前被 ActionParity 核心挡住。
-    #[test]
-    fn browser_runtime_install_refuses_to_run_without_confirmation() {
-        let table = action_table();
-        let spec = table
-            .iter()
-            .map(|a| &a.spec)
-            .find(|s| s.id == actions::BROWSER_RUNTIME_INSTALL)
-            .expect("组合根里应当登记 browser runtime install");
-        assert_eq!(spec.effect, "write");
-        assert_eq!(spec.confirmation, "required");
-        assert!(spec.progress_events);
-        assert!(spec.idempotent);
-        assert_eq!(
-            spec.output_schema.as_ref().and_then(|schema| schema["required"].as_array()).map(|items| items.iter().any(|v| v == "changed")),
-            Some(true),
-            "调用方必须能区分已就绪的零下载路径"
-        );
-        let denied = actions::run(actions::BROWSER_RUNTIME_INSTALL, serde_json::json!({}));
-        assert!(denied.is_err(), "缺 confirm 不得启动 npm 安装");
-    }
-
-    #[test]
-    fn browser_runtime_ready_preflight_skips_npm_install() {
-        let ready = browser_runtime_install_decision(Ok(serde_json::json!({
-            "version": "0.27.0",
-            "stream": { "ws_url": "ws://127.0.0.1:53535" },
-            "snapshot": { "snapshot": "- document" },
-        })))
-        .expect("已就绪预检不应报错")
-        .expect("已就绪必须选择零下载路径");
-        assert_eq!(ready["changed"], false);
-        assert_eq!(ready["version"], "0.27.0");
-        assert!(browser_runtime_install_decision(Err("not_installed: demo".into())).unwrap().is_none());
-        assert!(browser_runtime_install_decision(Err("version_mismatch: demo".into())).unwrap().is_none());
-        assert!(browser_runtime_install_decision(Err("browser.stream: Chrome 未就绪".into())).is_err());
     }
 
     #[test]
@@ -5080,192 +4746,6 @@ async fn open_browser(app: AppHandle, url: String, label: String) -> Result<(), 
         .build()
         .map_err(|e| format!("打开浏览器窗口失败: {e}"))?;
     Ok(())
-}
-
-/// `browser_nav` 的入参校验 —— **抽成纯函数就为了能测**。
-///
-/// 这里是真的攻击面，不是形式主义：`external` 会把一个字符串原样丢给系统浏览器/系统 shell。
-/// Windows 上 `file://`、`ms-settings:`、以及各种自定义协议都能被 opener 拉起来，
-/// 前端要是哪天把用户输入直接透传进来，就成了「让 U-King 帮我打开任意东西」。
-/// 白名单跟 `open_browser` 保持同一套（https / 本机回环），别在两处各写一份。
-///
-/// label 前缀同理：不校验的话可以拿它去驱动主窗口或别的子窗口（close/eval 都在里面）。
-fn validate_nav(label: &str, action: &str, url: Option<&str>) -> Result<(), String> {
-    if !label.starts_with("browser-") {
-        return Err("非法窗口标识".into());
-    }
-    const ACTIONS: &[&str] = &["back", "forward", "reload", "focus", "close", "external"];
-    if !ACTIONS.contains(&action) {
-        return Err(format!("未知动作: {action}"));
-    }
-    if action == "external" {
-        let u = url.unwrap_or("").trim();
-        if u.is_empty() {
-            return Err("缺少地址".into());
-        }
-        let ok = u.starts_with("https://")
-            || u.starts_with("http://localhost")
-            || u.starts_with("http://127.0.0.1");
-        if !ok {
-            return Err("只允许 https 或 http://localhost".into());
-        }
-    }
-    Ok(())
-}
-
-/// 浏览器子窗口的导航控制 —— 后退 / 前进 / 刷新 / 聚焦 / 关闭 / 在系统浏览器打开。
-///
-/// 为什么不做内嵌浏览器面板：Tauri 的多 webview（把子 webview 嵌进主窗口）在 `unstable`
-/// feature 后面，为一个面板给整个 app 换上不稳定 API 不划算。所以子窗口方案保留，
-/// 但把「浏览器该有的按钮」补齐 —— 在这之前那个窗口开出来就是条单行道：
-/// 页面里点进去了就回不来，只能关掉重开。
-///
-/// 返回 false = 那个窗口现在没开着（面板据此把按钮灰掉，而不是假装点了有用）。
-#[tauri::command]
-async fn browser_nav(app: AppHandle, label: String, action: String, url: Option<String>) -> Result<bool, String> {
-    validate_nav(&label, &action, url.as_deref())?;
-    // 「在系统浏览器打开」不需要子窗口在开着 —— 它本来就是要跳出去
-    if action == "external" {
-        return app
-            .opener()
-            .open_url(url.unwrap_or_default(), None::<String>)
-            .map(|_| true)
-            .map_err(|e| format!("调系统浏览器失败: {e}"));
-    }
-    let Some(w) = app.get_webview_window(&label) else {
-        return Ok(false);
-    };
-    match action.as_str() {
-        "back" => w.eval("history.back()").map_err(|e| e.to_string())?,
-        "forward" => w.eval("history.forward()").map_err(|e| e.to_string())?,
-        "reload" => w.eval("location.reload()").map_err(|e| e.to_string())?,
-        "focus" => w.set_focus().map_err(|e| e.to_string())?,
-        "close" => w.close().map_err(|e| e.to_string())?,
-        other => return Err(format!("未知动作: {other}")),
-    }
-    Ok(true)
-}
-
-/// ★ `--browser-nav-test` 的正文：证明后退 / 前进 / 刷新**真的作用到了外部页面上**。
-///
-/// 判据全部是「外面看得见的事实」，不是「我们调了这个函数」：
-/// - 后退 / 前进 → `WebviewWindow::url()` 读回的**真实地址**变了
-/// - 刷新 → 本地服务**再收到一次请求**（地址不变，所以只能用请求次数当证据）
-///
-/// 走的是 `browser_nav` 里逐字相同的那三行 eval。返回进程退出码（0 = 全过）。
-fn run_browser_nav_probe(app: &AppHandle) -> i32 {
-    let label = "browser-navtest";
-    let mut problems: Vec<String> = Vec::new();
-    let mut steps: Vec<serde_json::Value> = Vec::new();
-
-    let (port, hits) = match browser_nav_probe::serve() {
-        Ok(v) => v,
-        Err(e) => {
-            println!("{}", serde_json::json!({ "ok": false, "problems": [format!("起不来本地测试服务: {e}")] }));
-            return 1;
-        }
-    };
-    let url_a = format!("http://127.0.0.1:{port}/a");
-    let url_b = format!("http://127.0.0.1:{port}/b");
-
-    // 隐藏窗口：`visible(false)`。这条跑道从头到尾不该在屏幕上出现任何东西。
-    let win = match tauri::WebviewWindowBuilder::new(
-        app,
-        label,
-        tauri::WebviewUrl::External(url_a.parse().expect("测试 URL 不合法")),
-    )
-    .title("uking nav probe")
-    .visible(false)
-    .build()
-    {
-        Ok(w) => w,
-        Err(e) => {
-            println!("{}", serde_json::json!({ "ok": false, "problems": [format!("建不出 webview 窗口（这台机器可能没装 WebView2）: {e}")] }));
-            return 1;
-        }
-    };
-    let cur = || win.url().map(|u| u.to_string()).unwrap_or_default();
-
-    // ① 先到 A
-    if browser_nav_probe::wait_url(cur, "/a", 15_000).is_none() {
-        problems.push(format!("页面没能加载到 A（{url_a}）—— 后面的断言全无意义"));
-        println!("{}", serde_json::json!({ "ok": false, "problems": problems }));
-        return 1;
-    }
-    steps.push(serde_json::json!({ "step": "load A", "url": cur() }));
-
-    // ② A → B：走 `open_browser` 复用窗口时**同一行** `window.location.href=`
-    let _ = win.eval(&format!("window.location.href={url_b:?}"));
-    if browser_nav_probe::wait_url(cur, "/b", 10_000).is_none() {
-        problems.push("导航到 B 失败 —— eval 根本没作用到页面上".into());
-    }
-    steps.push(serde_json::json!({ "step": "goto B", "url": cur() }));
-
-    // ③ 后退：**这就是那三个按钮里最要紧的一个**，也是需求榜说「只能真机点」的那条。
-    // 🔴 调的是 `browser_nav` 本身，**不是照抄一句 `history.back()`** —— 抄一份的话，
-    // 谁把 browser_nav 里那行改坏了这条跑道照样绿，那就成了「跑道自己骗自己」。
-    let nav = |action: &str| {
-        tauri::async_runtime::block_on(browser_nav(app.clone(), label.to_string(), action.to_string(), None))
-    };
-    if let Err(e) = nav("back") {
-        problems.push(format!("browser_nav(back) 直接报错: {e}"));
-    }
-    match browser_nav_probe::wait_url(cur, "/a", 10_000) {
-        Some(u) => steps.push(serde_json::json!({ "step": "back", "url": u })),
-        None => problems.push(format!("点了后退但地址没回到 A（现在是 {}）—— 那个窗口仍旧是条单行道", cur())),
-    }
-
-    // ④ 前进
-    if let Err(e) = nav("forward") {
-        problems.push(format!("browser_nav(forward) 直接报错: {e}"));
-    }
-    match browser_nav_probe::wait_url(cur, "/b", 10_000) {
-        Some(u) => steps.push(serde_json::json!({ "step": "forward", "url": u })),
-        None => problems.push(format!("点了前进但地址没回到 B（现在是 {}）", cur())),
-    }
-
-    // ⑤ 刷新：地址本来就不变，所以**只能用「服务端又收到一次请求」当证据**。
-    let before = hits.b.load(std::sync::atomic::Ordering::Relaxed);
-    if let Err(e) = nav("reload") {
-        problems.push(format!("browser_nav(reload) 直接报错: {e}"));
-    }
-    let reloaded = browser_nav_probe::wait_count(
-        || hits.b.load(std::sync::atomic::Ordering::Relaxed),
-        before + 1,
-        10_000,
-    );
-    if !reloaded {
-        problems.push(format!("点了刷新但服务端没再收到请求（仍是 {before} 次）—— 刷新没真的发生"));
-    }
-    steps.push(serde_json::json!({ "step": "reload", "hits_b_before": before, "hits_b_after": hits.b.load(std::sync::atomic::Ordering::Relaxed) }));
-
-    // ⑥ 窗口没开着时必须如实返回 false，而不是假装点了有用
-    if let Err(e) = nav("close") {
-        problems.push(format!("browser_nav(close) 直接报错: {e}"));
-    }
-    std::thread::sleep(std::time::Duration::from_millis(400));
-    if app.get_webview_window(label).is_some() {
-        problems.push("窗口关不掉".into());
-    }
-    // 窗口没了之后必须**如实返回 false**，而不是假装点了有用（面板据此把按钮灰掉）
-    match nav("back") {
-        Ok(true) => problems.push("窗口都关了，browser_nav 还报告「点成功了」—— 面板会以为按钮可用".into()),
-        Ok(false) => {}
-        Err(e) => problems.push(format!("窗口关了之后 browser_nav 该返回 false，却报错: {e}")),
-    }
-
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&serde_json::json!({
-            "ok": problems.is_empty(),
-            "problems": problems,
-            "steps": steps,
-            "covers": "browser_nav 的 back/forward/reload 三行 eval 真的作用到外部页面",
-            "does_not_cover": "前端那三个按钮有没有正确接到 browser_nav —— 那是 invoke 接线，仍需在真界面点一次",
-        }))
-        .unwrap_or_default()
-    );
-    if problems.is_empty() { 0 } else { 1 }
 }
 
 /// 检查更新（拉服务器 version.json 比对内置版本）。
@@ -7062,81 +6542,6 @@ pub fn run() {
         }
     }
 
-    // 浏览器直播会话无头验证：U-King.exe --browser-test
-    // 起 daemon → browser.stream 拿流地址 → open → snapshot 断言 @ref → tabs。
-    // 全走动作表（跟 conformance 同一条路），覆盖「面板能不能连上看实时画面」的前置。
-    if args.iter().any(|a| a == "--browser-test") {
-        let fail = std::cell::Cell::new(0usize);
-        let t0 = std::time::Instant::now();
-        // 🔴 每一步都**先报「开始跑谁」再跑**，而且走 `run_bounded`（动作自己声明的 timeout_ms）。
-        //
-        // 老实现两样都没有：直接 `actions::run(...)` 裸调 + 只在**成功之后**才打印一行。
-        // 于是浏览器动作一旦不返回，屏幕上什么都不会出现，跑道就那么静静地挂着 ——
-        // 实测超过 180 秒没结束，而没有任何一行说它在等谁。
-        // 「卡住了」和「正在慢」必须在屏幕上长得不一样，否则没人能排查。
-        let step = |name: &str, id: &str, input: serde_json::Value| -> serde_json::Value {
-            println!("[browser-test] → {name} …（已用 {}s）", t0.elapsed().as_secs());
-            match actions::run_bounded(id, input) {
-                Ok(v) => {
-                    println!("[browser-test] ✓ {name}: {}", serde_json::to_string(&v).unwrap_or_default());
-                    v
-                }
-                Err(e) => {
-                    fail.set(fail.get() + 1);
-                    println!("[browser-test] ✗ {name}: {e}");
-                    serde_json::json!({})
-                }
-            }
-        };
-        let stream = step("browser.stream", browser::BROWSER_STREAM, serde_json::json!({}));
-        if !stream
-            .get("ws_url")
-            .and_then(|v| v.as_str())
-            .map(|s| s.starts_with("ws://"))
-            .unwrap_or(false)
-        {
-            fail.set(fail.get() + 1);
-            println!("[browser-test] ✗ ws_url 格式不对（面板连不上）");
-        }
-        step("browser.open", browser::BROWSER_OPEN, serde_json::json!({ "url": "https://example.com" }));
-        let snap = step("browser.snapshot", browser::BROWSER_SNAPSHOT, serde_json::json!({}));
-        if !snap.get("snapshot").and_then(|v| v.as_str()).unwrap_or("").contains("ref=") {
-            fail.set(fail.get() + 1);
-            println!("[browser-test] ✗ snapshot 里没有 @ref 交互元素");
-        }
-        // 交互链端到端：点第一个 link 导航走 → 后退回来。验证新写动作（click/back）走真 agent-browser。
-        // 只挑 link（点了真会导航），不挑 heading/button（点了是 no-op，测不出导航）。
-        let link_ref = snap
-            .get("snapshot")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.lines().find(|l| l.contains("link") && l.contains("ref=")))
-            .and_then(|l| l.split("ref=").nth(1))
-            .and_then(|s| s.split(|c: char| !c.is_ascii_alphanumeric()).next())
-            .map(|s| s.to_string());
-        if let Some(rf) = link_ref {
-            // agent-browser 的 accessibility ref 是 `@eN`；不能在自检里剥掉
-            // `@` 后再传裸值，否则会被上游当 CSS selector 拒绝。
-            step("browser.click(link)", browser::BROWSER_CLICK, serde_json::json!({ "ref": format!("@{}", rf) }));
-            let after = step("browser.back", browser::BROWSER_BACK, serde_json::json!({}));
-            let _ = after;
-        } else {
-            println!("[browser-test] ⚠ 没有 link @ref，跳过点击/后退交互链");
-        }
-        let tabs = step("browser.tabs", browser::BROWSER_TABS, serde_json::json!({}));
-        if !tabs.get("tabs").and_then(|v| v.as_str()).unwrap_or("").contains("example.com") {
-            fail.set(fail.get() + 1);
-            println!("[browser-test] ✗ tabs 里没有 example.com");
-        }
-        let n_fail = fail.get();
-        let verdict = if n_fail == 0 {
-            "全部通过".to_string()
-        } else {
-            format!("{n_fail} 项失败")
-        };
-        println!("[browser-test] {verdict}（总耗时 {}s）", t0.elapsed().as_secs());
-        std::process::exit(if n_fail == 0 { 0 } else { 1 });
-    }
-
     // 安全卸载无头验证（只读）：U-King.exe --cleanup-scan [out.txt]
     // 扫描本机 U-King 足迹并打印/写文件（不删任何东西）。给了输出文件则写文件（release 是 windows
     // 子系统、RunCommand 抓不到 stdout，与 --selfcheck 同理落盘），否则打印。
@@ -7471,18 +6876,11 @@ pub fn run() {
 
     let builder = tauri::Builder::default();
 
-    // ★ 浏览器导航无头取证模式（`--browser-nav-test`，需求榜 P0 #5）。
-    // 它需要真的事件循环和真的 WebView2，所以不能像别的无头模式那样在 run() 顶部就退出，
-    // 只能走完整的 builder —— 但**必须跳过单实例插件**：否则用户那个 U-King 开着时，
-    // 这个进程会被弹回去、顺手把他的窗口顶到前面，那正是最不该发生的事。
-    let nav_probe = args.iter().any(|a| a == "--browser-nav-test");
-
     // ★ `--allow-multi-instance`：**并行调试实例**。默认永远不开，客户机上不存在这条路。
     //
     // 为什么需要它：验一版新构建就得起第二个 GUI，而单实例锁会把它弹回去、顺手把用户正在用的
     // 那个窗口顶到前面 —— 于是「验一下新版」的代价是「打断手上所有的活」（工作台里挂着的
-    // 一堆终端全断），结果没人验。`--browser-nav-test` 早就因为同样理由要跳过单实例（见上），
-    // 只是那条路绑死在一个特定跑道上，别的场景够不着。
+    // 一堆终端全断），结果没人验。
     //
     // 🔴 **它现在的语义不止「跳过单实例」，还包括「钉死当并行调试实例」**（见 `instance.rs`）：
     // 两边共用同一份 `~/.uking`（那正是这功能的前提 —— 验的必须是同一个世界，所以
@@ -7499,10 +6897,7 @@ pub fn run() {
              任务列表和 AI 续接 id 只读。查角色：action run runtime.instance.inspect --json"
         );
     }
-    // 只借「跳过单实例」这一件事，**不复用 `nav_probe` 本身** —— 它在下面还会真的去跑
-    // 浏览器导航跑道（`run_browser_nav_probe`）。把两者混成一个布尔，多开预览会莫名其妙
-    // 起一个探针然后自己退出，而症状看起来会像「新版启动就崩」。
-    let skip_single_instance = nav_probe || allow_multi;
+    let skip_single_instance = allow_multi;
 
     // 演示卸载绿色版是**独立分发的另一个产品**，却和主程序共用同一份 tauri.conf.json（=同一个
     // identifier，也就是同一把单实例锁）。不排除它的话，客户机上开着 U-King 时那个绿色版
@@ -7561,17 +6956,6 @@ pub fn run() {
             });
         })
         .setup(move |app| {
-            // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
-            // 真的让**外部页面**导航了。整个过程窗口 `visible(false)`，屏幕上什么都不出现，
-            // 不抢前台、不动鼠标、不截屏。跑完直接退出进程 —— 不起托盘、不起调度线程。
-            if nav_probe {
-                let h = app.handle().clone();
-                std::thread::spawn(move || {
-                    let code = run_browser_nav_probe(&h);
-                    std::process::exit(code);
-                });
-                return Ok(());
-            }
             // ★★ 角色登记。**必须排在下面所有后台 spawn 之前** —— 它决定的就是那些活起不起。
             //
             // 🔴 2026-08-23 的第一版把它排在说明书发布**之后**，破了这句自己写的规矩
@@ -7951,7 +7335,6 @@ pub fn run() {
             fs::open_produced_file,
             fs::reveal_produced_file,
             open_browser,
-            browser_nav,
             airuntime_doctor,
             agent_launch_probe,
             airuntime_run,
@@ -8000,55 +7383,6 @@ pub fn run() {
                 }
             }
         });
-}
-
-#[cfg(test)]
-mod browser_nav_tests {
-    use super::validate_nav;
-
-    /// `external` 把字符串原样交给系统 opener —— Windows 上 `file://` / `ms-settings:` /
-    /// 各种自定义协议都能被拉起来。前端哪天把用户输入直接透传进来，这就成了
-    /// 「让 U-King 帮我打开任意东西」。白名单跟 `open_browser` 同一套。
-    #[test]
-    fn external_only_accepts_https_or_loopback() {
-        assert!(validate_nav("browser-t1", "external", Some("https://u-claw.org.cn")).is_ok());
-        assert!(validate_nav("browser-t1", "external", Some("http://localhost:3000")).is_ok());
-        assert!(validate_nav("browser-t1", "external", Some("http://127.0.0.1:5173/x")).is_ok());
-
-        for bad in [
-            "file:///C:/Windows/System32/calc.exe",
-            "ms-settings:privacy",
-            "javascript:alert(1)",
-            "http://evil.example.com", // 非回环的裸 http 也不放
-            "",
-            "   ",
-        ] {
-            assert!(
-                validate_nav("browser-t1", "external", Some(bad)).is_err(),
-                "这个地址不该被放进系统浏览器: {bad:?}"
-            );
-        }
-        assert!(validate_nav("browser-t1", "external", None).is_err(), "没给地址得报错，不能当空串放行");
-    }
-
-    /// label 不校验的话，可以拿它去驱动主窗口或别的子窗口 —— 里面有 close 和 eval。
-    #[test]
-    fn label_must_be_a_browser_child_window() {
-        assert!(validate_nav("browser-abc", "reload", None).is_ok());
-        for bad in ["main", "", "browse-abc", "../browser-abc"] {
-            assert!(validate_nav(bad, "reload", None).is_err(), "非浏览器子窗口不该被驱动: {bad:?}");
-        }
-    }
-
-    /// 动作白名单在校验层，不在 match 的兜底分支 —— 校验先跑，机器一个字节都不会被碰。
-    #[test]
-    fn unknown_action_rejected() {
-        for a in ["back", "forward", "reload", "focus", "close"] {
-            assert!(validate_nav("browser-x", a, None).is_ok(), "{a} 应该是合法动作");
-        }
-        assert!(validate_nav("browser-x", "eval", Some("https://x.com")).is_err());
-        assert!(validate_nav("browser-x", "", None).is_err());
-    }
 }
 
 #[cfg(test)]

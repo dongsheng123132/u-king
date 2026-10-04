@@ -106,16 +106,11 @@ const ERR_RULES: &[(&str, &str, Blame, bool)] = &[
     ("无可用渠道", "model_not_allowed", Blame::User, false),
     ("还没安装", "not_installed", Blame::User, false),
     ("未安装", "not_installed", Blame::User, false),
-    // 🔴 `browser.*` 和 `doc.read` 发的是**带前缀**的 `not_installed: …`，而上面两条中文词
-    // 一个都匹配不上 —— 于是「没装 agent-browser」这种纯环境问题一路落到
+    // 🔴 `doc.read` 发的是**带前缀**的 `not_installed: …`，而上面两条中文词
+    // 一个都匹配不上 —— 于是「没装转换器」这种纯环境问题一路落到
     // `code=unknown` + `blame=bug`，还附赠一句写给我们自己看的「该往 ERR_RULES 补一条」。
     // 这就是那句 hint 点名要补的那一条。
     ("not_installed:", "not_installed", Blame::User, false),
-    // 浏览器面板的可处置环境分流：缺 Chrome 是客户可自行补件；Chrome 已有却起不来
-    // 才需要保留原始启动失败信息，不能诱导客户反复重装 agent-browser。
-    ("chrome_missing:", "chrome_missing", Blame::User, false),
-    ("browser_start_failed:", "browser_start_failed", Blame::User, false),
-    ("version_mismatch:", "version_mismatch", Blame::User, false),
     // 图片附件在发送前就已不在原位置：客户机实测，从截图工具窗口直接拖出的图是临时文件，
     // 被系统清理后识图只会得到「找不到文件」。不归类的话落成 unknown+bug，被当成程序坏了去上报；
     // 它其实是用户侧状态，处置是重新拖入这张图 —— 重试同一个路径永远是同一个答案。
@@ -279,9 +274,6 @@ fn hint_for(code: &str) -> &'static str {
         "unauthorized" => "Key 无效或没配 —— 去「AI 设置」重新应用一次驱动",
         "model_not_allowed" => "这个 token 没开这个模型的白名单，服务端加一下",
         "not_installed" => "先装上对应工具再调这个动作",
-        "chrome_missing" => "先安装 Google Chrome 后再试",
-        "browser_start_failed" => "Chrome 已安装但没能启动；重试启动，仍失败再查看错误详情或联系技术支持",
-        "version_mismatch" => "浏览器运行时版本不匹配；在浏览器面板安装固定版本后再试",
         "image_missing" => "图片文件已不在原位置 —— 让用户重新选一次图片，重试同一个路径没用",
         "refused" => "核心按规矩挡下了，不是故障 —— 换个做法，重试没用",
         "network" | "timeout" => "本机到网络这一段的问题，换网络或稍后重试",
@@ -514,8 +506,6 @@ pub const AITOOL_INSTALL: &str = "runtime.aitool.install";
 /// 幂等由 `installer::ensure_*` 自己兑现（已装就探到并秒回，不重下）。
 /// 跟 `OPTIMIZER_APPLY` 分工：那条改这台机器的**设置**，这条补这台机器**缺的东西**。
 pub const ENV_INSTALL_TOOLS: &str = "runtime.env.install_tools";
-/// 安装并验收内置浏览器面板依赖。必须走 ActionParity 确认门，不能由 GUI 直调旧安装命令绕过。
-pub const BROWSER_RUNTIME_INSTALL: &str = "runtime.browser.install";
 
 /// 标记这个动作会边跑边报进度。清单里如实声明，调用方才知道要不要挂监听 ——
 /// 一个会跑几分钟却声明「无进度」的动作，等于让 UI 只能干等着转圈。
@@ -1269,40 +1259,6 @@ pub struct ActionCheck {
     pub blockers: Vec<String>,
 }
 
-/// 遍历动作表，把每个**只读且无入参**的动作真跑一遍，按 `output_schema.required` 断言返回形状。
-///
-/// 这就是取代十几个手写 `--xxx-test` 开关的那条通用跑道：新增一个动作 = 自动多一条冒烟测试，
-/// 不用再去 `main()` 里加一个 `--foo-test`（那些开关彼此不一致，有的写文件有的打印，
-/// 有的有退出码有的没有，早就成了负债）。
-///
-/// 写动作（effect != read）一律跳过并写明原因 —— 体检绝不改机器。跳过的都列出来，
-/// 不做「静默不跑」：否则一份全绿报告会读成「全覆盖」，而它并不是。
-/// 按动作**自己声明的 `timeout_ms`** 跑一次，超时返回 `Err` —— 调用方永远不会无界等待。
-///
-/// 为什么要有它：`run()` 是裸调用，卡住就一起卡。体检那条路（`run_one`）早就用
-/// 「线程 + `recv_timeout`」兜住了，但 `--browser-test` 直接调 `run()`，
-/// 于是浏览器动作一旦不返回，整条跑道就永远挂着 —— 实测超过 180 秒没结束，
-/// 而**没有任何一行输出说它在等谁**。
-///
-/// 兜底的口径跟体检**共用同一个来源**：动作自己声明的 `timeout_ms`。
-/// 不在调用方另写一个数字 —— 那样两处迟早对不上，对不上的那次正好是出事那次。
-/// 超时的线程留着跑完，进程随后退出；这些都是一次性 CLI，不是常驻服务。
-pub fn run_bounded(id: &str, input: Value) -> Result<Value, String> {
-    let budget = list()
-        .into_iter()
-        .find(|s| s.id == id)
-        .map(|s| std::time::Duration::from_millis(s.timeout_ms))
-        // 动作表里没有这个 id：交给 run() 自己去报「未知动作」，别在这儿等。
-        .unwrap_or_else(|| std::time::Duration::from_secs(30));
-    let (tx, rx) = std::sync::mpsc::channel();
-    let owned = id.to_string();
-    std::thread::spawn(move || {
-        let _ = tx.send(run(&owned, input));
-    });
-    rx.recv_timeout(budget)
-        .unwrap_or_else(|_| Err(format!("timeout: 超过自己声明的 timeout_ms={}", budget.as_millis())))
-}
-
 /// 整条体检的**总预算**。单个动作早就有 `timeout_ms` 兜底（见 `run_one`），
 /// 但 85 个动作各自最多 10 秒 = 最坏 850 秒 —— 每一步都合规，合起来仍然像挂死。
 ///
@@ -1952,19 +1908,6 @@ mod tests {
             ActionError::classify("token has no access to model").blame,
             Blame::User
         );
-
-        for (raw, code) in [
-            ("chrome_missing: demo", "chrome_missing"),
-            ("browser_start_failed: demo", "browser_start_failed"),
-            ("version_mismatch: demo", "version_mismatch"),
-        ] {
-            let e = ActionError::classify(raw);
-            assert_eq!(e.code, code);
-            assert_eq!(e.blame, Blame::User);
-            assert!(!e.retriable);
-            assert!(!e.worth_reporting());
-            assert!(!e.hint.is_empty());
-        }
 
         // 出处：客户机实测（2026-10-03）。截图工具拖出的临时图片被系统清掉后，每次发送都落到这句；
         // 以前没归类，成了 unknown+bug。这是用户侧状态，重试同一个路径没用。
