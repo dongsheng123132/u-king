@@ -145,11 +145,6 @@ export const panels: Record<string, string> = {
   "在独立窗口打开预览页（localhost 也能开）":
     "Open the preview page in a separate window (localhost works too)",
 
-  // SplitContainer.tsx —— 终端分屏
-  "左右分屏": "Split left/right",
-  "上下分屏": "Split top/bottom",
-  "关闭此格": "Close this pane",
-
   // ChatPanel.tsx —— 空态 + 输入框工具条（2026-08 改版）
   "{name} 在这个文件夹里读写文件、跑命令、改代码 —— 工具调用和文件改动会以卡片和内联 diff 展示。": "{name} reads and writes files, runs commands and edits code in this folder — tool calls and file changes show up as cards with inline diffs.",
   "下面点一个起手词，或直接说你要什么。": "Pick a starter below, or just say what you want.",

@@ -102,7 +102,6 @@ export const workbench: Record<string, string> = {
   "U-Workspace 版本": "U-Workspace version",
   "拖动调整会话栏宽度 · 双击收起": "Drag to resize the session bar · double-click to collapse",
 
-  // RunPanel.tsx
   "我的 AI": "My AI",
 
   // UWorkspace.tsx

@@ -495,7 +495,7 @@ type TermMenuItem = {
 /**
  * 弹终端右键菜单。**原生 DOM，不走 React**。
  *
- * 为什么：`useTermGroup` 有三个消费方（TermPanel / TerminalPage / SplitContainer），
+ * 为什么：`useTermGroup` 有两个消费方（TermPanel / TerminalPage），
  * 走 React 就得挨个接线，而**少接一处，那条路上右键就还是浏览器菜单** ——
  * 恰好是最难发现的那种漏（它不报错，只是"没修好"）。菜单由建监听的这段代码自己造，
  * 谁挂了终端谁就自动有，忘不了。
