@@ -73,8 +73,6 @@ export const ACTION = {
   RUNTIME_FOOTPRINT_INSPECT: "runtime.footprint.inspect",
   /** Delete or revert the footprint items you picked. Config items revert to their pre-U-King state; AI tools go through their own official uninstaller. Returns whether the app must exit to finish. */
   RUNTIME_FOOTPRINT_REMOVE: "runtime.footprint.remove",
-  /** Read whether the 1so-geo skill pack is installed. Reads only. */
-  RUNTIME_GEO_INSPECT: "runtime.geo.inspect",
   /** Read RAM, GPU and CPU to recommend a local model tier. Reads only. */
   RUNTIME_HARDWARE_INSPECT: "runtime.hardware.inspect",
   /** Tell apart 'Hermes can chat' from 'Hermes can open pages and screenshot'. Reads only. */
@@ -256,7 +254,6 @@ export type ActionInputMap = {
   "runtime.expert.inspect": Record<string, never>;
   "runtime.footprint.inspect": Record<string, never>;
   "runtime.footprint.remove": { expected_state_version?: string; ids: Array<unknown>; preserve_user_data?: boolean; };
-  "runtime.geo.inspect": Record<string, never>;
   "runtime.hardware.inspect": Record<string, never>;
   "runtime.hermes_browser.inspect": Record<string, never>;
   "runtime.hire.search": { query: string; };
@@ -365,7 +362,6 @@ export type ActionOutputMap = {
   "runtime.expert.inspect": Record<string, unknown>;
   "runtime.footprint.inspect": Record<string, unknown>;
   "runtime.footprint.remove": Record<string, unknown>;
-  "runtime.geo.inspect": Record<string, unknown>;
   "runtime.hardware.inspect": Record<string, unknown>;
   "runtime.hermes_browser.inspect": Record<string, unknown>;
   "runtime.hire.search": Record<string, unknown>;

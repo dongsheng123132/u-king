@@ -66,8 +66,6 @@ export const sidebar: Record<string, string> = {
   "AI 出图 + 换成你的真二维码 · 可扫": "AI art + your real QR code · scannable",
   "AI 视频": "AI Video",
   "文字生成视频 · 异步出片": "Text to video · async rendering",
-  "网站GEO体检": "Website GEO Check",
-  "各家 AI 认不认识你 · 免费自查 + AI 可见度测试": "Do AIs know you · free self-check + AI visibility test",
   "AI 技能包": "AI Skill Pack",
   "给 Claude/ClawX 装作图能力 · 装完说「画图」": "Add image skills to Claude/ClawX · then say “draw”",
   "厨具工具箱": "Toolbox",

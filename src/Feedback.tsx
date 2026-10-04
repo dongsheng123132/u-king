@@ -54,9 +54,8 @@ const CONTACT_EMAIL = "hefangsheng@gmail.com";
 
 /**
  * 售后微信。放在邮箱**前面**：客户是中文用户，加微信几秒钟，发邮件多半不会发。
- * 🔴 **两处在用，改一处不算改完**：这里，和 `Geo.tsx`（网站 GEO 体检的付费咨询入口）。
- * 2026-08-17 GEO 随 #419 下线时这里改成了「只剩这一处」，08-23 又整块恢复回来 ——
- * 所以这行注释在这两个日期之间是对的，现在不是了。要再加别的入口就从这儿引，别又抄一份。
+ * 唯一出处：原先另一处在用的 `Geo.tsx`（网站 GEO 体检的付费咨询入口）已于 2026-10-04 随 GEO 体检删除。
+ * 要再加别的入口就从这儿引，别又抄一份。
  */
 const CONTACT_WECHAT = "hecare888";
 
@@ -316,7 +315,7 @@ export function Feedback({ version, onToast }: { version?: string; onToast: (s: 
     }
   };
 
-  // 复制失败也要把号码**说出来** —— 客户复制不了至少还能照着敲（同 Geo.tsx 的处理）
+  // 复制失败也要把号码**说出来** —— 客户复制不了至少还能照着敲
   const copyWechat = async () => {
     try {
       await navigator.clipboard.writeText(CONTACT_WECHAT);

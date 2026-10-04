@@ -2283,43 +2283,6 @@
       "bindings": [
         {
           "surface": "cli",
-          "target": "cli:action run runtime.geo.inspect --json --no-input"
-        }
-      ],
-      "description": "Read whether the 1so-geo skill pack is installed. Reads only.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 5000
-      },
-      "id": "runtime.geo.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "installed",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect the GEO skill pack"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.uu_remote.inspect --json --no-input"
         }
       ],
@@ -5327,7 +5290,6 @@
       "runtime.openclaw2.preflight",
       "runtime.usb_genie.inspect",
       "runtime.usb_genie.verify",
-      "runtime.geo.inspect",
       "runtime.uu_remote.inspect",
       "runtime.podapp.inspect",
       "runtime.automation.inspect",

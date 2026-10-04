@@ -1,4 +1,4 @@
-/** 英文覆盖字典 · 备份/进阶/连接器/动态/教程/GEO/专家（Backup/Advanced/Connectors/Feed/Tutorial/Geo/Experts）。 */
+/** 英文覆盖字典 · 备份/进阶/连接器/动态/教程/专家（Backup/Advanced/Connectors/Feed/Tutorial/Experts）。 */
 export const misc: Record<string, string> = {
   // ── Backup.tsx ─────────────────────────────────────────────────
   "选择备份位置（U 盘根目录）": "Choose a backup location (USB drive root)",
@@ -285,88 +285,9 @@ export const misc: Record<string, string> = {
   "下面是给进阶用户看的「接入指南」——把这台电脑的 AI 额度配到手机 App、其它软件里用。新手可以先不看。":
     "Below is the “Setup Guide” for advanced users — how to use this PC's AI quota in phone apps and other software. Beginners can skip it for now.",
 
-  // ── Geo.tsx ────────────────────────────────────────────────────
-  "AI 几乎不认识你": "AI barely knows you",
-  "少数 AI 模糊知道你": "A few AIs vaguely know you",
-  "部分 AI 认识你，但不全面": "Some AIs know you, but not fully",
-  "多数 AI 认识并会推荐你": "Most AIs know and will recommend you",
-  "请先填公司名": "Please enter a company name first",
-  "体检面板已生成（{n} 个渠道），已在浏览器打开": "Check panel generated ({n} channels) and opened in the browser",
-  "体检失败，请重试": "Check failed, please try again",
-  "AI 可见度 {score}/100 —— {label}，报告已在浏览器打开": "AI visibility {score}/100 — {label}. Report opened in the browser",
-  "AI 可见度测试失败，请重试": "AI visibility test failed, please try again",
-  // GEO 页 2026-08-24 改版：展示 + 转化微信，不在客户机上真跑 AI 可见度测试。
-  "样板报告打开失败": "Could not open the sample report",
-  "咨询内容已复制，加微信 hecare888 后直接粘贴发给我们": "Enquiry text copied. Add WeChat hecare888 and paste it to us",
-  "请手动添加微信 hecare888，把公司名和网址发给我们": "Please add WeChat hecare888 manually and send us your company name and website",
-  "看一份《AI 可见度报告》长什么样": "See what an “AI Visibility Report” looks like",
-  "演示样例": "Sample",
-  "这是一份": "This is a ",
-  "虚构公司的演示报告": "demo report for a fictional company",
-  "，用来说明我们出的报告包含什么：AI 可见度总分、6 家大模型分别怎么评价你、它们普遍缺哪几条关键信息、以及按影响力排序的改进清单。":
-    ", showing what our reports contain: an overall AI visibility score, how each of 6 LLMs describes you, which key facts they all lack, and a fix list ordered by impact.",
-  "它不会检测你的网站，也不消耗任何额度。": "It does not scan your website and uses no credits.",
   "正在打开…": "Opening…",
-  "打开样板报告": "Open the sample report",
-  "想要一份针对你公司的真实报告？": "Want a real report for your company?",
-  "我们逐一实测 6 家大模型 + 人工判读后出具，再按结果谈怎么优化":
-    "We test 6 LLMs one by one, review the answers by hand, then discuss what to fix",
-  "AI 的回答有波动，同一个问题问两次结果可能不同，还常把同名公司搞混。所以我们不做一键批量跑，而是":
-    "LLM answers fluctuate — ask twice and you may get different results, and they often confuse companies with similar names. So instead of a one-click batch run we do ",
-  "逐家实测 + 人工核对": "per-model testing with human review",
-  "后出报告，附上能照着做的改进清单。": ", then hand over the report with a fix list you can act on.",
-  "① 复制咨询内容": "① Copy enquiry text",
-  "把上面填的公司信息拼成一句话": "Turns what you typed above into one sentence",
-  "加微信后直接粘贴，省得重打一遍": "Paste it after adding us on WeChat — no need to retype",
-  "② 复制微信号": "② Copy WeChat ID",
-  "点这里复制，去微信搜索添加": "Click to copy, then search for it in WeChat",
-  "报价按站点数和行业一对一给（我们帮你做：AI 可读企业主页 + llms.txt / 结构化数据部署 + 高德/百度/腾讯三大地图信息同步 + 每月复测追踪）。":
-    "Pricing is quoted one-to-one based on site count and industry (we build: an AI-readable company page, llms.txt / structured data deployment, listing sync across Amap / Baidu / Tencent maps, and monthly re-testing).",
-  "提示：上面的「免费自查」打开的是各家 AI 和搜索引擎的真实页面，结果由你自己看 —— 搜不到 ≠ 不存在，只是还没被 AI 收录。样板报告为演示数据，不代表你公司的实际情况。":
-    "Note: the free self-check opens the real AI and search pages for you to read yourself — not found ≠ does not exist, it just is not indexed by AI yet. The sample report uses demo data and does not reflect your company.",
-  "网站 GEO 体检": "Website GEO Check",
-  "AI 时代，客户越来越多直接问豆包 / DeepSeek / ChatGPT「XX 这家公司靠谱吗」。这里两步看你在 AI 眼里的样子：先":
-    "In the AI era, more and more customers just ask Doubao / DeepSeek / ChatGPT “is company XX trustworthy?”. Two steps to see how you look in AI's eyes: first ",
-  "免费自查": "free self-check",
-  "搜全网，再让": " to search the whole web, then let ",
-  "各家大模型给你打分": "the major LLMs score you",
-  "——出一份可直接发客户的《AI 可见度报告》。": " — producing an “AI Visibility Report” you can send straight to customers.",
-  "没找到 GEO 体检技能包（": "GEO check skill pack not found (",
-  "）。请双击更新到最新版 U-King，或在「AI 技能包」页安装后再来。":
-    "). Double-click to update to the latest U-King, or install it on the “AI Skill Pack” page and come back.",
-  "公司 / 品牌名 ": "Company / brand name ",
-  "例：贺去病AI工作室": "e.g. He Qubing AI Studio",
-  "所在地区（可选）": "Region (optional)",
-  "例：深圳宝安": "e.g. Bao'an, Shenzhen",
-  "所在行业（可选）": "Industry (optional)",
-  "例：AI培训": "e.g. AI training",
-  "免费自查 · 40+ 渠道体检面板": "Free self-check · 40+ channel panel",
-  "免费 · 不需 Key": "Free · no key needed",
-  "在 AI 搜索 / AI 对话 / 传统搜索 / 社交 / 视频 / 百科 / 地图 里搜你的公司，逐个点「去查↗」打开真实搜索页自己看——有没有你、AI 认不认你，实时算出「互联网可见度」。":
-    "Search your company across AI search / AI chat / traditional search / social / video / wiki / maps; click “Check ↗” on each to open the real search page and see for yourself — whether you're there, whether AI knows you — and get a live “web visibility” score.",
-  "正在生成体检面板…": "Generating check panel…",
-  "开始免费自查": "Start free self-check",
-  "面板已生成 · 覆盖 {n} 个渠道": "Panel generated · covers {n} channels",
   "打开失败": "Failed to open",
   "重新打开": "Reopen",
-  "AI 可见度测试 · 各家大模型给你打分": "AI visibility test · scored by the major LLMs",
-  "免费出分": "Free score",
-  "并行去问 GPT / Claude / Gemini / DeepSeek / 通义 等大模型「认不认识你公司、会不会推荐你」，聚合出一份可视化《AI 可见度报告》（总分 + 各家评分 + 普遍缺什么），可直接发客户。报告底部可":
-    "Ask GPT / Claude / Gemini / DeepSeek / Tongyi and other LLMs in parallel whether they know your company and would recommend you, then aggregate a visual “AI Visibility Report” (overall score + per-model scores + what's commonly missing) you can send straight to customers. At the bottom of the report you can ",
-  "支付宝下单，由我们帮你做 GEO + MEO 优化": "order via Alipay and have us do GEO + MEO optimization for you",
-  "（让 AI 和地图都搜到你）。": " (so both AI and maps can find you).",
-  "用 U-King 内置额度，一次约几分钱、无需自己配 Key。": "Uses U-King's built-in quota — a few cents per run, no key to configure yourself.",
-  "正在问各家 AI（约 1 分钟）…": "Asking the AIs (about 1 minute)…",
-  "测测各家 AI 认不认识你": "Test whether the AIs know you",
-  "AI 可见度总分 {score}/100 · {label}": "AI visibility total {score}/100 · {label}",
-  "报告已在浏览器打开——底部有「基础优化 / 持续优化」两档，可":
-    "The report has opened in the browser — at the bottom there are two tiers, “Basic optimization / Ongoing optimization”, and you can ",
-  "支付宝直接下单": "order directly via Alipay",
-  "，由我们帮你做 GEO + MEO 优化（AI 可读企业主页 + 三大地图商家信息 + 每月复测追踪）。":
-    ", and have us do GEO + MEO optimization for you (AI-readable company homepage + business listings on the three major maps + monthly re-test tracking).",
-  "重新打开 AI 可见度报告": "Reopen AI visibility report",
-  "提示：分数为本次抽样结果，AI 回答有波动，建议多次复测取趋势（搜不到 ≠ 不存在，只是还没被 AI 收录）。更多能力（生成 AI 可读企业主页、行业高频问答）在升级方案里。":
-    "Note: the score is a sample from this run; AI answers vary, so re-test a few times to read the trend (not found ≠ nonexistent — just not indexed by AI yet). More capabilities (generating an AI-readable company homepage, industry FAQ) are in the upgrade plans.",
 
   // ── Experts.tsx ────────────────────────────────────────────────
   "AI 专家": "AI Experts",

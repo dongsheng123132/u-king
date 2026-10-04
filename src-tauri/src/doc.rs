@@ -41,7 +41,7 @@ fn script(pack: &str, file: &str) -> PathBuf {
 }
 
 /// node 可执行：优先便携版，否则赌 PATH（下面 `inject_path` 已把 `search_paths` 前置）。
-/// 跟 `geo.rs::node_program` 同口径 —— 那条路已经在客户机上验过了。
+/// 与 `installer::portable_node_dir` 同口径（便携 Node 优先）。
 fn node_program() -> String {
     if let Some(dir) = crate::installer::portable_node_dir() {
         #[cfg(windows)]

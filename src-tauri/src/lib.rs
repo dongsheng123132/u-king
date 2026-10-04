@@ -40,7 +40,6 @@ mod model_route;
 mod video;
 mod vision;
 mod fs;
-mod geo;
 mod guard;
 mod hardware;
 mod identity;
@@ -2433,31 +2432,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             |_, input, _| {
                 let q = input.get("query").and_then(|v| v.as_str()).unwrap_or_default();
                 Ok(serde_json::to_value(hire::search(q)).unwrap_or_default())
-            },
-        ),
-        actions::readonly(
-            actions::GEO_INSPECT,
-            "Inspect the GEO skill pack",
-            "Read whether the 1so-geo skill pack is installed. Reads only.",
-            5_000,
-            &["installed", "ready", "blockers"],
-            |_, _, _| {
-                let installed = geo::is_installed();
-                // GEO 技能包是一组 node 脚本（bin/1so.mjs）。释放到磁盘 ≠ 跑得起来：
-                // 客户机没有 node，点「开始体检」就是一声不吭地失败。
-                let node = installer::tool_installed("node");
-                let mut blockers = Vec::new();
-                if !installed {
-                    blockers.push("GEO 技能包还没释放到本机".to_string());
-                }
-                if !node {
-                    blockers.push("找不到 node：技能包是 node 脚本，没有它跑不起来".to_string());
-                }
-                Ok(serde_json::json!({
-                    "installed": installed,
-                    "ready": installed && node,
-                    "blockers": blockers,
-                }))
             },
         ),
         actions::readonly(
@@ -5679,70 +5653,6 @@ fn require_image_b64(r: Result<providers::ImageResult, String>) -> Result<provid
         Ok(_) => Err("出图成功，但该模型把图片存在了境外 CDN、当前网络下载失败（国内常见）。请改用「GPT Image 2」模型重试（它直接返回图片、国内最稳）。".into()),
         Err(e) => Err(e),
     }
-}
-
-// ── 网站 GEO 体检（geo.rs：跑 1so-geo 技能包「一搜商答」生成互联网体检面板）──────
-// 独立可插拔：删本功能只动 lib.rs（去 mod geo + 下面 3 个 command + invoke 注册）与 App.tsx。
-#[tauri::command]
-async fn geo_scan(name: String, region: Option<String>) -> Result<geo::GeoScan, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        geo::run_scan(&name, region.as_deref().unwrap_or(""))
-    })
-    .await
-    .map_err(|e| format!("体检任务异常: {e}"))?
-}
-
-// 🔴 `geo_aicheck` / `geo_inspect` 两个 command 2026-08-24 删除（用户拍板）。
-//
-// **不是因为功能不好，是因为它们是一条会烧我们钱的口子。** `1so-geo` 的 `llm.mjs`
-// 会自己去读 `~/.uking/device.json` 里的虾盘云设备钱包 Key —— 客户机上只要躺着那些脚本，
-// 任何人在命令行调 aicheck 就能拿我们的额度跑模型，而我们这边零信号。
-// 所以真正的闸门是 `geo.rs::SKILL_FILES` 不再发布它们、`REMOVED_FILES` 把老客户机上那份删掉；
-// 这里删 command 只是**不留一个指向空气的入口**。
-//
-// 🔴 **能力和代码一行没丢**：完整的技能包还在仓库 `src-tauri/skills/1so-geo/`，
-// 我们自己给客户人工出报告用的就是它。丢的只是「在客户机上能被调起来」。
-// 页面改成「免费自查（离线）+ 样板报告展示 + 加微信」，见 src/Geo.tsx。
-
-/// 样板 GEO 报告的路径（演示数据、静态文件）。前端拿到后用 `geo_open_panel` 打开。
-#[tauri::command]
-async fn geo_sample_report() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(geo::sample_report)
-        .await
-        .map_err(|e| format!("取样板报告任务异常: {e}"))?
-}
-
-/// GEO 技能包是否已装（前端据此提示"未安装"引导去装）。
-/// 薄壳，真身是影核动作 `runtime.geo.inspect`。
-#[tauri::command]
-async fn geo_installed() -> serde_json::Value {
-    action_field(run_action_blocking(actions::GEO_INSPECT).await, "installed", serde_json::json!(false))
-}
-
-/// 用系统默认浏览器打开体检面板 HTML（面板要开一堆"去查"新标签，浏览器最合适）。
-#[tauri::command]
-fn geo_open_panel(path: String) -> Result<(), String> {
-    if path.trim().is_empty() {
-        return Err("面板路径为空".into());
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // start "" <file>：空标题参数必带，否则 start 把带空格/中文的路径当标题
-        std::process::Command::new(crate::installer::system_tool("cmd"))
-            .args(["/C", "start", "", &path])
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
-            .spawn()
-            .map_err(|e| format!("打开体检面板失败: {e}"))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("打开体检面板失败: {e}"))?;
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -9965,10 +9875,6 @@ pub fn run() {
             draw::list_draw_history,
             draw::clear_draw_history,
             export_draw,
-            geo_scan,
-            geo_sample_report,
-            geo_installed,
-            geo_open_panel,
             export_video,
             export_qr_merge,
             export_skill_pack,

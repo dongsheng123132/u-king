@@ -71,7 +71,6 @@ const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const Identity = lazy(() => import("./Identity").then((m) => ({ default: m.Identity })));
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
-const Geo = lazy(() => import("./Geo").then((m) => ({ default: m.Geo })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
 const Toolbox = lazy(() => import("./Toolbox").then((m) => ({ default: m.Toolbox })));
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
@@ -1285,7 +1284,7 @@ export function App() {
               aigcNudge={
                 setupState?.next_step === "done" &&
                 !aigcDismissed &&
-                !["skillpack", "create", "draw", "qrmerge", "video", "geo", "toolbox", "rtk", "backup", "advanced"].includes(tab)
+                !["skillpack", "create", "draw", "qrmerge", "video", "toolbox", "rtk", "backup", "advanced"].includes(tab)
               }
               onGoAigc={() => {
                 localStorage.setItem("uking.aigcNudgeDone", "1");
@@ -1347,8 +1346,6 @@ export function App() {
               <QrMerge deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
             ) : tab === "video" ? (
               <Video deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
-            ) : tab === "geo" ? (
-              <Geo onToast={flash} />
             ) : tab === "skillpack" ? (
               // 技能包页：一键装自带能力(作图/视频/协同) + 图文上手教程。
               //
