@@ -3229,7 +3229,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 let installed = packs.iter().filter(|(_, _, ins, _)| *ins).count();
                 chk("skills", "技能包已就位", installed > 0,
                     format!("{installed}/{} 个自带技能包在工具的 skills 目录里", packs.len()),
-                    "去「AI 专家」页把要用的技能包装上（也可以只装用得到的那几个）。");
+                    "去「技能包」页把要用的技能包装上（也可以只装用得到的那几个）。");
 
                 let ready = blockers.is_empty();
                 // 装机队列里**故意没装**的东西，如实说一句 —— 不说的话它们就是凭空消失了。

@@ -40,6 +40,7 @@ import { Wizard } from "./Wizard";
 import { UWorkspace } from "./opencodex/UWorkspace";
 import type { Expert } from "./opencodex/experts";
 import { Sidebar, type TabId } from "./components/Sidebar";
+import { SkillPackList } from "./components/SkillPackList";
 import { ToolIcon } from "./components/ToolIcon";
 import { TUI_APPS, isTuiAppId } from "./opencodex/apps";
 import type { Engine } from "./opencodex/types";
@@ -1276,16 +1277,16 @@ export function App() {
             ) : tab === "video" ? (
               <Video deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
             ) : tab === "skillpack" ? (
-              // 技能包页：一键装自带能力(作图/视频/协同) + 图文上手教程。
+              // 技能包页：一键装自带能力(作图/视频/协同) + 自带技能包逐包装/删清单 + 图文上手教程。
               //
-              // 🔴 1.0.3 删掉了原来夹在中间的「技能市场」那一段（`Skills.tsx` + `Feed.tsx`）——
-              // 用户 2026-08-18：「ai技能 删除吧，就是一个 skillhub，ai专家，不就是吗？合并留到 uchat」。
-              // skillhub 入口和**逐包装/删清单**都搬到了 U-Workspace 左栏的「AI 专家」那一屏
-              // （专家是人、技能包是这些人会的本事，摆一起才说得通）。
+              // 🔴 1.0.3 删掉了原来夹在中间的「技能市场」那一段（`Skills.tsx` + `Feed.tsx`）。
+              // 逐包装/删清单（`SkillPackList`，客户点名要的「能删」）曾挂在 U-Workspace 左栏的
+              // 「AI 专家」那一屏；2026-10-04 专家墙下线前先搬到这里，行为不变。
               // `Tutorial` 没跟着删：它是给完全不懂的小白看的图文上手，`Skills.tsx` 是它**唯一**的挂载点，
               // 一起删就成了静默移除新手引导 —— 所以直接挂在这里。
               <div className="space-y-6">
                 <SkillPack deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
+                <SkillPackList onToast={flash} />
                 <div className="border-t border-white/[0.06]" />
                 <Tutorial onGoMyAI={() => setTab("toolhub")} />
               </div>

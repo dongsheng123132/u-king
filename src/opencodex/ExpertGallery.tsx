@@ -16,7 +16,6 @@ import { cn } from "../lib/cn";
 import { invoke } from "@tauri-apps/api/core";
 import { ACTION, createTauriActionClient } from "../generated/action-client";
 import { EXPERTS, allExperts, loadHiredExperts, skillLabel, type Expert, type HiredMeta } from "./experts";
-import { SkillPackList } from "../components/SkillPackList";
 import { HireSearch } from "./HireSearch";
 
 /** 走通用影核通道，不为「招人」再开一个 tauri command。 */
@@ -296,13 +295,9 @@ export function ExpertGallery({
         )}
       </div>
 
-      {/* 技能包清单 —— 从被删掉的「AI 技能」页搬过来。
-          专家是**人**，技能包是**这些人会的本事**：摆在同一屏才说得通
-          （用户 2026-08-18：「ai技能 删除吧，就是一个 skillhub，ai专家，不就是吗？合并留到 uchat」）。 */}
+      {/* 技能包清单（SkillPackList）2026-10-04 已搬到「技能包」页（App.tsx `tab === "skillpack"`）。 */}
       {/* 去市场现搜可招的人（动态，不是我们维护的货架）——用户要的「动态让大家装」 */}
       <HireSearch onToast={onToast} />
-
-      <SkillPackList onToast={onToast ?? (() => {})} />
 
       {detail && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setDetail(null)}>
