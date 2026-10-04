@@ -7228,7 +7228,8 @@ fn discover_tools_from(
 /// 用户的 Claude 是否是「自己的」配置（非 U-King 虾盘云）。
 ///
 /// 判据（任一成立即为真；拿不准一律当「是自己的」—— 宁可不推虾盘云，也绝不抢用户 Key）：
-///  ① `~/.claude/.credentials.json` 存在且非空 → 官方 OAuth 登录（用户自己的 Claude 账号）
+///  ① `~/.claude/.credentials.json` 存在且非空，**或** `~/.claude.json` 有非空 `oauthAccount`
+///     → 官方 OAuth 登录（用户自己的 Claude 账号；macOS 只有后者，凭据在钥匙串里）
 ///  ② settings.json 的 env 有非空 `ANTHROPIC_AUTH_TOKEN`，且 base 不含 `u-claw.org`
 ///     → 自备 Key / 自己的中转（DeepSeek / GLM / 自建代理都算）
 fn claude_owns_config() -> bool {
@@ -7236,6 +7237,23 @@ fn claude_owns_config() -> bool {
     let cred = config_home().join(".claude").join(".credentials.json");
     if std::fs::metadata(&cred).map(|m| m.len() > 8).unwrap_or(false) {
         return true;
+    }
+    // ①' 官方 OAuth 登录的另一份证据：`~/.claude.json` 里非空的 `oauthAccount`。
+    //
+    // 🔴 **macOS 上 Claude Code 把凭据存在钥匙串，不写 `.credentials.json`**。只认那个文件，
+    // Mac 上新登录的客户会被判成「不是自己的」→ `delegation_env` 给 claude 子进程注入虾盘云
+    // 端点 + 设备 Key → env 优先级高于官方登录，**他的官方登录被我们盖掉**，余额为 0 时还报「去充值」。
+    // 2026-10-04 用 1.3.8 真二进制 + UKING_TEST_HOME 沙箱复现：只有 oauthAccount → claude_own_key=false。
+    // `oauthAccount` 是登录时三平台都写的账号信息（邮箱/组织，不含任何凭据），读它不碰钥匙串。
+    // `.claude.json` 在重度用户机器上可能有几 MB（项目历史），先做子串预筛，大多数机器不用解析。
+    if let Ok(s) = std::fs::read_to_string(config_home().join(".claude.json")) {
+        if s.contains("\"oauthAccount\"") {
+            if let Ok(v) = serde_json::from_str::<Value>(&s) {
+                if v.get("oauthAccount").and_then(|a| a.as_object()).map(|o| !o.is_empty()).unwrap_or(false) {
+                    return true;
+                }
+            }
+        }
     }
     // ② 自备 Key，且端点不是我们的虾盘云
     if let Ok(s) = std::fs::read_to_string(claude_settings_path()) {
@@ -10945,6 +10963,37 @@ mod delegation_env_tests {
             // 免配置直连我们（这不是「抢」，是他本来就没有别的可用配置）。
             assert!(keys.contains(&"OPENAI_API_KEY"), "不该殃及 Codex 那半边：{keys:?}");
             assert!(keys.contains(&"OPENAI_BASE_URL"), "不该殃及 Codex 那半边：{keys:?}");
+        });
+    }
+
+    /// macOS 的官方登录形态：凭据在钥匙串里、**没有** `.credentials.json`，只有 `~/.claude.json`
+    /// 的 `oauthAccount`。只认文件的旧判据会把这台 Mac 判成「不是自己的」并注入虾盘云盖掉登录。
+    #[test]
+    fn keychain_only_official_login_on_mac_is_left_alone() {
+        with_sandbox("oauth-keychain", || {
+            let cred = config_home().join(".claude").join(".credentials.json");
+            assert!(!cred.exists(), "前提：这个形态下没有凭据文件");
+            std::fs::write(
+                config_home().join(".claude.json"),
+                r#"{"numStartups":3,"oauthAccount":{"accountUuid":"demo","emailAddress":"demo@example.test"}}"#,
+            )
+            .unwrap();
+            let keys: Vec<String> = delegation_env("sk-我们的").into_iter().map(|(k, _)| k).collect();
+            assert!(
+                !keys.iter().any(|k| k.starts_with("ANTHROPIC_")),
+                "Mac 上只在钥匙串里的官方登录被我们抢了：{keys:?}"
+            );
+        });
+    }
+
+    /// 反向：`.claude.json` 存在但**没登录过**（没有 / 空的 oauthAccount）→ 不能误判成自己的，
+    /// 否则没配过任何东西的新机器会失去「免配置直接用虾盘云」。
+    #[test]
+    fn claude_json_without_oauth_account_still_gets_delegated() {
+        with_sandbox("oauth-none", || {
+            std::fs::write(config_home().join(".claude.json"), r#"{"numStartups":1,"oauthAccount":{}}"#).unwrap();
+            let keys: Vec<String> = delegation_env("sk-我们的").into_iter().map(|(k, _)| k).collect();
+            assert!(keys.iter().any(|k| k == "ANTHROPIC_AUTH_TOKEN"), "没登录的机器应照旧免配置走虾盘云：{keys:?}");
         });
     }
 
