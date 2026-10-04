@@ -1,6 +1,6 @@
 ---
 name: uking-aigc
-description: 虾盘云作图与视频工具。画图/作图/文生图/图生图/改图/生成图片/配图/生成视频/文生视频/图生视频/做短视频/漫剧/宣传片/文字转语音/配音/旁白/拼接视频时使用；命令与提示词工作法在正文。
+description: 虾盘云作图与视频工具。画图/作图/文生图/图生图/改图/生成图片/配图/生成视频/文生视频/图生视频/做短视频/漫剧/宣传片/文字转语音/配音/旁白/写歌/生成歌曲/带人声的音乐/歌词谱曲/拼接视频时使用；命令与提示词工作法在正文。
 ---
 
 # U-King AIGC（AI 作图 + AI 视频）
@@ -9,7 +9,7 @@ description: 虾盘云作图与视频工具。画图/作图/文生图/图生图/
 
 ## 何时用本技能
 
-画图 / 作图 / 文生图 / 图生图 / 改图 / 生成图片 / 给文章配图 / 生成视频 / 文生视频 / 图生视频 / 做个短视频。
+画图 / 作图 / 文生图 / 图生图 / 改图 / 生成图片 / 给文章配图 / 生成视频 / 文生视频 / 图生视频 / 做个短视频 / 写歌 / 生成带人声的歌曲 / 给歌词谱曲。
 
 ## API Key（通常无需手动给）
 
@@ -225,6 +225,38 @@ echo "很长的旁白也行……" | node scripts/gen-tts.mjs --out long.mp3   #
 
 > 音色都能念中文；`nova`/`shimmer` 偏女声、`onyx` 偏浑厚男声、`alloy` 中性。要不同角色配音就换 `--voice`。
 
+## 歌曲（带人声 / 歌词）：scripts/gen-music.mjs
+
+用 Suno 生成**完整的歌**（人声 + 旋律 + 编曲），一次出 **2 首**供挑选。需系统 curl，约 1~3 分钟（异步：提交 → 轮询 → 下载）。
+
+**选哪个**：要「一首歌」（有人声、有歌词、要歌名）→ `gen-music.mjs`；只要**无人声的背景配乐**（短视频/漫剧垫底）→ `gen-bgm.mjs --prompt "<配乐描述>" --out bgm.mp3`。
+
+三种模式（互斥）：
+
+```bash
+# ① 自定义（歌词）：你写好歌词，--tags 定曲风，--title 定歌名。歌词用 [Verse]/[Chorus]/[Bridge] 分段
+node scripts/gen-music.mjs --lyrics "[Verse]
+晴天的早晨 风穿过窗
+[Chorus]
+唱给你听 唱给远方" --tags "pop, female vocal" --title "晨光" --out song --json
+#   歌词太长就写进文件：--lyrics-file lyrics.txt
+
+# ② 描述（灵感）：只说想要什么歌，歌词/曲风/歌名由 Suno 自己写
+node scripts/gen-music.mjs --prompt "一首关于夏天海边的轻快流行歌，男声" --out song --json
+
+# ③ 纯音乐（无人声，但仍是整曲）：描述 + --instrumental
+node scripts/gen-music.mjs --prompt "深夜咖啡馆的爵士钢琴，慵懒治愈" --instrumental --out cafe --json
+```
+
+只想要歌词、不出歌：`node scripts/gen-music.mjs --gen-lyrics --prompt "关于秋天和思念的短歌词" --out lyrics.txt`（落成 `.txt`，`--json` 的 `lyrics` 字段里也有全文）。
+
+参数：`--lyrics` / `--lyrics-file`（自定义歌词模式）· `--prompt`（描述模式 / 歌词主题）· `--tags`（曲风，仅自定义模式生效）· `--title`（歌名，仅自定义模式生效）· `--instrumental`（纯音乐，配 `--prompt`）· `--mv`（Suno 版本，默认 `chirp-v5-5`；也可试 `chirp-hawk`/`chirp-v4-5`/`chirp-v4`，以服务端实际支持为准）· `--out`（输出**前缀或目录**，默认 `./uking-music-<时间>`；文件为 `<前缀>-1.mp3`、`<前缀>-2.mp3`）· `--cover`（同时下载封面图）· `--force-new`（忽略本地任务单，强制新开一首）· `--dry-run`（只打印将发的请求，不联网不扣费）· `--key` · `--json` · `--quiet`。`--prompt` 与 `--lyrics` 不能同时给。
+
+输出（`--json`）：`{"ok":true,"task_id":"task_xxx","mode":"custom","files":[{"path":"/abs/song-1.mp3","title":"晨光","duration":32.16,"audio_url":"https://...","clip_id":"..."},{"path":"/abs/song-2.mp3",...}],"file":"/abs/song-1.mp3","resumed":false,"elapsed":"68s"}`。非 `--json` 时 stdout 每行一个文件路径。
+
+> **按次计费、不会重复扣费**：提交前先在 `~/.uking/music-jobs/` 记任务单，拿到任务号立刻写回。超时/中断后**重跑同一条命令**会继续查询和下载原任务，不会重新提交；只有加 `--force-new` 才会再开一首。若报「上次提交被中断或结果不明」，说明服务端可能已收单——先核对余额，确认没出歌再 `--force-new`。
+> 同一条命令 + 同一个 `--out` 重跑，且文件已在，会直接复用已交付的文件（要新歌就换 `--out` 或加 `--force-new`）。
+
 ## 视频拼接：scripts/gen-stitch.mjs（多镜头 / 漫剧成片）
 
 把多段视频按顺序拼成一条成片。各段尺寸/帧率不同也能拼（自动缩放补边到统一分辨率）。**需系统 ffmpeg**（没有会给安装指引）。
@@ -318,6 +350,27 @@ curl -sS -m 30 https://api.u-claw.org.cn/v1/video/generations/xxxxxx \
 
 # 3) 下载（把 result_url 的 api.u-claw.org 换成 api.u-claw.org.cn 再下）
 curl -sS -m 300 -L --ssl-no-revoke -H "Authorization: Bearer $XIAPAN_API_KEY" -o out.mp4 "<result_url 改成 .org.cn>"
+```
+
+### 歌曲（Suno：提交 → 轮询 → 下载 三步）
+```bash
+# 1) 提交。自定义歌词模式：prompt=歌词, tags=曲风, title=歌名, mv=版本
+curl -sS -m 60 -X POST https://api.u-claw.org.cn/suno/submit/music \
+  -H "Authorization: Bearer $XIAPAN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"prompt":"[Verse]\n晴天的早晨\n[Chorus]\n唱给你听","mv":"chirp-v5-5","tags":"pop, female vocal","title":"晨光"}'
+# 描述模式：-d '{"gpt_description_prompt":"一首关于夏天海边的轻快流行歌","mv":"chirp-v5-5"}'
+# 纯音乐：  -d '{"gpt_description_prompt":"深夜咖啡馆的爵士钢琴","mv":"chirp-v5-5","prompt":"","make_instrumental":true}'
+# → {"code":"success","message":"","data":"task_xxxxxx"}   （data 就是任务号）
+# 只写歌词（不出歌）：POST /suno/submit/lyrics，-d '{"prompt":"关于秋天和思念的短歌词"}'，同样轮询下面的接口
+
+# 2) 轮询（每 10 秒，最久约 10 分钟）。data.status=SUCCESS 且 data.data[*].status=complete、都有 audio_url 才算完成；
+#    data.status=FAILURE 则失败，原因在 data.fail_reason
+curl -sS -m 30 https://api.u-claw.org.cn/suno/fetch/task_xxxxxx \
+  -H "Authorization: Bearer $XIAPAN_API_KEY"
+# → {"code":"success","data":{"status":"SUCCESS","progress":"100%","data":[{"title":"晨光","duration":32.16,"audio_url":"https://...mp3","image_url":"https://...jpeg","status":"complete"}, {...第二首}]}}
+
+# 3) 下载每首的 audio_url（音频可能在第三方 CDN，别带 Authorization）
+curl -sS -m 180 -L --ssl-no-revoke -o song-1.mp3 "<data.data[0].audio_url>"
 ```
 
 ## 把本技能装进各 AI 工具

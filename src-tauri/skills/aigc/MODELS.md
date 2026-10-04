@@ -41,10 +41,11 @@
 
 > 克隆是「传参考音→出音色 id→合成」两步；服务端加克隆代理后走 `gen-voiceclone.mjs`，客户端只认统一 key，参考音在本地。
 
-## 🎵 音乐（gen-music.mjs🔜 · 需专线，OpenRouter 不含音乐）
+## 🎵 音乐（gen-music.mjs · gen-bgm.mjs · 需专线，OpenRouter 不含音乐）
 | 档位 | 模型 | 什么时候用 |
 |------|------|-----------|
-| 带人声整曲·最强 | Suno v5 🔜（走 Apiframe/MusicAPI）| 有歌词的完整歌曲 |
+| 带人声整曲·现役 | `suno_music` ✅（`gen-music.mjs`，一次出 2 首；歌词模式/描述模式/纯音乐）| 有歌词的完整歌曲 |
+| 背景配乐·现役 | `minimax-music-v2.6` ✅（`gen-bgm.mjs`）| 短视频/漫剧的无人声配乐 |
 | 商用授权最干净 | ElevenLabs Music 🔜 | 跟唱片公司合作，商用无忧 |
 | API-first 最快 | Google Lyria 3 Pro 🔜 | REST，纯 REST 快出 |
 | 背景纯音乐/BGM | Stable Audio / Mubert 🔜 | 短视频卡点 BGM |
