@@ -1008,7 +1008,7 @@ export function App() {
           className="shrink-0 border-b border-warning-500/40 bg-warning-500/15 px-3 py-1.5 text-[12.5px] text-warning-700 dark:text-warning-400"
         >
           {tr(
-            "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但定时任务、技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。",
+            "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。",
           )}
         </div>
       )}

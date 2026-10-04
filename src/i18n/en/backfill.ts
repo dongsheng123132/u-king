@@ -53,7 +53,7 @@ export const backfill: Record<string, string> = {
   "这台机器上找不到它": "Not found on this machine",
   "去装机向导装一下": "Install via Setup Wizard",
   "起得来，但多行提问会失败": "Launches successfully, but multi-line prompts will fail",
-  "命令被解析成了批处理壳（{p}）——Windows 不允许给批处理传带换行的参数，于是「多行提问」和所有「AI 专家」都会报「启动失败」。": "Command parsed as batch shell ({p}) — Windows does not allow passing newline arguments to batch files, causing “multi-line prompts” and all “AI experts” to report “launch failed”.",
+  "命令被解析成了批处理壳（{p}）——Windows 不允许给批处理传带换行的参数，于是所有多行提问都会报「启动失败」。": "Command parsed as batch shell ({p}) — Windows does not allow passing newline arguments to batch files, so every multi-line prompt reports “launch failed”.",
   "升级到 0.9.83 以上即可（本版已修）；若仍出现，多半是 PATH 上另有一份旧的壳在抢": "Upgrade to 0.9.83 or later (fixed in this version); if it persists, an old shell on the PATH is likely interfering.",
   "起不来": "Fails to launch",
   "进程无法启动": "Process cannot start",

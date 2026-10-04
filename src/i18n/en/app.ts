@@ -218,6 +218,6 @@ export const app: Record<string, string> = {
   "← 返回我的 AI": "← Back to My AI",
 
   // 「并行调试实例」常驻条（--allow-multi-instance 起第二个 U-King 时）。见 src-tauri/src/instance.rs
-  "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但定时任务、技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。":
-    "This is a parallel debug instance (a second U-King). The UI, terminals and working folder are identical to the first one, but scheduled automations, skill-pack sync and Codex proxy self-heal are owned by the first instance and are not run twice here. Tasks and chat-resume ids created here are not saved.",
+  "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。":
+    "This is a parallel debug instance (a second U-King). The UI, terminals and working folder are identical to the first one, but skill-pack sync and Codex proxy self-heal are owned by the first instance and are not run twice here. Tasks and chat-resume ids created here are not saved.",
 };
