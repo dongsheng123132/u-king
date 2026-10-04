@@ -9050,52 +9050,6 @@ pub fn query_balance(api_key: &str) -> Result<Balance, String> {
 // 用量明细（花在哪了）
 // ============================================================
 
-#[derive(Debug, Clone, Serialize)]
-pub struct UsageBreakdownItem {
-    pub model: String,
-    pub cny: f64,
-    pub count: i64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct UsageBreakdown {
-    pub days: i64,
-    pub items: Vec<UsageBreakdownItem>,
-}
-
-/// 查「钱花在哪了」——按模型分组的消耗明细。这是虾盘云自建的端点（不是 OpenAI 兼容 API
-/// 的一部分，`/v1/dashboard/billing/breakdown`），服务端一条按 token_id 索引的聚合查询，
-/// 客户端只在打开 AI 设置页时按需查一次，不轮询、不加服务器负担。
-pub fn query_usage_breakdown(api_key: &str, days: i64) -> Result<UsageBreakdown, String> {
-    let auth = format!("Authorization: Bearer {api_key}");
-    let resp = curl(&[
-        "-sS",
-        "-m",
-        "8",
-        "--connect-timeout",
-        "5",
-        "-H",
-        &auth,
-        &format!("https://api.u-claw.org.cn/v1/dashboard/billing/breakdown?days={days}"),
-    ])?;
-    let v: Value = serde_json::from_str(&resp).map_err(|_| format!("用量明细响应异常：{}", snippet(&resp, 200)))?;
-    let items = v
-        .get("items")
-        .and_then(|x| x.as_array())
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|it| {
-            Some(UsageBreakdownItem {
-                model: it.get("model")?.as_str()?.to_string(),
-                cny: it.get("cny")?.as_f64()?,
-                count: it.get("count").and_then(|c| c.as_i64()).unwrap_or(0),
-            })
-        })
-        .collect();
-    Ok(UsageBreakdown { days, items })
-}
-
 // 沙箱互斥锁曾经定义在这儿（`pub(crate) SANDBOX_LOCK`），注释也写明了「凡是要改
 // UKING_TEST_HOME 的测试模块一律锁这一把」—— 但后来的模块复制 `with_sandbox` 时
 // 连注释一起抄走、各自新起了一把本地锁，等于没锁。现已下沉到 `crate::testsandbox`，

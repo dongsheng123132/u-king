@@ -149,26 +149,6 @@ async fn install_local(app: AppHandle) -> Result<install::InstallResult, String>
     .map_err(|e| format!("安装任务异常: {e}"))?
 }
 
-/// 打开本地安装目录。
-#[tauri::command]
-fn open_install_dir() -> Result<(), String> {
-    install::reveal_install_dir()
-}
-
-/// 注册右键菜单（指向本地安装的 exe；若未装到本地则指向当前 exe）。
-/// 薄壳，真身是影核动作 `runtime.context_menu.set`（GUI 点了按钮 = 显式确认，传 confirm）。
-#[tauri::command]
-async fn register_context_menu() -> Result<(), String> {
-    run_write_action(actions::CONTEXT_MENU_SET, serde_json::json!({ "enabled": true })).await.map(|_| ())
-}
-
-/// 注销右键菜单。
-/// 薄壳，真身是影核动作 `runtime.context_menu.set`。
-#[tauri::command]
-async fn unregister_context_menu() -> Result<(), String> {
-    run_write_action(actions::CONTEXT_MENU_SET, serde_json::json!({ "enabled": false })).await.map(|_| ())
-}
-
 /// 工具市场目录。
 ///
 /// **必须是 async + spawn_blocking**（测试报告 #011「进阶/AP 模式切换卡顿」的真因）：
@@ -236,34 +216,6 @@ async fn install_uu_remote(app: AppHandle) -> Result<String, String> {
     Ok(v.get("message").and_then(|m| m.as_str()).unwrap_or_default().to_string())
 }
 
-/// 开 / 关本地行为记录。
-///
-/// ★ **故意不做成影核动作** —— 不是漏了。
-/// 时间轴是**问责机制**：它记的就是「AI 干了什么」。把「关掉记录」做成动作，就等于把
-/// 关闸门的手交给被记录的那一方 —— AI 通过 MCP 调一次 `journal.set_enabled(false)`，
-/// 后面干什么都不会留痕，而报告依然一片正常。这不是理论风险，是把审计日志和被审计者
-/// 放进同一个权限域的经典错误。
-///
-/// 所以这个开关**只从 GUI 走**（人坐在机器前，亲手关）。（原先的「清空记录」命令 `journal_clear` 与时间轴页面
-/// 一起于 2026-10-04 删除，目前 GUI 里也没有这个开关的界面。）
-/// 代价是 CLI/MCP 关不了它 —— 这个代价是**故意付的**。
-#[tauri::command]
-fn journal_set_enabled(enabled: bool) -> Result<(), String> {
-    // 开关本身要留痕：不然「这段时间为什么是空的」永远查不清 ——
-    // 「关了记录」和「什么都没发生」是两件完全不同的事，时间轴必须能区分。
-    //
-    // 顺序有讲究：**关**的那条得赶在开关落下之前写（之后就写不进去了），
-    // **开**的那条得等开关打开之后写。写反了就是那条痕永远不出现。
-    if !enabled {
-        journal::note("journal.disabled", "用户关闭了行为记录 —— 此后的动作不再留痕");
-    }
-    journal::set_enabled(enabled)?;
-    if enabled {
-        journal::note("journal.enabled", "用户开启了行为记录");
-    }
-    Ok(())
-}
-
 /// 下载 + 静默安装 DeepSeek Harness 桌面版（Windows，NSIS `/S /currentuser`，约 280MB）。
 /// 进度走事件 `uking:dshdesk_progress`。装完不改任何模型配置——虾盘云接入仍由用户主动触发
 /// （`apply_provider` targets:["dsh"]），装/配两件事分开，跟本仓其余工具的哲学一致。
@@ -278,13 +230,6 @@ async fn install_dsh_desktop(app: AppHandle) -> Result<String, String> {
     })
     .await
     .map_err(|e| format!("安装 DeepSeek Harness 异常: {e}"))?
-}
-
-/// 绿色版「固定到桌面」：给当前运行的 exe 建桌面快捷方式。
-#[tauri::command]
-async fn pin_to_desktop() -> Result<String, String> {
-    let v = run_write_action(actions::DESKTOP_PIN, serde_json::json!({})).await?;
-    Ok(action_field(v, "message", serde_json::Value::Null).as_str().unwrap_or("").to_string())
 }
 
 /// 打开「Codex 桌面版手动安装教程」网页（自动装不上时的兜底引导）。
@@ -378,19 +323,16 @@ fn open_codex_cli_guide() -> Result<(), String> {
 }
 
 /// 打开「Claude Code 手动安装教程」网页。
-#[tauri::command]
 fn open_claude_guide() -> Result<(), String> {
     open_embedded_html_with_slug("uking-claude-install.html", "claude-code-install.html", CLAUDE_GUIDE_HTML)
 }
 
 /// 打开「OpenClaw 手动安装教程」网页（含 ClawX 图形版下载）。
-#[tauri::command]
 fn open_openclaw_guide() -> Result<(), String> {
     open_embedded_html_with_slug("uking-openclaw-install.html", "openclaw-install.html", OPENCLAW_GUIDE_HTML)
 }
 
 /// 打开「Hermes 手动安装教程」网页（pip）。
-#[tauri::command]
 fn open_hermes_guide() -> Result<(), String> {
     open_embedded_html_with_slug("uking-hermes-install.html", "hermes-install.html", HERMES_GUIDE_HTML)
 }
@@ -443,83 +385,6 @@ fn resolve_site_url() -> Result<String, String> {
 #[tauri::command]
 fn open_codex_local_guide() -> Result<(), String> {
     open_embedded_html_with_slug("uking-codex-local-models.html", "codex-local-models.html", CODEX_LOCAL_HTML)
-}
-
-/// 通用「动态内容中心」入口 —— 打开服务器下发的任意网页（按 slug 路由）。
-///
-/// 为什么单独做：安装方法/活动/课程这些**会频繁变**的内容，做成服务器 html、软件只留入口，
-/// 这样改内容不必发版。以后想加第 N 个同步页面，**前端加个按钮传新 slug、服务器加个 html 即可，
-/// 后端零改动**。线上优先（u-claw.org.cn/uking/<slug>）+ 拉不到时显示离线占位（不白屏）。
-///
-/// 安全：slug 仅允许 `[a-z0-9-_.]`（防路径穿越/注入），且强制 `.html` 结尾。
-#[tauri::command]
-fn open_online_page(slug: String) -> Result<(), String> {
-    let s = slug.trim();
-    let safe = !s.is_empty()
-        && s.ends_with(".html")
-        && !s.contains("..")
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "-_.".contains(c));
-    if !safe {
-        return Err(format!("非法页面标识：{slug}"));
-    }
-    // 内嵌兜底 = 离线占位页（线上拉到就用线上，拉不到才显示这个，避免白屏）。
-    let fallback = format!(
-        "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\">\
-         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-         <title>U-King</title><style>body{{background:#0b0e16;color:#e6e8ef;\
-         font-family:system-ui,'Microsoft YaHei',sans-serif;display:flex;min-height:100vh;\
-         margin:0;align-items:center;justify-content:center;text-align:center;padding:24px}}\
-         .c{{max-width:480px}}h1{{font-size:20px;margin:0 0 12px}}p{{color:#9aa0b4;line-height:1.7}}\
-         a{{color:#7aa2ff}}</style></head><body><div class=\"c\">\
-         <h1>暂时无法加载内容</h1>\
-         <p>这个页面的内容由服务器实时下发，当前没能连上。<br>\
-         请检查网络后重试，或稍后再来看。</p>\
-         <p style=\"font-size:12px;color:#5b6178\">页面：{s}</p></div></body></html>"
-    );
-    // 临时文件名按 slug 取（去掉非法字符已保证），避免多页互相覆盖。
-    let file_name = format!("uking-page-{}", s.replace('/', "-"));
-    open_embedded_html_with_slug(&file_name, s, &fallback)
-}
-
-/// 拉「动态内容清单」JSON —— 最新动态 / AI 学院的**列表数据**（不是整张网页）。
-///
-/// 为什么单独做：动态/学院做成 app 内原生列表（对齐「使用教程」风格、点侧栏只切 tab 不弹窗），
-/// 但列表内容仍要能随服务器改、不发版。所以服务器只下发一份 JSON 清单
-/// （`{ "items": [{ title, summary, tag, date, slug?/url? }, …] }` 或裸数组），
-/// app 拿到原始 JSON 字符串自己解析、渲染成卡片；点某一条才用 `open_online_page` / 浏览器打开详情。
-///
-/// 线上优先（u-claw.org.cn/uking/<slug>，与教程/skill 同源）；拉不到返回 Err，前端显示离线占位（不白屏）。
-/// 安全：slug 仅允许 `[a-z0-9-_.]`、强制 `.json` 结尾、禁 `..`（防路径穿越/注入）。
-#[tauri::command]
-async fn fetch_online_feed(slug: String) -> Result<String, String> {
-    // 校验是廉价纯字符串运算，放 spawn 外先做。
-    let s = slug.trim().to_string();
-    let safe = !s.is_empty()
-        && s.ends_with(".json")
-        && !s.contains("..")
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "-_.".contains(c));
-    if !safe {
-        return Err(format!("非法清单标识：{slug}"));
-    }
-    // ★ 网络 curl 必须在阻塞线程跑：同步命令会在 **UI 主线程** 执行，串行试 3 个地址
-    // （其中 www.u-king.org / vercel 国内连不上，各干等满超时）会把整窗冻住几十秒
-    // —— 首屏第一落点就是拉 Feed 的页面，这正是「加载慢/卡死」的头号真因。
-    tauri::async_runtime::spawn_blocking(move || {
-        for url in online_guide_urls(&s) {
-            // -f：HTTP 错误码当失败回退；--connect-timeout 让连不上的域名快速放弃，别干等满 -m
-            if let Ok(body) =
-                installer::curl(&["-fL", "-sS", "-m", "6", "--connect-timeout", "4", &url])
-            {
-                let t = body.trim_start();
-                if t.starts_with('{') || t.starts_with('[') {
-                    return Ok(body);
-                }
-            }
-        }
-        Err("拉取动态清单失败（网络不可达或服务器无此清单）".into())
-    })
-    .await
-    .map_err(|e| format!("拉取异常: {e}"))?
 }
 
 /// 按工具 id 打开对应手动安装教程（前端统一入口：装失败时按 tool 路由到正确的教程页）。
@@ -856,14 +721,6 @@ async fn metrics_report(days: Option<i64>) -> Result<metrics::MetricsReport, Str
 #[tauri::command]
 async fn metrics_set_consent(upload: bool) -> Result<(), String> {
     metrics::set_consent(upload)
-}
-
-/// 环境指纹。字段已是非隐私口径（中文用户名只记 true/false），可直接给客服看。
-#[tauri::command]
-async fn metrics_env() -> Result<envfp::EnvFingerprint, String> {
-    tauri::async_runtime::spawn_blocking(envfp::current)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 /// 手动触发一次用量快照（前端进「数据」页时调一下，别等第二天）。
@@ -3337,15 +3194,6 @@ fn action_field(v: serde_json::Value, key: &str, fallback: serde_json::Value) ->
     v.get(key).cloned().unwrap_or(fallback)
 }
 
-/// 影核协议 Action Core 的桌面适配器。GUI 不直接读 PATH；只调用稳定 Action ID，
-/// 与无头 CLI `action run` 共用同一执行入口。
-#[tauri::command]
-async fn action_run(action_id: String) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || actions::run(&action_id, serde_json::json!({})))
-        .await
-        .map_err(|e| format!("动作执行任务异常: {e}"))?
-}
-
 /// 标准 ActionParity request envelope。旧 `action_run` 继续服务尚未迁移的界面；生成 client
 /// 统一调用本入口，两者最终都只落到 `actions::run()`，不复制业务实现。
 #[derive(Debug, serde::Deserialize)]
@@ -4005,32 +3853,6 @@ async fn fetch_optimize_advice() -> Vec<advice::Advice> {
     tauri::async_runtime::spawn_blocking(advice::collect).await.unwrap_or_default()
 }
 
-/// 卸载 U-King：注销右键菜单 + 清 PATH/快捷方式 + 安排退出后删 ~/.uking，然后退出本进程。
-/// **只删 U-King 自己装的东西**，绝不碰 ~/.claude / ~/.codex / ~/.openclaw 与用户装的 AI 工具。
-/// 前端须先强确认再调。返回 Ok 表示清理已就位、app 即将退出（延迟脚本随后删 ~/.uking）。
-#[tauri::command]
-async fn uninstall_uking(app: AppHandle) -> Result<(), String> {
-    // 右键菜单在 HKCU，注销走 context_menu（best-effort，失败不拦卸载）
-    let _ = context_menu::unregister();
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        uninstall::run(&|msg: &str| {
-            let _ = app2.emit("uking:uninstall_progress", msg.to_string());
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    // 清理脚本已就位 → 稍后退出本进程（用 process::exit 绕过 prevent_close），脚本随即删 ~/.uking
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_millis(400));
-        // 绕过 prevent_close 就绕过了 RunEvent::Exit，得自己销账，否则这次「用户主动卸载」
-        // 会在下次启动时被读成一次崩溃。
-        crashlog::end_session();
-        std::process::exit(0);
-    });
-    Ok(())
-}
-
 /// 「安全卸载 / 逐项清理」扫描：诚实列出本机上 U-King 的**全部足迹**（core/config/aitool 三档）。
 /// 只读，不改任何东西——前端据此渲染勾选清单。
 /// 薄壳，真身是影核动作 `runtime.footprint.inspect`（动作里包成 {items,count}，这里还原成数组）。
@@ -4638,13 +4460,6 @@ async fn add_provider(provider: serde_json::Value) -> Result<serde_json::Value, 
     Ok(action_field(v, "saved", serde_json::json!({})))
 }
 
-/// 更新自定义 provider（与 add 同为 upsert，分开命名只为前端语义清晰）。
-#[tauri::command]
-async fn update_provider(provider: serde_json::Value) -> Result<serde_json::Value, String> {
-    let v = run_write_action(actions::PROVIDER_SAVE, serde_json::json!({ "provider": provider })).await?;
-    Ok(action_field(v, "saved", serde_json::json!({})))
-}
-
 /// 从**某一个 AI** 的列表里移除一个 provider（内置也能移除 —— 立墓碑，不会自己回来）。
 /// 薄壳，真身是影核动作 `runtime.provider.delete`。
 ///
@@ -5177,14 +4992,6 @@ async fn query_balance(api_key: String) -> Result<providers::Balance, String> {
         .map_err(|e| format!("查询异常: {e}"))?
 }
 
-/// 查「钱花在哪了」——按模型分组的用量明细（客户自己看，按需查一次）。
-#[tauri::command]
-async fn query_usage_breakdown(api_key: String, days: i64) -> Result<providers::UsageBreakdown, String> {
-    tauri::async_runtime::spawn_blocking(move || providers::query_usage_breakdown(&api_key, days))
-        .await
-        .map_err(|e| format!("查询异常: {e}"))?
-}
-
 /// 查「本地实际用量」——读 Claude Code 自己记的会话日志按模型聚合（含客户自己的 Key/BYOK，
 /// 不依赖我们服务器）。只读元数据、不上传（数据安全）。读很多文件，spawn_blocking 别卡 UI。
 #[tauri::command]
@@ -5243,32 +5050,6 @@ async fn open_recharge(app: AppHandle, url: String) -> Result<(), String> {
         .build()
         .map_err(|e| format!("打开充值窗口失败: {e}"))?;
     Ok(())
-}
-
-/// 本机某个端口上有没有服务在听（给「预览网页」用；测试报告 #015）。
-///
-/// 为什么需要它：`open_browser` **成功只代表窗口建出来了，不代表页面加载成功**。
-/// 所以 3000 端口没服务时，前端的 `catch` 一次都不会进 —— 面板一切正常，
-/// 子窗口一片空白。客户看到的就是「预览 localhost:3000 时页面无法正常显示」，
-/// 而且完全不知道到底是端口错了、服务没起、还是我们坏了。
-///
-/// 与其开一个空白窗口让人猜，不如先敲一下门：连得上再开，连不上直接说人话。
-/// 只探本机回环地址，`connect_timeout` 300ms —— 本机要么立刻通要么立刻拒，不会卡住 UI。
-#[tauri::command]
-async fn preview_port_alive(port: u16) -> bool {
-    tauri::async_runtime::spawn_blocking(move || {
-        use std::net::{SocketAddr, TcpStream};
-        let dur = std::time::Duration::from_millis(300);
-        // v4 / v6 回环都试：有些 dev server 只监听 ::1
-        [
-            SocketAddr::from(([127, 0, 0, 1], port)),
-            SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], port)),
-        ]
-        .iter()
-        .any(|a| TcpStream::connect_timeout(a, dur).is_ok())
-    })
-    .await
-    .unwrap_or(false)
 }
 
 /// 工作台「浏览器」面板：在独立 webview 子窗口打开 URL（localhost / https）。
@@ -5363,12 +5144,6 @@ async fn browser_nav(app: AppHandle, label: String, action: String, url: Option<
         other => return Err(format!("未知动作: {other}")),
     }
     Ok(true)
-}
-
-/// 那个浏览器子窗口现在开着吗（面板用来决定按钮灰不灰）。
-#[tauri::command]
-async fn browser_open(app: AppHandle, label: String) -> bool {
-    app.get_webview_window(&label).is_some()
 }
 
 /// ★ `--browser-nav-test` 的正文：证明后退 / 前进 / 刷新**真的作用到了外部页面上**。
@@ -5954,154 +5729,6 @@ async fn get_device_key() -> Result<device::DeviceKey, String> {
         .map_err(|e| format!("获取设备 Key 异常: {e}"))?
 }
 
-/// 生成人话版「AI 体检报告」到桌面 —— 客户能整页截图发售后微信。
-/// 借鉴同类做法：`--selfcheck` 出 JSON 给开发看，这个出纯文本给客户/客服看。
-/// 汇总运行环境 + 已装工具 + 当前驱动 + 虾盘云账户 + 常见建议，返回写入的文件路径。
-#[tauri::command]
-async fn save_health_report() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(build_and_write_health_report)
-        .await
-        .map_err(|e| format!("生成体检报告异常: {e}"))?
-}
-
-fn build_and_write_health_report() -> Result<String, String> {
-    use std::fmt::Write as _;
-
-    let s = installer::detect_stack();
-    let driver = providers::driver_status();
-    let dk = device::get_device_key().ok();
-    let clawx = providers::clawx_app_installed();
-    let hermes = tools::hermes_app_installed() || installer::tool_installed("hermes");
-
-    // ✅ v1.2.3 / ❌ 未检测到
-    let probe = |p: &installer::CmdProbe| -> String {
-        if p.found {
-            format!("✅ {}", p.version.clone().unwrap_or_else(|| "已安装".into()))
-        } else {
-            "❌ 未检测到".into()
-        }
-    };
-    let yn = |b: bool| if b { "✅ 已安装" } else { "❌ 未检测到" };
-    // 把 baseUrl 翻成人话渠道名
-    let chan = |base: &Option<String>| -> Option<String> {
-        let b = base.as_deref().filter(|b| !b.is_empty())?;
-        Some(if providers::is_xiapan_endpoint(b) {
-            "虾盘云（内置）".into()
-        } else if b.contains("deepseek") {
-            "DeepSeek".into()
-        } else if b.contains("bigmodel") {
-            "智谱 GLM".into()
-        } else if b.contains("moonshot") {
-            "Kimi".into()
-        } else {
-            b.replace("https://", "").replace("http://", "")
-        })
-    };
-
-    let mut r = String::new();
-    let ver = env!("CARGO_PKG_VERSION");
-    let _ = writeln!(r, "================ U-King · AI 体检报告 ================");
-    let _ = writeln!(r, "版本：v{ver}    系统：{} / {}", std::env::consts::OS, std::env::consts::ARCH);
-    let _ = writeln!(r, "把这份内容整页截图发给售后微信，可最快定位问题。");
-    let _ = writeln!(r);
-
-    let _ = writeln!(r, "【运行环境】");
-    let _ = writeln!(r, "  Node.js       {}{}", probe(&s.node), if s.portable_node { "（U-King 便携版）" } else { "" });
-    let _ = writeln!(r, "  npm           {}", probe(&s.npm));
-    let _ = writeln!(r, "  Git           {}", probe(&s.git));
-    match &s.system_proxy {
-        Some(p) => { let _ = writeln!(r, "  系统代理       ⚠️ 已开启 {p}（连不上 AI 时先关掉代理软件再试）"); }
-        None => { let _ = writeln!(r, "  系统代理       未开启（正常）"); }
-    }
-    let _ = writeln!(r);
-
-    let _ = writeln!(r, "【AI 工具是否装好】");
-    let _ = writeln!(r, "  Claude Code    {}", probe(&s.claude));
-    let _ = writeln!(r, "  Codex CLI      {}", probe(&s.codex));
-    let _ = writeln!(r, "  Codex 桌面版   {}", yn(s.codex_app));
-    let _ = writeln!(r, "  Claude 桌面版  {}", yn(s.claude_desktop));
-    let _ = writeln!(r, "  ClawX 桌面版   {}", yn(clawx));
-    let _ = writeln!(r, "  Hermes         {}", yn(hermes));
-    let _ = writeln!(r);
-
-
-    let _ = writeln!(r, "【当前用的模型驱动】");
-    let claude_chan = chan(&driver.claude_base);
-    let _ = writeln!(
-        r,
-        "  Claude Code    {}{}",
-        claude_chan.clone().unwrap_or_else(|| "官方默认 / 未接管".into()),
-        driver.claude_model.as_deref().filter(|m| !m.is_empty()).map(|m| format!(" · {m}")).unwrap_or_default(),
-    );
-    let _ = writeln!(
-        r,
-        "  Codex          {}{}",
-        driver.codex_provider.as_deref().filter(|p| !p.is_empty()).unwrap_or("官方默认 / 未接管"),
-        driver.codex_model.as_deref().filter(|m| !m.is_empty()).map(|m| format!(" · {m}")).unwrap_or_default(),
-    );
-    if driver.clawx_installed {
-        let _ = writeln!(
-            r,
-            "  ClawX          {}",
-            driver.clawx_model.as_deref().filter(|m| !m.is_empty()).map(|m| format!("已接虾盘云 · {m}")).unwrap_or_else(|| "已装 · 未接管（可到②一键接入）".into()),
-        );
-    }
-    let _ = writeln!(r);
-
-    let _ = writeln!(r, "【虾盘云账户】");
-    match &dk {
-        Some(d) => {
-            let head: String = d.key.chars().take(12).collect();
-            let _ = writeln!(r, "  内置 Key       {head}…");
-            if d.charged {
-                let bal = d.balance.as_ref().map(|b| b.text.clone()).unwrap_or_else(|| "可用".into());
-                let _ = writeln!(r, "  开通状态       ✅ 已开通 · 余额 {bal}");
-            } else {
-                let _ = writeln!(r, "  开通状态       ❌ 未开通（到「AI 设置 → 账号 · 充值」点\"充值开通\"）");
-            }
-        }
-        None => { let _ = writeln!(r, "  内置 Key       ⚠️ 暂时取不到（多为网络问题，稍后重试）"); }
-    }
-    let _ = writeln!(r);
-
-    // 建议：只列命中的问题，没问题就报平安
-    let _ = writeln!(r, "【建议】");
-    let mut tips = 0;
-    if !s.claude.found && !s.codex.found && !clawx {
-        let _ = writeln!(r, "  · 还没装任何 AI 工具 → 回「① 装 AI」点\"一键全安装\"。");
-        tips += 1;
-    }
-    if !s.node.found {
-        let _ = writeln!(r, "  · 没检测到 Node.js → 装机时 U-King 会自动装便携版；若反复失败，看「某个工具装不上？」教程。");
-        tips += 1;
-    }
-    if s.system_proxy.is_some() {
-        let _ = writeln!(r, "  · 系统代理开着又连不上 AI → 先退出代理/加速器软件，再点\"实测连通\"。");
-        tips += 1;
-    }
-    if claude_chan.is_none() {
-        let _ = writeln!(r, "  · Claude 还是\"官方默认\" → 到「AI 设置 → 账号 · 充值」点\"① 自动配好已装工具\"，国内直连。");
-        tips += 1;
-    }
-    if dk.as_ref().map(|d| !d.charged).unwrap_or(false) {
-        let _ = writeln!(r, "  · 虾盘云未开通 → 充值后才能聊天/写代码/画图，¥20 起、余额永久有效、不用不扣。");
-        tips += 1;
-    }
-    if tips == 0 {
-        let _ = writeln!(r, "  · 一切正常，可以放心使用。有问题随时找售后。");
-    }
-
-    // 写桌面（OneDrive 重定向等取不到 Desktop 时退回用户目录）
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .map_err(|_| "找不到用户主目录".to_string())?;
-    let desktop = std::path::Path::new(&home).join("Desktop");
-    let dir = if desktop.is_dir() { desktop } else { std::path::PathBuf::from(&home) };
-    let path = dir.join("AI体检报告.txt");
-    std::fs::write(&path, r).map_err(|e| format!("写体检报告失败: {e}"))?;
-    Ok(path.display().to_string())
-}
-
 /// AI 修复：让虾盘云上的模型诊断安装失败，返回诊断 + 修复命令（前端确认后再执行）。
 #[tauri::command]
 async fn ai_diagnose(api_key: String, context: String) -> Result<providers::Diagnosis, String> {
@@ -6667,20 +6294,6 @@ async fn open_terminal_window(app: AppHandle, cwd: Option<String>, cmd: Option<S
         .build()
         .map_err(|e| format!("拉出终端窗口失败: {e}"))?;
     Ok("opened")
-}
-
-#[tauri::command]
-async fn list_artifacts() -> Result<Vec<artifacts::Artifact>, String> {
-    tauri::async_runtime::spawn_blocking(artifacts::list)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn mark_artifacts_seen(ids: Vec<String>) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || artifacts::mark_seen(&ids))
-        .await
-        .map_err(|e| e.to_string())
 }
 
 /// 显示主窗口 —— **Windows 上先挂图标再显示**，顺序不能反。
@@ -8200,28 +7813,18 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_env,
             install_local,
-            open_install_dir,
-            register_context_menu,
-            unregister_context_menu,
             list_tools,
             get_clawx_download_url,
             install_clawx,
             uu_remote_status,
             install_uu_remote,
-            journal_set_enabled,
             install_dsh_desktop,
-            pin_to_desktop,
             open_codex_guide,
             open_codex_cli_guide,
-            open_claude_guide,
-            open_openclaw_guide,
-            open_hermes_guide,
             open_install_help,
             open_apikey_guide,
             open_codex_local_guide,
             resolve_site_url,
-            open_online_page,
-            fetch_online_feed,
             open_install_guide,
             codex_status,
             launch_app,
@@ -8258,7 +7861,6 @@ pub fn run() {
             clawx_running,
             apply_clawx_managed,
             add_provider,
-            update_provider,
             delete_provider,
             restore_provider,
             hidden_providers,
@@ -8287,11 +7889,9 @@ pub fn run() {
             get_draw_route,
             set_draw_route,
             query_balance,
-            query_usage_breakdown,
             query_local_usage,
             get_driver_status,
             get_device_key,
-            save_health_report,
             ai_diagnose,
             run_fix,
             get_usage_trend,
@@ -8320,10 +7920,8 @@ pub fn run() {
             tasks::list_tasks,
             tasks::upsert_task,
             tasks::remove_task,
-            chatstore::chat_archive_append,
             chatstore::chat_archive_load,
             chatstore::chat_archive_replace,
-            chatstore::chat_archive_delete,
             chatstore::chat_archive_list,
             chatstore::chat_session_archive,
             chatstore::chat_session_restore,
@@ -8339,9 +7937,6 @@ pub fn run() {
             codex_proxy::codex_proxy_start,
             codex_proxy::codex_proxy_stop,
             codex_proxy::codex_proxy_status,
-            claude_proxy::claude_bridge_status,
-            claude_proxy::claude_bridge_start,
-            claude_proxy::claude_bridge_stop,
             claude_bridge_enable,
             claude_bridge_disable,
             agent::chat::chat_send,
@@ -8357,8 +7952,6 @@ pub fn run() {
             fs::reveal_produced_file,
             open_browser,
             browser_nav,
-            browser_open,
-            preview_port_alive,
             airuntime_doctor,
             agent_launch_probe,
             airuntime_run,
@@ -8367,13 +7960,10 @@ pub fn run() {
             optimize_env,
             // 数据基台：本地报告 / 环境指纹 / 手动快照 / 上传同意（默认关）
             metrics_report,
-            metrics_env,
             metrics_rollup,
             metrics_set_consent,
-            action_run,
             action_parity_call,
             fetch_optimize_advice,
-            uninstall_uking,
             cleanup_scan,
             cleanup_run,
             uninstall_ai_tool,
@@ -8383,8 +7973,6 @@ pub fn run() {
             save_feedback_shot,
             open_feedback_shots_dir,
             open_terminal_window,
-            list_artifacts,
-            mark_artifacts_seen,
         ])
         // 用 build + run 而不是直接 run，只为了拿到 `RunEvent::Exit`：
         // 崩溃取证靠「会话标记还在不在」判断上次是不是异常退出，所以**正常退出必须销账**，

@@ -24,10 +24,6 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 
-/// 单个会话存档的硬上限（字节）。超过后拒绝追加并提示压缩 —— 防止单会话把盘写穿。
-/// 400KB ≈ 一部中长篇小说，正常对话一辈子摸不到；真摸到说明该开新会话了。
-const MAX_ARCHIVE_BYTES: u64 = 400 * 1024;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     /// 前端 Item 的自由结构（text/tool/approval…），这里不解释语义只存字节
@@ -70,35 +66,6 @@ fn archive_path(session_id: &str) -> Option<PathBuf> {
         return None; // 不给隐藏/相对路径花样留门
     }
     Some(chats_dir().join(format!("{session_id}.jsonl")))
-}
-
-/// 追加一批消息到会话存档。前端每轮对话结束调一次（不是每条 delta 都调）。
-#[tauri::command]
-pub fn chat_archive_append(session_id: String, items: Vec<serde_json::Value>) -> Result<(), String> {
-    if items.is_empty() {
-        return Ok(());
-    }
-    let path = archive_path(&session_id).ok_or_else(|| format!("非法会话 id: {session_id}"))?;
-    let _ = std::fs::create_dir_all(chats_dir());
-    // 上限检查：追加前看一眼现有大小，超限拒绝并明说，让前端有机会提示「开新会话」。
-    if let Ok(meta) = std::fs::metadata(&path) {
-        if meta.len() > MAX_ARCHIVE_BYTES {
-            return Err("这个会话的存档已到大小上限，请新建一个会话继续".into());
-        }
-    }
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| format!("打开聊天存档失败: {e}"))?;
-    for it in &items {
-        let line =
-            serde_json::to_string(it).map_err(|e| format!("序列化消息失败: {e}"))?;
-        f.write_all(line.as_bytes())
-            .and_then(|_| f.write_all(b"\n"))
-            .map_err(|e| format!("写入聊天存档失败: {e}"))?;
-    }
-    Ok(())
 }
 
 /// 读回整个会话的历史。文件不存在 = 空历史（新会话的正常形状，不报错）。
@@ -176,7 +143,7 @@ pub fn chat_archive_list() -> Vec<String> {
 }
 
 /// 删除会话存档。不存在算成功（幂等——删除路径要的就是「再来一次也不报错」）。
-#[tauri::command]
+#[cfg(test)]
 pub fn chat_archive_delete(session_id: String) -> Result<(), String> {
     let path = archive_path(&session_id).ok_or_else(|| format!("非法会话 id: {session_id}"))?;
     match std::fs::remove_file(&path) {
@@ -432,10 +399,6 @@ mod tests {
         let loaded = chat_archive_load(sid.to_string()).expect("load");
         assert_eq!(loaded.len(), 3);
         assert_eq!(loaded[0]["content"], "你好");
-        chat_archive_append(sid.to_string(), vec![serde_json::json!({"type":"text","role":"user","content":"再来一条"})])
-            .expect("append");
-        let loaded2 = chat_archive_load(sid.to_string()).expect("load2");
-        assert_eq!(loaded2.len(), 4);
         chat_archive_delete(sid.to_string()).expect("delete");
         // 幂等：再删一次也不报错
         chat_archive_delete(sid.to_string()).expect("delete again");

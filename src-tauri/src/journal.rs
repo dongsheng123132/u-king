@@ -107,6 +107,18 @@ fn day_file(secs: i64) -> PathBuf {
 /// （那不是给人手改的文件，界面上有开关）。
 static ENABLED_CACHE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
+/// （2026-10-04 起只给测试用：界面上的日志开关随零调用命令删除，产品只读不写这个开关。）
+/// 开 / 关本地记录。幂等。关掉之后 [`record`] 一个字节都不写。
+#[cfg(test)]
+pub fn set_enabled(on: bool) -> Result<(), String> {
+    let dir = journal_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("建不了 {}: {e}", dir.display()))?;
+    std::fs::write(switch_path(), json!({ "enabled": on }).to_string())
+        .map_err(|e| format!("写不了记录开关: {e}"))?;
+    ENABLED_CACHE.store(on as i8, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
 /// 本地记录开着吗。**默认开** —— 它是本地的、不上传的，而且是夜班/交班报告的唯一数据源，
 /// 关着等于产品没有记忆。但必须能真关掉，且界面要明说在记什么（见 `NightShift.tsx`）。
 pub fn enabled() -> bool {
@@ -126,16 +138,6 @@ pub fn enabled() -> bool {
             on
         }
     }
-}
-
-/// 开 / 关本地记录。幂等。关掉之后 [`record`] 一个字节都不写。
-pub fn set_enabled(on: bool) -> Result<(), String> {
-    let dir = journal_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("建不了 {}: {e}", dir.display()))?;
-    std::fs::write(switch_path(), json!({ "enabled": on }).to_string())
-        .map_err(|e| format!("写不了记录开关: {e}"))?;
-    ENABLED_CACHE.store(on as i8, std::sync::atomic::Ordering::Relaxed);
-    Ok(())
 }
 
 /// 让开关缓存失效（切沙箱后必须调，否则读到的是上一个 home 的开关）。测试用。
@@ -315,11 +317,6 @@ pub fn record_tool(agent: &str, tool: &str, target: &str, ok: bool, ms: u128, er
         "ms": ms as i64,
         "err": err.map(cap),
     }));
-}
-
-/// 留一条系统痕迹（班次开始/结束、开关被改…）。
-pub fn note(name: &str, note: &str) {
-    record(json!({ "actor": "system", "via": "system", "kind": "note", "name": name, "ok": true, "note": note }));
 }
 
 /// 删掉超过 [`KEEP_DAYS`] 的整天文件。
