@@ -314,8 +314,6 @@ const CODEX_LOCAL_HTML: &str = include_str!("../../website/codex-local-models.ht
 fn online_guide_urls(slug: &str) -> Vec<String> {
     [
         "https://u-claw.org.cn/uking",
-        "https://www.u-king.org",
-        "https://u-king-org.vercel.app",
     ]
     .iter()
     .map(|b| format!("{b}/{slug}"))
@@ -413,7 +411,7 @@ fn open_apikey_guide() -> Result<(), String> {
 ///
 /// 历史：官网按钮一度直开裸域 https://u-king.org/（境外 200、境内 SNI reset 点不动）。
 /// 现在按 sol 复审要求由 **Rust 后端** 探测（前端 fetch 受 CORS 限制不采信），
-/// u-claw.org.cn/uking/ 首选（境内实测 200），www.u-king.org 备选（境外可达）；
+/// u-claw.org.cn/uking/（已备案的国内主站，境内实测 200）；
 /// 判据 = `-f` 保证 HTTP 200 + 正文含 `U-King` 与 `<html` 特征（防劫持页/运营商插页返 200），
 /// 不是只看 TCP 通。短超时（连接 1s / 总 2s）防「点了没反应」。全挂 fallback 国内地址：
 /// 宁可打开副本页，不让入口变死链。进程内缓存成功端点（官网入口是只读且极少变）。
@@ -426,9 +424,8 @@ fn resolve_site_url() -> Result<String, String> {
             return Ok(u.clone());
         }
     }
-    const CANDIDATES: [&str; 2] = [
+    const CANDIDATES: [&str; 1] = [
         "https://u-claw.org.cn/uking/",
-        "https://www.u-king.org/",
     ];
     let picked = CANDIDATES.iter().find(|u| {
         installer::curl(&["-fL", "-sS", "-m", "2", "--connect-timeout", "1", u])

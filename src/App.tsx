@@ -1042,7 +1042,7 @@ export function App() {
           onToggleTheme={() => setTheme((m) => (m === "dark" ? "light" : "dark"))}
           // 官网 = 品牌域 u-king.org（2026-07 已从 Vercel 迁到自有服务器，与 u-claw.org.cn 同机，
                     // 根路径 serve 落地页）。⚠️ 境内裸网 SNI reset（2026-08 实测）→ 不直开品牌域，
-                    // 先调 resolve_site_url 后端探测：u-claw.org.cn/uking/ 首选（境内 200），www.u-king.org 备选，
+                    // 先调 resolve_site_url 后端探测：u-claw.org.cn/uking/（已备案主站，境内 200），
                     // 全挂 fallback 国内地址——点击必须能出来（多 AI 会审 2026-08-27 裁决 P0）。
                     onOpenSite={() => {
                       void (async () => {
