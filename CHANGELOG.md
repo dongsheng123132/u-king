@@ -5,6 +5,14 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 1.3.8（2026-10-04）
+
+- 按收敛方案第 3、4 步证据表删除零用量功能（存档标签 `archive/pre-delete-2026-10-04`，执行记录见 `docs/收敛方案-2026-10-03.md` §8）：创作画布、一键成片 Reel、网站 GEO 体检（含内嵌技能包）、备份/同步、任务看板、泊舟、企业托管 org、团队空间残留、厨具工具箱页、DSH 插件页、夜班助手 + 定时任务 + 防休眠（去掉常驻调度线程）、uu-switch、专家墙 + 招人、Token 水电表、免费路由、openclaw2。
+- 工具目录删 12 个：harness-doctor / qwen-code / crush / hermes-app、grok-build / muse-code / antigravity-cli、obsidian / doubao / qwenwork / workbuddy / open365；装机清单条目暂留（老客户端热下发要用）。
+- Token 压缩机退役：`rtk_retire.rs` 保留 `rtk-hook` 空壳放行，启动时只摘 U-King 写的挂钩（新包装器 + `.uking/tools/rtk/` 下的老写法），先备份、解析失败不写、原子替换并读回。
+- 说明书只删页面与身份/密钥设置，保留 llms.txt 生成与终端「让 AI 说中文」；技能包清单从专家墙搬到「技能包」页；侧栏 9 → 8 项。
+- 测试与闸门：GLM 下架后三处单测、回归脚本 Codex 默认模型断言修正；新增无头探针 `scripts/shot-converged-ui.mjs`。
+
 ## 1.3.7（2026-10-04）
 
 - 界面收敛（`docs/收敛方案-2026-10-03.md`，只藏不删，撤下的页面与深链全部保留）：侧栏 16 项减到 9 项——首屏「我的 AI / 工作台 / AI 创作 / AI 设置」，更多「U盘工具盘 / AI 优化大师 / 本地大模型 / 进阶」，实验室「夜班助手」。
