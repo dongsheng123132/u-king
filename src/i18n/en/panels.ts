@@ -149,7 +149,7 @@ export const panels: Record<string, string> = {
   "{name} 在这个文件夹里读写文件、跑命令、改代码 —— 工具调用和文件改动会以卡片和内联 diff 展示。": "{name} reads and writes files, runs commands and edits code in this folder — tool calls and file changes show up as cards with inline diffs.",
   "下面点一个起手词，或直接说你要什么。": "Pick a starter below, or just say what you want.",
   "给 {name} 发指令（@ 引用文件，/ 调指令 · Enter 发送，Shift+Enter 换行）": "Send {name} an instruction (@ to attach a file, / for commands · Enter to send, Shift+Enter for a new line)",
-  "这一轮用哪个模型（不选就跟着「虾盘云」里配的走）": "Which model to use for this turn (leave unset to follow your Xiapan Cloud config)",
+  "这一轮用哪个模型（不选就跟着驱动设置走：虾盘云，或你自己的官方登录 / Key）": "Which model to use for this turn (leave unset to follow your driver setup: Xiapan Cloud, or your own official login / key)",
   "模型：跟随驱动设置": "Model: follow driver config",
   "我们没给 codex 传任何 sandbox / 审批参数，按它自己的默认来。要改就去改 Codex 的配置。": "We pass codex no sandbox or approval flags — it runs on its own defaults. Change it in Codex's own config.",
   "权限：跟随 Codex": "Access: Codex defaults",

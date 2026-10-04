@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent 
 import { invoke, Channel, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Bot, Check, ChevronRight, Copy, Eye, FileText, Film, FolderOpen, FolderTree, Globe, Image as ImageIcon, Loader2, Maximize2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, RotateCcw, ShieldCheck, Terminal, X, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronRight, Copy, Eye, FileText, Film, FolderOpen, FolderTree, Globe, Image as ImageIcon, Loader2, Maximize2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, RotateCcw, ShieldCheck, Terminal, X, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "../lib/cn";
 import { trimHistoryForPayload } from "./historyTrim";
 import { useViewport } from "../lib/useViewport";
@@ -29,7 +29,8 @@ import { PendingImageChips, usePendingImages } from "./PendingImages";
 import { MiniMd } from "../lib/miniMd";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
 import { FilesPanel } from "./panels/FilesPanel";
-import { ChatPanel, ProducedFile, deliverableExt, previewableExt, producedFiles } from "./panels/ChatPanel";
+import { ChatPanel, ProducedFile, deliverableExt, humanizeError, previewableExt, producedFiles } from "./panels/ChatPanel";
+import { openRecharge } from "../lib/recharge";
 import { RedlinePanel } from "../vendor/redline-core";
 import { createTauriRedlineHost } from "./redline-host-tauri";
 // 相对路径 → 绝对路径只此一份实现（终端链接和这里用同一个，跨平台分隔符也在它里面判）
@@ -216,6 +217,42 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   // 对话大脑：默认 Claude Code（世界级 agent，底层走虾盘云 deepseek·同计费·免配置）。
   // 2026-10-04 起大脑下拉只提供 Claude Code（其余引擎先藏不删）。没装 Claude 时下方会引导一键装。
   const [engine, setEngine] = useState<Engine>("claude");
+  /**
+   * ★ 保底（2026-10-04 用户拍板）：**充了值就一定能聊**，不许被「Claude Code 没装好」卡死。
+   *
+   * 大脑默认 Claude Code，但它是装在客户机上的外部程序 —— 没装、装坏、被杀软删了都有可能。
+   * 以前这时候只有一条「先去装」横幅，充了值的人对着输入框什么也干不了。
+   * 现在：探到 Claude Code 不在 → 这个会话自动落到 U-King 轻助手（内置，直连虾盘云，零外部依赖），
+   * 横幅照实说「先由轻助手接待」并给出「去装」；装好后不强行切走正在进行的对话，只给一个「切回」。
+   *
+   * 为什么是内置轻助手而不是再接一个小 agent（picoclaw 之类）：保底的意义是**不依赖任何安装**，
+   * 再引一个外部程序等于把「装不上」这个失败面原样搬过来。
+   *
+   * `claudeFound`：null = 还没问出来（这段时间什么都不做，别把有 Claude 的人闪一下轻助手）。
+   */
+  const [claudeFound, setClaudeFound] = useState<boolean | null>(null);
+  const [floored, setFloored] = useState(false);
+  /** 轻助手这一轮因为余额失败 —— 在输入框上方常驻一条「去充值」，直到下一轮成功。toast 会自己消失，钱的事不能。 */
+  const [needRecharge, setNeedRecharge] = useState(false);
+  /** Claude Code 是不是走客户自己的官方登录 / 自己的 Key（`runtime.driver.inspect` 的 active.claude）。决定模型下拉列什么。 */
+  const [claudeOwnAccount, setClaudeOwnAccount] = useState(false);
+  const probeClaude = useCallback(() => {
+    invoke<any>("detect_stack").then((d) => setClaudeFound(!!d?.claude?.found)).catch(() => {});
+    invoke<any>("get_driver_status").then((d) => setClaudeOwnAccount(d?.active?.claude === "official")).catch(() => {});
+  }, []);
+  useEffect(() => { probeClaude(); }, [probeClaude]);
+  // 落到保底之后才需要盯着「装好了没有」：切回窗口时再问一次（装机通常在别的页 / 别的程序里完成）。
+  useEffect(() => {
+    if (!floored) return;
+    window.addEventListener("focus", probeClaude);
+    return () => window.removeEventListener("focus", probeClaude);
+  }, [floored, probeClaude]);
+  useEffect(() => {
+    if (claudeFound === false && engine === "claude") {
+      setEngine("uking");
+      setFloored(true);
+    }
+  }, [claudeFound, engine]);
   // 轻助手的系统提示（2026-10-04 专家墙删除后只剩基础提示词；老会话里残留的 expert 字段不再注入 persona）。
   const systemText = useMemo(() => buildSystemPrompt(), []);
   const [items, setItems] = useState<Item[]>(() => loadChatItemsSync(sessionId));
@@ -291,6 +328,12 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     setPanelModelRaw((cur) => ({ ...cur, [agent]: m }));
     try { localStorage.setItem("uking.chatpanel.model." + agent, m); } catch { /* 配额满：不落盘也能用 */ }
   }, []);
+  // 走自己账号的 Claude Code 只认 claude-* 模型。以前在虾盘云下选过的 deepseek/kimi 还存在 localStorage 里，
+  // 会以 `--model` 传下去盖过官方默认，每一轮都报「所选模型有问题」—— 清掉，回落「跟随驱动设置」。
+  useEffect(() => {
+    const cur = panelModel.claude;
+    if (claudeOwnAccount && cur && !cur.startsWith("claude-")) setPanelModel("claude", "");
+  }, [claudeOwnAccount, panelModel.claude, setPanelModel]);
 
   /**
    * 「大脑 + 模型」合成**一个**选择器（2026-08-18，客户：「claudecode 和 deepseek 模型选择，
@@ -386,11 +429,26 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
       .filter((p) => !p.builtin_recharge && p.id !== "official" && p.model)
       .map((p) => ({ id: encodeModel(p.id, p.model), label: `${t(p.name)} · ${p.model}` })),
   ];
+  /**
+   * 🔴 Claude Code 走客户自己的官方登录 / 自己的 Key 时，**只列 Claude 自家的模型**（2026-10-04 实测）。
+   *
+   * 虾盘云目录里的 deepseek-v4-flash / kimi-k3 / gpt-6-* 是**虾盘云路由**认的名字，官方 Anthropic 不认：
+   * 用官方登录实测选 deepseek-v4-flash / kimi-k3 → claude 直接回「所选模型有问题」，一个 token 都没发出去；
+   * 「跟随驱动设置」和 claude-sonnet-5-5 正常。以前不管谁的账号都摆虾盘云整张目录，
+   * 客户看到的就是「U-Chat 只能配虾盘云才能用」。Codex 那边 2026-08-11 修过同一个坑（见 ChatPanel 的 codexModels）。
+   * 价签在这里也不成立（花的是他自己的订阅），所以不分「常用 / 贵的」两组。
+   */
+  const ownClaude = engine === "claude" && claudeOwnAccount;
+  const claudeOwnModels = xiapanGroups.flatMap((g) => g.items)
+    .filter((m) => m.id.startsWith("claude-"))
+    .map((m) => ({ id: m.id, label: t(m.label) }));
   const pickerList = uk
     ? commonModels
-    : xiapanGroups.filter((g) => !g.pricey).flatMap((g) => g.items).map((m) => ({ id: m.id, label: t(m.label) }));
+    : ownClaude
+      ? claudeOwnModels
+      : xiapanGroups.filter((g) => !g.pricey).flatMap((g) => g.items).map((m) => ({ id: m.id, label: t(m.label) }));
   // 贵的 = 目录里标了 `pricey` 的那组（海外旗舰）—— 数据里显式写着，不再靠组名里带不带「全球旗舰」认。
-  const pickerPricey = xiapanGroups.filter((g) => g.pricey)
+  const pickerPricey = ownClaude ? [] : xiapanGroups.filter((g) => g.pricey)
     .flatMap((g) => g.items)
     .map((m) => ({ id: uk ? encodeModel(xiapanId, m.id) : m.id, label: t(m.label) }));
   const pickerValue = uk ? encodeModel(providerId, model) : (panelModel[engine] ?? "");
@@ -929,7 +987,22 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
         // 左侧小圆点的真相源。以前只弹一条 toast —— toast 会自己消失，
         // 人不在这个会话上就等于没通知过，跑挂了没有任何地方留痕。
         onStatus?.(ev.status === "error" ? "error" : "idle");
-        if (ev.status === "error") onToast?.(ev.message || t("对话失败"));
+        if (ev.status === "error") {
+          // 认得出的错（余额 / 密钥 / 403…）跟 ChatPanel 用同一张翻译表、同一个版式写进对话 ——
+          // 以前只弹一条 toast，几秒后消失，客户回头看只剩一个没回音的问题。
+          const raw = (ev.message && String(ev.message).trim()) || "";
+          const known = raw ? humanizeError(raw) : null;
+          if (known) {
+            const detail = "\n\n```\n" + (raw.length > 600 ? "…" + raw.slice(-600) : raw) + "\n```";
+            const text = t("⚠️ {what}\n\n**怎么办**：{how}", { what: t(known[0]), how: t(known[1], known[2]) }) + detail;
+            setItems((prev) => [...prev, { type: "text", role: "assistant", content: text }]);
+            if (known[0].includes("余额")) setNeedRecharge(true);
+          } else {
+            onToast?.(ev.message || t("对话失败"));
+          }
+        } else {
+          setNeedRecharge(false);
+        }
       }
     };
     try {
@@ -1167,6 +1240,38 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
             )
           ) : (
           <div ref={dropRef} className={cn("relative flex-1 min-h-0 flex flex-col rounded-lg", dragOver && "ring-2 ring-inset ring-accent/60")}>
+          {/* 保底横幅：为什么现在是轻助手在答、怎么回到 Claude Code。余额横幅：常驻到下一轮成功为止。 */}
+          {floored && (
+            <div className="shrink-0 flex items-center gap-2.5 px-4 py-2 mb-1 rounded-md border border-amber-500/20 bg-amber-500/[0.08] text-[12.5px]">
+              <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+              <span className="flex-1 text-ink-1">
+                {claudeFound
+                  ? t("Claude Code 装好了。")
+                  : t("这台电脑上还没有可用的 Claude Code，先由 U-King 轻助手接待（同一个虾盘云余额）。")}
+              </span>
+              {claudeFound ? (
+                <button onClick={() => { setFloored(false); setEngine("claude"); }}
+                  className="px-2.5 h-7 rounded-md bg-accent text-white text-[12px] font-medium hover:bg-accent-600 shrink-0">
+                  {t("切回 Claude Code")}
+                </button>
+              ) : onInstallClaude && (
+                <button onClick={onInstallClaude}
+                  className="px-2.5 h-7 rounded-md bg-white/[0.06] text-ink-1 text-[12px] font-medium hover:bg-white/[0.1] shrink-0">
+                  {t("去装 Claude Code")}
+                </button>
+              )}
+            </div>
+          )}
+          {needRecharge && (
+            <div className="shrink-0 flex items-center gap-2.5 px-4 py-2 mb-1 rounded-md border border-amber-500/20 bg-amber-500/[0.08] text-[12.5px]">
+              <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+              <span className="flex-1 text-ink-1">{t("虾盘云余额不够了，充值后把这条消息重发一次就行。")}</span>
+              <button onClick={() => void openRecharge()}
+                className="px-2.5 h-7 rounded-md bg-accent text-white text-[12px] font-medium hover:bg-accent-600 shrink-0">
+                {t("去充值")}
+              </button>
+            </div>
+          )}
           {/* 拖放高亮遮罩（测试报告 #028：「拖拽文件时没有视觉反馈，不知道是否生效」）。
               原来只有一圈 1px 的 ring —— 在深色底上拖着文件根本注意不到，
               客户会以为拖放不支持。跟 AI 作图/视频那两页用同一种明确的遮罩说法。 */}

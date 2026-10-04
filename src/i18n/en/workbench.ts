@@ -549,4 +549,10 @@ export const workbench: Record<string, string> = {
     "⚠️ Image \"{name}\" is no longer where it was (moved or deleted) and has been removed from attachments. Drag it in again and resend.",
   "⚠️ 图片「{name}」没能附上：{e}": "⚠️ Couldn't attach image \"{name}\": {e}",
   "移除图片 {name}": "Remove image {name}",
+  // U-Chat 保底：Claude Code 不可用时由轻助手接待（2026-10-04）
+  "这台电脑上还没有可用的 Claude Code，先由 U-King 轻助手接待（同一个虾盘云余额）。":
+    "Claude Code isn't available on this computer yet, so U-King Lite is answering for now (same Xiapan Cloud balance).",
+  "Claude Code 装好了。": "Claude Code is ready.",
+  "切回 Claude Code": "Switch back to Claude Code",
+  "虾盘云余额不够了，充值后把这条消息重发一次就行。": "Your Xiapan Cloud balance is too low. Top up, then resend this message.",
 };
