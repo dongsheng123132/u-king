@@ -446,12 +446,11 @@ pub const TOOL_INSPECT: &str = "runtime.tool.inspect";
 /// GUI 应用/需要外部终端窗口的命令由本动作直接启动；需要内嵌 xterm 或路由到专属标签页的，
 /// 只回一个「该怎么做」的指令，实际执行留给前端（只有前端知道该用哪个标签/会话）。
 pub const TOOL_LAUNCH: &str = "runtime.tool.launch";
-// 身份与说明书。三个都幂等：同样的入参重放，结果一样。
-// `IDENTITY_PUBLISH` 是**编译**动作 —— 它把动作表现场渲染成 llms.txt，
+// 说明书。`IDENTITY_PUBLISH` 幂等：同样的入参重放，结果一样。
+// 它是**编译**动作 —— 把动作表现场渲染成 llms.txt，
 // 所以「加了新动作要重新发布说明书」这件事只有一条路径，不会出现手写的第二份。
-pub const IDENTITY_SAVE: &str = "runtime.identity.save";
+// （身份 `identity.save` / 密钥 `identity.secret_set` 两个设置动作 2026-10-04 随「说明书」页一并删除。）
 pub const IDENTITY_PUBLISH: &str = "runtime.identity.publish";
-pub const IDENTITY_SECRET_SET: &str = "runtime.identity.secret_set";
 /// 换掉本机的虾盘云访问凭证：服务端签发新的、余额平移、旧的当场吊销。
 ///
 /// **登记为幂等**是有依据的，不是嘴上说说：轮换在服务端是两阶段的（stage → commit），

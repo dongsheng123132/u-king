@@ -51,10 +51,6 @@ export const sidebar: Record<string, string> = {
   "让 AI 工具跑得更稳、更省 token": "Make AI tools run steadier and cheaper on tokens",
   "Token 压缩机": "Token Squeezer",
   "AI 设置": "AI Settings",
-  // 「让 AI 认识 U-King」侧栏条目（页面正文的翻译在 en/identity.ts）
-  "让 AI 认识 U-King": "Let AIs discover U-King",
-  "往 CLAUDE.md 插一行指针 · 随时可撤": "Adds one pointer line to CLAUDE.md · undo anytime",
-  "起名 · 身份 · 给 AI 的说明书": "Name · Identity · The manual for AIs",
   "换模型 · 余额 · 每个工具单独配": "Switch models · Balance · Configure each tool",
   "AI 作图": "AI Image",
   "虾盘云出图 · 输入即画 · 可拖参考图": "Generate via Xiapan Cloud · type to draw · drag a reference",

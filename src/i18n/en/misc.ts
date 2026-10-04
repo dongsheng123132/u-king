@@ -105,6 +105,11 @@ export const misc: Record<string, string> = {
   "确认卸载": "Confirm uninstall",
   "取消": "Cancel",
 
+  // ── 通用词（原先搭在已删的「说明书」页字典 en/identity.ts 里，CustomProviderModal / SkillPackList 也在用）──
+  "保存": "Save",
+  "名称": "Name",
+  "删除": "Delete",
+
   // ── Connectors.tsx ─────────────────────────────────────────────
   "读取连接器失败: {e}": "Failed to load connectors: {e}",
   "{name}：{msg}": "{name}: {msg}",

@@ -281,12 +281,13 @@ export function TermPanel({
   const cheat = !cheatOff && activeTui ? TUI_CHEATSHEET[activeTui] : null;
 
   /** 「让 AI 说中文」= 把我们那一块指针写进各家记忆文件（里面第一句就是「用简体中文回答」）。
-   *  复用「我的 U-King」页那个已有动作，不另写一条路 —— 也就能在那页原样撤销。 */
+   *  复用 `identity.link` 那个已有动作，不另写一条路 —— 撤销走「进阶 → 安全卸载」里的
+   *  `identity-pointers` 清理项（`cleanup.rs`，同一个 `unlink_in`）。 */
   const setZh = async () => {
     setZhBusy(true);
     try {
       await invoke("link_identity", { linked: true, targets: ["claude"] });
-      onToast?.(tr("已让 Claude Code 用中文回答（下次开新会话生效；在「我的 U-King」可撤销）"));
+      onToast?.(tr("已让 Claude Code 用中文回答（下次开新会话生效；可在「进阶 → 安全卸载」里撤销）"));
     } catch (e) {
       onToast?.(tr("设置失败: {e}", { e: String(e) }));
     } finally {
@@ -530,9 +531,10 @@ export function TermPanel({
           <span className="shrink-0 text-accent/90">{tr("中文小抄")}</span>
           <span className="truncate" title={cheat}>{cheat}</span>
           <button
+            data-action-id="runtime.identity.link"
             onClick={() => void setZh()}
             disabled={zhBusy}
-            title={tr("往 ~/.claude/CLAUDE.md 追加一行「用简体中文回答」（只增不删，可在「我的 U-King」里撤销）")}
+            title={tr("往 ~/.claude/CLAUDE.md 追加一行「用简体中文回答」（只增不删，可在「进阶 → 安全卸载」里撤销）")}
             className="ml-auto shrink-0 h-5 px-1.5 rounded text-[10.5px] text-accent hover:bg-accent/[0.14] disabled:opacity-40"
           >
             {tr("让 AI 说中文")}

@@ -57,16 +57,12 @@ export const ACTION = {
   RUNTIME_HARDWARE_INSPECT: "runtime.hardware.inspect",
   /** Tell apart 'Hermes can chat' from 'Hermes can open pages and screenshot'. Reads only. */
   RUNTIME_HERMES_BROWSER_INSPECT: "runtime.hermes_browser.inspect",
-  /** Read who this U-King is (name, owner, role, traits), where its manual and logs live, and whether the manual has been published so other AIs can discover it. Reads only; never returns secret values. */
+  /** Read where U-King's manual and logs live, whether the manual has been published, and whether any AI tool's memory file points at it so other AIs can discover it. Reads only. */
   RUNTIME_IDENTITY_INSPECT: "runtime.identity.inspect",
   /** Insert (or remove) a one-line pointer to ~/.uking/llms.txt inside the global memory files of the AI tools installed on this machine (Claude Code / Codex / AGENTS.md). Additive and fully reversible: our text lives inside a marked block, the user's own content is never modified. */
   RUNTIME_IDENTITY_LINK: "runtime.identity.link",
-  /** Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent. Secret values are never written into these files. */
+  /** Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent. */
   RUNTIME_IDENTITY_PUBLISH: "runtime.identity.publish",
-  /** Write the user-editable identity (name, owner, role, traits, notes) to ~/.uking/identity.json. Plain text by design — it is meant to be read by other AIs. */
-  RUNTIME_IDENTITY_SAVE: "runtime.identity.save",
-  /** Write one credential into ~/.uking/secrets.json (private, never rendered into llms.txt). An empty value deletes the entry. Returns only names, never values. */
-  RUNTIME_IDENTITY_SECRET_SET: "runtime.identity.secret_set",
   /** Report whether this process owns the background singletons (skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only. */
   RUNTIME_INSTANCE_INSPECT: "runtime.instance.inspect",
   /** Append-only local record of what happened on this machine: which Action Core actions ran (from GUI / CLI / MCP) and which tools the AI called, with outcome and timing. Paths and commands are redacted before they are written. Records U-King actions only — never keyboard, windows, clipboard or other processes. Local only, never uploaded. */
@@ -193,8 +189,6 @@ export type ActionInputMap = {
   "runtime.identity.inspect": Record<string, never>;
   "runtime.identity.link": { expected_state_version?: string; linked?: boolean; targets?: Array<unknown>; };
   "runtime.identity.publish": { expected_state_version?: string; };
-  "runtime.identity.save": { expected_state_version?: string; name?: string; notes?: string; owner?: string; role?: string; traits?: Record<string, unknown>; };
-  "runtime.identity.secret_set": { expected_state_version?: string; name: string; value?: string; };
   "runtime.instance.inspect": Record<string, never>;
   "runtime.journal.inspect": { days?: number; };
   "runtime.localllm.catalog": { model_id?: string; refresh?: boolean; };
@@ -273,8 +267,6 @@ export type ActionOutputMap = {
   "runtime.identity.inspect": Record<string, unknown>;
   "runtime.identity.link": Record<string, unknown>;
   "runtime.identity.publish": Record<string, unknown>;
-  "runtime.identity.save": Record<string, unknown>;
-  "runtime.identity.secret_set": Record<string, unknown>;
   "runtime.instance.inspect": Record<string, unknown>;
   "runtime.journal.inspect": Record<string, unknown>;
   "runtime.localllm.catalog": Record<string, unknown>;

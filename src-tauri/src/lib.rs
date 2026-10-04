@@ -922,15 +922,6 @@ fn driver_state_version() -> String {
     actions::version_of(&snapshot)
 }
 
-/// 身份的状态版本。用户可以**直接手改** `~/.uking/identity.json`（那是明文文件，
-/// 我们鼓励他改），所以并发冲突不是理论问题：他在记事本里改完保存，
-/// 界面上还拿着旧的一份点保存，不带版本就会把他手改的内容悄悄吃掉。
-fn identity_state_version() -> String {
-    let snapshot = serde_json::to_string(&identity::load_identity_in(&identity::uking_dir()))
-        .unwrap_or_default();
-    actions::version_of(&snapshot)
-}
-
 /// 逐项清理的**唯一实现**。返回「是否需要退出进程才能完成」（删 `~/.uking` 要走延迟脚本）。
 /// 进程退出的编排留在 command 层 —— 那是 app 生命周期，不是业务动作。
 fn run_footprint_removal(
@@ -2641,56 +2632,25 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         )),
-        // —— 身份与「给 AI 的说明书」——
+        // —— 「给 AI 的说明书」——
         //
-        // **这四个动作的意义**：U-King 的能力早就全是机器可读的（就是这张表），
+        // **这三个动作的意义**：U-King 的能力早就全是机器可读的（就是这张表），
         // 但装在同一台机器上的**别家 AI** 根本不知道我们存在。`identity.publish`
         // 把这张表现场编译成 `~/.uking/llms.txt`，让任何 AI 一读就知道能调什么。
         // 说明书是**编译产物**：加动作 → 重新 publish → 说明书自动跟上，
         // 永远不会出现「手写文档和动作表对不上」（宪法第 8 条）。
         actions::readonly(
             actions::IDENTITY_INSPECT,
-            "Inspect U-King's identity and its AI-facing manual",
-            "Read who this U-King is (name, owner, role, traits), where its manual and logs live, and whether the manual has been published so other AIs can discover it. Reads only; never returns secret values.",
+            "Inspect U-King's AI-facing manual",
+            "Read where U-King's manual and logs live, whether the manual has been published, and whether any AI tool's memory file points at it so other AIs can discover it. Reads only.",
             5_000,
-            &["spec_version", "ready", "blockers", "identity", "files", "published", "secrets"],
+            &["spec_version", "ready", "blockers", "files", "published"],
             |_, _, _| Ok(identity::inspect_in(&identity::uking_dir(), &identity::home_dir())),
-        ),
-        actions::write(
-            actions::IDENTITY_SAVE,
-            "Save U-King's identity",
-            "Write the user-editable identity (name, owner, role, traits, notes) to ~/.uking/identity.json. Plain text by design — it is meant to be read by other AIs.",
-            10_000,
-            "required",
-            serde_json::json!({
-                "name":   { "type": "string", "description": "What this U-King is called on this machine." },
-                "owner":  { "type": "string", "description": "How the owner wants to be addressed." },
-                "role":   { "type": "string", "description": "One-line duty, e.g. 'maritime paperwork'." },
-                "traits": { "type": "object", "description": "Free-form key/value attributes." },
-                "notes":  { "type": "string", "description": "Free text the owner wants every AI to read." }
-            }),
-            &[],
-            &["saved"],
-            |_, input, _| {
-                let dir = identity::uking_dir();
-                // 只覆盖传进来的字段，没传的保持原样 —— 免得界面上只改名字却把 notes 清空。
-                let mut id = identity::load_identity_in(&dir);
-                if let Some(v) = input.get("name").and_then(|v| v.as_str()) { id.name = v.into(); }
-                if let Some(v) = input.get("owner").and_then(|v| v.as_str()) { id.owner = v.into(); }
-                if let Some(v) = input.get("role").and_then(|v| v.as_str()) { id.role = v.into(); }
-                if let Some(v) = input.get("notes").and_then(|v| v.as_str()) { id.notes = v.into(); }
-                if let Some(v) = input.get("traits").and_then(|v| v.as_object()) { id.traits = v.clone(); }
-                identity::save_identity_in(&dir, &id)?;
-                // 身份变了说明书就旧了 —— 顺手重编，别让用户改完名字还得记着点「发布」。
-                let files = identity::publish_in(&dir, &id, &actions::manifest(), &skillpack::skill_catalog())?;
-                Ok(serde_json::json!({ "saved": true, "files": files }))
-            },
-            Some(identity_state_version),
         ),
         actions::write(
             actions::IDENTITY_PUBLISH,
             "Publish the AI-facing manual (llms.txt)",
-            "Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent. Secret values are never written into these files.",
+            "Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent.",
             15_000,
             "required",
             serde_json::json!({}),
@@ -2698,8 +2658,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &["files"],
             |_, _, _| {
                 let dir = identity::uking_dir();
-                let id = identity::load_identity_in(&dir);
-                let files = identity::publish_in(&dir, &id, &actions::manifest(), &skillpack::skill_catalog())?;
+                let files = identity::publish_in(&dir, &actions::manifest(), &skillpack::skill_catalog())?;
                 Ok(serde_json::json!({ "files": files }))
             },
             None,
@@ -2736,34 +2695,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 Ok(serde_json::json!({
                     "changed": changed,
                     "discovery": identity::discovery_in(&home),
-                }))
-            },
-            None,
-        ),
-        // 凭据**单独一个动作**，而不是塞进 identity.save：写的是另一个文件、另一个密级。
-        // 混在一起迟早有人把 secrets 当 identity 渲染进明文说明书。
-        actions::write(
-            actions::IDENTITY_SECRET_SET,
-            "Set or clear one credential",
-            "Write one credential into ~/.uking/secrets.json (private, never rendered into llms.txt). An empty value deletes the entry. Returns only names, never values.",
-            10_000,
-            "required",
-            serde_json::json!({
-                "name":  { "type": "string", "description": "Credential name, e.g. xiapan / openai." },
-                "value": { "type": "string", "description": "The secret. Empty string deletes it. Never logged or echoed." }
-            }),
-            &["name"],
-            &["secrets"],
-            |_, input, _| {
-                let dir = identity::uking_dir();
-                let name = input["name"].as_str().unwrap_or_default();
-                let value = input.get("value").and_then(|v| v.as_str()).unwrap_or_default();
-                identity::set_secret_in(&dir, name, value)?;
-                // 凭据清单变了，说明书里的「有哪些 Key」也得跟上（依然只写名字不写值）。
-                let id = identity::load_identity_in(&dir);
-                let _ = identity::publish_in(&dir, &id, &actions::manifest(), &skillpack::skill_catalog());
-                Ok(serde_json::json!({
-                    "secrets": identity::secret_summaries(&identity::load_secrets_in(&dir))
                 }))
             },
             None,
@@ -4417,39 +4348,18 @@ async fn localllm_logs(engine: String, lines: Option<usize>) -> String {
         .unwrap_or_default()
 }
 
-// ───────────────────── 身份 / 给 AI 的说明书（全是薄壳）─────────────────────
+// ───────────────────── 让别家 AI 发现我们（薄壳）─────────────────────
 //
 // GUI 点按钮 = 用户显式确认，所以薄壳补 `confirm:true`；**判断在核心不在薄壳**——
 // 从 CLI / MCP / 远端影子进来的一样会被门禁挡。
-
-/// 身份 + 说明书状态（只读）。
-#[tauri::command]
-async fn identity_status() -> serde_json::Value {
-    run_action_blocking(actions::IDENTITY_INSPECT).await
-}
-
-/// 保存身份（顺带重编说明书）。
-#[tauri::command]
-async fn save_identity(patch: serde_json::Value) -> Result<serde_json::Value, String> {
-    run_write_action(actions::IDENTITY_SAVE, patch).await
-}
-
-/// 手动重编说明书 —— 升级完 U-King（动作表变了）点一下就跟上。
-#[tauri::command]
-async fn publish_identity() -> Result<serde_json::Value, String> {
-    run_write_action(actions::IDENTITY_PUBLISH, serde_json::json!({})).await
-}
+// 现在唯一的 GUI 调用方是终端「让 AI 说中文」按钮（TermPanel）；「说明书」页与它的
+// identity_status / save_identity / publish_identity / set_identity_secret / read_llms_doc
+// 五条命令 2026-10-04 一并删除。
 
 /// 挂 / 撤 指针，让别家 AI 发现我们。
 #[tauri::command]
 async fn link_identity(linked: bool, targets: Vec<String>) -> Result<serde_json::Value, String> {
     run_write_action(actions::IDENTITY_LINK, serde_json::json!({ "linked": linked, "targets": targets })).await
-}
-
-/// 写一条凭据。`value` 空串 = 删除。
-#[tauri::command]
-async fn set_identity_secret(name: String, value: String) -> Result<serde_json::Value, String> {
-    run_write_action(actions::IDENTITY_SECRET_SET, serde_json::json!({ "name": name, "value": value })).await
 }
 
 /// 换掉本机的虾盘云访问凭证（余额平移，旧凭证当场吊销）。
@@ -4468,18 +4378,6 @@ async fn adopt_device_key(key: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn reset_device_wallet() -> Result<serde_json::Value, String> {
     run_write_action(actions::DEVICE_WALLET_RESET_LOCAL, serde_json::json!({})).await
-}
-
-/// 读说明书正文给界面预览 —— 让用户**亲眼看到**外围 AI 会读到什么。
-/// 这页卖的是信任：说「不会泄漏你的 Key」不如让他自己翻一遍。
-#[tauri::command]
-async fn read_llms_doc(full: bool) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let p = if full { identity::llms_full_path() } else { identity::llms_path() };
-        std::fs::read_to_string(&p).map_err(|e| format!("读 {} 失败: {e}", p.display()))
-    })
-    .await
-    .map_err(|e| format!("读取任务异常: {e}"))?
 }
 
 /// 一键装一个厨具（走 winget/brew，进度走事件 `uking:toolbox_progress`）。
@@ -8096,7 +7994,7 @@ pub fn run() {
             }
             // 「给 AI 的说明书」开机自动落盘。**必须在这儿而不是等用户点按钮** ——
             // 这份文件的全部意义是让**别家 AI** 在客户机上发现我们；要是非得先有人
-            // 打开 U-King、翻到「我的 U-King」、点一下「生成」，那新装的机器上它就是空的，
+            // 打开 U-King、翻到某个页面、点一下「生成」，那新装的机器上它就是空的，
             // 而那正是最需要它的时候。
             //
             // 放后台线程：渲染要遍历动作表 + 两次落盘，不该挡住窗口显示。
@@ -8107,8 +8005,7 @@ pub fn run() {
             if !is_sidecar {
                 std::thread::spawn(|| {
                     let dir = identity::uking_dir();
-                    let id = identity::load_identity_in(&dir);
-                    match identity::publish_in(&dir, &id, &actions::manifest(), &skillpack::skill_catalog()) {
+                    match identity::publish_in(&dir, &actions::manifest(), &skillpack::skill_catalog()) {
                         Ok(f) => ulog::write("identity", &format!("说明书已生成: {}", f.join(" | "))),
                         // 失败不致命：说明书没了只是 AI 发现不了我们，app 本身照跑。
                         Err(e) => ulog::write("identity", &format!("说明书生成失败: {e}")),
@@ -8349,15 +8246,10 @@ pub fn run() {
             localllm_install,
             localllm_model_add,
             localllm_logs,
-            identity_status,
-            save_identity,
-            publish_identity,
-            set_identity_secret,
             rotate_device_key,
             adopt_device_key,
             reset_device_wallet,
             link_identity,
-            read_llms_doc,
             install_capability_tool,
             load_skill,
             load_free_registry,
@@ -8644,8 +8536,7 @@ mod llms_manifest_tests {
     #[test]
     fn llms_renders_against_the_real_manifest() {
         let m = crate::actions::manifest();
-        let id = crate::identity::Identity::default();
-        let s = crate::identity::render_llms(&id, &m, &[], &crate::skillpack::skill_catalog());
+        let s = crate::identity::render_llms(&m, &crate::skillpack::skill_catalog());
 
         // 真实动作表里只读和写**都不该是 0** —— 任何一边归零就说明字段名对不上了。
         let total = m["actions"].as_array().map(|a| a.len()).unwrap_or(0);
@@ -8670,8 +8561,7 @@ mod llms_manifest_tests {
     #[test]
     fn manual_does_not_claim_every_write_action_needs_confirmation() {
         let m = crate::actions::manifest();
-        let id = crate::identity::Identity::default();
-        let s = crate::identity::render_llms(&id, &m, &[], &crate::skillpack::skill_catalog());
+        let s = crate::identity::render_llms(&m, &crate::skillpack::skill_catalog());
 
         let actions = m["actions"].as_array().expect("manifest 得有 actions");
         let ungated = actions
@@ -8703,8 +8593,7 @@ mod llms_manifest_tests {
     #[test]
     fn manual_does_not_claim_all_skill_dirs_are_identical() {
         let m = crate::actions::manifest();
-        let id = crate::identity::Identity::default();
-        let s = crate::identity::render_llms(&id, &m, &[], &crate::skillpack::skill_catalog());
+        let s = crate::identity::render_llms(&m, &crate::skillpack::skill_catalog());
 
         assert!(
             !s.contains("内容完全相同"),
@@ -8726,8 +8615,7 @@ mod llms_manifest_tests {
     #[test]
     fn manual_teaches_a_command_that_exists_on_this_platform() {
         let m = crate::actions::manifest();
-        let id = crate::identity::Identity::default();
-        let s = crate::identity::render_llms(&id, &m, &[], &crate::skillpack::skill_catalog());
+        let s = crate::identity::render_llms(&m, &crate::skillpack::skill_catalog());
 
         #[cfg(not(windows))]
         {

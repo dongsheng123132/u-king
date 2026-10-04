@@ -17,7 +17,6 @@ import {
   BarChart3,
   BookOpen,
   Bot,
-  IdCard,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -415,9 +414,8 @@ export function Manager({
 }: {
   onGoCodex?: () => void;
   onGoAdvanced?: () => void;
-  /** 跳到某个全屏配置页（本地大模型 / 让 AI 认识 U-King 等）。
-   *  2026-08-22 这批页面从侧栏摘掉、入口收进本页「高级」分区 —— 页面和路由原样保留，
-   *  App 那边照 tab id 渲染，这里只负责跳（同 Codex 专区那条的手法）。 */
+  /** 跳到某个全屏页（工具中心等）。App 那边照 tab id 渲染，这里只负责跳
+   *  （同 Codex 专区那条的手法）。 */
   onGoPage?: (tab: string) => void;
   onDeviceKeyChange?: (dk: DeviceKey) => void;
   onRecharge?: (url?: string) => void;
@@ -2660,33 +2658,6 @@ export function Manager({
         </section>
       )}
 
-      {/* 更多配置页（2026-08-22 从侧栏摘进来的四个）。「本地大模型」2026-08-25 升回
-          侧栏「更多」（用户拍板），从这组网格里摘掉 —— 一个入口只在一处，别两边都摆。
-          它们全是「配一次就不再进」的页面，
-          却各占一格侧栏 —— 侧栏挤不是因为东西该塞进 chat，是配置页太多（智序对照的结论）。
-          页面/路由/动作全部原样，这里只是入口；点进去还是原来那个全屏页。 */}
-      {onGoPage && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {[
-            { tab: "identity", icon: IdCard, label: t("让 AI 认识 U-King"), sub: t("往 CLAUDE.md 插一行指针 · 随时可撤") },
-          ].map(({ tab, icon: Icon, label, sub }) => (
-            <section
-              key={tab}
-              onClick={() => onGoPage(tab)}
-              className="flex items-center gap-3 rounded-card border border-white/[0.08] bg-bg-1/60 px-4 py-3 cursor-pointer hover:border-white/[0.14] hover:bg-white/[0.02] transition-colors shadow-sm"
-            >
-              <span className="grid place-items-center w-9 h-9 rounded-xl bg-white/[0.05] shrink-0">
-                <Icon size={16} className="text-ink-2" />
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12.5px] font-semibold text-ink-0">{label}</div>
-                <div className="text-[10.5px] text-ink-4 truncate">{sub}</div>
-              </div>
-              <span className="text-[11.5px] font-medium text-accent shrink-0">{t("进入 →")}</span>
-            </section>
-          ))}
-        </div>
-      )}
         </div>
       </details>
       )}

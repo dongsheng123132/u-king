@@ -19,7 +19,6 @@ import { workbench } from "./en/workbench";
 import { panels } from "./en/panels";
 import { redline } from "./en/redline";
 import { feedback } from "./en/feedback";
-import { identity } from "./en/identity";
 import { localllm } from "./en/localllm";
 import { deviceWallet } from "./en/device-wallet";
 import { englishUi } from "./en/english-ui";
@@ -43,7 +42,6 @@ export const EN: Record<string, string> = {
   ...redline,
   ...localllm,
   ...feedback,
-  ...identity,
   ...deviceWallet,
   ...toolhub,
 

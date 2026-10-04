@@ -1,4 +1,4 @@
-//! U-King 的**身份**与**给 AI 的说明书**（`llms.txt`）。
+//! U-King **给 AI 的说明书**（`llms.txt`）与「让别家 AI 发现我们」的指针。
 //!
 //! **为什么要有这个模块**：到 0.9.87 为止，U-King 的能力其实已经全是机器可读的了 ——
 //! 影核 `actions::manifest()` 出 49 个动作的完整契约，`mcp serve` 能把它们原样喂给 AI，
@@ -17,18 +17,23 @@
 //! 改一个动作的描述，说明书跟着变。**任何时候都不许手改生成出来的文件**，
 //! 手改的那份第二天就和动作表漂移，而 AI 会照着漂移的那份去调不存在的动作。
 //!
-//! ## 明文 / 私密分离
+//! ## 2026-10-04 收敛：只留「生成说明书」+「挂 / 摘指针」
+//!
+//! 「说明书」页与「身份 / 密钥」设置整体删除（`identity.save` / `identity.secret_set` 两个动作、
+//! `Identity` 结构、`secrets.json` 读写、页面与 i18n 一并没了）。保留的只有两条：
+//!
+//! 1. 启动时 [`publish_in`] 生成 `~/.uking/llms.txt` 与 `llms-full.txt`（只写 U-King 自己的目录）；
+//! 2. 终端「让 AI 说中文」按钮走的 [`link_in`] / [`unlink_in`]（往 `~/.claude/CLAUDE.md` 等插 / 摘
+//!    带标记的指针块），以及卸载清理项 `identity-pointers`。
+//!
+//! 说明书里的名字固定是 `U-King`。客户机上**已有**的 `~/.uking/identity.json` / `secrets.json`
+//! 不再被读取，也**不会被删除**（那是用户自己的文件，不归本次清理）。说明书里不再有凭据段 ——
+//! 这份明文文件从此连「配了哪些 Key」都不写。
 //!
 //! | 文件 | 谁能看 | 内容 |
 //! |---|---|---|
-//! | `~/.uking/llms.txt` | **明文**，任何 AI | 身份 + 能力目录 + 怎么调 + 日志在哪 |
+//! | `~/.uking/llms.txt` | **明文**，任何 AI | 能力目录 + 怎么调 + 日志在哪 |
 //! | `~/.uking/llms-full.txt` | **明文**，任何 AI | 全量动作签名（含入参/出参 schema） |
-//! | `~/.uking/identity.json` | **明文**，用户可手改 | 名字、人设、主人称呼、自定义属性 |
-//! | `~/.uking/secrets.json` | **私密**，只有本机 | API Key **真值** |
-//!
-//! **铁律：Key 的值绝不出现在 `llms.txt` 里。** 说明书只写「配了哪些 Key、配没配」，
-//! 值永远留在 `secrets.json`。这条由 [`tests::llms_never_leaks_secret_values`] 守着 ——
-//! 那个测试真的把 Key 塞进去再断言渲染结果里搜不到，不是靠人自觉。
 //!
 //! ## 设计约束（对齐本项目的模块独立铁律）
 //!
@@ -37,22 +42,23 @@
 //!   同 `metrics` 不 import `usage_local` 的手法：删掉影核也不该让本模块编不过。
 //! - 所有落盘走 [`atomic_write`]：先写 `.tmp` 再 rename，中途断电不会留半个文件。
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// 说明书的格式版本。**改了渲染结构就 +1** —— 下游（别家 AI、我们自己的 MCP 文档）
 /// 可以靠它判断要不要重新解析。
-pub const LLMS_SPEC_VERSION: &str = "1.0.0";
+/// 1.1.0（2026-10-04）：去掉「主人的补充说明」与「凭据」两段，「我是谁」只剩固定名字。
+pub const LLMS_SPEC_VERSION: &str = "1.1.0";
 
-/// 用户没起名字时的默认身份。
+/// 说明书里的名字（固定，不再可配）。
 const DEFAULT_NAME: &str = "U-King";
 
 /// 用户家目录。指针要写进 `~/.claude/CLAUDE.md` 这类落点，所以对外可见。
 ///
 /// 🔴 **复用公共层那一份，别在这儿重写** —— 这里原本自己读 `USERPROFILE`，
 /// 是全仓**唯一不认 `UKING_TEST_HOME`** 的家目录实现，后果是本模块所有落点
-/// （`llms.txt` / `identity.json` / `secrets.json`，以及 `identity.link` 要写的
-/// **别家 AI 记忆文件**）统统逃出沙箱，一次「隔离测试」能改到用户的真实 CLAUDE.md。
+/// （`llms.txt`，以及 `identity.link` 要写的**别家 AI 记忆文件**）统统逃出沙箱，
+/// 一次「隔离测试」能改到用户的真实 CLAUDE.md。
 pub fn home_dir() -> PathBuf {
     crate::installer::user_home_dir()
 }
@@ -60,124 +66,6 @@ pub fn home_dir() -> PathBuf {
 /// U-King 的数据根目录 `~/.uking/`。
 pub fn uking_dir() -> PathBuf {
     home_dir().join(".uking")
-}
-
-/// 身份文件（明文，用户可手改）。
-pub fn identity_path() -> PathBuf {
-    uking_dir().join("identity.json")
-}
-
-/// 凭据文件（私密，**绝不进说明书**）。
-pub fn secrets_path() -> PathBuf {
-    uking_dir().join("secrets.json")
-}
-
-/// 说明书封面（明文）。
-pub fn llms_path() -> PathBuf {
-    uking_dir().join("llms.txt")
-}
-
-/// 说明书全量版（明文，含 schema）。
-pub fn llms_full_path() -> PathBuf {
-    uking_dir().join("llms-full.txt")
-}
-
-// ───────────────────────────── 身份 ─────────────────────────────
-
-/// 用户可自定义的身份。**全部字段都可空** —— 空的就用默认值渲染，
-/// 绝不因为用户没填就拒绝生成说明书。
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct Identity {
-    /// 这台机器上的 U-King 叫什么。用户可以改成「小海」「阿king」随便。
-    #[serde(default)]
-    pub name: String,
-    /// 主人希望被怎么称呼。会写进说明书，让别的 AI 知道该叫用户什么。
-    #[serde(default)]
-    pub owner: String,
-    /// 人设 / 职责定位。一句话，比如「负责海事业务文档和数据整理」。
-    #[serde(default)]
-    pub role: String,
-    /// 自定义属性，任意键值。会原样进说明书的「属性」段。
-    #[serde(default)]
-    pub traits: Map<String, Value>,
-    /// 主人自由补充的说明。**原样进说明书末尾** —— 这是用户对外围 AI 说话的地方，
-    /// 比如「我的项目都在 D:\work，别动 C 盘」。
-    #[serde(default)]
-    pub notes: String,
-}
-
-impl Identity {
-    /// 渲染用的显示名：空就回落到默认，不让说明书出现空标题。
-    pub fn display_name(&self) -> &str {
-        if self.name.trim().is_empty() { DEFAULT_NAME } else { self.name.trim() }
-    }
-}
-
-/// 读身份。文件不存在或坏了都回默认值 —— **绝不因为读不出身份就让整条链失败**，
-/// 说明书的价值在能力目录，身份只是封面。
-pub fn load_identity() -> Identity {
-    load_identity_in(&uking_dir())
-}
-
-/// 同 [`load_identity`]，但指定根目录 —— 给测试用（真跑落盘逻辑又不碰用户的 `~/.uking`）。
-pub fn load_identity_in(dir: &Path) -> Identity {
-    std::fs::read_to_string(dir.join("identity.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<Identity>(&s).ok())
-        .unwrap_or_default()
-}
-
-/// 存身份（原子写）。
-pub fn save_identity_in(dir: &Path, id: &Identity) -> Result<(), String> {
-    let body = serde_json::to_vec_pretty(id).map_err(|e| format!("serialize identity: {e}"))?;
-    atomic_write(&dir.join("identity.json"), &body)
-}
-
-// ───────────────────────────── 凭据 ─────────────────────────────
-
-/// 凭据摘要：**只有名字和配没配，永远没有值**。这是给说明书用的形状。
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct SecretSummary {
-    pub name: String,
-    pub configured: bool,
-}
-
-/// 读凭据表。返回 `名字 -> 值`，**只给需要真值的调用方用**（比如实际发请求）。
-/// 渲染说明书一律走 [`secret_summaries`]。
-pub fn load_secrets_in(dir: &Path) -> Map<String, Value> {
-    std::fs::read_to_string(dir.join("secrets.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<Map<String, Value>>(&s).ok())
-        .unwrap_or_default()
-}
-
-/// 凭据摘要（安全形状）。值被丢掉，只留「有这个名字」+「值非空」。
-pub fn secret_summaries(secrets: &Map<String, Value>) -> Vec<SecretSummary> {
-    let mut out: Vec<SecretSummary> = secrets
-        .iter()
-        .map(|(k, v)| SecretSummary {
-            name: k.clone(),
-            configured: !v.as_str().unwrap_or("").trim().is_empty(),
-        })
-        .collect();
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
-}
-
-/// 写一条凭据（原子写）。`value` 为空串表示删除这一条。
-pub fn set_secret_in(dir: &Path, name: &str, value: &str) -> Result<(), String> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err("凭据名不能为空".into());
-    }
-    let mut m = load_secrets_in(dir);
-    if value.trim().is_empty() {
-        m.remove(name);
-    } else {
-        m.insert(name.into(), Value::String(value.into()));
-    }
-    let body = serde_json::to_vec_pretty(&m).map_err(|e| format!("serialize secrets: {e}"))?;
-    atomic_write(&dir.join("secrets.json"), &body)
 }
 
 // ───────────────────────────── 说明书渲染 ─────────────────────────────
@@ -218,16 +106,8 @@ fn cli_invocation() -> String {
 ///
 /// `manifest` 就是 `actions::manifest()` 的返回值 —— 本模块**不认识 actions**，
 /// 由组合根传进来。传个空对象也能渲染（能力段会写「读不到动作表」而不是崩）。
-///
-/// **`secrets` 传摘要不传值**：签名上就杜绝了把 Key 渲染进去的可能，
-/// 而不是靠调用方自觉。
-pub fn render_llms(
-    id: &Identity,
-    manifest: &Value,
-    secrets: &[SecretSummary],
-    skills: &[(String, String)],
-) -> String {
-    let name = id.display_name();
+pub fn render_llms(manifest: &Value, skills: &[(String, String)]) -> String {
+    let name = DEFAULT_NAME;
     let cli = cli_invocation();
     let mut s = String::new();
 
@@ -240,19 +120,9 @@ pub fn render_llms(
     ));
     s.push_str(&format!("说明书格式版本: {LLMS_SPEC_VERSION}（本文件由 U-King 自动生成，**请勿手改**）\n\n"));
 
-    // ── 身份 ──
+    // ── 身份 ── 名字固定（原先可在「说明书」页改，2026-10-04 整页删除）。
     s.push_str("## 我是谁\n\n");
     s.push_str(&format!("- 名字: {name}\n"));
-    if !id.owner.trim().is_empty() {
-        s.push_str(&format!("- 主人: {}（请这样称呼他/她）\n", id.owner.trim()));
-    }
-    if !id.role.trim().is_empty() {
-        s.push_str(&format!("- 职责: {}\n", id.role.trim()));
-    }
-    for (k, v) in &id.traits {
-        let val = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
-        s.push_str(&format!("- {k}: {val}\n"));
-    }
     s.push('\n');
 
     // ── 怎么调 ──
@@ -325,26 +195,6 @@ pub fn render_llms(
          排障顺序建议：先 `--envfp` 看环境，再 `runtime.diagnostics.collect` 看发生了什么，\n\
          最后才去翻 `~/.uking/logs/` 的原文。\n\n"
     ));
-
-    // ── 凭据 ──
-    s.push_str("## 凭据\n\n");
-    if secrets.is_empty() {
-        s.push_str("这台机器还没配任何自定义 Key。\n");
-    } else {
-        s.push_str("本机配了以下 Key。**值不在本文件里**，存在 `~/.uking/secrets.json`：\n\n");
-        for x in secrets {
-            let mark = if x.configured { "已配" } else { "空" };
-            s.push_str(&format!("- `{}` — {}\n", x.name, mark));
-        }
-    }
-    s.push_str("\n需要用某个 Key 时读 `~/.uking/secrets.json`，**不要把值回显到对话或日志里**。\n\n");
-
-    // ── 主人补充 ──
-    if !id.notes.trim().is_empty() {
-        s.push_str("## 主人的补充说明\n\n");
-        s.push_str(id.notes.trim());
-        s.push_str("\n\n");
-    }
 
     s.push_str("---\n\n");
     s.push_str("更全的版本（每个动作的完整入参/出参 schema）在同目录的 `llms-full.txt`。\n");
@@ -453,9 +303,9 @@ fn render_skills(skills: &[(String, String)]) -> String {
 }
 
 /// 渲染 `llms-full.txt`（全量版，带 schema）。
-pub fn render_llms_full(id: &Identity, manifest: &Value) -> String {
+pub fn render_llms_full(manifest: &Value) -> String {
     let mut s = String::new();
-    s.push_str(&format!("# {} — 全量动作签名\n\n", id.display_name()));
+    s.push_str(&format!("# {DEFAULT_NAME} — 全量动作签名\n\n"));
     s.push_str(&format!(
         "说明书格式版本: {LLMS_SPEC_VERSION}。本文件由 U-King 从动作表自动生成，**请勿手改**。\n\
          动作契约版本: {}\n\n",
@@ -820,15 +670,13 @@ fn remove_block(old: &str) -> String {
 /// **幂等**：内容一样就重复写也没关系（原子写，不会写坏）。
 pub fn publish_in(
     dir: &Path,
-    id: &Identity,
     manifest: &Value,
     skills: &[(String, String)],
 ) -> Result<Vec<String>, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    let secrets = secret_summaries(&load_secrets_in(dir));
 
-    let cover = render_llms(id, manifest, &secrets, skills);
-    let full = render_llms_full(id, manifest);
+    let cover = render_llms(manifest, skills);
+    let full = render_llms_full(manifest);
 
     atomic_write(&dir.join("llms.txt"), cover.as_bytes())?;
     atomic_write(&dir.join("llms-full.txt"), full.as_bytes())?;
@@ -839,7 +687,7 @@ pub fn publish_in(
     ])
 }
 
-/// 只读状态：身份 + 说明书在哪 + 发布了没 + **AI 到底能不能发现** + 凭据摘要。
+/// 只读状态：说明书在哪 + 发布了没 + **AI 到底能不能发现**。
 ///
 /// 🔴 **`ready` 的判据是「AI 真能发现」，不是「文件生成了」。**
 /// 这两件事差得远：`llms.txt` 静静躺在 `~/.uking/` 里，没有任何 AI 会凭空去读它。
@@ -847,8 +695,6 @@ pub fn publish_in(
 /// conformance 全绿，而客户开了两天一点没省，因为改写出的裸 `rtk` 不在 PATH 上。
 /// **报告是对的，世界是坏的。** 所以这里必须两个条件都满足才算 ready。
 pub fn inspect_in(dir: &Path, home: &Path) -> Value {
-    let id = load_identity_in(dir);
-    let secrets = secret_summaries(&load_secrets_in(dir));
     let cover = dir.join("llms.txt");
     let full = dir.join("llms-full.txt");
     let published = cover.exists() && full.exists();
@@ -880,22 +726,12 @@ pub fn inspect_in(dir: &Path, home: &Path) -> Value {
         "blockers": blockers,
         "discovery": discovery,
         "linked_count": linked_n,
-        "identity": {
-            "name": id.display_name(),
-            "owner": id.owner,
-            "role": id.role,
-            "traits": id.traits,
-            "notes": id.notes,
-        },
         "files": {
-            "identity": dir.join("identity.json").display().to_string(),
-            "secrets": dir.join("secrets.json").display().to_string(),
             "llms": cover.display().to_string(),
             "llms_full": full.display().to_string(),
             "logs_dir": dir.join("logs").display().to_string(),
         },
         "published": published,
-        "secrets": secrets,
     })
 }
 
@@ -940,10 +776,8 @@ mod tests {
         for (name, p) in [
             ("home_dir", home_dir()),
             ("uking_dir", uking_dir()),
-            ("identity_path", identity_path()),
-            ("secrets_path", secrets_path()),
-            ("llms_path", llms_path()),
-            ("llms_full_path", llms_full_path()),
+            ("llms.txt", uking_dir().join("llms.txt")),
+            ("llms-full.txt", uking_dir().join("llms-full.txt")),
         ] {
             assert!(
                 p.starts_with(root),
@@ -993,28 +827,32 @@ mod tests {
         })
     }
 
-    /// 🔴 这条是本模块存在的理由之一：**Key 的值绝不许出现在明文说明书里**。
-    /// 不靠调用方自觉 —— 真把 Key 写进 secrets.json，再断言渲染结果里搜不到。
+    /// 🔴 身份 / 密钥设置删除后的底线：客户机上**已有**的 `identity.json` / `secrets.json`
+    /// ① 不再影响说明书（既不改名字、也不把 Key 名或值渲染进这份明文文件）；
+    /// ② **不被删除、不被改写**（那是用户自己的文件，不归这次收敛）。
     #[test]
-    fn llms_never_leaks_secret_values() {
-        let dir = sandbox("leak");
-        let poison = "sk-xp-THIS-MUST-NEVER-APPEAR-IN-LLMS";
-        set_secret_in(&dir, "xiapan", poison).unwrap();
-        set_secret_in(&dir, "openai", "sk-openai-ALSO-SECRET").unwrap();
+    fn legacy_identity_and_secrets_files_are_ignored_but_never_touched() {
+        let dir = sandbox("legacy");
+        let id_body = br#"{"name":"LEGACY-NAME","owner":"LEGACY-OWNER","notes":"LEGACY-NOTES"}"#;
+        let sec_body = br#"{"LEGACY-KEY-NAME":"sk-LEGACY-SECRET-VALUE"}"#;
+        std::fs::write(dir.join("identity.json"), id_body).unwrap();
+        std::fs::write(dir.join("secrets.json"), sec_body).unwrap();
 
-        let id = Identity { name: "小海".into(), ..Default::default() };
-        let files = publish_in(&dir, &id, &fake_manifest(), &[]).unwrap();
+        let files = publish_in(&dir, &fake_manifest(), &[]).unwrap();
         assert_eq!(files.len(), 2);
 
         for f in ["llms.txt", "llms-full.txt"] {
             let body = std::fs::read_to_string(dir.join(f)).unwrap();
-            assert!(!body.contains(poison), "{f} 泄漏了 Key 真值!");
-            assert!(!body.contains("sk-openai-ALSO-SECRET"), "{f} 泄漏了 Key 真值!");
+            for poison in ["LEGACY-NAME", "LEGACY-OWNER", "LEGACY-NOTES", "sk-LEGACY-SECRET-VALUE", "LEGACY-KEY-NAME"] {
+                assert!(!body.contains(poison), "{f} 不该再带旧文件里的内容：{poison}");
+            }
         }
-        // 但**名字**要在，否则 AI 不知道这台机器有哪些凭据可用。
         let cover = std::fs::read_to_string(dir.join("llms.txt")).unwrap();
-        assert!(cover.contains("xiapan"), "凭据名该出现在说明书里");
-        assert!(cover.contains("openai"));
+        assert!(cover.starts_with("# U-King"), "名字固定为 U-King");
+        assert!(!cover.contains("secrets.json"), "说明书不该再提 secrets.json");
+
+        assert_eq!(std::fs::read(dir.join("identity.json")).unwrap(), id_body, "旧 identity.json 被改了");
+        assert_eq!(std::fs::read(dir.join("secrets.json")).unwrap(), sec_body, "旧 secrets.json 被改了");
     }
 
     /// 说明书是**从 manifest 编译**出来的，不是手写的 —— 动作表里有什么，
@@ -1022,8 +860,7 @@ mod tests {
     #[test]
     fn capabilities_come_from_the_manifest_not_a_hand_written_list() {
         let dir = sandbox("compile");
-        let id = Identity::default();
-        publish_in(&dir, &id, &fake_manifest(), &[]).unwrap();
+        publish_in(&dir, &fake_manifest(), &[]).unwrap();
         let cover = std::fs::read_to_string(dir.join("llms.txt")).unwrap();
 
         assert!(cover.contains("runtime.stack.inspect"));
@@ -1037,59 +874,21 @@ mod tests {
         assert!(cover.contains("⏳ 长任务"));
     }
 
-    /// 动作表读不到时**降级但不崩** —— 说明书的封面（身份、日志入口）依然有用。
+    /// 动作表读不到时**降级但不崩** —— 说明书的封面（名字、日志入口）依然有用。
     #[test]
     fn renders_without_a_manifest() {
-        let id = Identity { name: "阿K".into(), ..Default::default() };
-        let s = render_llms(&id, &json!({}), &[], &[]);
-        assert!(s.contains("阿K"));
+        let s = render_llms(&json!({}), &[]);
+        assert!(s.contains("U-King"));
         assert!(s.contains("读不到动作表"));
         assert!(s.contains("~/.uking/logs/"), "日志入口任何时候都该在");
     }
 
-    /// 身份空着也要能渲染，不能因为用户没填就出个空标题。
+    /// 标题永远是产品名，不会出现空标题。
     #[test]
-    fn empty_identity_falls_back_to_default_name() {
-        let id = Identity::default();
-        assert_eq!(id.display_name(), "U-King");
-        let s = render_llms(&id, &json!({}), &[], &[]);
+    fn title_is_always_the_product_name() {
+        let s = render_llms(&json!({}), &[]);
         assert!(s.starts_with("# U-King"));
-    }
-
-    /// 身份存了要能原样读回来（round-trip），否则界面上改完刷新就没了。
-    #[test]
-    fn identity_round_trips() {
-        let dir = sandbox("roundtrip");
-        let mut traits = Map::new();
-        traits.insert("常用语言".into(), json!("中文"));
-        let id = Identity {
-            name: "小海".into(),
-            owner: "李工".into(),
-            role: "海事业务文档整理".into(),
-            traits,
-            notes: "项目都在 D:\\work，别动 C 盘".into(),
-        };
-        save_identity_in(&dir, &id).unwrap();
-
-        let back = load_identity_in(&dir);
-        assert_eq!(back.name, "小海");
-        assert_eq!(back.owner, "李工");
-        assert_eq!(back.role, "海事业务文档整理");
-        assert_eq!(back.traits.get("常用语言").unwrap(), "中文");
-        assert!(back.notes.contains("别动 C 盘"));
-
-        // 主人的补充说明要真的进说明书 —— 那是用户对外围 AI 说话的唯一通道
-        let s = render_llms(&back, &json!({}), &[], &[]);
-        assert!(s.contains("别动 C 盘"));
-        assert!(s.contains("李工"));
-    }
-
-    /// 身份文件坏了不该让整条链失败 —— 回默认值继续。
-    #[test]
-    fn corrupt_identity_degrades_to_default() {
-        let dir = sandbox("corrupt");
-        std::fs::write(dir.join("identity.json"), b"{ this is not json").unwrap();
-        assert_eq!(load_identity_in(&dir).display_name(), "U-King");
+        assert!(render_llms_full(&json!({})).starts_with("# U-King"));
     }
 
     /// 造一个「家目录」沙箱：`home/.claude/`、`home/.codex/` 按需建。
@@ -1112,10 +911,13 @@ mod tests {
         let u = h.join(".uking");
 
         // ① 什么都没有
-        assert_eq!(inspect_in(&u, &h)["ready"], false);
+        let none = inspect_in(&u, &h);
+        assert_eq!(none["ready"], false);
+        // 身份 / 密钥设置已删：状态里不该再有这两块
+        assert!(none.get("identity").is_none() && none.get("secrets").is_none());
 
         // ② 说明书生成了 —— 但没人指向它，**依然不算 ready**
-        publish_in(&u, &Identity::default(), &fake_manifest(), &[]).unwrap();
+        publish_in(&u, &fake_manifest(), &[]).unwrap();
         let mid = inspect_in(&u, &h);
         assert_eq!(mid["ready"], false, "文件存在 ≠ AI 能发现，不许报 ready");
         let b = mid["blockers"].as_array().unwrap();
@@ -1199,20 +1001,5 @@ mod tests {
         let n = pointer_block().chars().count();
         assert!(n < 400, "指针块 {n} 字，太长了：它会进客户每一个会话的上下文");
         assert!(pointer_block().contains("~/.uking/llms.txt"), "指针得指向说明书");
-    }
-
-    /// 空值删除一条凭据；摘要里 configured 要如实反映。
-    #[test]
-    fn secret_set_and_delete() {
-        let dir = sandbox("secrets");
-        set_secret_in(&dir, "xiapan", "sk-1").unwrap();
-        let s = secret_summaries(&load_secrets_in(&dir));
-        assert_eq!(s.len(), 1);
-        assert!(s[0].configured);
-
-        set_secret_in(&dir, "xiapan", "").unwrap();
-        assert!(secret_summaries(&load_secrets_in(&dir)).is_empty());
-
-        assert!(set_secret_in(&dir, "  ", "x").is_err(), "空名字该被拒");
     }
 }

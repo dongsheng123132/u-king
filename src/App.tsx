@@ -67,7 +67,6 @@ const Create = lazy(() => import("./Create").then((m) => ({ default: m.Create })
 const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
-const Identity = lazy(() => import("./Identity").then((m) => ({ default: m.Identity })));
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
@@ -1172,7 +1171,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "localllm" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "identity" || tab === "create"
+                tab === "localllm" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "create"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1303,8 +1302,6 @@ export function App() {
                 onApplyXiapan={applyXiapan}
                 onUseOwnKey={() => setTab("manage")}
               />
-            ) : tab === "identity" ? (
-              <Identity onToast={flash} />
             ) : tab === "codex" ? (
               <CodexZone
                 tools={tools}

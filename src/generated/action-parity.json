@@ -2974,7 +2974,7 @@
           "target": "cli:action run runtime.identity.inspect --json --no-input"
         }
       ],
-      "description": "Read who this U-King is (name, owner, role, traits), where its manual and logs live, and whether the manual has been published so other AIs can discover it. Reads only; never returns secret values.",
+      "description": "Read where U-King's manual and logs live, whether the manual has been published, and whether any AI tool's memory file points at it so other AIs can discover it. Reads only.",
       "effects": {
         "audit_required": false,
         "class": "read",
@@ -2999,93 +2999,21 @@
           "spec_version",
           "ready",
           "blockers",
-          "identity",
           "files",
-          "published",
-          "secrets"
+          "published"
         ],
         "type": "object"
       },
-      "title": "Inspect U-King's identity and its AI-facing manual"
+      "title": "Inspect U-King's AI-facing manual"
     },
     {
       "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.identity.save --json --no-input"
-        }
-      ],
-      "description": "Write the user-editable identity (name, owner, role, traits, notes) to ~/.uking/identity.json. Plain text by design — it is meant to be read by other AIs.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 10000
-      },
-      "id": "runtime.identity.save",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "name": {
-            "description": "What this U-King is called on this machine.",
-            "type": "string"
-          },
-          "notes": {
-            "description": "Free text the owner wants every AI to read.",
-            "type": "string"
-          },
-          "owner": {
-            "description": "How the owner wants to be addressed.",
-            "type": "string"
-          },
-          "role": {
-            "description": "One-line duty, e.g. 'maritime paperwork'.",
-            "type": "string"
-          },
-          "traits": {
-            "description": "Free-form key/value attributes.",
-            "type": "object"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "saved"
-        ],
-        "type": "object"
-      },
-      "title": "Save U-King's identity"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
         {
           "surface": "cli",
           "target": "cli:action run runtime.identity.publish --json --no-input"
         }
       ],
-      "description": "Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent. Secret values are never written into these files.",
+      "description": "Compile the live action table into ~/.uking/llms.txt and llms-full.txt so any AI on this machine can discover what U-King can do. Idempotent.",
       "effects": {
         "audit_required": true,
         "class": "write",
@@ -3173,62 +3101,6 @@
         "type": "object"
       },
       "title": "Let other AIs discover U-King"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.identity.secret_set --json --no-input"
-        }
-      ],
-      "description": "Write one credential into ~/.uking/secrets.json (private, never rendered into llms.txt). An empty value deletes the entry. Returns only names, never values.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 10000
-      },
-      "id": "runtime.identity.secret_set",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "name": {
-            "description": "Credential name, e.g. xiapan / openai.",
-            "type": "string"
-          },
-          "value": {
-            "description": "The secret. Empty string deletes it. Never logged or echoed.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "secrets"
-        ],
-        "type": "object"
-      },
-      "title": "Set or clear one credential"
     },
     {
       "bindings": [

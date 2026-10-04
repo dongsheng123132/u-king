@@ -1,7 +1,7 @@
 /**
  * 抽出某个组件里所有 `t("…")` 的中文 key，用来补 `src/i18n/en/*.ts`。
  *
- * 用法：`node scripts/extract-i18n-keys.mjs src/Identity.tsx`
+ * 用法：`node scripts/extract-i18n-keys.mjs src/Feedback.tsx`
  *
  * 本项目 i18n 是「中文即 key」：漏翻的会在运行时静默回退中文 —— 好处是永远不崩，
  * 坏处是**漏了没人知道**。加新页面时跑一下这个，对着输出补 en 字典。

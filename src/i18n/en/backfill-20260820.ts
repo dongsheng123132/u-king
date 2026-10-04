@@ -30,13 +30,13 @@ export const backfill20260820: Record<string, string> = {
   "选": "Choose",
 
 
-  "已让 Claude Code 用中文回答（下次开新会话生效；在「我的 U-King」可撤销）":
-    "Claude Code will answer in Chinese in new sessions. You can undo this in “My U-King.”",
+  "已让 Claude Code 用中文回答（下次开新会话生效；可在「进阶 → 安全卸载」里撤销）":
+    "Claude Code will answer in Chinese in new sessions. You can undo this in “Advanced → Safe Uninstall.”",
   "设置失败: {e}": "Setup failed: {e}",
   "进程已退出，点这里重开": "Process exited — click to restart",
   "中文小抄": "Chinese quick guide",
-  "往 ~/.claude/CLAUDE.md 追加一行「用简体中文回答」（只增不删，可在「我的 U-King」里撤销）":
-    "Append “Respond in Simplified Chinese” to ~/.claude/CLAUDE.md (adds one line only; reversible in “My U-King”)",
+  "往 ~/.claude/CLAUDE.md 追加一行「用简体中文回答」（只增不删，可在「进阶 → 安全卸载」里撤销）":
+    "Append “Respond in Simplified Chinese” to ~/.claude/CLAUDE.md (adds one line only; reversible in “Advanced → Safe Uninstall”)",
   "让 AI 说中文": "Ask AI to speak Chinese",
   "不再显示": "Do not show again",
 
