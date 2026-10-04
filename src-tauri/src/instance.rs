@@ -77,8 +77,6 @@ pub fn mark(sidecar: bool) {
 /// `lib.rs::setup()` 里真正的门控一一对应** —— 写了却没门控（或反过来）比不写更坏：
 /// 排障的人会照着它排除掉正确的假设。改门控时回来改这里。
 pub const DISABLED_IN_SIDECAR: &[&str] = &[
-    // 唯一会真花钱的一条：两条调度线程各自到点触发同一批定时任务 = 同一件事跑两遍。
-    "automation.scheduler",
     // 技能包是 include_str! 编进各自 exe 的，新旧两版内容不同，而同步是同名覆盖 ——
     // 两个实例会轮流把对方的技能刷掉，且完全没有报错。
     "skillpack.sync",

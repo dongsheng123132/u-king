@@ -6,8 +6,6 @@
  * spread after this file and may intentionally override individual wording.
  */
 export const backfill20260820: Record<string, string> = {
-  "自动化「{name}」跑完了：{s}": "Automation “{name}” finished: {s}",
-  "自动化「{name}」没跑成：{s}": "Automation “{name}” failed: {s}",
   "还没拿到服务器版本信息（可能网络不通），请稍等几秒再试":
     "Version information is not available yet (the network may be offline). Wait a few seconds and try again.",
   " —— 左下角按钮已切换成「下载安装包重装」，点它即可（配置和对话不会丢）。":
@@ -32,56 +30,14 @@ export const backfill20260820: Record<string, string> = {
     "Import Xiapan Cloud (Claude + Codex) and your active tool configurations into uu-switch",
   "一键导入": "Import all",
 
-  "读不到自动化列表：{e}": "Could not load automations: {e}",
   "已保存": "Saved",
-  "删掉「{name}」？已经跑出来的结果留在磁盘上，不会删。":
-    "Delete “{name}”? Existing results will remain on disk.",
-  "「{name}」开跑了，出结果要等一会儿": "“{name}” is running. Results may take a while.",
-  "没跑成：{e}": "Failed: {e}",
-  "自动化": "Automations",
-  "到点了让 AI 自己把活干了 —— 每天的文案、配图、周报，不用你记着点一下":
-    "Let AI do the work on schedule — daily copy, images, and reports without you remembering to click anything.",
-  "已经到上限 {n} 条": "Limit reached ({n})",
-  "新建自动化": "New automation",
-  "{n} 条自动化，{on} 条开着。": "{n} automations, {on} enabled.",
-  "注意：只有 U-King 开着（缩在托盘里也算）才会到点执行；关了电脑错过的班次不补跑。":
-    "U-King must be running (the tray counts) for scheduled jobs to run. Jobs missed while the PC is off are not replayed.",
-  "现在配了也不会真跑：": "It cannot run yet: ",
-  "还没有自动化": "No automations yet",
-  "上面挑个模板，或者点「新建自动化」自己写一条":
-    "Choose a template above, or select “New automation” to create one.",
-  "点一下暂停": "Click to pause",
-  "点一下启用": "Click to enable",
-  "已授权它无人值守地读写这个文件夹、在里面跑命令：{dir}":
-    "Authorized for unattended file access and command execution in: {dir}",
-  "可动文件": "Folder access",
   "已暂停": "Paused",
   "上次失败": "Last run failed",
-  "上次 {t} 成功": "Last succeeded {t}",
-  "（看结果）": "(view result)",
-  "现在就跑一次（不影响排期）": "Run now (does not change schedule)",
   "选一个工作文件夹": "Choose a working folder",
-  "编辑自动化": "Edit automation",
   "叫什么": "Name",
-  "每天早报": "Daily briefing",
-  "到点了让 AI 干什么（写清楚，它没法反问你）":
-    "What should AI do on schedule? Be specific; it cannot ask follow-up questions.",
-  "把今天值得关注的 AI 动态整理成 5 条要点…":
-    "Summarize today’s notable AI developments in five points…",
-  "它不会上网 —— 「整理今天的新闻/行情」这类活它只会编。要基于真实资料，就把资料放进下面的工作文件夹让它读。":
-    "It cannot access the web. Tasks such as “summarize today’s news or markets” will be fabricated unless you place source material in the working folder below.",
-  "什么时候跑": "Schedule",
-  "每隔": "Every",
-  "分钟（最少 5）": "minutes (minimum 5)",
   "几点": "Time",
-  "（本机时间）": "(local time)",
   "用哪个大脑": "AI model",
-  "工作文件夹（可不填）": "Working folder (optional)",
-  "不填 = 只让它作图/生成视频，碰不到你的文件":
-    "Leave blank to allow only image/video generation, with no file access",
   "选": "Choose",
-  "填了文件夹 = 你允许它在没人盯着的情况下，读写这个文件夹里的文件、在里面跑命令。只填你放心的目录。":
-    "Choosing a folder allows unattended file access and command execution inside it. Select only a folder you trust.",
 
   "召唤": "Hire",
   "搜专家名称、职称或擅长的活": "Search by expert name, role, or specialty",
@@ -147,7 +103,6 @@ export const backfill20260820: Record<string, string> = {
     "Close {c} sessions in this project? Their {n} chat messages cannot be recovered.\n(The folder on disk stays.)",
   "关闭这个项目下的 {c} 个会话？（都还没聊过；磁盘上的文件夹不动）":
     "Close {c} sessions in this project? (They have no messages; the folder on disk stays.)",
-  "有 {n} 个上次没跑成": "{n} failed last time",
   "关闭整个项目下的会话（会先问你，不动磁盘文件夹）":
     "Close all sessions in this project (asks first; does not touch the folder on disk)",
   "双击可重命名": "Double-click to rename",

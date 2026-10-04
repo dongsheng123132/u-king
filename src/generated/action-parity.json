@@ -177,7 +177,7 @@
           "target": "cli:action run runtime.instance.inspect --json --no-input"
         }
       ],
-      "description": "Report whether this process owns the background singletons (scheduler, skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only.",
+      "description": "Report whether this process owns the background singletons (skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only.",
       "effects": {
         "audit_required": false,
         "class": "read",
@@ -2323,46 +2323,6 @@
       "bindings": [
         {
           "surface": "cli",
-          "target": "cli:action run runtime.automation.inspect --json --no-input"
-        }
-      ],
-      "description": "List every scheduled automation with its next run time, plus whether automations can actually fire on this machine. Reads only. Note: the scheduler lives in this process — jobs only fire while U-King is running (tray counts).",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 5000
-      },
-      "id": "runtime.automation.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "ready",
-          "blockers",
-          "count",
-          "enabled",
-          "runs_only_while_app_open",
-          "jobs"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect scheduled automations"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.optimizer.inspect --json --no-input"
         }
       ],
@@ -2396,10 +2356,6 @@
     },
     {
       "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
         {
           "surface": "cli",
           "target": "cli:action run runtime.journal.inspect --json --no-input"
@@ -4051,164 +4007,6 @@
     {
       "bindings": [
         {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.automation.save --json --no-input"
-        }
-      ],
-      "description": "Upsert one scheduled automation (name, prompt, engine, optional working folder, schedule, optional use_memory). Idempotent by id. Note: an automation with a working folder is authorised to read/write files and run commands in that folder unattended. use_memory=true makes each run start from a per-job memory file (~/.uking/automation/<id>-memory.md) so a long job advances across runs; off by default.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 10000
-      },
-      "id": "runtime.automation.save",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "job": {
-            "description": "The automation. Schedule kinds: interval (minutes>=5) / daily (at HH:MM) / weekly (at HH:MM + weekdays 0=Sunday).",
-            "type": "object"
-          }
-        },
-        "required": [
-          "job"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "job"
-        ],
-        "type": "object"
-      },
-      "title": "Create or update a scheduled automation"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.automation.remove --json --no-input"
-        }
-      ],
-      "description": "Remove one scheduled automation by id. Idempotent: deleting a missing id succeeds. Past run records are kept on disk.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 10000
-      },
-      "id": "runtime.automation.remove",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "ok"
-        ],
-        "type": "object"
-      },
-      "title": "Delete a scheduled automation"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.automation.set_enabled --json --no-input"
-        }
-      ],
-      "description": "Turn one automation on or off. Turning it on re-arms it for its next slot. Idempotent.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 10000
-      },
-      "id": "runtime.automation.set_enabled",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "enabled"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "job"
-        ],
-        "type": "object"
-      },
-      "title": "Enable or disable a scheduled automation"
-    },
-    {
-      "bindings": [
-        {
           "surface": "cli",
           "target": "cli:action run runtime.desktop.pin --json --no-input"
         }
@@ -4825,7 +4623,6 @@
       "runtime.usb_genie.inspect",
       "runtime.usb_genie.verify",
       "runtime.uu_remote.inspect",
-      "runtime.automation.inspect",
       "target.list",
       "target.detect",
       "target.status",

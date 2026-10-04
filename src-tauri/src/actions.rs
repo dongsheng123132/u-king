@@ -342,7 +342,6 @@ pub const TARGET_CONFIG_GET: &str = "target.config.get";
 pub const TARGET_CONFIG_SET: &str = "target.config.set";
 pub const TARGET_MANIFEST_LIST: &str = "target.manifest.list";
 pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
-pub const AUTOMATION_INSPECT: &str = "runtime.automation.inspect";
 pub const OPTIMIZER_INSPECT: &str = "runtime.optimizer.inspect";
 /// 任务本象（2Origin 长期存储层）：这个任务**干到哪了、验过什么、下一步是什么**。
 /// 读的是**对象状态**（本象，答「世界此刻是什么样」），换个 harness 也接得上。
@@ -405,7 +404,7 @@ pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
     MODEL_CATALOG_INSPECT, HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
-    CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT, AUTOMATION_INSPECT,
+    CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT,
@@ -489,9 +488,6 @@ pub const DEVICE_WALLET_RESET_LOCAL: &str = "runtime.device.wallet_reset_local";
 /// **这才是让说明书真正被发现的那一步** —— 只生成文件不挂指针，等于把说明书锁在抽屉里。
 /// `linked:false` 时改成撤销（只删我们那一块，用户内容原样留下）。
 pub const IDENTITY_LINK: &str = "runtime.identity.link";
-// 自动化（定时任务）。**只登记幂等的写**：存/删/开关都能重放，结果一样。
-// 「立即运行一次」故意**不进动作表** —— 它每跑一次都在烧 token（非幂等），
-// 而我们没有 `idempotency_key` 账本；声明一个不兑现的幂等字段比不声明更坏（重试会双跑）。
 /// 保存任务本象。**幂等**（同一份状态重放结果一样），带 `expected_version` 乐观并发 ——
 /// 跨 harness 交接本就是两个进程轮流写同一个状态，后写的不许静默覆盖。
 pub const ORIGIN_SAVE: &str = "runtime.origin.save";
@@ -512,9 +508,6 @@ pub const LOCALLLM_MODEL_ADD: &str = "runtime.localllm.model_add";
 /// 从商店下一个模型。**幂等**：已经下齐的直接跳过、下了一半的接着下（curl -C -），
 /// 重放不会多花一个字节的流量。写动作是因为它往客户的盘上放几十 GB 东西。
 pub const LOCALLLM_DOWNLOAD: &str = "runtime.localllm.download";
-pub const AUTOMATION_SAVE: &str = "runtime.automation.save";
-pub const AUTOMATION_REMOVE: &str = "runtime.automation.remove";
-pub const AUTOMATION_SET_ENABLED: &str = "runtime.automation.set_enabled";
 /// 优化大师的**动手那一半**。此前只有 `OPTIMIZER_INSPECT`（看分数）是动作，
 /// 「改」只活在 Tauri command 里 —— 于是 GUI 能修，CLI / MCP / AI 专家只能干看着，
 /// 只好去教用户「你自己去侧栏点一下」。这条把它补齐成一个动作两个调用方。

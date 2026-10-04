@@ -34,7 +34,6 @@ const TAURI_SHIM = () => {
     if (cmd === "list_tasks") return [];
     if (cmd === "list_ai_tasks") return { days: 7, active_window_secs: 300, truncated: false, notes: [], counts: {}, sources: [], tasks: [] };
     if (cmd === "upsert_task") return args?.task ?? null;
-    if (cmd === "list_automations") return { jobs: [] };
     if (cmd === "get_setup_state") return { step: "done" };
     if (cmd === "get_driver_status") return {};
     if (cmd === "check_update") return { has_update: false };

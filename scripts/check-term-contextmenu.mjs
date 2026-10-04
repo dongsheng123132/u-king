@@ -35,7 +35,6 @@ const SHIM = () => {
     if (cmd === "list_tools") return [];
     if (cmd === "list_tasks") return [];
     if (cmd === "upsert_task") return args?.task ?? null;
-    if (cmd === "list_automations") return { jobs: [] };
     if (cmd === "list_ai_tasks") return { days: 7, active_window_secs: 300, tasks: [], sources: [], counts: {}, truncated: false, notes: [] };
     if (cmd === "get_setup_state") return { step: "done" };
     if (cmd === "get_driver_status") return {};

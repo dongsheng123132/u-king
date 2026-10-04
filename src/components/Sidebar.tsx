@@ -42,7 +42,6 @@ export type TabId =
   | "airuntime"
   | "meter"
   | "identity"
-  | "nightshift"
   | "localllm"
   | "rtk"
   | "usbgenie";
@@ -256,11 +255,9 @@ const MORE: NavItem[] = [
 const LAB: NavItem[] = [
   // 团队空间/运行中心已移交「本源AI计算机」项目（2026-09-06 裁决），原型代码已删；
   // 任务可视化的正主曾是 U-Chat 任务看板，已于 2026-10-04 删除，见收敛方案证据表。
-  // 夜班助手（0.9.89 新增）。按本组标准归这儿 —— 它的**记录**那一半已经进影核动作表
-  // （`runtime.journal.inspect`，带 ready/blockers），但**执行**那一半（熔断/护栏/快照/交班）
-  // 还全是「暂未开放」。功能没做完就往主线上推，客户点开一排灰按钮只会觉得产品是坏的。
-  // 毕业标准：执行类能力真正开放、且在真机跑过一整晚。
-  { id: "nightshift", label: "夜班助手", sub: "AI 值班 · 行为记录 · 可追溯", icon: Moon },
+  // 夜班助手（0.9.89 新增，2026-10-04 零用量删除）：页面、定时任务、防休眠一并删了，
+  // 本组现在是空的 —— 空时整个「实验室」折叠组不渲染（见下面 `LAB.length > 0`）。
+  // 后端 journal.rs（行为时间轴）与 `runtime.journal.inspect` 保留，只是没有界面入口了。
   // 「AI 专家」已毕业到「更多」（0.9.83，见上）—— 别再在这里留第二份入口。
   // 🔴 2026-10-03 收敛方案 §5 第 1 步冻结、2026-10-04 第 4 步删除：「厨具工具箱」页面
   // （Toolbox.tsx 与 `tab === "toolbox"` 渲染分支）已删，后端 toolbox.rs 保留——
@@ -606,7 +603,9 @@ export function Sidebar({
         {showMore && moreItems.map((m) => NavButton(m, true))}
 
         {/* 实验室折叠组：没毕业的功能。和「更多」分开，是因为「更多」里的是**成熟但低频**，
-            这里的是**还不稳**——两者混在一起，用户就没法判断该不该信任一个功能。 */}
+            这里的是**还不稳**——两者混在一起，用户就没法判断该不该信任一个功能。
+            组空了（LAB 里没有条目）就整组不渲染：一个展开后什么都没有的「实验室」比没有更糟。 */}
+        {LAB.length > 0 && (<>
         <div className={cn("border-t border-white/[0.06]", short ? "pt-1 mt-0.5" : "pt-2 mt-1")} />
         <button
           onClick={() => setLabOpen((v) => !v)}
@@ -640,6 +639,7 @@ export function Sidebar({
             {LAB.map((m) => NavButton(m, true))}
           </>
         )}
+        </>)}
 
       </nav>
         {/* 装得下时它盖在 bg-1 上、从 bg-1 渐隐到透明 = 看不见；装不下时才显出「下面还有」。

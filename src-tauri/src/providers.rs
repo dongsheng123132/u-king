@@ -224,17 +224,6 @@ pub fn xiapan_codex_model() -> String {
         .unwrap_or_else(|| "deepseek-v4-flash-codex".into())
 }
 
-/// 虾盘云默认**对话**模型（非 Codex 链路）。同 [`xiapan_codex_model`] 的理由：凡是需要
-/// 「U-King 默认用哪个模型」的地方一律来这里问，别各自写死一份 —— 定时任务、委派子进程、
-/// 前端下拉曾经各写各的，结果客户在 AI 设置里看到 flash、无人值守的定时任务却在烧 pro。
-pub fn xiapan_model() -> String {
-    builtin_providers()
-        .into_iter()
-        .find(|p| p.id == "xiapan")
-        .map(|p| p.model)
-        .unwrap_or_else(|| "deepseek-v4-flash".into())
-}
-
 /// Resolve a provider for the isolated OpenClaw2 adapter. This is deliberately
 /// read-only: it neither calls `apply_provider` nor changes any shared tool
 /// configuration. `device_key` is supplied by lib.rs, the composition root.
@@ -288,48 +277,6 @@ fn is_loopback_openai_base(base: &str) -> bool {
         .rsplit_once('@').map(|(_, host)| host).unwrap_or(rest);
     let host = host.split(':').next().unwrap_or(host).trim_matches(['[', ']']);
     matches!(host, "localhost" | "127.0.0.1" | "::1")
-}
-
-/// 定时任务（无人值守）用哪个模型。**跟随客户在「AI 设置」里选的那个**，不写死。
-///
-/// 这里曾经直接用 [`xiapan_model`]（flash），理由是「无人值守最该省钱」。代价是：
-/// 客户在 AI 设置里看到的是 A，半夜替他干活的是 B，产出质量对不上他的预期，而他
-/// **无从知道为什么**。省钱省在最没人看着的地方，等于把「不对劲」藏起来 ——
-/// 客户报的「定时任务跑出来的东西不对」，这是头号嫌疑。
-///
-/// 只在**客户的 Claude 当前就走虾盘云**时才跟随它的模型：定时任务这条路固定打
-/// 虾盘云端点，他要是切了官方直连 / 自己的中转，那个模型名在我们端点上根本不存在，
-/// 跟随过去只会 404。这种情况回落到虾盘云默认模型（宁可回落，也不要报一个假错）。
-pub fn automation_model() -> String {
-    let st = driver_status();
-    // 按「谁当前正走虾盘云」挑一个可跟随的模型。定时任务这条路固定打虾盘云端点，
-    // 所以**只有走虾盘云的那些工具**的模型名，在这个端点上才真实存在；客户把某个工具
-    // 切回官方直连 / 自己的中转后，那边的模型名跟过来只会 404。
-    //
-    // 只看 claude 一个是不够的：实测开发机上 claude=official 而 clawx/hermes=xiapan，
-    // 这种客户「跟随设置」会完全不生效、永远吃默认值 —— 那就等于没做。
-    // **故意不含 codex**：它的模型名（gpt-5.x-codex 那一族）是给 responses 协议的编程模型，
-    // 不适合拿来跑「写条文案 / 出张图」这种通用任务。
-    for (tool, model) in [
-        ("claude", st.claude_model.as_deref()),
-        ("clawx", st.clawx_model.as_deref()),
-        ("hermes", st.hermes_model.as_deref()),
-    ] {
-        if st.active.get(tool).map(String::as_str) == Some("xiapan") {
-            if let Some(m) = model.map(str::trim).filter(|m| !m.is_empty()) {
-                // ClawX / Hermes 存的是**带命名空间的 id** —— 实测是
-                // `custom-ukingxia/deepseek-v4-pro`，那是它们自己配置文件里的写法。
-                // 虾盘云 API 要的是裸模型名，原样送过去会得到
-                // `No available channel for model custom-ukingxia/...`（2026-08-04 真跑撞到）。
-                // 取最后一段；本来就是裸名的（Claude 那边）经过这一步不变。
-                let bare = m.rsplit('/').next().unwrap_or(m).trim();
-                if !bare.is_empty() {
-                    return bare.to_string();
-                }
-            }
-        }
-    }
-    xiapan_model()
 }
 
 /// 给对话页「委派 `claude -p` / `codex exec`」用：把虾盘云端点 + 对话当前 Key 拼成子进程 env，
@@ -11384,7 +11331,12 @@ mod draw_route_tests {
     #[test]
     fn openclaw2_route_uses_chat_model_and_fail_closed_key_order() {
         let xiapan = resolve_openai_route_for_openclaw2("xiapan", None, Some("explicit-key"), Some("device-key")).unwrap();
-        assert_eq!(xiapan.model, xiapan_model(), "OpenClaw2 不得使用 codex_model");
+        let default_chat_model = builtin_providers()
+            .into_iter()
+            .find(|p| p.id == "xiapan")
+            .map(|p| p.model)
+            .expect("内置虾盘云 preset 必须存在");
+        assert_eq!(xiapan.model, default_chat_model, "OpenClaw2 不得使用 codex_model");
         assert_eq!(xiapan.key_source, "explicit");
         let wallet = resolve_openai_route_for_openclaw2("xiapan", None, None, Some("device-key")).unwrap();
         assert_eq!(wallet.key_source, "device_wallet");

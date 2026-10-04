@@ -2,9 +2,9 @@
  * 左侧列表 —— 按项目（文件夹）分组，每个项目下列多个 AI 会话（claude/codex/openclaw…）。
  * status 小圆点：idle 灰 / running 绿 / error 红。
  *
- * ## 「AI 专家」「自动化」为什么在这里（借鉴 WorkBuddy 的左栏信息架构）
- * WorkBuddy 把「专家·技能·连接器」「自动化」和会话列表放在**同一根左栏**里：挑个专家、
- * 配条定时任务，都不用离开工作台。我们照这个改 —— 以前「AI 专家」是侧栏另一个页，
+ * ## 「AI 专家」为什么在这里（借鉴 WorkBuddy 的左栏信息架构）
+ * WorkBuddy 把「专家·技能·连接器」和会话列表放在**同一根左栏**里：挑个专家
+ * 不用离开工作台。我们照这个改 —— 以前「AI 专家」是侧栏另一个页，
  * 客户得跳出工作台挑完再被送回来，中间断一次。现在就在手边。
  *
  * 切这两个面板**不卸载任何会话**（右侧 Chat 实例照旧 display 保活，PTY 不断），
@@ -147,7 +147,6 @@ const NAV: { id: Exclude<WorkView, "chat">; label: string; hint: string; icon: t
   // 「护照」答**事情做到哪**（跨 AI 接力的状态）。（会话看板 2026-10-04 删除，见收敛方案证据表。）
   { id: "passports", label: "护照", hint: "任务护照：一件事做到哪了，交给 Claude / DeepSeek / Codex 接着干", icon: ClipboardList },
   { id: "experts", label: "AI 专家", hint: "挑个专家，当场在这里开会话干活", icon: Users },
-  { id: "automation", label: "自动化", hint: "定时任务：到点了让 AI 自己把活干了", icon: Zap },
 ];
 
 const ADD_TOOLS: { tool: string; name: string; cmd: string }[] = [
@@ -180,16 +179,12 @@ function sessionLabel(t: { name?: string; tool?: string | null; dir?: string }, 
 }
 
 /**
- * `view`/`onView` 可选：老的 OpenCodex 工作台（`workbench` tab）没有专家/自动化面板，
+ * `view`/`onView` 可选：老的 OpenCodex 工作台（`workbench` tab）没有专家面板，
  * 不传就整块不渲染 —— 别为了共用组件，硬给一个点了没反应的入口。
  */
-export function SessionList({ view = "chat", onView, navBadge }: {
+export function SessionList({ view = "chat", onView }: {
   view?: WorkView;
   onView?: (v: WorkView) => void;
-  /** 某个左栏入口上「有几件事要看」（红点数字）。**故意做成通用的**：
-   *  SessionList 不该认识 automation —— 宿主算好了传进来，这里只负责画。
-   *  0 / undefined = 不画。 */
-  navBadge?: Partial<Record<WorkView, number>>;
 } = {}) {
   const { t: tr } = useI18n();
   const { state, addTask, addSession, addWorktree, removeTask, removeProject, reorderTasks, renameTask, activate, restoreTask } =
@@ -200,7 +195,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
   const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
   const [addMenuFor, setAddMenuFor] = useState<string | null>(null);
 
-  // 「更多」折叠（2026-08-25，学 OpenClaw 的渐进式披露）：护照/专家/自动化三个低频
+  // 「更多」折叠（2026-08-25，学 OpenClaw 的渐进式披露）：护照/专家两个低频
   // 入口默认收起，省出半栏给会话列表。正开着某个视图时收起态亮蓝点，防「状态丢了」的感觉。
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -371,7 +366,7 @@ export function SessionList({ view = "chat", onView, navBadge }: {
     }
   };
 
-  /** 点会话 = 回到对话视图（否则点了半天没反应，因为专家/自动化面板盖在上面）。 */
+  /** 点会话 = 回到对话视图（否则点了半天没反应，因为专家面板盖在上面）。 */
   const openSession = (id: string) => {
     onView?.("chat");
     activate(id);
@@ -611,8 +606,6 @@ export function SessionList({ view = "chat", onView, navBadge }: {
             }
           >
             <n.icon size={15} />
-            {/* 收起态只画一个点：这一栏就 32px 宽，数字画上去也看不清 */}
-            {!!navBadge?.[n.id] && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-danger-500" />}
           </button>
         ))}
         {/* 收起态照样能点「新建项目」，弹窗就得跟着渲染 —— 少挂一处 = 那条路上按钮点了没反应 */}
@@ -660,11 +653,11 @@ export function SessionList({ view = "chat", onView, navBadge }: {
           <FolderPlus size={13} />
         </button>
       </div>
-      {/* AI 专家 / 自动化 —— 和会话同一根左栏（WorkBuddy 式）：挑专家、配定时任务都不用离开工作台 */}
+      {/* AI 专家 —— 和会话同一根左栏（WorkBuddy 式）：挑专家不用离开工作台 */}
       {onView && (
       <div className="px-2.5 pt-1 pb-2 shrink-0 space-y-0.5 border-t border-b border-white/[0.06] mt-1 mb-1">
         {/* 🔴 这一小行标题是分层用的，不是装饰。这一列里挤着**三种不同的东西**：
-            上面是动作（新建对话 / 新建项目）、这里是别的视图（护照 / 专家 / 自动化）、
+            上面是动作（新建对话 / 新建项目）、这里是别的视图（护照 / 专家）、
             下面是状态（已打开的项目）。三种平铺成一串没有间隔的按钮时，
             人只能靠逐个点进去才知道哪个会**离开当前对话**——而「已打开的项目」那行早就有标题了，
             缺的只是中间这一层。上下各加一条分隔线，让三段各自成块。 */}
@@ -673,20 +666,12 @@ export function SessionList({ view = "chat", onView, navBadge }: {
         <button
           onClick={() => setMoreOpen((v) => !v)}
           className="w-full inline-flex items-center gap-2 h-7 px-2.5 rounded-card text-[12px] text-ink-3 hover:bg-white/[0.04] hover:text-ink-1"
-          title={tr("护照 / AI 专家 / 自动化")}
+          title={tr("护照 / AI 专家")}
         >
           {moreOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           <span className="flex-1 text-left">{tr("更多")}</span>
           {!moreOpen && view !== "chat" && (
             <span className="w-1.5 h-1.5 rounded-full bg-accent-400" title={tr("当前不在这个视图上")} />
-          )}
-          {!moreOpen && !!navBadge && Object.values(navBadge).some(Boolean) && (
-            <span
-              className="min-w-[16px] h-4 px-1 grid place-items-center rounded-full bg-danger-500/90 text-white text-[10px] font-medium"
-              title={tr("有上次没跑成的任务")}
-            >
-              {Object.values(navBadge).reduce<number>((s, v) => s + (v ?? 0), 0)}
-            </span>
           )}
         </button>
         {moreOpen &&
@@ -704,15 +689,6 @@ export function SessionList({ view = "chat", onView, navBadge }: {
           >
             <n.icon size={13} />
             {tr(n.label)}
-            {/* 「有几个跑挂了」。展开态给数字：1 个和 5 个是两种严重程度 */}
-            {!!navBadge?.[n.id] && (
-              <span
-                className="ml-auto min-w-[16px] h-4 px-1 grid place-items-center rounded-full bg-danger-500/90 text-white text-[10px] font-medium"
-                title={tr("有 {n} 个上次没跑成", { n: navBadge[n.id] ?? 0 })}
-              >
-                {navBadge[n.id]}
-              </span>
-            )}
           </button>
         ))}
       </div>

@@ -75,7 +75,6 @@ const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.Ski
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
 const TokenSqueezer = lazy(() => import("./TokenSqueezer").then((m) => ({ default: m.TokenSqueezer })));
 const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
-const NightShift = lazy(() => import("./NightShift").then((m) => ({ default: m.NightShift })));
 const LocalLLM = lazy(() => import("./LocalLLM").then((m) => ({ default: m.LocalLLM })));
 const Advanced = lazy(() => import("./Advanced").then((m) => ({ default: m.Advanced })));
 const DemoUninstaller = lazy(() => import("./DemoUninstaller").then((m) => ({ default: m.DemoUninstaller })));
@@ -455,30 +454,6 @@ export function App() {
     return () => {
       un.then((f) => f());
       un2.then((f) => f());
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 定时任务跑完的通知。**挂在 App 顶层而不是自动化面板里**：面板收起来就 unmount 了，
-  // 而任务恰恰是在人没看着的时候跑的 —— 挂在面板里等于只有盯着它的人才收得到通知。
-  // 后端是唯一发出点（automation::execute 里的 notifier），到点触发和「立即运行」同一条路。
-  useEffect(() => {
-    const un = listen<{ id: string; name: string; ok: boolean; summary: string }>(
-      "uking:automation_done",
-      (e) => {
-        const { name, ok, summary } = e.payload;
-        const brief = summary.length > 40 ? `${summary.slice(0, 40)}…` : summary;
-        setToast(
-          ok
-            ? tr("自动化「{name}」跑完了：{s}", { name, s: brief })
-            : tr("自动化「{name}」没跑成：{s}", { name, s: brief }),
-        );
-        // 失败停久一点 —— 成功可以一眼扫过，失败要让人来得及看清
-        window.setTimeout(() => setToast(null), ok ? 6000 : 10000);
-      },
-    );
-    return () => {
-      un.then((f) => f());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1249,7 +1224,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
+                tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1363,8 +1338,6 @@ export function App() {
               <TokenSqueezer onToast={flash} />
             ) : tab === "meter" ? (
               <Meter onToast={flash} onGoto={setTab} />
-            ) : tab === "nightshift" ? (
-              <NightShift onToast={flash} />
             ) : tab === "localllm" ? (
               <LocalLLM onToast={flash} />
             ) : tab === "advanced" ? (

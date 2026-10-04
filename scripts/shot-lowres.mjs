@@ -42,7 +42,6 @@ const TAURI_SHIM = () => {
     if (cmd === "list_tasks") return [];
     // 后端会把落盘后的 Task 原样回传，store 直接存它 —— 返回 null 会让 SessionList 当场崩
     if (cmd === "upsert_task") return args?.task ?? null;
-    if (cmd === "list_automations") return { jobs: [] };
     if (cmd === "get_setup_state") return { step: "done" };
     if (cmd === "get_driver_status") return {};
     if (cmd === "check_update") return { has_update: false };

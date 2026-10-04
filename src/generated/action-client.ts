@@ -13,14 +13,6 @@ export const ACTION = {
   RUNTIME_AITOOL_INSTALL: "runtime.aitool.install",
   /** Remove the npm package / stub, ~/.uking/tools/<x>, shims and leftovers; GUI apps go through their own official uninstaller. */
   RUNTIME_AITOOL_UNINSTALL: "runtime.aitool.uninstall",
-  /** List every scheduled automation with its next run time, plus whether automations can actually fire on this machine. Reads only. Note: the scheduler lives in this process — jobs only fire while U-King is running (tray counts). */
-  RUNTIME_AUTOMATION_INSPECT: "runtime.automation.inspect",
-  /** Remove one scheduled automation by id. Idempotent: deleting a missing id succeeds. Past run records are kept on disk. */
-  RUNTIME_AUTOMATION_REMOVE: "runtime.automation.remove",
-  /** Upsert one scheduled automation (name, prompt, engine, optional working folder, schedule, optional use_memory). Idempotent by id. Note: an automation with a working folder is authorised to read/write files and run commands in that folder unattended. use_memory=true makes each run start from a per-job memory file (~/.uking/automation/<id>-memory.md) so a long job advances across runs; off by default. */
-  RUNTIME_AUTOMATION_SAVE: "runtime.automation.save",
-  /** Turn one automation on or off. Turning it on re-arms it for its next slot. Idempotent. */
-  RUNTIME_AUTOMATION_SET_ENABLED: "runtime.automation.set_enabled",
   /** Install U-King's pinned agent-browser runtime, then start its stream and capture an accessibility snapshot. Requires confirmation because it downloads and writes local runtime files. Idempotent when the pinned runtime already verifies. */
   RUNTIME_BROWSER_INSTALL: "runtime.browser.install",
   /** Read whether a chat turn is running right now, how long it has been silent and which phase it is stuck in, plus how the last few turns ended. Reads only. */
@@ -81,7 +73,7 @@ export const ACTION = {
   RUNTIME_IDENTITY_SAVE: "runtime.identity.save",
   /** Write one credential into ~/.uking/secrets.json (private, never rendered into llms.txt). An empty value deletes the entry. Returns only names, never values. */
   RUNTIME_IDENTITY_SECRET_SET: "runtime.identity.secret_set",
-  /** Report whether this process owns the background singletons (scheduler, skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only. */
+  /** Report whether this process owns the background singletons (skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only. */
   RUNTIME_INSTANCE_INSPECT: "runtime.instance.inspect",
   /** Append-only local record of what happened on this machine: which Action Core actions ran (from GUI / CLI / MCP) and which tools the AI called, with outcome and timing. Paths and commands are redacted before they are written. Records U-King actions only — never keyboard, windows, clipboard or other processes. Local only, never uploaded. */
   RUNTIME_JOURNAL_INSPECT: "runtime.journal.inspect",
@@ -204,10 +196,6 @@ export type ActionInputMap = {
   "runtime.ai_process.inspect": Record<string, never>;
   "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-app" | "claude-code" | "codebuddy-code" | "codex" | "codex-app" | "crush" | "dsh" | "grok-build" | "harness-doctor" | "hermes" | "kimi-code" | "mimo-code" | "muse-code" | "openclaw" | "opencode" | "pi" | "qoder-cn" | "qwen-code"; };
   "runtime.aitool.uninstall": { expected_state_version?: string; tool_id: string; };
-  "runtime.automation.inspect": Record<string, never>;
-  "runtime.automation.remove": { expected_state_version?: string; id: string; };
-  "runtime.automation.save": { expected_state_version?: string; job: Record<string, unknown>; };
-  "runtime.automation.set_enabled": { enabled: boolean; expected_state_version?: string; id: string; };
   "runtime.browser.install": { expected_state_version?: string; };
   "runtime.chat.inspect": Record<string, never>;
   "runtime.clawx.apply_managed": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
@@ -302,10 +290,6 @@ export type ActionOutputMap = {
   "runtime.ai_process.inspect": Record<string, unknown>;
   "runtime.aitool.install": Record<string, unknown>;
   "runtime.aitool.uninstall": Record<string, unknown>;
-  "runtime.automation.inspect": Record<string, unknown>;
-  "runtime.automation.remove": Record<string, unknown>;
-  "runtime.automation.save": Record<string, unknown>;
-  "runtime.automation.set_enabled": Record<string, unknown>;
   "runtime.browser.install": Record<string, unknown>;
   "runtime.chat.inspect": Record<string, unknown>;
   "runtime.clawx.apply_managed": Record<string, unknown>;

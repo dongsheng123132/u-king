@@ -469,12 +469,8 @@ export const workbench: Record<string, string> = {
   "会话谁在跑 / 谁跑完 / 谁挂了，一屏看全；点卡片就打开那个会话":
     "Who is running / who finished / who failed — all on one screen. Click a card to open that session.",
   "去配置 →": "Configure →",
-  "下次 {t}": "Next {t}",
   已停用: "Disabled",
   马上: "now",
-  "长程记忆：下一班接着上一班的进度干": "Long-run memory: continue from the last run's progress",
-  "每班跑完把结论存进这份任务的记忆，下一班开头自动带上。适合「一个长活分几班推进」；独立的日更任务别开 —— 开了它会接着上次的写。记忆文件在 ~/.uking/automation/，随时能看。":
-    "Each run saves its conclusions into this task's memory file, and the next run picks them up automatically. Use it when one long job advances across several runs; keep it OFF for independent daily tasks — with it on, each run continues the previous one. The memory file lives in ~/.uking/automation/ and you can read it anytime.",
   "已招": "Hired",
   // 1.0.3 专家墙：解聘 + 市场入口 + 起手词收行
   "解聘（删掉这个专家包）": "Dismiss (delete this expert pack)",
@@ -576,11 +572,10 @@ export const workbench: Record<string, string> = {
   "彻底删除「{name}」？它的 {n} 条对话记录将无法找回。":
     "Permanently delete \"{name}\"? Its {n} message(s) cannot be recovered.",
 
-  // 「更多」折叠（2026-08-25）：护照/看板/AI 专家/自动化收进一个折叠入口
+  // 「更多」折叠（2026-08-25）：护照/AI 专家收进一个折叠入口
   "更多": "More",
-  "护照 / AI 专家 / 自动化": "Passports / AI experts / Automation",
+  "护照 / AI 专家": "Passports / AI experts",
   "当前不在这个视图上": "You're not on the chat view right now",
-  "有上次没跑成的任务": "Some tasks failed last time",
   "图片识别失败: {e}": "Image recognition failed: {e}",
   "⚠️ 图片识别失败：{e}。图片没有交给当前对话模型。": "⚠️ Image recognition failed: {e}. The image was not sent to the current chat model.",
   // 图片附件暂存（PendingImages.tsx）：拖入当场复制副本，原文件被清掉也不影响；× 可自己摘掉

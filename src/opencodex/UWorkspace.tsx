@@ -7,10 +7,10 @@
  * 我们的 `Chat`（大脑选择器 U-King助手/Claude Code/Codex/Hermes + 作图 + 右侧预览/终端/文件/浏览器）。
  * 虾盘云那层只在 Chat 里，绝不进开源基座。删掉只动 App.tsx 一行。
  *
- * ## 三个视图（借鉴 WorkBuddy 的左栏）
- * `chat`（默认，会话）/ `experts`（AI 专家墙）/ `automation`（定时任务）。
+ * ## 视图（借鉴 WorkBuddy 的左栏）
+ * `chat`（默认，会话）/ `experts`（AI 专家墙）/ `passports`（任务护照）。
  * 后两个是**盖在会话之上的面板**，不是路由切换 —— 所有 Chat 实例照旧挂着、display 保活，
- * PTY 和对话一个都不掉。挑完专家、配完定时任务，点任意会话就回到原处。
+ * PTY 和对话一个都不掉。挑完专家，点任意会话就回到原处。（「自动化」视图 2026-10-04 随定时任务删除。）
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -19,7 +19,6 @@ import { dirBasename, type Task, type WorkView, type Engine } from "./types";
 import { SessionList } from "./SessionList";
 import { Chat } from "./Chat";
 import { ExpertGallery } from "./ExpertGallery";
-import { AutomationPanel } from "./AutomationPanel";
 import { PassportBoard } from "./PassportBoard";
 import { queueHandoff, type Handoff } from "./handoff";
 import { findExpert, type Expert } from "./experts";
@@ -61,31 +60,6 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
   const { state, addTask, addExpertTask, setTaskStatus, activate, renameTask } = useWorkbench();
   const autoCreated = useRef(false);
   const [view, setView] = useState<WorkView>("chat");
-  const [failedJobs, setFailedJobs] = useState(0);
-
-  /**
-   * 定时任务跑挂了要有地方看 —— 这是「会话红点」的另一半。
-   *
-   * 会话跑挂时人至少在旁边（是他自己发的），定时任务**到点自己跑，人根本不在场**：
-   * 早上九点那条挂了，除非他主动点开自动化面板，否则永远不知道。数据一直都在
-   * （`last_ok`，automation.rs 写、AutomationPanel 也显示），缺的就是把它顶到入口上。
-   *
-   * 只数**开着的**任务：关掉的任务上次失败过是历史，不是待办 —— 拿它一直亮红点是骚扰。
-   * 轮询而不是等事件：调度是应用内线程，失败发生在任何时刻，而这一下只是读个 JSON。
-   */
-  useEffect(() => {
-    let alive = true;
-    const scan = () =>
-      invoke<{ jobs?: { enabled?: boolean; last_ok?: boolean | null }[] }>("list_automations")
-        .then((r) => {
-          if (!alive) return;
-          setFailedJobs((r?.jobs ?? []).filter((j) => j.enabled && j.last_ok === false).length);
-        })
-        .catch(() => {});
-    void scan();
-    const id = setInterval(scan, 60_000);
-    return () => { alive = false; clearInterval(id); };
-  }, [view]);
 
   // 首次加载后一个会话都没有 → 用主目录自动建一个（不必先选文件夹就能聊，对齐 OpenCodex）
   useEffect(() => {
@@ -169,7 +143,7 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
   return (
     <div className="flex h-full min-h-[420px] rounded-card border border-white/[0.08] overflow-hidden bg-bg-2">
       {/* 左：真 SessionList —— 项目分组 + 拖拽排序 + worktree（复用基座，不自造）+ 专家/自动化入口 */}
-      <SessionList view={view} onView={setView} navBadge={{ automation: failedJobs }} />
+      <SessionList view={view} onView={setView} />
       {/* 右：每个任务(项目)一个 Chat 实例常驻，display 切换保活（切会话不杀 PTY / 不丢对话/预览） */}
       <div className="flex-1 min-w-0 min-h-0 relative">
         {state.tasks.length === 0 ? (
@@ -209,7 +183,7 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
             </div>
           ) : (
             <div className="absolute inset-0 overflow-y-auto bg-bg-2 px-5 py-4">
-              {view === "experts" ? (
+              {view === "experts" && (
                 <div className="space-y-4">
                   <header>
                     <h2 className="text-[15px] font-semibold text-ink-0">{tr("AI 专家")}</h2>
@@ -219,8 +193,6 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
                   </header>
                   <ExpertGallery onSummon={summon} dense />
                 </div>
-              ) : (
-                <AutomationPanel onToast={onToast} />
               )}
             </div>
           )

@@ -42,16 +42,6 @@ const SHIM = () => {
     if (cmd === "list_tools") return [];
     if (cmd === "list_tasks") return [task];
     if (cmd === "upsert_task") return args?.task ?? task;
-    if (cmd === "list_automations") return {
-      jobs: [],
-      running_id: null,
-      ready: true,
-      blockers: [],
-      count: 0,
-      enabled: 0,
-      max: 30,
-      runs_only_while_app_open: false,
-    };
     if (cmd === "list_ai_tasks") return {
       days: 7,
       active_window_secs: 300,
@@ -166,7 +156,7 @@ for (const viewport of CASES) {
   await capture("home");
   await page.getByRole("button", { name: /U-Workspace/i }).first().click();
   await capture("workspace");
-  for (const name of ["Passports", "Board", "AI Experts", "Automations"]) {
+  for (const name of ["Passports", "Board", "AI Experts"]) {
     await page.getByRole("button", { name, exact: true }).first().click();
     await capture(name.toLowerCase().replace(/\s+/g, "-"));
   }

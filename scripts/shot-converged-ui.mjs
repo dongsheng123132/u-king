@@ -9,9 +9,9 @@
  * 🔴 「找不到元素就跳过」= 假绿：一律 `problems.push`，最后 problems 非空则 exit 1。
  *
  * 量什么（每个视口：1280×640 = 真实客户机最紧的一档，1440×900）：
- *  1. 侧栏入口恰好 9 项（首屏 4 + 更多 4 + 实验室 1）；文案/顺序以 src/components/Sidebar.tsx 为准
+ *  1. 侧栏入口恰好 8 项（首屏 4 + 更多 4；「实验室」组 2026-10-04 起为空、整组不渲染）；文案/顺序以 src/components/Sidebar.tsx 为准
  *     （本脚本运行时解析它，并与下面 BRIEF 里的任务清单对照，不一致只报差异、不改源码）。
- *  2. 逐个点这 9 项：渲染出非空内容、没有 PanelBoundary/根 ErrorBoundary 的崩溃兜底文案、
+ *  2. 逐个点这 8 项：渲染出非空内容、没有 PanelBoundary/根 ErrorBoundary 的崩溃兜底文案、
  *     pageerror / console.error 为 0（原文全部收集）、没有 report_bug(ui_*) 上报。
  *  3. 我的 AI → 右上「体检 · 升级 →」进子页，「← 返回我的 AI」回来。
  *  4. AI 设置：「账号 · 充值」「用量账单」两个子 tab，用量账单里有「Token 水电表」那块。
@@ -38,7 +38,7 @@ const URL = process.env.UKING_DEV_URL || "http://localhost:1471/";
  * 变异自检（让断言证明自己真会红）：UKING_PROBE_MUTATE=brain|sidebar|overflow 时，在**浏览器侧**对被测代码做一处
  * 破坏（不改磁盘上任何文件），对应断言必须变红、退出码必须是 1。输出目录自动加后缀，不覆盖正式截图。
  *   brain    拦截 Chat.tsx 的响应，把 PICKABLE_ENGINES 改成 ["claude","uking"] → 大脑区应变回 <select>
- *   sidebar  拦截 Sidebar.tsx 的响应，往实验室组塞一个假入口 → 入口应变成 10 项
+ *   sidebar  拦截 Sidebar.tsx 的响应，往实验室组塞一个假入口 → 入口应变成 9 项，且多出「实验室」开关
  *   overflow 每页量之前往可见 <main> 里塞一个 4000px 宽的块 → 横向溢出断言应变红
  */
 const MUTATE = process.env.UKING_PROBE_MUTATE || "";
@@ -60,7 +60,7 @@ const VIEWPORTS = [
 const BRIEF = {
   CORE: ["我的 AI", "工作台", "AI 创作", "AI 设置"],
   MORE: ["U盘工具盘", "AI 优化大师", "本地大模型", "进阶"],
-  LAB: ["夜班助手"],
+  LAB: [],
 };
 
 /** 解析 Sidebar.tsx 里 CORE/MORE/LAB 三个数组**未被注释**的条目（注释行以 `//` 开头，不会命中）。 */
@@ -254,7 +254,6 @@ const SHIM = (D) => {
       case "instance_role": return { role: "primary" };
       case "list_tasks": return D.tasks;
       case "upsert_task": return args?.task ?? null;
-      case "list_automations": return { jobs: [] };
       case "detect_stack": return D.detectStack;
       case "get_usage_trend": return D.usageTrend;
       case "query_usage_meter": return D.meter;
@@ -560,7 +559,6 @@ async function warmUp(browser) {
   try {
     await bootApp(page);
     await expandGroup(page, "更多");
-    await expandGroup(page, "实验室");
     for (const it of SRC_ALL) {
       await clickEntry(page, it.label).catch(() => {});
       await settle(page, 700);
@@ -621,10 +619,10 @@ async function runViewport(browser, vp) {
       note(`首屏 doctor_report 调用 ${c.calls.doctor_report ?? 0} 次（1.3.7 声明「首页不触发体检」）`);
     });
 
-    /* ---- 1. 侧栏入口恰好 9 项 ---- */
+    /* ---- 1. 侧栏入口恰好 8 项 ---- */
     await scenario("sidebar", async () => {
       // 源码侧：数量与对照
-      check(SRC.CORE.length === 4 && SRC.MORE.length === 4 && SRC.LAB.length === 1, "源码 Sidebar.tsx 解析：核心 4 + 更多 4 + 实验室 1", `核心 ${SRC.CORE.length} / 更多 ${SRC.MORE.length} / 实验室 ${SRC.LAB.length}`);
+      check(SRC.CORE.length === 4 && SRC.MORE.length === 4 && SRC.LAB.length === 0, "源码 Sidebar.tsx 解析：核心 4 + 更多 4 + 实验室 0（空组不渲染）",`核心 ${SRC.CORE.length} / 更多 ${SRC.MORE.length} / 实验室 ${SRC.LAB.length}`);
       for (const g of ["CORE", "MORE", "LAB"]) {
         const src = SRC[g].map((x) => x.label);
         if (JSON.stringify(src) !== JSON.stringify(BRIEF[g])) {
@@ -640,29 +638,25 @@ async function runViewport(browser, vp) {
       const clippedAtFirstScreen = scan.seq.filter((s) => s.type === "entry" && !s.inNavView).map((s) => s.label);
       check(clippedAtFirstScreen.length === 0, "首屏（未展开）4 项都在 nav 可视区内，不需要滚动", `被裁掉: ${JSON.stringify(clippedAtFirstScreen)}`);
       const toggles = scan.seq.filter((s) => s.type === "toggle").map((s) => s.text);
-      check(toggles.length === 2 && toggles[0] === "更多" && toggles[1].startsWith("实验室"), "折叠组开关恰为「更多」「实验室」", JSON.stringify(toggles));
+      check(toggles.length === 1 && toggles[0] === "更多", "折叠组开关恰为「更多」（「实验室」组空，不渲染）", JSON.stringify(toggles));
 
       await expandGroup(page, "更多");
       scan = await page.evaluate(SCAN_SIDEBAR);
-      check(JSON.stringify(labelsOf(scan)) === JSON.stringify(want("CORE", "MORE")), "展开「更多」后 = 核心 4 + 更多 4", JSON.stringify(labelsOf(scan)));
-
-      await expandGroup(page, "实验室");
-      scan = await page.evaluate(SCAN_SIDEBAR);
       const labels = labelsOf(scan);
-      check(labels.length === 9, "全部展开后可见入口恰好 9 项", `实际 ${labels.length}: ${JSON.stringify(labels)}`);
-      check(JSON.stringify(labels) === JSON.stringify(want("CORE", "MORE", "LAB")), "9 项文案与顺序 = 源码 CORE+MORE+LAB", JSON.stringify(labels));
+      check(JSON.stringify(labels) === JSON.stringify(want("CORE", "MORE")), "展开「更多」后 = 核心 4 + 更多 4", JSON.stringify(labels));
+      check(labels.length === 8, "全部展开后可见入口恰好 8 项", `实际 ${labels.length}: ${JSON.stringify(labels)}`);
+      check(JSON.stringify(labels) === JSON.stringify(want("CORE", "MORE", "LAB")), "8 项文案与顺序 = 源码 CORE+MORE+LAB", JSON.stringify(labels));
       const seqShape = scan.seq.map((s) => (s.type === "entry" ? "E" : "T")).join("");
-      check(seqShape === "EEEETEEEETE", "DOM 次序 = 4 项 / 更多开关 / 4 项 / 实验室开关 / 1 项", seqShape);
-      check(scan.seq.filter((s) => s.type === "entry").every((s) => s.visible), "9 项都有非零尺寸、非 hidden");
-      // 「全部展开后 9 项是否都在 nav 可视区内」只记录、不判红：Sidebar.tsx 自己写着这是既有行为
-      // （两个折叠组都展开时 1280×640 装不下，靠滚动 + 底部渐隐提示「下面还有」）——是否可接受由调用方判断，这里给数字。
+      check(seqShape === "EEEETEEEE", "DOM 次序 = 4 项 / 更多开关 / 4 项", seqShape);
+      check(scan.seq.filter((s) => s.type === "entry").every((s) => s.visible), "8 项都有非零尺寸、非 hidden");
+      // 「全部展开后 8 项是否都在 nav 可视区内」只记录、不判红：是否可接受由调用方判断，这里给数字。
       const outOfView = scan.seq.filter((s) => s.type === "entry" && !s.inNavView).map((s) => `${s.label}(底边超出 nav ${s.belowNavBottomPx}px)`);
       note(`全部展开后 nav clientH=${scan.navClientH} scrollH=${scan.navScrollH} 需滚动=${scan.navScrollable}；不在 nav 可视区内的条目=${JSON.stringify(outOfView)}；aside 宽 ${scan.asideW}px；short=${scan.short} narrow=${scan.narrow}`);
       check(scan.navOverflowX === false, "侧栏 nav 无横向溢出");
       await shot(page, "sidebar-expanded");
     });
 
-    /* ---- 2. 逐个点 9 项 ---- */
+    /* ---- 2. 逐个点 8 项 ---- */
     let i = 0;
     for (const it of SRC_ALL) {
       i += 1;
@@ -872,7 +866,7 @@ for (const [k, v] of [...uncoveredAll.entries()].sort((a, b) => a[0].localeCompa
 }
 log("===== shim 给了假数据的命令（页面拿到的是编的值）=====");
 log("  get_env list_tools get_driver_status get_device_key list_providers check_update get_setup_state term_snapshot_pending");
-log("  take_update_flag instance_role list_tasks upsert_task list_automations detect_stack get_usage_trend query_usage_meter");
+log("  take_update_flag instance_role list_tasks upsert_task detect_stack get_usage_trend query_usage_meter");
 log("  airuntime_doctor fetch_optimize_advice report_bug action_parity_call(runtime.tool.inspect)  plugin:event|*（订阅 id）");
 
 log("\n===== 观察记录（非断言）=====");

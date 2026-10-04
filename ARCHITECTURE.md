@@ -56,7 +56,7 @@ flowchart TB
         Lib["lib.rs\n组合根与命令适配器"]
         Actions["actions.rs\n动作表、确认、校验、审计"]
         Domains["领域模块\ninstaller / providers / agent / term / usb_genie / ..."]
-        Startup["后台任务\nautomation / proxy watchdog / metrics / skill sync / updater"]
+        Startup["后台任务\nproxy watchdog / metrics / skill sync / updater"]
     end
 
     subgraph State["本地状态与被管理配置"]
@@ -121,7 +121,7 @@ flowchart TB
 | 制作 U 盘 AI 精灵 | `UsbToolDisk.tsx` | `actions.rs` → `usb_genie.rs` |
 | 本地/云端内容生成 | `Create.tsx`、`Draw.tsx`、`Video.tsx` 等 | `image.rs`、`video.rs`、`artifacts.rs` |
 | 本地模型 | `LocalLLM.tsx` | `localllm.rs` |
-| 自动任务和活动记录 | `AutomationPanel.tsx`、`NightShift.tsx` | `automation.rs`、`journal.rs`、`metrics.rs` |
+| 活动记录（行为时间轴；界面已删，动作与存储保留） | — | `journal.rs`、`metrics.rs` |
 
 ### 原生入口
 

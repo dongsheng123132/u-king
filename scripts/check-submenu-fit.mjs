@@ -35,7 +35,6 @@ const TAURI_SHIM = () => {
     if (cmd === "get_env") return { platform: "windows", home_dir: "C:\\Users\\demo", installed: true, opened_dir: WS };
     if (cmd === "list_tools") return [];
     if (cmd === "list_tasks") return [];
-    if (cmd === "list_automations") return { jobs: [] };
     if (cmd === "get_setup_state") return { step: "done" };
     if (cmd === "get_driver_status") return {};
     if (cmd === "check_update") return { has_update: false };

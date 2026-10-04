@@ -55,7 +55,6 @@ const SHIM = (data) => {
     // 真实数据里 id 总是有的，所以这是跑道的坑不是产品的坑 —— 但它值得记一笔：
     // 那句条件判断本身对「缺 id 的任务」是不设防的。
     if (cmd === "list_tasks") return [];
-    if (cmd === "list_automations") return [{ id: "auto-stub", name: "stub", enabled: false }];
     if (cmd === "list_ai_tasks") return { days: 7, tasks: [], sources: [], counts: {}, notes: [] };
     if (cmd?.startsWith("plugin:event|")) return 1;
     return null;

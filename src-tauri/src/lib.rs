@@ -46,9 +46,6 @@ mod instance;
 mod localllm;
 mod advice;
 mod actions;
-mod automation;
-/// 别让电脑睡（夜班助手 N1）。只挡空闲休眠，挡不住合盖 —— 边界见模块头。
-mod awake;
 /// 浏览器子窗口导航的无头取证（需求榜 P0 #5 的硬那半边）。只在 `--browser-nav-test` 下用。
 mod browser_nav_probe;
 // DeepSeek Harness 官方桌面版（Windows）：装/检测/启动。非 Windows 下各函数直接返回
@@ -243,100 +240,6 @@ async fn install_uu_remote(app: AppHandle) -> Result<String, String> {
     )
     .await?;
     Ok(v.get("message").and_then(|m| m.as_str()).unwrap_or_default().to_string())
-}
-
-// ───────────────────────── 自动化（定时任务）─────────────────────────
-//
-// 组合根职责：把「怎么真正跑一条任务」注入给 automation.rs（它自己不认识 agent/device）。
-// 三个大脑一条分发，别在别处再写第二份。
-
-/// 到点了怎么干。**这是 automation 唯一的执行路径** —— GUI 的「立即运行」、
-/// 调度线程的到点触发、将来的远端影子，走的都是这一个函数。
-fn run_automation_job(job: &automation::Job) -> Result<String, String> {
-    // 工作文件夹只在真存在时才放行：给了 = 用户明确授权它在这个文件夹里读写文件/跑命令；
-    // 没给 = `tools_spec(false)`，只剩作图/视频这类零风险工具。无人值守下这条边界是硬的。
-    let ws = Some(job.dir.clone()).filter(|d| !d.trim().is_empty() && std::path::Path::new(d).is_dir());
-    let task_id = format!("auto-{}-{}", job.id, automation::now_ms());
-    // 长程记忆：开 `use_memory` 的任务，这一班的 prompt 夹上上一班的进度/结论接着干。
-    // 没开 = 原样返回，现有任务行为一字不变。三个引擎共用这一份拼装，别在分支里各写一遍。
-    let prompt = automation::with_memory(job, &job.prompt);
-    match job.engine.as_str() {
-        // 模型**跟随客户在「AI 设置」里选的那个**（`automation_model`），不再写死 preset。
-        //
-        // 历史：这里先写死过 `deepseek-v4-pro`（「满血才会干活」），后来一刀切改成 preset 的
-        // flash（「无人值守最该省钱」）。两次都错在同一件事上 —— **客户看到的模型和半夜真正
-        // 替他干活的模型不是一个**，产出质量对不上预期，而他无从知道为什么。客户报的
-        // 「定时任务跑出来的东西不对」，这是头号嫌疑。切了官方直连时会自动回落，见该函数注释。
-        "uking" => {
-            let model = providers::automation_model();
-            // 把「这一班到底用了哪个模型」记下来。客户报「定时任务跑出来的东西不对」时，
-            // 这是第一个要问的问题，而在此之前它**在任何地方都查不到** —— 运行记录里
-            // 只写「大脑：uking」，模型是什么全靠猜。
-            ulog::write("automation", &format!("run job={} engine=uking model={model}", job.id));
-            agent::chat::run_headless(&task_id, &prompt, ws, None, &model)
-        }
-        // claude / codex：委派给真身 CLI（注入虾盘云 env，客户不用另外配）。
-        // 无人值守：`-p` / `exec` 一次性跑完就退，不进交互。
-        engine => {
-            let (bare, args): (&str, Vec<String>) = if engine == "claude" {
-                ("claude", vec!["-p".into(), prompt.clone()])
-            } else {
-                ("codex", vec!["exec".into(), prompt.clone()])
-            };
-            agent::claude::run_oneshot(bare, &args, ws.as_deref(), 900)
-        }
-    }
-}
-
-/// 全部自动化 + 可用性（ready/blockers）。薄壳，真身是影核动作 `runtime.automation.inspect`。
-#[tauri::command]
-async fn list_automations() -> serde_json::Value {
-    run_action_blocking(actions::AUTOMATION_INSPECT).await
-}
-
-/// 新增 / 修改一条自动化。
-#[tauri::command]
-async fn save_automation(job: serde_json::Value) -> Result<serde_json::Value, String> {
-    run_write_action(actions::AUTOMATION_SAVE, serde_json::json!({ "job": job })).await
-}
-
-#[tauri::command]
-async fn remove_automation(id: String) -> Result<serde_json::Value, String> {
-    run_write_action(actions::AUTOMATION_REMOVE, serde_json::json!({ "id": id })).await
-}
-
-#[tauri::command]
-async fn set_automation_enabled(id: String, enabled: bool) -> Result<serde_json::Value, String> {
-    run_write_action(
-        actions::AUTOMATION_SET_ENABLED,
-        serde_json::json!({ "id": id, "enabled": enabled }),
-    )
-    .await
-}
-
-/// 「立即运行一次」。**故意不是影核动作**：每跑一次都在烧 token（非幂等），
-/// 而我们还没有幂等键账本 —— 见 `actions.rs` 里 AUTOMATION_* 那段注释。
-///
-/// 跑完的 `uking:automation_done` 事件**不在这里发** —— 它由 `automation::execute`
-/// 里注入的 notifier 统一发（setup 里注册）。这条路和调度线程到点触发是同一条，
-/// 在这儿再 emit 一次只会让「立即运行」提示两遍，而定时触发的那次反而没有。
-#[tauri::command]
-async fn run_automation_now(id: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || automation::run_now(&id))
-        .await
-        .map_err(|e| format!("自动化执行任务异常: {e}"))?
-}
-
-/// 一条自动化的历史运行记录（新→旧，只给文件名和时间）。
-#[tauri::command]
-fn list_automation_runs(id: String) -> Vec<serde_json::Value> {
-    automation::list_runs(&id)
-}
-
-/// 读某次运行的完整结果正文。入参只认 `~/.uking/automation/` 下的纯文件名（automation.rs 里硬拦）。
-#[tauri::command]
-fn read_automation_run(file: String) -> Result<String, String> {
-    automation::read_run(&file)
 }
 
 /// 行为时间轴。薄壳，真身是影核动作 `runtime.journal.inspect`。
@@ -1072,13 +975,6 @@ fn driver_state_version() -> String {
     actions::version_of(&snapshot)
 }
 
-/// 自动化的状态版本。同理：直接对「全部任务」的序列化结果取版本 —— 另一个终端
-/// （或 GUI 的另一个面板、或将来的远端影子）在你读之后改过任何一条，这里就会变，
-/// 带 `expected_state_version` 的写会被核心挡成 conflict 而不是悄悄覆盖。
-///
-/// 注意排除 `next_run_at`：它每跑一次就会被调度线程推走，算进版本的话，
-/// 客户只是等了一分钟，保存就会莫名其妙报冲突。版本要跟着**用户的意图**变，
-/// 不是跟着机器的心跳变。
 /// 身份的状态版本。用户可以**直接手改** `~/.uking/identity.json`（那是明文文件，
 /// 我们鼓励他改），所以并发冲突不是理论问题：他在记事本里改完保存，
 /// 界面上还拿着旧的一份点保存，不带版本就会把他手改的内容悄悄吃掉。
@@ -1086,16 +982,6 @@ fn identity_state_version() -> String {
     let snapshot = serde_json::to_string(&identity::load_identity_in(&identity::uking_dir()))
         .unwrap_or_default();
     actions::version_of(&snapshot)
-}
-
-fn automation_state_version() -> String {
-    let mut jobs = automation::list();
-    for j in jobs.iter_mut() {
-        j.next_run_at = 0;
-        j.last_run_at = 0;
-        j.runs = 0;
-    }
-    actions::version_of(&serde_json::to_string(&jobs).unwrap_or_default())
 }
 
 /// 逐项清理的**唯一实现**。返回「是否需要退出进程才能完成」（删 `~/.uking` 要走延迟脚本）。
@@ -1473,13 +1359,13 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
         // 「这个 U-King 是主实例还是并行调试实例」。见 `instance.rs`。
         //
         // **加它的直接起因**：开发时并行跑两个 U-King（验新版时不想关掉正开着的一堆终端）是刚需，
-        // 而调试实例的定时任务 / 技能包同步 / Codex 代理自愈是被**刻意静默关掉**的 ——
+        // 而调试实例的技能包同步 / Codex 代理自愈是被**刻意静默关掉**的 ——
         // 从界面上跟「这些东西坏了」完全无法区分。这条动作把「你现在是第几个」变成一句话可查，
         // 且 GUI / CLI / MCP / 远端影子问的是同一条实现。
         actions::readonly(
             actions::INSTANCE_INSPECT,
             "Inspect whether this U-King process is the primary instance or a parallel debug sidecar",
-            "Report whether this process owns the background singletons (scheduler, skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only.",
+            "Report whether this process owns the background singletons (skill-pack sync, Codex proxy self-heal) or runs as a parallel debug sidecar alongside another U-King. Reads only.",
             5_000,
             &["role", "ready", "blockers", "pid", "disabled_in_sidecar"],
             |_, _, _| Ok(instance::inspect()),
@@ -2369,20 +2255,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 }))
             },
         ),
-        // 自动化（定时任务）。readiness 回答的是「能不能**到点自动跑**」而不是「配了几条」：
-        // 拿不到设备 Key = 到点也调不动大脑，那就是 blocker（宪法：报告是对的、世界是坏的，
-        // 这种绿色最害人）。输出里的 `runs_only_while_app_open` 是产品边界当数据发 ——
-        // GUI 文案、CLI、AI 通过 MCP 读到的是同一句话，不会各自跑偏。
-        actions::readonly(
-            actions::AUTOMATION_INSPECT,
-            "Inspect scheduled automations",
-            "List every scheduled automation with its next run time, plus whether automations can actually fire on this machine. Reads only. Note: the scheduler lives in this process — jobs only fire while U-King is running (tray counts).",
-            5_000,
-            &["ready", "blockers", "count", "enabled", "runs_only_while_app_open", "jobs"],
-            // 组合根注入两件 automation 自己不认识的事：设备 Key 拿不拿得到、休眠抑制的现状
-            // （含「挡不住合盖」这条边界）。automation 不 import device / awake，删任一模块只动这里。
-            |_, _, _| Ok(automation::status(device::device_key_offline().is_ok(), awake::status())),
-        ),
         // 优化引擎缺失 / 返回非法 JSON 都是**有效的体检结论**，不是动作失败 ——
         // 所以包成 {ok,report,error} 而不是抛 Err。否则一台没释放 ukrt.exe 的机器
         // 会让整条 conformance 变红，跑道就没人信了。
@@ -3214,61 +3086,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &["message"],
             |_, _, _| Ok(serde_json::json!({ "message": device::reset_local_device_wallet()? })),
             None,
-        ),
-        // —— 自动化：三个**幂等**的写。存/删/开关重放多少次结果都一样。
-        // 「立即运行一次」不在这里：它每跑一次都在烧 token（非幂等），而我们没有幂等键账本 ——
-        // 声明一个不兑现的 idempotent 比不声明更坏（调用方一重试就双跑双扣）。
-        actions::write(
-            actions::AUTOMATION_SAVE,
-            "Create or update a scheduled automation",
-            "Upsert one scheduled automation (name, prompt, engine, optional working folder, schedule, optional use_memory). Idempotent by id. Note: an automation with a working folder is authorised to read/write files and run commands in that folder unattended. use_memory=true makes each run start from a per-job memory file (~/.uking/automation/<id>-memory.md) so a long job advances across runs; off by default.",
-            10_000,
-            "required",
-            serde_json::json!({
-                "job": {
-                    "type": "object",
-                    "description": "The automation. Schedule kinds: interval (minutes>=5) / daily (at HH:MM) / weekly (at HH:MM + weekdays 0=Sunday)."
-                }
-            }),
-            &["job"],
-            &["job"],
-            |_, input, _| {
-                let job: automation::Job = serde_json::from_value(input["job"].clone())
-                    .map_err(|e| format!("自动化格式不对: {e}"))?;
-                Ok(serde_json::json!({ "job": automation::upsert(job)? }))
-            },
-            Some(automation_state_version),
-        ),
-        actions::write(
-            actions::AUTOMATION_REMOVE,
-            "Delete a scheduled automation",
-            "Remove one scheduled automation by id. Idempotent: deleting a missing id succeeds. Past run records are kept on disk.",
-            10_000,
-            "required",
-            serde_json::json!({ "id": { "type": "string" } }),
-            &["id"],
-            &["ok"],
-            |_, input, _| {
-                automation::remove(input["id"].as_str().unwrap_or_default())?;
-                Ok(serde_json::json!({ "ok": true }))
-            },
-            Some(automation_state_version),
-        ),
-        actions::write(
-            actions::AUTOMATION_SET_ENABLED,
-            "Enable or disable a scheduled automation",
-            "Turn one automation on or off. Turning it on re-arms it for its next slot. Idempotent.",
-            10_000,
-            "required",
-            serde_json::json!({ "id": { "type": "string" }, "enabled": { "type": "boolean" } }),
-            &["id", "enabled"],
-            &["job"],
-            |_, input, _| {
-                let id = input["id"].as_str().unwrap_or_default();
-                let on = input["enabled"].as_bool().unwrap_or(false);
-                Ok(serde_json::json!({ "job": automation::set_enabled(id, on)? }))
-            },
-            Some(automation_state_version),
         ),
         actions::write(
             actions::DESKTOP_PIN,
@@ -8330,276 +8147,6 @@ pub fn run() {
         println!("{}", serde_json::json!({ "installed": ok }));
         std::process::exit(if ok { 0 } else { 1 });
     }
-    // 自动化「到点了真会干活吗」无头验证：U-King.exe --automation-test [<任务 id>]
-    //
-    // 为什么必须有这一条：增删改已经被 `action conformance` 盖住了，**但那只证明存得下**。
-    // 「到点了真跑不跑得起来」是另一条路（注入 runner → 选大脑 → 出结果 → 落运行记录），
-    // 它一个字节都不在动作表里。不给它留无头入口，就只能靠人守着等到九点 —— 那不叫验证。
-    //
-    // 走的是**和调度线程完全同一条路**（automation::start 注入的同一个 run_automation_job）。
-    // 不给 id 就跑一条临时任务（不落列表）；给 id 就真跑那条存着的。会烧 token。
-    if let Some(i) = args.iter().position(|a| a == "--automation-test") {
-        automation::start(Box::new(run_automation_job));
-        let id = args.get(i + 1).filter(|a| !a.starts_with("--")).cloned();
-        let result = match &id {
-            Some(id) => {
-                eprintln!("[automation-test] 跑存着的任务 {id}");
-                automation::run_now(id)
-            }
-            None => {
-                eprintln!("[automation-test] 跑一条临时任务（不落列表）");
-                automation::execute(&automation::Job {
-                    id: "automation-test".into(),
-                    name: "无头自测".into(),
-                    prompt: "用一句话说明你能帮我做什么。不要反问。".into(),
-                    engine: args
-                        .iter()
-                        .position(|a| a == "--engine")
-                        .and_then(|j| args.get(j + 1))
-                        .cloned()
-                        .unwrap_or_else(|| "uking".into()),
-                    dir: String::new(),
-                    schedule: automation::Schedule {
-                        kind: "daily".into(),
-                        minutes: 0,
-                        at: "09:00".into(),
-                        weekdays: vec![],
-                    },
-                    enabled: true,
-                    created_at: 0,
-                    next_run_at: 0,
-                    last_run_at: 0,
-                    last_ok: None,
-                    last_message: String::new(),
-                    last_run_file: String::new(),
-                    runs: 0,
-                    use_memory: false,
-                })
-            }
-        };
-        match result {
-            Ok(body) => {
-                println!("{body}");
-                eprintln!("[automation-test] ✓ 跑通，运行记录在 {}", automation::runs_dir().display());
-                std::process::exit(0);
-            }
-            Err(e) => {
-                eprintln!("[automation-test] ✗ {e}");
-                std::process::exit(1);
-            }
-        }
-    }
-    // ★「别让电脑睡」无头验证：U-King.exe --awake-test（夜班助手 N1）
-    //
-    // 为什么必须单开一条：这功能最坏的失败**不是没生效，是生效了收不回来**——
-    // 客户的电脑从此不睡，而且他永远不会把这件事联想到 U-King 上。
-    // 单测能盖住 apply 的幂等/可逆，但「系统到底认没认这个请求」只有系统能回答，
-    // 而 `powercfg /requests` 要管理员权限，客户机上跑不了 —— 所以判据只能是
-    // `SetThreadExecutionState` 自己的返回值（它返回**调用前**的状态）。
-    //
-    // 四条断言：
-    //   ① 系统真的接受了请求（探针在临时线程上 set → 读回 → 线程退出，零残留）
-    //   ② **屏幕没被点亮**（读回的标志位里不许有 ES_DISPLAY_REQUIRED）—— 不然客户屏幕整夜亮着
-    //   ③ apply 可逆且幂等（收得回来）
-    //   ④ **边界如实公布**：status() 里必须写着「挡不住合盖」，且 automation 的只读动作
-    //      带着这句话一起发 —— 客户以为合盖也能跑，那他真的走了、任务真的没跑。
-    if args.iter().any(|a| a == "--awake-test") {
-        let probe = awake::probe();
-        // 边界字段（挡不挡得住合盖）是静态的，先取无妨；但**打印的那份快照要等跑完再取**，
-        // 见下面 `after`：先取会打出 `on:false / last_call_ret:0`，看着像整条链路没跑起来。
-        let st = awake::status();
-        let mut bad: Vec<String> = Vec::new();
-        if cfg!(any(windows, target_os = "macos")) {
-            if probe["api_accepted"] != serde_json::json!(true) {
-                bad.push("系统没接受「别睡」的请求".into());
-            }
-            if probe["display_kept_on"] == serde_json::json!(true) {
-                bad.push("请求里带上了 ES_DISPLAY_REQUIRED —— 屏幕会整夜亮着".into());
-            }
-        }
-        // 可逆 + 幂等：开 → 再开（不该重复动系统）→ 关 → 再关
-        awake::apply(true);
-        let on_after_set = awake::is_on();
-        let dup = awake::apply(true);
-        awake::apply(false);
-        let on_after_clear = awake::is_on();
-        if cfg!(any(windows, target_os = "macos")) && !on_after_set {
-            bad.push("apply(true) 之后回显仍是「没开」".into());
-        }
-        if dup {
-            bad.push("同状态重复 apply 又动了一次系统（不幂等）".into());
-        }
-        if on_after_clear {
-            bad.push("apply(false) 之后仍显示开着 —— 收不回来是最坏的结局".into());
-        }
-        if st["prevents_lid_close"] != serde_json::json!(false)
-            || st["prevents_manual_sleep"] != serde_json::json!(false)
-        {
-            bad.push("边界没如实公布：合盖 / 手动睡眠是挡不住的".into());
-        }
-        // 边界得跟着 automation 的只读动作一起发出去（GUI/CLI/MCP 读同一句话）
-        let auto = automation::status(false, awake::status());
-        if auto["keep_awake"]["prevents_lid_close"] != serde_json::json!(false) {
-            bad.push("automation.inspect 里没带上「挡不住合盖」这条边界".into());
-        }
-
-        // ★ 最要紧的那一环：**「有启用的任务 → 真的会去申请抑制」这条链**。
-        // 上面几条验的是「系统认不认」和「说不说实话」，可「到底什么时候去申请」
-        // 一个字节都不在动作表里 —— 判据要是写错（比如照原设计写成「正在跑才抑制」），
-        // 前面全绿、客户的机器照睡不误。**沙箱跑，不碰真实 ~/.uking**（宪法第 10 条）。
-        let sb = std::env::temp_dir().join(format!("uking-awake-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&sb);
-        if std::fs::create_dir_all(&sb).is_ok() {
-            std::env::set_var("UKING_TEST_HOME", &sb);
-            if automation::should_stay_awake() {
-                bad.push("一条任务都没有时就想摁住机器不睡".into());
-            }
-            let job = automation::Job {
-                id: "awake-selftest".into(),
-                name: "别让电脑睡自检".into(),
-                prompt: "x".into(),
-                engine: "uking".into(),
-                dir: String::new(),
-                schedule: automation::Schedule { kind: "interval".into(), minutes: 30, at: String::new(), weekdays: vec![] },
-                enabled: true,
-                created_at: 0,
-                next_run_at: 0,
-                last_run_at: 0,
-                last_ok: None,
-                last_message: String::new(),
-                last_run_file: String::new(),
-                runs: 0,
-                use_memory: false,
-            };
-            match automation::upsert(job) {
-                Ok(_) => {
-                    // 🔴 这一条钉的就是设计文档那处更正：任务**在等下一班（没在跑）**时
-                    // 就必须摁住。写成「正在跑才抑制」的话，客户 23:00 走人、机器睡了，
-                    // 02:00 那班根本不会开始 —— 那一刻永远不会到来。
-                    if !automation::should_stay_awake() {
-                        bad.push("有启用的任务在等下一班，却不打算阻止休眠 —— 客户走人后机器照睡，这功能等于没做".into());
-                    }
-                    // 停用后必须松手，不然客户关掉全部任务，电脑还是不睡
-                    if automation::set_enabled("awake-selftest", false).is_ok() && automation::should_stay_awake() {
-                        bad.push("任务停用了还摁着机器不放 —— 客户关掉全部任务，电脑仍旧不睡".into());
-                    }
-                }
-                Err(e) => bad.push(format!("沙箱里建不出自检任务：{e}")),
-            }
-            std::env::remove_var("UKING_TEST_HOME");
-            let _ = std::fs::remove_dir_all(&sb);
-        }
-        // 跑完之后再取一次：`last_call_ret` 是系统对**撤销**那一下的回答（非 0 = 认了），
-        // `on:false` 是「我们确实松手了」。这两个数才是给排障看的。
-        let after = awake::status();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "ok": bad.is_empty(),
-                "problems": bad,
-                "probe": probe,
-                "status": after,
-                "boundary_before_run": { "prevents_lid_close": st["prevents_lid_close"], "prevents_manual_sleep": st["prevents_manual_sleep"] },
-                "reversible": { "on_after_set": on_after_set, "duplicate_apply_touched_os": dup, "on_after_clear": on_after_clear },
-            }))
-            .unwrap_or_default()
-        );
-        std::process::exit(if bad.is_empty() { 0 } else { 1 });
-    }
-    // 长程办公「记忆跨轮」无头验证：U-King.exe --longtask-test
-    //
-    // 为什么必须有一条：记忆注入是纯文件 I/O，单测能盖住函数本身，但「到点了真的把上一轮
-    // 的结论喂给下一轮」这条链路一个字节都不在动作表里，而尾部截断 / 上限裁剪这类边界
-    // 最容易静默出错。跑一个 N 轮假长任务，走和真任务完全同一条路
-    // （automation::with_memory / append_memory / execute 的同一套文件），断言：
-    //   ① 上下文跨轮存活：第 N 轮的 prompt 里含第 1 轮写进去的事实
-    //   ② 回写可验证：memory 文件含全部事实、总长被上限拦住、最新的那班保留
-    //   ③ 断点续跑：新会话（新 job，同 id）只靠 memory.md 就能接上
-    // 不烧 token：假长任务的「输出」是本地拼的，不进大脑。模型真的会不会用注入的记忆，
-    // 归 `--automation-test`（真模型一轮）那条验；本跑道只管「管道不坏」。
-    if args.iter().any(|a| a == "--longtask-test") {
-        // 沙箱：记忆落 UKING_TEST_HOME/.uking/automation，不污染真实 ~/.uking（宪法第 10 条）。
-        let sandbox = std::env::temp_dir().join(format!("uking-longtask-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&sandbox);
-        std::fs::create_dir_all(&sandbox).expect("建 longtask 沙箱失败");
-        std::env::set_var("UKING_TEST_HOME", &sandbox);
-        let r: Result<(), String> = (|| {
-            let j = |id: &str, runs: i64, use_memory: bool| automation::Job {
-                id: id.into(),
-                name: "长程自测".into(),
-                prompt: "把上个班次的进度接着往下做".into(),
-                engine: "uking".into(),
-                dir: String::new(),
-                schedule: automation::Schedule { kind: "interval".into(), minutes: 5, at: String::new(), weekdays: vec![] },
-                enabled: true,
-                created_at: 0,
-                next_run_at: 0,
-                last_run_at: 0,
-                last_ok: None,
-                last_message: String::new(),
-                last_run_file: String::new(),
-                runs,
-                use_memory,
-            };
-            let check = |cond: bool, what: &str, detail: String| -> Result<(), String> {
-                if cond { Ok(()) } else { Err(format!("{what}：{detail}")) }
-            };
-            // 默认关的承诺：没开 use_memory，prompt 一字不变。
-            let off = j("longtask-off", 0, false);
-            check(
-                automation::with_memory(&off, "原始") == "原始",
-                "默认关",
-                "没开 use_memory 也被改了".to_string(),
-            )?;
-            // ① 上下文跨轮存活 + ③ 断点续跑
-            let id = "longtask-mem";
-            let n = 3;
-            for i in 1..=n {
-                let job = j(id, (i - 1) as i64, true);
-                let prompt = automation::with_memory(&job, "继续");
-                for k in 1..i {
-                    let fact = format!("事实{}", if k == 1 { "A" } else { "B" });
-                    check(
-                        prompt.contains(&fact),
-                        &format!("上下文跨轮存活（第 {i} 轮）"),
-                        format!("第 {i} 轮的 prompt 丢了第 {k} 轮的事实 {fact}: {prompt}"),
-                    )?;
-                }
-                let fact = format!("事实{}", if i == 1 { "A" } else { "B" });
-                let body = format!("这一轮我完成了任务 X{i}。请记住：{fact} = 值{i}。后续要继续。");
-                automation::append_memory(id, i as i64, true, &body);
-            }
-            // ② 回写可验证
-            let mem = automation::read_memory(id);
-            check(mem.contains("事实A") && mem.contains("事实B"), "回写可验证", format!("memory 没写全: {mem}"))?;
-            // ③ 断点续跑：新会话（新 job，同 id）只靠 memory.md 接上。
-            // 🔴 必须在「上限裁剪」之前验 —— 上限丢的是最旧的，而 事实A 恰恰是最旧的，
-            // 先裁剪再查续跑，等于要求「被丢掉的旧事实还活着」，那是断言顺序错，不是机制坏。
-            let fresh = j(id, 0, true);
-            let resumed = automation::with_memory(&fresh, "继续");
-            check(resumed.contains("事实A"), "断点续跑", format!("新会话没接上记忆: {resumed}"))?;
-            // ④ 上限裁剪：连塞超长 body，总长被拦（丢最旧的），最新的那班保留
-            for i in 0..8 {
-                automation::append_memory(id, 10 + i, true, &"长内容".repeat(1000));
-            }
-            let capped = automation::read_memory(id);
-            check(capped.chars().count() <= 8_000, "记忆上限", format!("{} chars", capped.chars().count()))?;
-            check(capped.contains("第 17 班"), "记忆上限", "截断后最新的那班被误删了".into())?;
-            Ok(())
-        })();
-        let _ = std::fs::remove_dir_all(&sandbox);
-        std::env::remove_var("UKING_TEST_HOME");
-        match r {
-            Ok(()) => {
-                println!("{}", serde_json::json!({ "ok": true, "context_carried": true, "write_back_verified": true, "resume_works": true }));
-                std::process::exit(0);
-            }
-            Err(e) => {
-                eprintln!("[longtask-test] ✗ {e}");
-                std::process::exit(1);
-            }
-        }
-    }
     // GUI 应用启动验证：U-King.exe --launch-test <codex-app|clawx>（走真实 launch_app 代码路径）
     if let Some(i) = args.iter().position(|a| a == "--launch-test") {
         let app = args.get(i + 1).cloned().unwrap_or_default();
@@ -9040,7 +8587,7 @@ pub fn run() {
     // 🔴 **它现在的语义不止「跳过单实例」，还包括「钉死当并行调试实例」**（见 `instance.rs`）：
     // 两边共用同一份 `~/.uking`（那正是这功能的前提 —— 验的必须是同一个世界，所以
     // `UKING_TEST_HOME` 沙箱那条路被明确否决过），但一批后台单例活在这个进程里全部关掉：
-    // 调度线程 / 技能包同步 / Codex 代理 / 说明书发布 / 崩溃账本 / device key 刷新 / 自升级暂存，
+    // 技能包同步 / Codex 代理 / 说明书发布 / 崩溃账本 / device key 刷新 / 自升级暂存，
     // `tasks.json` 与 `agent-threads.json` 只读。清单和逐条理由在 `instance::DISABLED_IN_SIDECAR`。
     //
     // **不带这个开关的启动路径一字未改** —— 这是整套机制客户风险为零的全部理由，别去动它。
@@ -9048,7 +8595,7 @@ pub fn run() {
     if allow_multi {
         eprintln!(
             "[U-King] 本进程是并行调试实例（--allow-multi-instance）：跟已在运行的那个共用 ~/.uking，\n\
-             但定时任务、技能包同步、Codex 代理自愈、说明书发布、崩溃记账、自升级暂存都不跑，\n\
+             但技能包同步、Codex 代理自愈、说明书发布、崩溃记账、自升级暂存都不跑，\n\
              任务列表和 AI 续接 id 只读。查角色：action run runtime.instance.inspect --json"
         );
     }
@@ -9274,56 +8821,11 @@ pub fn run() {
             // running/ready 任务：继续轮询原 task_id，出片后落本机；全过程不再 POST、不再扣费。
             resume_pending_videos(app.handle().clone());
             } // ← `if !is_sidecar` 第一段到此为止
-            // 跑完通知人。**这是「你不用盯着」真正成立的前提**：在此之前，任务跑完只写
-            // `~/.uking/automation/*.md` 和列表里的 last_message，客户不打开工作台那个
-            // 「自动化」面板就永远不知道跑没跑过 —— 于是「到点没跑」和「跑了但我不知道」
-            // 在客户那里长得一模一样，我们这边也无从分辨。
-            //
-            // 两个面一起给：窗口开着 → 前端 toast；缩在托盘 → 托盘悬停提示。
-            // 通知是**唯一发出点**（execute 里调 notify），所以调度线程到点触发和
-            // 「立即运行一次」走的是同一条路，不会一个有提示一个没有。
-            {
-                let app2 = app.handle().clone();
-                automation::set_notifier(Box::new(move |job, ok, summary| {
-                    let _ = app2.emit(
-                        "uking:automation_done",
-                        serde_json::json!({
-                            "id": job.id,
-                            "name": job.name,
-                            "ok": ok,
-                            "summary": summary,
-                        }),
-                    );
-                    if let Some(tray) = app2.tray_by_id("uking-tray") {
-                        let _ = tray.set_tooltip(Some(&format!(
-                            "U-King · 「{}」{}",
-                            job.name,
-                            if ok { "刚跑完" } else { "没跑成" }
-                        )));
-                    }
-                }));
-            }
-            // 自动化（定时任务）调度线程。**只在 GUI 起来时启动** —— 跑一条 `action run` 的
-            // 无头进程不该顺手把客户的定时任务全触发一遍。真正怎么干由这里注入（run_automation_job），
-            // automation.rs 自己不认识 agent/device。
-            //
-            // ★ 休眠抑制也在这儿注入（夜班助手 N1）：**必须在 start 之前注册**，
-            // 调度线程一起来就会申请第一次 —— 晚一步注册，那次申请就是空的。
-            // 抑制由调度线程自己申请（`SetThreadExecutionState` 按线程记账，见 awake.rs 模块头）。
-            // 无头 CLI 不注册 = 一行不抑制：跑个 `action run` 不该顺手让客户的电脑整夜不睡。
-            automation::set_keep_awake(Box::new(|on| {
-                awake::apply(on);
-            }));
-            // ★ 主实例专属，第二段。**这条是整个并行机制最初的、也是唯一会真花钱的理由**：
-            //   两条调度线程各自到点触发同一批定时任务 = 同一件事跑两遍 = 双倍烧 token，
-            //   而且两次结果互相覆盖 `last_message`，客户看到的还是一份，完全察觉不到。
-            //   别的降权顶多是「少干点活」，只有这条是「多花钱且看不出来」。
-            //
-            //   上面的 `set_notifier` / `set_keep_awake` **刻意留在门外**：它们只是注入，
-            //   不起任何线程、不写任何共享文件。调试实例里用户照样能手点「立即运行一次」，
-            //   注入没做的话那次手动运行会静悄悄跑完、连个提示都没有。
+            // ★ 主实例专属，第二段：Codex 代理自愈 / 看门狗 / 用量汇总等后台单例活。
+            //   两个实例各跑一份会互相覆盖共享文件、互相杀对方的代理 —— 清单和逐条理由见
+            //   `instance::DISABLED_IN_SIDECAR`。（原先这一段还起「自动化」调度线程，那条
+            //   常驻线程 2026-10-04 随夜班助手 / 定时任务一起删了。）
             if !is_sidecar {
-            automation::start(Box::new(run_automation_job));
             // Codex 省钱路由自愈：客户开过 DeepSeek 本地路由（config 指向 127.0.0.1:15722）
             // 但代理进程已不在（最常见：重启电脑后）→ 自动拉回来，否则 codex 全废且客户不知道
             // 要去哪重开。没开过路由的机器此函数零副作用。后台线程不阻塞启动。
@@ -9422,13 +8924,6 @@ pub fn run() {
             install_clawx,
             uu_remote_status,
             install_uu_remote,
-            list_automations,
-            save_automation,
-            remove_automation,
-            set_automation_enabled,
-            run_automation_now,
-            list_automation_runs,
-            read_automation_run,
             journal_inspect,
             journal_set_enabled,
             journal_clear,

@@ -21,10 +21,6 @@ export const englishUi: Record<string, string> = {
   "点一下显示这个来源": "Click to show this source",
 
   // Automation template table.
-  "每天学一招": "Learn one skill daily",
-  "每天一条文案": "Daily copy",
-  "每周周报": "Weekly report",
-  "每天出一张图": "Create one image daily",
 
   // Expert skill labels.
   "AI 作图 / 视频": "AI images / video",
