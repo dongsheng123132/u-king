@@ -2323,46 +2323,6 @@
       "bindings": [
         {
           "surface": "cli",
-          "target": "cli:action run runtime.podapp.inspect --json --no-input"
-        }
-      ],
-      "description": "Read whether PodApp is installed, its version, and the latest published version. Reads only; fetches the update manifest over the network.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 20000
-      },
-      "id": "runtime.podapp.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "installed",
-          "ready",
-          "blockers",
-          "version",
-          "update_available",
-          "can_auto_install"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect PodApp (泊舟 AI 小程序)"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.automation.inspect --json --no-input"
         }
       ],
@@ -3488,90 +3448,6 @@
     {
       "bindings": [
         {
-          "surface": "cli",
-          "target": "cli:action run runtime.podapp.install --json --no-input"
-        }
-      ],
-      "description": "Download the latest PodApp installer (manifest source order puts the China-reachable mirror first) and install it silently. PodApp updates itself afterwards — this is only the first install / a manual catch-up.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": true,
-        "timeout_ms": 600000
-      },
-      "id": "runtime.podapp.install",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "message"
-        ],
-        "type": "object"
-      },
-      "title": "Install or update PodApp (泊舟 AI 小程序)"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.podapp.launch --json --no-input"
-        }
-      ],
-      "description": "Start the installed PodApp dock. Idempotent: launching again just focuses the running instance.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 30000
-      },
-      "id": "runtime.podapp.launch",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "message"
-        ],
-        "type": "object"
-      },
-      "title": "Launch PodApp (泊舟 AI 小程序)"
-    },
-    {
-      "bindings": [
-        {
           "surface": "desktop",
           "target": "tauri:command/action_run"
         },
@@ -4171,145 +4047,6 @@
         "type": "object"
       },
       "title": "Remove the device wallet from this machine"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.org.inspect --json --no-input"
-        }
-      ],
-      "description": "Read whether this machine is enrolled into an enterprise org (~/.uking/org.json), and which org owns it. Unmanaged by default; personal editions see ready=false with a clear blocker. Reads only.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 5000
-      },
-      "id": "runtime.org.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "mode",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect enterprise managed state (org)"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.org.enroll --json --no-input"
-        }
-      ],
-      "description": "Record the enterprise org identity in ~/.uking/org.json (mode=managed). Idempotent: re-enrolling the same org_id is a no-op. Records identity only — it does NOT turn on any telemetry or policy download (those are gated by explicit consent in later steps).",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 5000
-      },
-      "id": "runtime.org.enroll",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "org_id": {
-            "description": "Enterprise-assigned org identifier. Required, trimmed.",
-            "type": "string"
-          },
-          "org_name": {
-            "description": "Optional display name.",
-            "type": "string"
-          },
-          "policy_url": {
-            "description": "Optional policy endpoint, reserved for later steps.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "org_id"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "mode",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Enroll this machine into an enterprise org"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.org.disenroll --json --no-input"
-        }
-      ],
-      "description": "Reset ~/.uking/org.json to the unmanaged default. Idempotent: disenrolling an already-unmanaged machine is a no-op.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 5000
-      },
-      "id": "runtime.org.disenroll",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "mode",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Leave the enterprise org (back to personal)"
     },
     {
       "bindings": [
@@ -5140,7 +4877,6 @@
       "runtime.usb_genie.inspect",
       "runtime.usb_genie.verify",
       "runtime.uu_remote.inspect",
-      "runtime.podapp.inspect",
       "runtime.automation.inspect",
       "target.list",
       "target.detect",
@@ -5154,7 +4890,6 @@
       "runtime.identity.inspect",
       "runtime.chat.inspect",
       "runtime.journal.inspect",
-      "runtime.org.inspect",
       "runtime.workbench.inspect",
       "runtime.workbench.scan",
       "runtime.expert.inspect",

@@ -61,12 +61,10 @@ mod mcp;
 mod mcp_serve;
 mod officedoc;
 mod origin;
-mod org;
 mod toolbox;
 mod providers;
 mod report;
 mod rtk;
-mod podapp;
 mod skillpack;
 mod tasks;
 mod term;
@@ -244,34 +242,6 @@ async fn install_uu_remote(app: AppHandle) -> Result<String, String> {
         serde_json::json!({}),
     )
     .await?;
-    Ok(v.get("message").and_then(|m| m.as_str()).unwrap_or_default().to_string())
-}
-
-/// 泊舟 AI 小程序（PodApp）状态：装没装 / 已装版本 / 最新版 / 有没有新版。
-/// 薄壳，真身是影核动作 `runtime.podapp.inspect`。
-#[tauri::command]
-async fn podapp_status() -> serde_json::Value {
-    run_action_blocking(actions::PODAPP_INSPECT).await
-}
-
-/// 下载 + 安装/更新泊舟 AI 小程序。进度走事件 `uking:podapp_progress`。
-/// 装完之后的自动升级由 PodApp 自己做，U-King 不轮询、不常驻。
-#[tauri::command]
-async fn install_podapp(app: AppHandle) -> Result<String, String> {
-    let v = run_write_action_progress(
-        app,
-        actions::PODAPP_INSTALL,
-        "uking:podapp_progress",
-        serde_json::json!({}),
-    )
-    .await?;
-    Ok(v.get("message").and_then(|m| m.as_str()).unwrap_or_default().to_string())
-}
-
-/// 启动已装的泊舟 AI 小程序（贴屏边的常驻窄条）。
-#[tauri::command]
-async fn launch_podapp() -> Result<String, String> {
-    let v = run_write_action(actions::PODAPP_LAUNCH, serde_json::json!({})).await?;
     Ok(v.get("message").and_then(|m| m.as_str()).unwrap_or_default().to_string())
 }
 
@@ -2419,16 +2389,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 }))
             },
         ),
-        // 泊舟小程序是**独立应用**，自己带 updater —— 这里只报「装没装 / 有没有新版」，
-        // 不做第二套升级判据。timeout 给到 20s：要联网取 latest.json，还得按源优先级挨个试。
-        actions::readonly(
-            actions::PODAPP_INSPECT,
-            "Inspect PodApp (泊舟 AI 小程序)",
-            "Read whether PodApp is installed, its version, and the latest published version. Reads only; fetches the update manifest over the network.",
-            20_000,
-            &["installed", "ready", "blockers", "version", "update_available", "can_auto_install"],
-            |_, _, _| Ok(podapp::status()),
-        ),
         // 自动化（定时任务）。readiness 回答的是「能不能**到点自动跑**」而不是「配了几条」：
         // 拿不到设备 Key = 到点也调不动大脑，那就是 blocker（宪法：报告是对的、世界是坏的，
         // 这种绿色最害人）。输出里的 `runs_only_while_app_open` 是产品边界当数据发 ——
@@ -2953,33 +2913,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         )),
-        // 幂等：已是最新就跳过下载（podapp::install 里真兑现，不是这里声明一句）。
-        // 「安装」和「更新到最新」是**同一条代码路径** —— 分成两个动作就会有两套版本判据。
-        actions::with_progress(actions::write(
-            actions::PODAPP_INSTALL,
-            "Install or update PodApp (泊舟 AI 小程序)",
-            "Download the latest PodApp installer (manifest source order puts the China-reachable mirror first) and install it silently. PodApp updates itself afterwards — this is only the first install / a manual catch-up.",
-            600_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["message"],
-            |_, _, progress| Ok(serde_json::json!({ "message": podapp::install(progress)? })),
-            None,
-        )),
-        // 启动是写动作：它在客户机上起了一个常驻进程。幂等 —— 再点一次 PodApp 自己会聚焦already-running 实例。
-        actions::write(
-            actions::PODAPP_LAUNCH,
-            "Launch PodApp (泊舟 AI 小程序)",
-            "Start the installed PodApp dock. Idempotent: launching again just focuses the running instance.",
-            30_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["message"],
-            |_, _, _| Ok(serde_json::json!({ "message": podapp::launch()? })),
-            None,
-        ),
         // 判定 + 分派：状态不是 Ready 就不碰任何进程，直接回 blocked。GUI 应用 / 需要独立终端窗口
         // 的命令由这里直接启动（复用 tools::launch_app / term::term_open_external，不是第二份实现）；
         // 需要内嵌 xterm 或路由到专属标签页的，只回一句「该怎么做」，交给前端执行——只有前端知道
@@ -3300,52 +3233,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &[],
             &["message"],
             |_, _, _| Ok(serde_json::json!({ "message": device::reset_local_device_wallet()? })),
-            None,
-        ),
-        // ── 被管理契约（企业版第一层）──
-        // 同份二进制服务个人与企业：个人版 `~/.uking/org.json` 默认 unmanaged，
-        // 本动作就报「没被托管」，零行为变化。企业 enroll 后只多一份身份记录；
-        // 策略下发 / 遥测回流是后续步骤（需求榜 E2/E3），且遥测必须显式联动
-        // metrics consent —— 「managed」本身永远不等于「可以上传」。
-        actions::readonly(
-            actions::ORG_INSPECT,
-            "Inspect enterprise managed state (org)",
-            "Read whether this machine is enrolled into an enterprise org (~/.uking/org.json), and which org owns it. Unmanaged by default; personal editions see ready=false with a clear blocker. Reads only.",
-            5_000,
-            &["mode", "ready", "blockers"],
-            |_, _, _| action_json(org::inspect_json()),
-        ),
-        actions::write(
-            actions::ORG_ENROLL,
-            "Enroll this machine into an enterprise org",
-            "Record the enterprise org identity in ~/.uking/org.json (mode=managed). Idempotent: re-enrolling the same org_id is a no-op. Records identity only — it does NOT turn on any telemetry or policy download (those are gated by explicit consent in later steps).",
-            5_000,
-            "required",
-            serde_json::json!({
-                "org_id":     { "type": "string", "description": "Enterprise-assigned org identifier. Required, trimmed." },
-                "org_name":   { "type": "string", "description": "Optional display name." },
-                "policy_url": { "type": "string", "description": "Optional policy endpoint, reserved for later steps." }
-            }),
-            &["org_id"],
-            &["mode", "ready", "blockers"],
-            |_, input, _| {
-                let org_id = input["org_id"].as_str().unwrap_or_default();
-                let org_name = input.get("org_name").and_then(|v| v.as_str());
-                let policy_url = input.get("policy_url").and_then(|v| v.as_str());
-                org::enroll(org_id, org_name, policy_url)
-            },
-            None,
-        ),
-        actions::write(
-            actions::ORG_DISENROLL,
-            "Leave the enterprise org (back to personal)",
-            "Reset ~/.uking/org.json to the unmanaged default. Idempotent: disenrolling an already-unmanaged machine is a no-op.",
-            5_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["mode", "ready", "blockers"],
-            |_, _, _| org::disenroll(),
             None,
         ),
         // —— 自动化：三个**幂等**的写。存/删/开关重放多少次结果都一样。
@@ -8110,15 +7997,6 @@ pub fn run() {
         println!("{}", serde_json::to_string_pretty(&r).unwrap_or_else(|_| "{}".into()));
         std::process::exit(if r["mismatch"].as_bool().unwrap_or(false) { 1 } else { 0 });
     }
-    // ★ 被管理契约落点检查：U-King.exe --org-where
-    // 企业版第一层。个人版默认 unmanaged（退出码 0）。stdout 只出 JSON。
-    // 退出码：0 = 正常（含 unmanaged）/ 1 = managed 却缺 org_id（配置不一致）。
-    if args.iter().any(|a| a == "--org-where") {
-        let r = org::inspect_json();
-        println!("{}", serde_json::to_string_pretty(&r).unwrap_or_else(|_| "{}".into()));
-        let inconsistent = r["mode"].as_str() == Some("managed") && r["org_id"].is_null();
-        std::process::exit(if inconsistent { 1 } else { 0 });
-    }
     if let Some(i) = args.iter().position(|a| a == "--selfcheck") {
         // 输出路径是**位置参数**（`--selfcheck [out.json]`）。下一个 token 若还是个
         // 开头的 flag，那是调用方在传别的选项，不是路径 —— 曾经有人跑
@@ -9645,9 +9523,6 @@ pub fn run() {
             install_clawx,
             uu_remote_status,
             install_uu_remote,
-            podapp_status,
-            install_podapp,
-            launch_podapp,
             list_automations,
             save_automation,
             remove_automation,

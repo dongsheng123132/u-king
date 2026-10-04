@@ -342,7 +342,6 @@ pub const TARGET_CONFIG_GET: &str = "target.config.get";
 pub const TARGET_CONFIG_SET: &str = "target.config.set";
 pub const TARGET_MANIFEST_LIST: &str = "target.manifest.list";
 pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
-pub const PODAPP_INSPECT: &str = "runtime.podapp.inspect";
 pub const AUTOMATION_INSPECT: &str = "runtime.automation.inspect";
 pub const OPTIMIZER_INSPECT: &str = "runtime.optimizer.inspect";
 /// 任务本象（2Origin 长期存储层）：这个任务**干到哪了、验过什么、下一步是什么**。
@@ -387,9 +386,6 @@ pub const IDENTITY_INSPECT: &str = "runtime.identity.inspect";
 /// 这条回答**顺序和归属**：哪些是人点的、哪些是 AI 自己干的、动过哪些文件。
 /// 「夜班」的地基：没有时间轴，就没有「正常长什么样」，也就无从判断什么叫失控。
 pub const JOURNAL_INSPECT: &str = "runtime.journal.inspect";
-/// 被管理契约（企业版第一层）：这台机器**在被管吗**、归谁管。
-/// 默认 `unmanaged`（个人版零影响），enroll 后只是多一份身份记录，不做任何自动动作。
-pub const ORG_INSPECT: &str = "runtime.org.inspect";
 pub const EXPERT_INSPECT: &str = "runtime.expert.inspect";
 pub const HIRE_SEARCH: &str = "runtime.hire.search";
 /// 本地大模型：四个引擎各自「能不能用」。**一次给全四个**，因为客户真正的问题是
@@ -409,10 +405,10 @@ pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
     MODEL_CATALOG_INSPECT, HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
-    CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT, PODAPP_INSPECT, AUTOMATION_INSPECT,
+    CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT, AUTOMATION_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
-    IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
+    IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
     LOCALLLM_CATALOG,
 ];
@@ -466,8 +462,6 @@ pub const READINESS_INSPECT: &str = "runtime.readiness.inspect";
 /// 只跑 `dsh plugin add`，不碰别的 —— spec 由用户从我们筛过的清单里点，或自己粘。
 pub const DSH_PLUGIN_INSTALL: &str = "runtime.dsh.plugin_install";
 pub const UU_REMOTE_INSTALL: &str = "runtime.uu_remote.install";
-pub const PODAPP_INSTALL: &str = "runtime.podapp.install";
-pub const PODAPP_LAUNCH: &str = "runtime.podapp.launch";
 /// 遍历 `tools::TOOL_SPECS`，对每个工具跑一遍 `tools::plan()` 判定核心，只读、不启动任何东西。
 ///
 /// 「能不能启动、该怎么启动」这件事本身就是三条前端路径（Manager 挂载点/App.tsx::launchTool/
@@ -529,10 +523,6 @@ pub const LOCALLLM_DOWNLOAD: &str = "runtime.localllm.download";
 pub const AUTOMATION_SAVE: &str = "runtime.automation.save";
 pub const AUTOMATION_REMOVE: &str = "runtime.automation.remove";
 pub const AUTOMATION_SET_ENABLED: &str = "runtime.automation.set_enabled";
-// 被管理契约（企业版第一层）。两个都幂等：同样入参重放结果一样；
-// 确认由协议层强制（confirmation=required）。
-pub const ORG_ENROLL: &str = "runtime.org.enroll";
-pub const ORG_DISENROLL: &str = "runtime.org.disenroll";
 /// 优化大师的**动手那一半**。此前只有 `OPTIMIZER_INSPECT`（看分数）是动作，
 /// 「改」只活在 Tauri command 里 —— 于是 GUI 能修，CLI / MCP / AI 专家只能干看着，
 /// 只好去教用户「你自己去侧栏点一下」。这条把它补齐成一个动作两个调用方。

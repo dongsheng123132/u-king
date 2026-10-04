@@ -121,22 +121,10 @@ export const ACTION = {
   RUNTIME_OPTIMIZER_APPLY: "runtime.optimizer.apply",
   /** Run the read-only optimizer doctor (ukrt on Windows, native on macOS) and return its report. Reads only. */
   RUNTIME_OPTIMIZER_INSPECT: "runtime.optimizer.inspect",
-  /** Reset ~/.uking/org.json to the unmanaged default. Idempotent: disenrolling an already-unmanaged machine is a no-op. */
-  RUNTIME_ORG_DISENROLL: "runtime.org.disenroll",
-  /** Record the enterprise org identity in ~/.uking/org.json (mode=managed). Idempotent: re-enrolling the same org_id is a no-op. Records identity only — it does NOT turn on any telemetry or policy download (those are gated by explicit consent in later steps). */
-  RUNTIME_ORG_ENROLL: "runtime.org.enroll",
-  /** Read whether this machine is enrolled into an enterprise org (~/.uking/org.json), and which org owns it. Unmanaged by default; personal editions see ready=false with a clear blocker. Reads only. */
-  RUNTIME_ORG_INSPECT: "runtime.org.inspect",
   /** Read the persisted object-state of a task: goal, what the world looks like now, verified facts, decisions with reasons, and next steps. This is state, not a chat transcript — a different session or a different harness can resume from it. Without task_id, lists all tasks that have state. Reads only. */
   RUNTIME_ORIGIN_INSPECT: "runtime.origin.inspect",
   /** Persist the object-state of a task so a later session or a different harness can resume without re-asking. Write what the world looks like now, not what was said. facts[].verified must be true only when a machine re-checked it. Pass expected_version (from origin.inspect) to refuse overwriting a state someone else changed. Writes only under ~/.uking/origin/ — never touches your files. */
   RUNTIME_ORIGIN_SAVE: "runtime.origin.save",
-  /** Read whether PodApp is installed, its version, and the latest published version. Reads only; fetches the update manifest over the network. */
-  RUNTIME_PODAPP_INSPECT: "runtime.podapp.inspect",
-  /** Download the latest PodApp installer (manifest source order puts the China-reachable mirror first) and install it silently. PodApp updates itself afterwards — this is only the first install / a manual catch-up. */
-  RUNTIME_PODAPP_INSTALL: "runtime.podapp.install",
-  /** Start the installed PodApp dock. Idempotent: launching again just focuses the running instance. */
-  RUNTIME_PODAPP_LAUNCH: "runtime.podapp.launch",
   /** Remove one provider from the user's list. With `tool`, only that AI's list is touched (the other AIs keep it, and custom presets keep their definition + key). Without `tool`, it is removed from every AI's list and custom presets are deleted outright. Built-in presets are tombstoned and never come back on their own until the user restores them. Never touches any AI tool's own config files. */
   RUNTIME_PROVIDER_DELETE: "runtime.provider.delete",
   /** Parse each AI tool's OWN config file and report the provider/model it would really use at startup, plus any file that overrides ours (e.g. opencode.jsonc beats opencode.json). This is NOT a read-back of what U-King wrote: byte-level verification only proves the file contains our bytes, not that the tool reads those fields. `readable:false` means we have no read-back path for that tool — that is 'unknown', not 'not configured'. */
@@ -272,14 +260,8 @@ export type ActionInputMap = {
   "runtime.openclaw2.prepare": { expected_state_version?: string; port?: number; };
   "runtime.optimizer.apply": { action: "fix" | "optimize" | "defender"; expected_state_version?: string; };
   "runtime.optimizer.inspect": Record<string, never>;
-  "runtime.org.disenroll": { expected_state_version?: string; };
-  "runtime.org.enroll": { expected_state_version?: string; org_id: string; org_name?: string; policy_url?: string; };
-  "runtime.org.inspect": Record<string, never>;
   "runtime.origin.inspect": { compiled?: boolean; task_id?: string; };
   "runtime.origin.save": { expected_state_version?: string; expected_version?: number; state: Record<string, unknown>; };
-  "runtime.podapp.inspect": Record<string, never>;
-  "runtime.podapp.install": { expected_state_version?: string; };
-  "runtime.podapp.launch": { expected_state_version?: string; };
   "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
   "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
   "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
@@ -377,14 +359,8 @@ export type ActionOutputMap = {
   "runtime.openclaw2.prepare": Record<string, unknown>;
   "runtime.optimizer.apply": Record<string, unknown>;
   "runtime.optimizer.inspect": Record<string, unknown>;
-  "runtime.org.disenroll": Record<string, unknown>;
-  "runtime.org.enroll": Record<string, unknown>;
-  "runtime.org.inspect": Record<string, unknown>;
   "runtime.origin.inspect": Record<string, unknown>;
   "runtime.origin.save": Record<string, unknown>;
-  "runtime.podapp.inspect": Record<string, unknown>;
-  "runtime.podapp.install": Record<string, unknown>;
-  "runtime.podapp.launch": Record<string, unknown>;
   "runtime.provider.delete": Record<string, unknown>;
   "runtime.provider.effective": Record<string, unknown>;
   "runtime.provider.restore": Record<string, unknown>;
