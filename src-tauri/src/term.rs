@@ -142,7 +142,7 @@ struct PtySession {
     /// `clone_killer` 就是给这个场景设计的：另一个线程 blocked 在 `.wait` 时照样能发信号。
     killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
     /// 这个会话跑的是哪个工具（claude/codex/openclaw/hermes…）；纯终端无 tag。
-    /// 运行面板（list_running）据此聚合「哪些工具在跑」。
+    /// 升级快照据此给出续接提示（`resume_hint`）。
     tool: Option<String>,
     /// 实际传给 PTY 的工作目录。升级后只能重开同等环境，不能复活进程内状态。
     cwd: Option<String>,
@@ -169,7 +169,7 @@ const WATCHDOG_INTERVAL: Duration = Duration::from_secs(30);
 /// 把会话从表里摘掉（顺带回收 master / 断开写队列 / 让 reader 见到 EOF）。
 ///
 /// **为什么回收挂在这儿而不在 `list_running` 里**：原来「回收已死会话」只写在 `list_running`
-/// 内，而它唯一的调用方 `useRunning.ts` / `RunPanel.tsx` 在 0.8.6 砍 AuxBar 之后就没人挂载了
+/// 内，而它唯一的调用方 `useRunning.ts` / `RunPanel.tsx` 在 0.8.6 砍 AuxBar 之后就没人挂载了（`list_running` 与 `useRunning.ts` 已于 2026-10-04 删除，这里只留当时的取舍）
 /// —— 于是每个退出的终端都在 `sessions()` 里留一条死记录（master PTY 句柄 + 写队列 + child
 /// 句柄），进程活多久漏多久。回收必须挂在「进程真的退了」这个事实上，不能寄生在某个 UI 轮询接口。
 ///
@@ -1741,34 +1741,6 @@ pub fn cleanup_all() {
     for id in ids {
         take_session(&id, true);
     }
-}
-
-/// 一个运行中的工具实例（运行面板用）。
-#[derive(serde::Serialize)]
-pub struct RunningTool {
-    pub tool: String,
-    pub session_id: String,
-}
-
-/// 列出当前正在运行的「带工具 tag」的 PTY 会话（运行面板据此显示绿点 + 停止按钮）。
-///
-/// 这里**不再兼职回收死会话** —— 回收已经挂到 waiter 线程上（进程一退就摘，见 `take_session`）。
-/// 原来把回收写在这个函数里是个隐患：它唯一的调用方在 0.8.6 砍 AuxBar 之后就没人挂载了，
-/// 于是回收也跟着没人触发。现在表里剩下的都是活的，直接列即可。
-#[tauri::command]
-pub fn list_running() -> Vec<RunningTool> {
-    let mut out = Vec::new();
-    if let Ok(map) = sessions().lock() {
-        for (id, s) in map.iter() {
-            if let Some(tool) = &s.tool {
-                out.push(RunningTool {
-                    tool: tool.clone(),
-                    session_id: id.clone(),
-                });
-            }
-        }
-    }
-    out
 }
 
 /// 本地端口是否已有服务在监听 —— OpenClaw gateway WebUI「起没起」的判据。

@@ -8624,9 +8624,6 @@ pub fn run() {
             });
         })
         .setup(move |app| {
-            // OpenTu is an optional signed component. Its loopback host resolves
-            // only `~/.uking/components/opentu/current.json`, never an app
-            // resource directory, CWD, or environment override.
             // ★ 浏览器导航无头取证（需求榜 P0 #5 的硬那半边）：证明 `w.eval("history.back()")`
             // 真的让**外部页面**导航了。整个过程窗口 `visible(false)`，屏幕上什么都不出现，
             // 不抢前台、不动鼠标、不截屏。跑完直接退出进程 —— 不起托盘、不起调度线程。
@@ -9014,7 +9011,6 @@ pub fn run() {
             term::term_pty_info,
             term::term_close,
             term::term_ping,
-            term::list_running,
             term::wait_port,
             term::prepare_openclaw_home,
             term::openclaw_webui_url,

@@ -42,7 +42,6 @@ const SHIM = () => {
     if (cmd === "get_device_key") return { key: "sk-demo", charged: false };
     if (cmd === "term_open") return nextSession++;      // 假 PTY：给个 id 就够了
     if (cmd === "term_write" || cmd === "term_resize" || cmd === "term_close" || cmd === "term_ping") return null;
-    if (cmd === "list_running") return [];
     if (cmd?.startsWith("plugin:event|")) return 1;
     return null;
   };

@@ -635,7 +635,7 @@ export function preserveCodexScrollback(cmd: string): string {
 export function useTermGroup(opts: {
   open: boolean;
   cwd?: string;
-  /** 给本 group 的 PTY 打工具 tag（claude/openclaw…），运行面板 list_running 据此识别 */
+  /** 给本 group 的 PTY 打工具 tag（claude/openclaw…），终端快照（term_snapshot）据此识别 */
   tool?: string;
   /** 首个终端自动跑的启动命令（工具型会话用，如 "openclaw gateway run"）。过后端白名单。 */
   initialCmd?: string;

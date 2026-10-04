@@ -50,7 +50,7 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'dist-usb',
 // `shots/` 与 `.tmp-*` 都已由 .gitignore 挡住、**永远不可能被提交**，所以跳过它们不会
 // 放过任何可提交的泄漏；留下不跳的代价是实测 195 条噪音（真实客户机号、整份假用户
 // profile、WebView 缓存日志）把真命中淹掉，「push 前必跑」的红灯变成背景墙纸。
-const SKIP_PATHS = new Set(['.scratch', 'outputs', '.tmp-opentu-local', '.hermes', '.claude', 'shots', '花瑶花开-MV', '花瑶花开-发布资料包']);
+const SKIP_PATHS = new Set(['.scratch', 'outputs', '.hermes', '.claude', 'shots', '花瑶花开-MV', '花瑶花开-发布资料包']);
 // 前缀匹配的一次性批处理 / 临时产物目录（uking-batch-1788789545121、.tmp-audit 这类）。
 const SKIP_PATH_PREFIXES = ['uking-batch-', '.tmp-'];
 // 只排除**运行时产物**。未跟踪的临时文档归 .gitignore 管，不靠安全闸门闭眼放行。
