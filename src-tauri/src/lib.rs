@@ -3484,40 +3484,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 }))
             },
         ),
-        actions::write(
-            actions::DSH_PLUGIN_INSTALL,
-            "Install a plugin into DSH (DeepSeek Harness)",
-            "Run `dsh plugin --profile <profile> add <spec>` so the user gets a DSH plugin without opening a terminal. Only that one command is run; the spec comes from our curated list or from what the user pasted.",
-            180_000,
-            "required",
-            serde_json::json!({
-                "spec": { "type": "string", "description": "What to install, e.g. github:owner/repo or an npm package name." },
-                "profile": { "type": "string", "description": "DSH profile to install into. Defaults to web." }
-            }),
-            &["spec"],
-            &["message"],
-            |_, input, _| {
-                let spec = input["spec"].as_str().unwrap_or_default().trim().to_string();
-                if spec.is_empty() {
-                    return Err("invalid_input: spec 不能为空".into());
-                }
-                // 🔴 spec 直接进 argv，**不拼 shell** —— 它来自用户粘贴，走 shell 就得自己转义，
-                // 那正是历史上「cmd /C 吃引号 → skill 静默误执行」那个坑。
-                if spec.contains('\n') || spec.contains('\r') {
-                    return Err("invalid_input: spec 不能含换行".into());
-                }
-                let profile = input["profile"].as_str().filter(|p| !p.trim().is_empty()).unwrap_or("web").to_string();
-                let out = agent::claude::run_oneshot(
-                    "dsh",
-                    &["plugin".into(), "--profile".into(), profile, "add".into(), spec],
-                    None,
-                    170,
-                )?;
-                Ok(serde_json::json!({ "message": out.lines().rev().take(6).collect::<Vec<_>>().join("
-") }))
-            },
-            None,
-        ),
         // ─────────────── 长任务：边跑边报进度 ───────────────
         // 这几条是整个产品最危险的操作（真删除 / 覆盖用户数据 / 关别人的进程）。
         // 之前它们只有前端弹窗保护，核心里没有门禁 —— 现在补上。
@@ -5073,13 +5039,6 @@ async fn rtk_set_enabled(enabled: bool) -> Result<String, String> {
 async fn rtk_uninstall() -> Result<String, String> {
     let v = run_write_action(actions::RTK_UNINSTALL, serde_json::json!({})).await?;
     Ok(action_field(v, "message", serde_json::Value::Null).as_str().unwrap_or("").to_string())
-}
-
-/// 厨具工具箱：全部能力工具 + 已装状态（ffmpeg / Chrome / PowerShell 7 / Python …）。
-/// 薄壳，真身是影核动作 `runtime.toolbox.inspect`。
-#[tauri::command]
-async fn list_capability_tools() -> serde_json::Value {
-    action_field(run_action_blocking(actions::TOOLBOX_INSPECT).await, "items", serde_json::json!([]))
 }
 
 /// 一键装一个厨具（走 winget/brew，进度走事件 `uking:toolbox_progress`）。
@@ -9525,7 +9484,6 @@ pub fn run() {
             rtk_install,
             rtk_set_enabled,
             rtk_uninstall,
-            list_capability_tools,
             install_capability_tool,
             load_skill,
             load_free_registry,

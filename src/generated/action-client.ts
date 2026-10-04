@@ -55,8 +55,6 @@ export const ACTION = {
   RUNTIME_DRIVER_APPLY_EVERYWHERE: "runtime.driver.apply_everywhere",
   /** Read the active provider of Claude, Codex, ClawX and Hermes from their real config files. Reads only. */
   RUNTIME_DRIVER_INSPECT: "runtime.driver.inspect",
-  /** Run `dsh plugin --profile <profile> add <spec>` so the user gets a DSH plugin without opening a terminal. Only that one command is run; the spec comes from our curated list or from what the user pasted. */
-  RUNTIME_DSH_PLUGIN_INSTALL: "runtime.dsh.plugin_install",
   /** Install portable Node, Git (which brings bash.exe that Claude Code's Bash tool needs), PowerShell 7 and the CLI command guard under ~/.uking/runtime. No administrator rights needed. Best-effort: one failure does not stop the others, and every field honestly reports ok / skip / fail: <reason> — `skip` means the step does not exist on this platform, not that it succeeded. */
   RUNTIME_ENV_INSTALL_TOOLS: "runtime.env.install_tools",
   /** Delete a hired expert pack from ~/.uking/experts/. Built-in experts are compiled-in constants and cannot be dismissed; asking for one returns dismissed:false rather than an error. */
@@ -227,7 +225,6 @@ export type ActionInputMap = {
   "runtime.driver.apply": { api_key: string; expected_state_version?: string; model?: string; provider_id: string; targets: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi">; };
   "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush">; };
   "runtime.driver.inspect": Record<string, never>;
-  "runtime.dsh.plugin_install": { expected_state_version?: string; profile?: string; spec: string; };
   "runtime.env.install_tools": { expected_state_version?: string; };
   "runtime.expert.dismiss": { expected_state_version?: string; id: string; };
   "runtime.expert.inspect": Record<string, never>;
@@ -326,7 +323,6 @@ export type ActionOutputMap = {
   "runtime.driver.apply": Record<string, unknown>;
   "runtime.driver.apply_everywhere": Record<string, unknown>;
   "runtime.driver.inspect": Record<string, unknown>;
-  "runtime.dsh.plugin_install": Record<string, unknown>;
   "runtime.env.install_tools": Record<string, unknown>;
   "runtime.expert.dismiss": Record<string, unknown>;
   "runtime.expert.inspect": Record<string, unknown>;

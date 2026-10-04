@@ -15,7 +15,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
 import {
   BarChart3,
-  Blocks,
   BookOpen,
   Bot,
   IdCard,
@@ -2705,7 +2704,6 @@ export function Manager({
           {[
             { tab: "identity", icon: IdCard, label: t("让 AI 认识 U-King"), sub: t("往 CLAUDE.md 插一行指针 · 随时可撤") },
             { tab: "rtk", icon: Zap, label: t("Token 压缩机"), sub: t("AI 编程省 token · 不降智 · 开源 RTK") },
-            { tab: "dshplugins", icon: Blocks, label: t("DSH 插件"), sub: t("打开 DeepSeek Harness · 给它装插件") },
           ].map(({ tab, icon: Icon, label, sub }) => (
             <section
               key={tab}

@@ -116,31 +116,7 @@ export const sidebar: Record<string, string> = {
   "技术支持": "Support",
   "技术支持 · 报告问题 · 加微信找我们": "Support · Report an issue · Reach us on WeChat",
 
-  // DSH 插件页
-  "DSH 插件": "DSH plugins",
-  "打开 DeepSeek Harness · 给它装插件": "Open DeepSeek Harness · install plugins into it",
   "DeepSeek Harness": "DeepSeek Harness",
-  "DeepSeek 官方的 AI 工作台，我们已内置。默认接好虾盘云，打开就能用。":
-    "DeepSeek's own AI workbench, bundled with U-King. Xiapan Cloud is wired up by default — just open it.",
-  "打开 DSH": "Open DSH",
-  "先去装 DSH": "Install DSH first",
-  "插件": "Plugins",
-  "装进 DSH，不是装进 U-King": "installed into DSH, not into U-King",
-  "装到 DSH": "Install into DSH",
-  "先装 DSH，再装它的插件": "Install DSH first, then its plugins",
-  "装好了 —— 回 DSH 里就能用": "Installed — it's ready next time you open DSH",
-  "看源码": "View source",
-  "缓存前缀稳定": "Stable cache prefix",
-  "让 DSH Web 的请求前缀稳定下来，缓存命中率更高 —— 直接省 token。装机时默认就装了这个。":
-    "Keeps DSH Web's request prefix stable so caching hits more often — straight token savings. Installed by default during setup.",
-  "持续对话终端": "Persistent chat terminal",
-  "在终端里连续对话不掉上下文，另带缓存统计。":
-    "Keeps context across turns in the terminal, plus cache statistics.",
-
-  "去社区清单挑插件": "Browse the community plugin list",
-  "社区维护的 DSH 插件清单（8.6k star，每日自动抓取 + 人工核实）。挑好之后，复制它的仓库地址回来装。":
-    "A community-maintained list of DSH plugins (8.6k stars, auto-crawled daily and hand-checked). Pick one, then paste its repo address back here to install.",
-  "U-King 装机时自带的两个：": "The two U-King installs by default:",
 
   "U-CLI 终端": "U-CLI terminal",
 };

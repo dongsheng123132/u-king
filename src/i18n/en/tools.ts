@@ -76,54 +76,13 @@ export const tools: Record<string, string> = {
   "处理中…": "Working…",
   "命令速查（拷到终端即可验证）": "Command cheatsheet (paste into a terminal to verify)",
 
-  // ── Toolbox.tsx ────────────────────────────────────────────────
-  "读取工具箱失败：": "Failed to load the toolbox: ",
-  "准备安装 {name}…": "Preparing to install {name}…",
-  "「{name}」需要的厨具都装好了 ✓": "All tools needed for “{name}” are already installed ✓",
-  "装齐「{bundle}」：{name}…": "Setting up “{bundle}”: {name}…",
+  // ── 厨具工具箱页已删（2026-10-04），下面几条仍被别处引用 ──
   "厨具工具箱": "Toolbox",
-  "给本机 AI 备齐「能力工具」—— 让它能剪视频、控浏览器、做 PPT、跑脚本":
-    "Equip your local AI with capability tools — so it can edit video, control the browser, make PPTs and run scripts",
-  "已装 {installed}/{total}": "{installed}/{total} installed",
   "刷新": "Refresh",
-  "AI 时代很多活不用你自己开软件 —— ": "In the AI era, many tasks don't need you to open software yourself — ",
-  "让 AI 去做": "let AI do it",
-  "。但 AI 这个「厨师」得有「厨具」：剪视频要 ":
-    ". But the AI “chef” needs “kitchen tools”: editing video needs ",
-  "、控网页要 ": ", controlling web pages needs ",
-  "、做 PPT 要 ": ", making PPTs needs ",
-  "。按用途一键装好，装完直接对 AI 说「帮我把这几段视频拼成一条」「做个 PPT」即可。":
-    ". Install them by use case in one click, then just tell the AI “stitch these clips into one” or “make a PPT”.",
-  "按用途装齐一组厨具（选一个，高亮该装的）：":
-    "Set up a group of tools by use case (pick one; the ones to install are highlighted):",
-  "做漫剧 / 短视频": "Comics / short videos",
-  "视频剪辑 / 成片": "Video editing / rendering",
-  "做 PPT / 教案": "Make PPTs / lesson plans",
-  "网页自动化": "Web automation",
-  "终端 / 开发": "Terminal / development",
-  "作图/视频/配音已在 AIGC 技能包，再补拼接 + 浏览器找素材":
-    "Image/video/voiceover are already in the AIGC skill pack; add stitching + a browser to find materials",
-  "拼接、转码、加音轨": "Stitch, transcode, add audio tracks",
-  "AI 生成/转换 PPT、Word、PDF": "AI generates/converts PPT, Word, PDF",
-  "让 AI 控浏览器抓取/截图/填表": "Let AI control the browser to scrape/screenshot/fill forms",
-  "更强终端 + 版本控制": "A stronger terminal + version control",
-  "—— 还差：": " — still missing: ",
-  "—— 都装好了 ✓": " — all installed ✓",
-  "一键装齐缺的": "Install the missing ones",
-  "正在读取工具箱…": "Loading the toolbox…",
-  "视频音频": "Video & Audio",
-  "网页浏览": "Web Browsing",
   "终端环境": "Terminal Environment",
-  "文档办公": "Documents & Office",
-  "开发工具": "Dev Tools",
   "已装": "Installed",
-  "手动：": "Manual: ",
-  "一键安装 {name}": "One-click install {name}",
-  "本平台需手动安装（见左侧命令）": "Manual install required on this platform (see the command on the left)",
   "装中": "Installing",
   "一键装": "Install",
-  "安装走系统包管理器（Windows=winget · macOS=brew）。部分工具（如 Chrome/LibreOffice）安装时可能弹一次 UAC 授权，点「是」即可。装不上的用卡片里的手动命令，或到官网下载。":
-    "Installs go through the system package manager (Windows=winget · macOS=brew). Some tools (e.g. Chrome/LibreOffice) may prompt once for UAC — click “Yes”. If something won't install, use the manual command on its card or download from the official site.",
 
   // ── LocalLLM.tsx ───────────────────────────────────────────────
   "准备下载 Ollama 引擎…": "Preparing to download the Ollama engine…",

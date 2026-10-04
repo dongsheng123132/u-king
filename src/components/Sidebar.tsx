@@ -6,7 +6,7 @@
 import { useState } from "react";
 // 注：Clapperboard 曾是 T-King 影爆的图标，该项 0.9.85 从导航摘掉（见 LAB 注释），
 // 图标随之从 import 里去掉（noUnusedLocals 会拦）。放回来时记得连它一起加回来。
-// 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱）/ SquareTerminal（终端工作台）/
+// 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱，页面 2026-10-04 已删）/ SquareTerminal（终端工作台）/
 // Sparkles（装机 · 体检）/ Wallet（虾盘云 · 充值）/ Gauge（Token 水电表）随入口撤下一并去掉，
 // 恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
 import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
@@ -21,7 +21,6 @@ import type { TuiAppId } from "../opencodex/apps";
 export type TabId =
   | TuiAppId
   | "toolhub"
-  | "dshplugins"
   | "terminal"
   | "setup"
   | "chat"
@@ -37,7 +36,6 @@ export type TabId =
   | "qrmerge"
   | "video"
   | "skillpack"
-  | "toolbox"
   | "advanced"
   | "feedback"
   | "guide"
@@ -264,15 +262,11 @@ const LAB: NavItem[] = [
   // 毕业标准：执行类能力真正开放、且在真机跑过一整晚。
   { id: "nightshift", label: "夜班助手", sub: "AI 值班 · 行为记录 · 可追溯", icon: Moon },
   // 「AI 专家」已毕业到「更多」（0.9.83，见上）—— 别再在这里留第二份入口。
-  // 🔴 2026-10-03 收敛方案 §5 第 1 步：「厨具工具箱」**冻**（撤入口，保页面）。
-  // 理由（§3.1）：与「装好 AI」主线无关，属方案第 2 问答不上来；产品负责人同日补充：
-  // 「好像也没什么用，AI 自己会安装」。「我的 AI」右上那条「日常软件与环境 →」链接（名不副实，
-  // 指向的其实就是本页）一并撤掉，所以本页现在**没有任何界面入口**——等于冻结，
-  // `tab === "toolbox"` 渲染分支与 toolbox.rs 原样保留，留待第 4 步按证据删除。
-  // 恢复：解除下面这行注释，并把 `Wrench` 加回顶部 lucide import。
-  // { id: "toolbox", label: "厨具工具箱", sub: "给 AI 装 ffmpeg/Chrome 等能力工具", icon: Wrench },
+  // 🔴 2026-10-03 收敛方案 §5 第 1 步冻结、2026-10-04 第 4 步删除：「厨具工具箱」页面
+  // （Toolbox.tsx 与 `tab === "toolbox"` 渲染分支）已删，后端 toolbox.rs 保留——
+  // installer 用它的 `python_exe`，装机向导用 `install_capability_tool` 装环境地基。
   // 🔴 2026-08-22 摘掉四条（F1，docs/需求榜.md 当日批次）：rtk「Token 压缩机」·
-  // codex「Codex 桌面版工作站」· dshplugins「DSH 插件」· localllm「本地大模型」。
+  // codex「Codex 桌面版工作站」· dshplugins「DSH 插件」（页面 2026-10-04 已删）· localllm「本地大模型」。
   // **页面/路由/动作全部原样**，入口收进「AI 设置 → 高级」的配置页卡片
   // （Manager 的 onGoPage 那组；Codex 专区在那儿本来就有自己的入口卡）。
   // 理由：它们全是「配一次就不再进」的配置页，却各占一格侧栏 —— 对照智序 AI 的结论是

@@ -453,14 +453,6 @@ pub const EXPERT_DISMISS: &str = "runtime.expert.dismiss";
 /// 装机失败占全部 bug 的 49%，其中一大半是「装完了但用不了」而不是「装的时候报错」——
 /// 后者客户会截图给我们，前者他只会觉得这软件不行。
 pub const READINESS_INSPECT: &str = "runtime.readiness.inspect";
-/// 给 DSH 装一个插件（`dsh plugin --profile <p> add <spec>`）。
-///
-/// 🔴 **这是「插件生态」的正确投法**（2026-08-18 定）：我们内置了 DSH，而 DSH 那边
-/// **已经有供给侧**；自己开一个没人上架的市场是空货架。装机清单里本来就在用这条命令
-/// 给 DSH 装我们自己的两个插件（缓存前缀 / 持续对话终端），这里只是把同一条路露给用户。
-///
-/// 只跑 `dsh plugin add`，不碰别的 —— spec 由用户从我们筛过的清单里点，或自己粘。
-pub const DSH_PLUGIN_INSTALL: &str = "runtime.dsh.plugin_install";
 pub const UU_REMOTE_INSTALL: &str = "runtime.uu_remote.install";
 /// 遍历 `tools::TOOL_SPECS`，对每个工具跑一遍 `tools::plan()` 判定核心，只读、不启动任何东西。
 ///

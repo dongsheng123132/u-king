@@ -4547,58 +4547,6 @@
     {
       "bindings": [
         {
-          "surface": "cli",
-          "target": "cli:action run runtime.dsh.plugin_install --json --no-input"
-        }
-      ],
-      "description": "Run `dsh plugin --profile <profile> add <spec>` so the user gets a DSH plugin without opening a terminal. Only that one command is run; the spec comes from our curated list or from what the user pasted.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 180000
-      },
-      "id": "runtime.dsh.plugin_install",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "profile": {
-            "description": "DSH profile to install into. Defaults to web.",
-            "type": "string"
-          },
-          "spec": {
-            "description": "What to install, e.g. github:owner/repo or an npm package name.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "spec"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "message"
-        ],
-        "type": "object"
-      },
-      "title": "Install a plugin into DSH (DeepSeek Harness)"
-    },
-    {
-      "bindings": [
-        {
           "surface": "desktop",
           "target": "tauri:command/action_run"
         },

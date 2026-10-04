@@ -72,7 +72,6 @@ const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const Identity = lazy(() => import("./Identity").then((m) => ({ default: m.Identity })));
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
-const Toolbox = lazy(() => import("./Toolbox").then((m) => ({ default: m.Toolbox })));
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
 const TokenSqueezer = lazy(() => import("./TokenSqueezer").then((m) => ({ default: m.TokenSqueezer })));
 const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
@@ -83,7 +82,6 @@ const DemoUninstaller = lazy(() => import("./DemoUninstaller").then((m) => ({ de
 const Feedback = lazy(() => import("./Feedback").then((m) => ({ default: m.Feedback })));
 const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
-const DshPlugins = lazy(() => import("./DshPlugins").then((m) => ({ default: m.DshPlugins })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
 const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
 const ToolHub = lazy(() => import("./toolhub/ToolHub").then((m) => ({ default: m.ToolHub })));
@@ -1251,7 +1249,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
+                tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1283,7 +1281,7 @@ export function App() {
               aigcNudge={
                 setupState?.next_step === "done" &&
                 !aigcDismissed &&
-                !["skillpack", "create", "draw", "qrmerge", "video", "toolbox", "rtk", "advanced"].includes(tab)
+                !["skillpack", "create", "draw", "qrmerge", "video", "rtk", "advanced"].includes(tab)
               }
               onGoAigc={() => {
                 localStorage.setItem("uking.aigcNudgeDone", "1");
@@ -1359,20 +1357,6 @@ export function App() {
                 <div className="border-t border-white/[0.06]" />
                 <Tutorial onGoMyAI={() => setTab("toolhub")} />
               </div>
-            ) : tab === "dshplugins" ? (
-              <DshPlugins
-                onToast={flash}
-                onGoInstall={() => setTab("setup")}
-                // 「打开 DSH」跟「我的 AI」点 DSH 卡片走同一条路（launchTool 里 t.id === "dsh"
-                // 那支）。插件页不许自己起 `dsh web` —— 见 DshPlugins.tsx::openWeb 的注释。
-                onGoDsh={() => setTab("dsh")}
-                onGoChat={(prompt) => {
-                  setPendingChatPrompt({ prompt, engine: "claude" });
-                  setTab("chat");
-                }}
-              />
-            ) : tab === "toolbox" ? (
-              <Toolbox onToast={flash} />
             ) : tab === "airuntime" ? (
               <AiRuntime onToast={flash} onGoSetup={() => setTab("setup")} onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "airuntime-doctor" }); setTab("chat"); }} />
             ) : tab === "rtk" ? (
