@@ -69,8 +69,6 @@ const Create = lazy(() => import("./Create").then((m) => ({ default: m.Create })
 const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
 const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
 const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
-const Reel = lazy(() => import("./Reel").then((m) => ({ default: m.Reel })));
-const MediaTasks = lazy(() => import("./Reel").then((m) => ({ default: m.MediaTasks })));
 const Identity = lazy(() => import("./Identity").then((m) => ({ default: m.Identity })));
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const Geo = lazy(() => import("./Geo").then((m) => ({ default: m.Geo })));
@@ -210,7 +208,7 @@ export function App() {
    * 解法不是去调那个 7rem 魔法数（调了也只在这一种窗口尺寸下对），而是把高度链接通：
    * 这些页所在的 main 不滚、不留 py-6，页面本体改 `h-full` 从父级拿确定高度。
    */
-  const selfHeightTab = tab === "create" || tab === "draw" || tab === "video" || tab === "reel" || tab === "qrmerge";
+  const selfHeightTab = tab === "create" || tab === "draw" || tab === "video" || tab === "qrmerge";
   // 小程序浮层：首页图标条和小程序页都往这里塞，容器只有一个
   // 「召唤」handoff：AI 专家页点召唤 → 存这里 + 切到 U-Workspace(chat) → UWorkspace 消费后清空
   const [pendingExpert, setPendingExpert] = useState<Expert | null>(null);
@@ -1287,7 +1285,7 @@ export function App() {
               aigcNudge={
                 setupState?.next_step === "done" &&
                 !aigcDismissed &&
-                !["skillpack", "create", "draw", "qrmerge", "video", "reel", "tasks", "geo", "toolbox", "rtk", "backup", "advanced"].includes(tab)
+                !["skillpack", "create", "draw", "qrmerge", "video", "geo", "toolbox", "rtk", "backup", "advanced"].includes(tab)
               }
               onGoAigc={() => {
                 localStorage.setItem("uking.aigcNudgeDone", "1");
@@ -1349,10 +1347,6 @@ export function App() {
               <QrMerge deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
             ) : tab === "video" ? (
               <Video deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
-            ) : tab === "reel" ? (
-              <Reel deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
-            ) : tab === "tasks" ? (
-              <MediaTasks onGo={(next) => setTab(next)} />
             ) : tab === "geo" ? (
               <Geo onToast={flash} />
             ) : tab === "skillpack" ? (

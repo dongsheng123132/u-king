@@ -24,7 +24,6 @@ import { identity } from "./en/identity";
 import { localllm } from "./en/localllm";
 import { deviceWallet } from "./en/device-wallet";
 import { englishUi } from "./en/english-ui";
-import { reel } from "./en/reel";
 import { toolhub } from "./en/toolhub";
 
 export const EN: Record<string, string> = {
@@ -48,7 +47,6 @@ export const EN: Record<string, string> = {
   ...feedback,
   ...identity,
   ...deviceWallet,
-  ...reel,
   ...toolhub,
 
   // Dynamic data-table strings and compact English copy intentionally win last.

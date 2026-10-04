@@ -43,14 +43,6 @@ export const ACTION = {
   RUNTIME_CONTEXT_MENU_SET: "runtime.context_menu.set",
   /** Read U-King's local crash log, panic and UI-crash records, and whether previous runs exited cleanly. Reads only; does not depend on Windows Event Log. */
   RUNTIME_CRASH_INSPECT: "runtime.crash.inspect",
-  /** List the built-in schema-v1 visual-style presets for one-click reels. Reads only; selecting a preset never enables BGM or changes a user's supplied audio settings. */
-  RUNTIME_CREATOR_REEL_PRESETS_INSPECT: "runtime.creator.reel_presets.inspect",
-  /** List reel job history (status, two-phase progress, whether the mp4 exists) or a single job by id. This is the only way to see the terminal 'pending-verify' state (submission outcome unknown after an unclean shutdown); it never re-submits anything. */
-  RUNTIME_CREATOR_REEL_INSPECT: "runtime.creator.reel.inspect",
-  /** Copy a finished reel's mp4 into a project asset folder that history pruning never touches, and mark it kept. Only jobs that already have a video can be kept. */
-  RUNTIME_CREATOR_REEL_KEEP: "runtime.creator.reel.keep",
-  /** Submit a multi-shot reel job and return immediately with its local record id and status; it never blocks until the reel finishes (a reel can have up to 40 shots and take a long time). Poll runtime.creator.reel.inspect for progress and the final file. Pass resume_id to restart an existing failed/running job with its original parameters instead of creating a new one. The ActionParity execution_id is used as a local idempotency key so retrying the same request never starts a second paid generation. */
-  RUNTIME_CREATOR_REEL_SUBMIT: "runtime.creator.reel.submit",
   /** Submit a text-to-video or image-to-video job, poll the original task until it finishes, and download its MP4 into U-King history. The ActionParity execution_id is used as the upstream idempotency key, so retrying the same request never creates a second paid task. */
   RUNTIME_CREATOR_VIDEO_SUBMIT: "runtime.creator.video.submit",
   /** Create a desktop shortcut pointing at the currently running executable. */
@@ -249,10 +241,6 @@ export type ActionInputMap = {
   "runtime.command_guard.inspect": Record<string, never>;
   "runtime.context_menu.set": { enabled: boolean; expected_state_version?: string; };
   "runtime.crash.inspect": Record<string, never>;
-  "runtime.creator.reel_presets.inspect": Record<string, never>;
-  "runtime.creator.reel.inspect": { id?: number; };
-  "runtime.creator.reel.keep": { expected_state_version?: string; id: number; };
-  "runtime.creator.reel.submit": { bgm_prompt?: string; expected_state_version?: string; narration?: string; preset_id?: string; prompt?: string; resolution?: string; resume_id?: number; shots?: Array<string>; storyboard?: string; voice?: string; };
   "runtime.creator.video.submit": { expected_state_version?: string; image?: string; model?: string; prompt: string; };
   "runtime.desktop.pin": { expected_state_version?: string; };
   "runtime.device.key_adopt": { expected_state_version?: string; key: string; };
@@ -362,10 +350,6 @@ export type ActionOutputMap = {
   "runtime.command_guard.inspect": Record<string, unknown>;
   "runtime.context_menu.set": Record<string, unknown>;
   "runtime.crash.inspect": Record<string, unknown>;
-  "runtime.creator.reel_presets.inspect": Record<string, unknown>;
-  "runtime.creator.reel.inspect": Record<string, unknown>;
-  "runtime.creator.reel.keep": Record<string, unknown>;
-  "runtime.creator.reel.submit": Record<string, unknown>;
   "runtime.creator.video.submit": Record<string, unknown>;
   "runtime.desktop.pin": Record<string, unknown>;
   "runtime.device.key_adopt": Record<string, unknown>;

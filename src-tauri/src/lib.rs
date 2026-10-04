@@ -39,7 +39,6 @@ mod model_catalog;
 mod model_route;
 mod video;
 mod vision;
-mod reel;
 mod fs;
 mod geo;
 mod guard;
@@ -1860,17 +1859,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 Ok(serde_json::json!({ "tools": action_json(items)? }))
             },
         ),
-        actions::readonly(
-            actions::CREATOR_REEL_PRESETS_INSPECT,
-            "Inspect one-click reel presets",
-            "List the built-in schema-v1 visual-style presets for one-click reels. Reads only; selecting a preset never enables BGM or changes a user's supplied audio settings.",
-            5_000,
-            &["schema_version", "count", "presets"],
-            |_, _, _| {
-                let presets = reel::list_presets();
-                Ok(serde_json::json!({ "schema_version": 1, "count": presets.len(), "presets": action_json(presets)? }))
-            },
-        ),
         // 按次收费的出片只有这一条提交入口。`action_parity_call` 会把其 execution_id
         // 送进 run_video_generation，落为服务端 idempotency_key；重试不会重复扣费。
         actions::with_progress(actions::write(
@@ -1902,94 +1890,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         )),
-        // 完整短片：**两段式**。这里只落一条本地记录 + 写前日志，真正的 gen-reel.mjs
-        // 跑在后台线程；handler 几乎立刻返回，绝不等 40 镜生成完成。进度/终态改由
-        // `CREATOR_REEL_INSPECT` 轮询——同步 return 之后线程池里的 `ProgressSink` 已经用不上了，
-        // 长期进度只能落盘由 inspect 读，不能像 video.submit 那样内联 emit。
-        // `resume_id` 可选：带上它就是"按原参数重新生成一条已有记录"（对应旧 GUI 的 resume_reel），
-        // 不带就是"提交一条新的"（对应旧 GUI 的 submit_reel）——两者共用同一个 Action，
-        // 不为「重投」另开一条 id（宪法第 14 条：业务动作只实现一次）。
-        actions::with_progress(actions::write(
-            actions::CREATOR_REEL_SUBMIT,
-            "Submit a one-click reel job",
-            "Submit a multi-shot reel job and return immediately with its local record id and status; it never blocks until the reel finishes (a reel can have up to 40 shots and take a long time). Poll runtime.creator.reel.inspect for progress and the final file. Pass resume_id to restart an existing failed/running job with its original parameters instead of creating a new one. The ActionParity execution_id is used as a local idempotency key so retrying the same request never starts a second paid generation.",
-            30_000,
-            "required",
-            serde_json::json!({
-                "prompt": { "type": "string", "description": "The reel's topic/prompt. Required unless storyboard or shots is given." },
-                "storyboard": { "type": "string", "description": "Optional free-form storyboard script." },
-                "shots": { "type": "array", "items": { "type": "string" }, "description": "Optional per-shot list, up to 8 items, each 'scene::camera move'." },
-                "narration": { "type": "string", "description": "Optional narration script." },
-                "voice": { "type": "string", "description": "Optional voice id for narration." },
-                "bgm_prompt": { "type": "string", "description": "Optional BGM description. BGM is a separately billed channel and is only added when this is explicitly set." },
-                "resolution": { "type": "string", "description": "480p or 720p." },
-                "preset_id": { "type": "string", "description": "Optional built-in visual style preset id from runtime.creator.reel_presets.inspect." },
-                "resume_id": { "type": "integer", "description": "Optional. Restart an existing failed/running reel by its local record id (returned by a previous submit) instead of creating a new one." }
-            }),
-            &[],
-            &["id", "status"],
-            |_, input, _progress| {
-                let execution_id = actions::current_execution_id();
-                let resume_id = input.get("resume_id").and_then(|v| v.as_i64());
-                // 设备鉴权在组合根同步取一次再传给 reel.rs：reel 模块本身不认识 device 模块
-                // （宪法第 13 条「模块独立可插拔」；`check-module-coupling.mjs` 会拦住反过来的写法）。
-                let key = device::device_key_offline()?;
-                let id = if let Some(rid) = resume_id {
-                    reel::resume_start(rid, execution_id.as_deref(), key)?
-                } else {
-                    let params: reel::ReelParams = serde_json::from_value(input.clone())
-                        .map_err(|e| format!("invalid_input: {e}"))?;
-                    reel::submit_start(params, execution_id.as_deref(), key)?
-                };
-                let item = reel::list_history()
-                    .into_iter()
-                    .find(|item| item.id == id)
-                    .ok_or_else(|| "reel job created without a history record".to_string())?;
-                action_json(item)
-            },
-            None,
-        )),
-        actions::readonly_opt(
-            actions::CREATOR_REEL_INSPECT,
-            "Inspect one-click reel jobs",
-            "List reel job history (status, two-phase progress, whether the mp4 exists) or a single job by id. This is the only way to see the terminal 'pending-verify' state (submission outcome unknown after an unclean shutdown); it never re-submits anything.",
-            10_000,
-            serde_json::json!({ "id": { "type": "integer", "description": "Optional. Look up a single reel job by its local record id; omit to list all history." } }),
-            &["items", "count"],
-            |_, input, _| {
-                let items = reel::list_history();
-                match input.get("id").and_then(|v| v.as_i64()) {
-                    Some(target) => {
-                        let item = items
-                            .into_iter()
-                            .find(|it| it.id == target)
-                            .ok_or_else(|| "找不到该成片任务".to_string())?;
-                        Ok(serde_json::json!({ "items": [action_json(item)?], "count": 1 }))
-                    }
-                    None => Ok(serde_json::json!({ "count": items.len(), "items": action_json(items)? })),
-                }
-            },
-        ),
-        actions::write(
-            actions::CREATOR_REEL_KEEP,
-            "Keep a reel as a project asset",
-            "Copy a finished reel's mp4 into a project asset folder that history pruning never touches, and mark it kept. Only jobs that already have a video can be kept.",
-            30_000,
-            "required",
-            serde_json::json!({ "id": { "type": "integer", "description": "The reel job's local record id." } }),
-            &["id"],
-            &["id", "kept", "project_id"],
-            |_, input, _| {
-                let id = input.get("id").and_then(|v| v.as_i64()).ok_or("invalid_input: missing id")?;
-                reel::keep_record(id)?;
-                let item = reel::list_history()
-                    .into_iter()
-                    .find(|it| it.id == id)
-                    .ok_or_else(|| "找不到该成片任务".to_string())?;
-                Ok(serde_json::json!({ "id": item.id, "kept": item.kept, "project_id": item.project_id }))
-            },
-            None,
-        ),
         actions::readonly(
             actions::RTK_INSPECT,
             "Inspect the token squeezer (RTK)",
@@ -6134,36 +6034,6 @@ async fn resume_video(app: AppHandle, id: i64) -> Result<i64, String> {
 }
 
 #[tauri::command]
-fn list_reel_history() -> Vec<reel::ReelItemOut> { reel::list_history() }
-
-/// 和 read_video 同样只回绝对路径；前端 convertFileSrc 走已存在的 video asset scope 流播大文件。
-#[tauri::command]
-fn read_reel_file(id: i64) -> Result<String, String> {
-    reel::file_path(id).map(|p| p.display().to_string()).ok_or_else(|| "找不到该成片（可能未生成完成或已删除）".into())
-}
-
-#[tauri::command]
-fn delete_reel(id: i64) -> Result<(), String> { reel::delete_record(id) }
-
-/// "查一次"：客户主动核实 pending-verify 任务的本地运行状态，绝不发起任何提交/重投。
-#[tauri::command]
-fn reel_recheck_pending(id: i64) -> Result<String, String> {
-    reel::recheck_pending(id)
-}
-
-/// "确认没扣费后重投"：唯一能让 pending-verify 任务重新进入生成流程的入口，
-/// 必须由客户显式点击触发，绝不能在启动/轮询路径上自动调用。
-#[tauri::command]
-async fn reel_confirm_resubmit(id: i64) -> Result<i64, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let key = device::device_key_offline()?;
-        reel::confirm_no_charge_and_resubmit(id, key)
-    })
-    .await
-    .map_err(|e| format!("确认重投异常: {e}"))?
-}
-
-#[tauri::command]
 fn list_video_history() -> Vec<video::VideoItemOut> {
     video::list_history()
 }
@@ -9852,10 +9722,6 @@ pub fn run() {
             // 视频按次扣费，不能把恢复责任绑在“客户有没有点进视频页”上。启动即接管所有
             // running/ready 任务：继续轮询原 task_id，出片后落本机；全过程不再 POST、不再扣费。
             resume_pending_videos(app.handle().clone());
-            // 成片同理，但恢复语义不同：video 是继续轮询原任务，reel 是「进程死在
-            // 已发起、不知道有没有接单的缝里」——只标记 pending-verify，绝不自动重投
-            // （见 reel::recover_dangling_pending 文档）。
-            reel::recover_dangling_pending();
             } // ← `if !is_sidecar` 第一段到此为止
             // 跑完通知人。**这是「你不用盯着」真正成立的前提**：在此之前，任务跑完只写
             // `~/.uking/automation/*.md` 和列表里的 last_message，客户不打开工作台那个
@@ -10113,11 +9979,6 @@ pub fn run() {
             instance_role,
             read_video,
             clear_video_history,
-            list_reel_history,
-            read_reel_file,
-            delete_reel,
-            reel_recheck_pending,
-            reel_confirm_resubmit,
             report_bug,
             test_provider,
             list_remote_models,

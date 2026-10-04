@@ -64,7 +64,7 @@ export function Create({
     // 高度链的一环（测试报告 #005）：外层 main 已改成不滚的 flex 容器，
     // 这里必须把高度往下传，否则子页的 h-full 拿不到确定高度。
     <div className="flex flex-col flex-1 min-h-0 gap-4">
-      {/* 创作功能栏只在这个唯一的创作入口出现；不在全局侧栏再放第二组 Reel/任务入口。 */}
+      {/* 创作功能栏只在这个唯一的创作入口出现；不在全局侧栏再放第二组入口。 */}
       <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
       <nav aria-label={t("AI 创作")} className="flex shrink-0 gap-1.5 overflow-x-auto md:w-36 md:flex-col md:overflow-visible">
         {SUBS.map((s) => {

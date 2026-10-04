@@ -119,7 +119,7 @@ flowchart TB
 | 文字对话 | `UWorkspace.tsx` → `Chat.tsx` / `ChatPanel.tsx` | `agent/chat.rs`、`agent/claude.rs`、`agent/codex.rs` |
 | 应用内终端 | `ToolAppView.tsx`、`useTermGroup.ts` | `term.rs` |
 | 制作 U 盘 AI 精灵 | `UsbToolDisk.tsx` | `actions.rs` → `usb_genie.rs` |
-| 本地/云端内容生成 | `Create.tsx`、`Draw.tsx`、`Video.tsx` 等 | `image.rs`、`video.rs`、`reel.rs`、`artifacts.rs` |
+| 本地/云端内容生成 | `Create.tsx`、`Draw.tsx`、`Video.tsx` 等 | `image.rs`、`video.rs`、`artifacts.rs` |
 | 本地模型 | `LocalLLM.tsx` | `localllm.rs` |
 | 自动任务和活动记录 | `AutomationPanel.tsx`、`NightShift.tsx` | `automation.rs`、`journal.rs`、`metrics.rs` |
 
@@ -257,7 +257,7 @@ launch 和凭据移除。它只管理 `U-King/AI-Genie` 范围，不应扫描或
 | 工作台 | `UWorkspace.tsx`、`Chat.tsx`、`ChatPanel.tsx`、`store.tsx`、`tasks.rs`、`chatstore.rs` | 任务、会话、对话、历史和工作目录 |
 | 终端与代理 | `term.rs`、`agent/*` | PTY、CLI 子进程、流式事件、超时/中断和权限询问 |
 | 便携运行时 | `usb_genie.rs`、`openclaw2.rs`、`clawx.rs` | U 盘及便携 AI 的生命周期与状态边界 |
-| 内容能力 | `video.rs`、`reel.rs`、`vision.rs`、`draw.rs`、`officedoc.rs` | 图片、视频、视觉和办公产物 |
+| 内容能力 | `video.rs`、`vision.rs`、`draw.rs`、`officedoc.rs` | 图片、视频、视觉和办公产物 |
 | 本地数据 | `usage_local.rs`、`metrics.rs`、`journal.rs`、`artifacts.rs`、`backup.rs` | 本地用量、行为记录、产物索引和备份 |
 
 ## 数据存储

@@ -406,21 +406,9 @@ pub const LOCALLLM_INSPECT: &str = "runtime.localllm.inspect";
 /// 货架线上热下发（改货架不发 exe），**但量化清单和体积一律现问模型站** ——
 /// 写死在我们这儿的体积隔天就是错的，而错的方向是客户的盘被下爆。
 pub const LOCALLLM_CATALOG: &str = "runtime.localllm.catalog";
-/// 一键成片可选的受控风格目录。只读；提交时后端仍会白名单校验 id，目录不是授权依据。
-pub const CREATOR_REEL_PRESETS_INSPECT: &str = "runtime.creator.reel_presets.inspect";
 /// 单段视频生成的唯一提交入口。ActionParity execution id 会落为上游扣费幂等键；
 /// GUI、CLI、MCP 与 AI 工具重放同一请求时必须取回原任务，而不是再次收费。
 pub const CREATOR_VIDEO_SUBMIT: &str = "runtime.creator.video.submit";
-/// 完整短片（一键成片）的唯一提交入口。**两段式**：立即返回本地记录 id 与初始状态，
-/// 绝不阻塞到生成完成——成片最多 40 镜、耗时可能远超普通请求超时，阻塞式提交会让
-/// 外部 AI 工具误判超时重投，重复烧钱。进度与终态改由 `CREATOR_REEL_INSPECT` 轮询。
-/// ActionParity execution id 落为本地写前日志的幂等键，同一请求重放不会起第二个付费子进程。
-pub const CREATOR_REEL_SUBMIT: &str = "runtime.creator.reel.submit";
-/// 查一条/全部成片的状态、两段式进度与产物路径；也是 `pending-verify`（提交结果未知，
-/// 待人工核实是否已扣费）唯一的可见入口。只读，绝不触发重投。
-pub const CREATOR_REEL_INSPECT: &str = "runtime.creator.reel.inspect";
-/// 把一条已完成的成片转成不受历史裁剪影响的项目资产（拷进 `~/.uking/projects/<id>/exports/`）。
-pub const CREATOR_REEL_KEEP: &str = "runtime.creator.reel.keep";
 
 /// `manifest().state.queries` 用：全部只读查询动作。加动作时别忘了这里 ——
 /// 影核清单里少一个，远端影子就看不见它。
@@ -433,7 +421,7 @@ pub const READ_ACTIONS: &[&str] = &[
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, AI_TASKS_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT, ORG_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
-    LOCALLLM_CATALOG, CREATOR_REEL_PRESETS_INSPECT, CREATOR_REEL_INSPECT,
+    LOCALLLM_CATALOG,
 ];
 
 // —— 写动作（会改这台机器）——
