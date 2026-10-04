@@ -109,7 +109,7 @@ mod tests {
     use crate::testsandbox::with_sandbox;
 
     const NEW: &str = r#""C:/x/U-King.exe" rtk-hook"#;
-    const OLD: &str = r#""C:/Users/a b/.uking/tools/rtk/rtk.exe" hook claude"#;
+    const OLD: &str = r#""D:/demo home/.uking/tools/rtk/rtk.exe" hook claude"#;
     /// 目录名含 rtk-hook 但不是独立参数（第一版判据被它骗过）：不许误删。
     const TRAP: &str = r#""C:/uking-test-rtk-hook-heal/x.exe" run"#;
     /// 客户自己装的 rtk（不在 `.uking/tools/rtk/` 下）：跟 U-King 无关，不许摘。
