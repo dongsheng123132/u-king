@@ -550,8 +550,6 @@ pub const ORG_DISENROLL: &str = "runtime.org.disenroll";
 pub const OPTIMIZER_APPLY: &str = "runtime.optimizer.apply";
 // 带进度的长任务（波次 3）
 pub const FOOTPRINT_REMOVE: &str = "runtime.footprint.remove";
-pub const BACKUP_CREATE: &str = "runtime.backup.create";
-pub const BACKUP_RESTORE: &str = "runtime.backup.restore";
 pub const CLAWX_APPLY_MANAGED: &str = "runtime.clawx.apply_managed";
 pub const AITOOL_UNINSTALL: &str = "runtime.aitool.uninstall";
 /// 装一个 AI 工具（首页装机卡片背后那条流水线）。跟 `AITOOL_UNINSTALL` 对称：

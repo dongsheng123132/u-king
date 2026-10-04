@@ -78,7 +78,6 @@ const TokenSqueezer = lazy(() => import("./TokenSqueezer").then((m) => ({ defaul
 const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
 const NightShift = lazy(() => import("./NightShift").then((m) => ({ default: m.NightShift })));
 const LocalLLM = lazy(() => import("./LocalLLM").then((m) => ({ default: m.LocalLLM })));
-const Backup = lazy(() => import("./Backup").then((m) => ({ default: m.Backup })));
 const Advanced = lazy(() => import("./Advanced").then((m) => ({ default: m.Advanced })));
 const DemoUninstaller = lazy(() => import("./DemoUninstaller").then((m) => ({ default: m.DemoUninstaller })));
 const Feedback = lazy(() => import("./Feedback").then((m) => ({ default: m.Feedback })));
@@ -1252,7 +1251,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "backup" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
+                tab === "dshplugins" || tab === "toolbox" || tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create" || tab === "nightshift"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1284,7 +1283,7 @@ export function App() {
               aigcNudge={
                 setupState?.next_step === "done" &&
                 !aigcDismissed &&
-                !["skillpack", "create", "draw", "qrmerge", "video", "toolbox", "rtk", "backup", "advanced"].includes(tab)
+                !["skillpack", "create", "draw", "qrmerge", "video", "toolbox", "rtk", "advanced"].includes(tab)
               }
               onGoAigc={() => {
                 localStorage.setItem("uking.aigcNudgeDone", "1");
@@ -1384,8 +1383,6 @@ export function App() {
               <NightShift onToast={flash} />
             ) : tab === "localllm" ? (
               <LocalLLM onToast={flash} />
-            ) : tab === "backup" ? (
-              <Backup onToast={flash} />
             ) : tab === "advanced" ? (
               <Advanced
                 deviceKey={deviceKey}

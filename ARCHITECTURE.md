@@ -258,7 +258,7 @@ launch 和凭据移除。它只管理 `U-King/AI-Genie` 范围，不应扫描或
 | 终端与代理 | `term.rs`、`agent/*` | PTY、CLI 子进程、流式事件、超时/中断和权限询问 |
 | 便携运行时 | `usb_genie.rs`、`openclaw2.rs`、`clawx.rs` | U 盘及便携 AI 的生命周期与状态边界 |
 | 内容能力 | `video.rs`、`vision.rs`、`draw.rs`、`officedoc.rs` | 图片、视频、视觉和办公产物 |
-| 本地数据 | `usage_local.rs`、`metrics.rs`、`journal.rs`、`artifacts.rs`、`backup.rs` | 本地用量、行为记录、产物索引和备份 |
+| 本地数据 | `usage_local.rs`、`metrics.rs`、`journal.rs`、`artifacts.rs` | 本地用量、行为记录和产物索引 |
 
 ## 数据存储
 

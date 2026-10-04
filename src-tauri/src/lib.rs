@@ -12,7 +12,6 @@ mod agent;
 mod airuntime;
 mod aitasks;
 mod artifacts;
-mod backup;
 mod browser;
 mod chatstore;
 mod cleanup;
@@ -487,50 +486,6 @@ fn hermes_download_page() -> String {
 async fn pin_to_desktop() -> Result<String, String> {
     let v = run_write_action(actions::DESKTOP_PIN, serde_json::json!({})).await?;
     Ok(action_field(v, "message", serde_json::Value::Null).as_str().unwrap_or("").to_string())
-}
-
-// ============================================================
-// 一键备份 / 还原（ClawX 对话 + 设置 → U 盘 → 换台电脑接着用）
-// ============================================================
-
-/// 建议的默认备份盘（当前 exe 所在盘根，U 盘版多半就是 U 盘）。
-#[tauri::command]
-fn backup_default_root() -> String {
-    backup::default_root()
-}
-
-/// 列出某个目录（U 盘根）下已有的快照，新→旧。
-#[tauri::command]
-async fn list_backups(root: String) -> Vec<backup::BackupEntry> {
-    tauri::async_runtime::spawn_blocking(move || backup::list(&root))
-        .await
-        .unwrap_or_default()
-}
-
-/// 备份到 U 盘（进度走事件 `uking:backup_progress`）。
-#[tauri::command]
-async fn backup_now(app: AppHandle, dest_root: String) -> Result<serde_json::Value, String> {
-    let v = run_write_action_progress(
-        app,
-        actions::BACKUP_CREATE,
-        "uking:backup_progress",
-        serde_json::json!({ "dest_root": dest_root }),
-    )
-    .await?;
-    Ok(action_field(v, "result", serde_json::json!({})))
-}
-
-/// 从某个快照目录还原到本机（整份替换，前置自动备份 + 旧目录留底）。
-#[tauri::command]
-async fn restore_backup(app: AppHandle, backup_dir: String) -> Result<serde_json::Value, String> {
-    let v = run_write_action_progress(
-        app,
-        actions::BACKUP_RESTORE,
-        "uking:backup_progress",
-        serde_json::json!({ "backup_dir": backup_dir }),
-    )
-    .await?;
-    Ok(action_field(v, "result", serde_json::json!({})))
 }
 
 /// 打开「Codex 桌面版手动安装教程」网页（自动装不上时的兜底引导）。
@@ -3744,38 +3699,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 }
                 let preserve = input.get("preserve_user_data").and_then(|v| v.as_bool()).unwrap_or(false);
                 Ok(serde_json::json!({ "will_exit": run_footprint_removal(&ids, preserve, log)? }))
-            },
-        )),
-        actions::with_progress(actions::write(
-            actions::BACKUP_CREATE,
-            "Back up ClawX chats and settings to a drive",
-            "Snapshot ClawX user data and ~/.openclaw into a timestamped folder under the chosen root.",
-            1_800_000,
-            "required",
-            serde_json::json!({ "dest_root": { "type": "string", "description": "Destination root, usually the USB drive." } }),
-            &["dest_root"],
-            &["result"],
-            |_, input, log| {
-                let root = input["dest_root"].as_str().unwrap_or_default().to_string();
-                let r = backup::backup(&root, env!("CARGO_PKG_VERSION"), log)?;
-                Ok(serde_json::json!({ "result": action_json(r)? }))
-            },
-            None,
-        )),
-        // destructive 是实话：还原是**整份替换**当前的 ClawX / OpenClaw 数据。
-        // 它会自动留底，但「留了底」不等于「可逆」—— 用户得知道自己在覆盖什么。
-        actions::with_progress(actions::destructive(
-            actions::BACKUP_RESTORE,
-            "Restore ClawX chats and settings from a snapshot",
-            "Replace the current ClawX / OpenClaw data with a snapshot. The existing data is moved aside first, but this still overwrites what you are using right now.",
-            1_800_000,
-            serde_json::json!({ "backup_dir": { "type": "string", "description": "Snapshot folder from runtime.backup list." } }),
-            &["backup_dir"],
-            &["result"],
-            |_, input, log| {
-                let dir = input["backup_dir"].as_str().unwrap_or_default().to_string();
-                let r = backup::restore(&dir, log)?;
-                Ok(serde_json::json!({ "result": action_json(r)? }))
             },
         )),
         actions::with_progress(actions::write(
@@ -9164,30 +9087,6 @@ pub fn run() {
         std::process::exit(0);
     }
 
-    // 备份无头验证：U-King.exe --backup-test <U盘根> [out.json]（真跑 backup→list，不开 GUI、不碰还原）
-    // 只读本机 ClawX/~/.openclaw，只往指定盘写快照——安全，不动本机数据。
-    // windows 子系统无控制台，结果写 JSON 文件（默认 <root>/backup-test-result.json）。
-    if let Some(i) = args.iter().position(|a| a == "--backup-test") {
-        let root = args.get(i + 1).cloned().unwrap_or_else(backup::default_root);
-        let out = args
-            .get(i + 2)
-            .cloned()
-            .unwrap_or_else(|| format!("{}/backup-test-result.json", root.trim_end_matches(['/', '\\'])));
-        let result = backup::backup(&root, env!("CARGO_PKG_VERSION"), |_m| {});
-        let json = match &result {
-            Ok(r) => serde_json::json!({
-                "ok": true,
-                "default_root": backup::default_root(),
-                "dest_root": root,
-                "snapshot": r,
-                "list": backup::list(&root),
-            }),
-            Err(e) => serde_json::json!({ "ok": false, "default_root": backup::default_root(), "dest_root": root, "error": e }),
-        };
-        let _ = std::fs::write(&out, serde_json::to_string_pretty(&json).unwrap_or_default());
-        std::process::exit(if result.is_ok() { 0 } else { 1 });
-    }
-
     // 办公文档真版式渲染无头验证：U-King.exe --office-pdf-test <文件.pptx>
     //
     // **为什么非得留这条**：这条路依赖客户机上有没有 LibreOffice，而开发机上多半没装 ——
@@ -9801,10 +9700,6 @@ pub fn run() {
             install_hermes_app,
             hermes_download_page,
             pin_to_desktop,
-            backup_default_root,
-            list_backups,
-            backup_now,
-            restore_backup,
             open_codex_guide,
             open_codex_cli_guide,
             open_claude_guide,

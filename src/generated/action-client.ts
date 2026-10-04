@@ -23,10 +23,6 @@ export const ACTION = {
   RUNTIME_AUTOMATION_SAVE: "runtime.automation.save",
   /** Turn one automation on or off. Turning it on re-arms it for its next slot. Idempotent. */
   RUNTIME_AUTOMATION_SET_ENABLED: "runtime.automation.set_enabled",
-  /** Snapshot ClawX user data and ~/.openclaw into a timestamped folder under the chosen root. */
-  RUNTIME_BACKUP_CREATE: "runtime.backup.create",
-  /** Replace the current ClawX / OpenClaw data with a snapshot. The existing data is moved aside first, but this still overwrites what you are using right now. */
-  RUNTIME_BACKUP_RESTORE: "runtime.backup.restore",
   /** Install U-King's pinned agent-browser runtime, then start its stream and capture an accessibility snapshot. Requires confirmation because it downloads and writes local runtime files. Idempotent when the pinned runtime already verifies. */
   RUNTIME_BROWSER_INSTALL: "runtime.browser.install",
   /** Read whether a chat turn is running right now, how long it has been silent and which phase it is stuck in, plus how the last few turns ended. Reads only. */
@@ -229,8 +225,6 @@ export type ActionInputMap = {
   "runtime.automation.remove": { expected_state_version?: string; id: string; };
   "runtime.automation.save": { expected_state_version?: string; job: Record<string, unknown>; };
   "runtime.automation.set_enabled": { enabled: boolean; expected_state_version?: string; id: string; };
-  "runtime.backup.create": { dest_root: string; expected_state_version?: string; };
-  "runtime.backup.restore": { backup_dir: string; expected_state_version?: string; };
   "runtime.browser.install": { expected_state_version?: string; };
   "runtime.chat.inspect": Record<string, never>;
   "runtime.clawx.apply_managed": { api_key?: string; expected_state_version?: string; model?: string; provider_id: string; };
@@ -337,8 +331,6 @@ export type ActionOutputMap = {
   "runtime.automation.remove": Record<string, unknown>;
   "runtime.automation.save": Record<string, unknown>;
   "runtime.automation.set_enabled": Record<string, unknown>;
-  "runtime.backup.create": Record<string, unknown>;
-  "runtime.backup.restore": Record<string, unknown>;
   "runtime.browser.install": Record<string, unknown>;
   "runtime.chat.inspect": Record<string, unknown>;
   "runtime.clawx.apply_managed": Record<string, unknown>;

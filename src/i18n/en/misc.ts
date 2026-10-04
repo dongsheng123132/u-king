@@ -1,44 +1,7 @@
-/** 英文覆盖字典 · 备份/进阶/连接器/动态/教程/专家（Backup/Advanced/Connectors/Feed/Tutorial/Experts）。 */
+/** 英文覆盖字典 · 进阶/连接器/动态/教程/专家（Advanced/Connectors/Feed/Tutorial/Experts）。 */
 export const misc: Record<string, string> = {
-  // ── Backup.tsx ─────────────────────────────────────────────────
-  "选择备份位置（U 盘根目录）": "Choose a backup location (USB drive root)",
-  "准备备份…": "Preparing backup…",
-  "已备份 {items}（{size}）到 U 盘": "Backed up {items} ({size}) to USB drive",
-  "本机暂无 ClawX / 龙虾数据可备份": "No ClawX / OpenClaw data on this PC to back up",
-  "备份失败：": "Backup failed: ",
-  "从「{machine}」{time} 的快照还原到本机？\n\n· 会先关闭 ClawX\n· 本机当前的 ClawX 对话/设置会被这份快照整份替换\n· 替换前会自动把本机当前状态也备份一份（可回滚），旧数据另存为 .uking-bak\n\n确定继续吗？":
-    "Restore this PC from the snapshot of “{machine}” taken {time}?\n\n· ClawX will be closed first\n· This PC's current ClawX chats/settings will be fully replaced by this snapshot\n· Before replacing, this PC's current state is backed up too (rollback safe); old data is kept as .uking-bak\n\nContinue?",
-  "准备还原…": "Preparing restore…",
-  "已还原 {n} 项。请重新打开 ClawX 查看": "Restored {n} item(s). Reopen ClawX to see them",
-  "（本机原状态已自动备份）": " (this PC's previous state was auto-backed up)",
-  "这份快照里没有可还原的数据": "This snapshot has no restorable data",
-  "还原失败：": "Restore failed: ",
-  "备份 / 同步到 U 盘": "Backup / Sync to USB drive",
-  "把 ClawX 的对话和设置（含龙虾工作区）存到 U 盘，回家插上一键还原，接着干活。":
-    "Save ClawX chats and settings (incl. the OpenClaw workspace) to a USB drive; plug it in at home, restore in one click, and keep working.",
-  "备份位置": "Backup location",
-  "（探测中…）": "(detecting…)",
-  "换位置": "Change location",
-  "备份中…": "Backing up…",
-  "立即备份到 U 盘": "Back up to USB drive now",
-  "还原采用「整份替换 + 自动留底」：换电脑还原前会先把本机当前状态也备份一份，旧数据另存为":
-    "Restore uses “full replace + auto-backup”: before restoring on another PC, this machine's current state is backed up first, and the old data is saved as",
-  "，不会凭空丢。ClawX 的对话存在数据库里，无法逐条合并，故只能整份覆盖。":
-    " — nothing is lost. ClawX chats live in a database and can't be merged item by item, so only a full overwrite is possible.",
-  "U 盘上的备份": "Backups on the USB drive",
   "（{n}）": "({n})",
-  "这个位置还没有备份。点上面「立即备份到 U 盘」创建第一份。":
-    "No backups at this location yet. Click “Back up to USB drive now” above to create the first one.",
   "本机": "This PC",
-  "（空）": "(empty)",
-  "还原到本机": "Restore to this PC",
-  "办公室 ↔ 家里 怎么用": "Office ↔ Home: how to use",
-  "1. 办公室干完活 → 这里「立即备份到 U 盘」 → 拔盘带走":
-    "1. Finish work at the office → “Back up to USB drive now” here → unplug and take it with you",
-  "2. 回家插上 U 盘开 U-King → 找到办公室那条快照 → 「还原到本机」 → 打开 ClawX 接着用":
-    "2. At home, plug in the USB and open U-King → find that office snapshot → “Restore to this PC” → open ClawX and carry on",
-  "提示：快照里带的是本机虾盘云 Key，换机还原后会用同一个钱包计费 —— 单人多机正好省事。":
-    "Tip: the snapshot carries this PC's Xiapan Cloud key, so after restoring on another machine it bills from the same wallet — handy for one person across multiple PCs.",
 
   // ── Advanced.tsx ───────────────────────────────────────────────
   "已复制{label}": "Copied {label}",

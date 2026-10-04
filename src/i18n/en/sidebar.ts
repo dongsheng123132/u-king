@@ -72,8 +72,6 @@ export const sidebar: Record<string, string> = {
   "给 AI 装 ffmpeg/Chrome 等能力工具": "Install ffmpeg/Chrome and other tools for AI",
   "本地大模型": "Local LLM",
   "离线免费 · 自己电脑跑 AI": "Offline & free · run AI on your own PC",
-  "备份/同步": "Backup / Sync",
-  "对话设置存 U 盘 · 多电脑切换": "Save chats & settings to USB · switch across PCs",
   "进阶 / App 版": "Advanced / App",
   "Hermes/ClawX 桌面版 · 手动配": "Hermes/ClawX desktop · manual setup",
   "最新动态": "What's New",
