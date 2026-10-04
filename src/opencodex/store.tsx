@@ -9,7 +9,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type { PanelLayout, RightKind, Task, TaskSource, TaskStatus } from "./types";
 import { dirBasename, normDir, taskIdFromDir } from "./types";
 import { diskTask, isDurableSession, newSessionId } from "./session";
-import type { Expert } from "./experts";
 
 type State = {
   tasks: Task[];
@@ -137,8 +136,6 @@ type Ctx = {
    *  **返回落到的那个会话 id**（新建的或复用的）。护照交接靠它回答「任务去了哪儿」——
    *  调用方不需要这个值时忽略即可，行为一个字节没变。 */
   addTask: (dir: string, source?: TaskSource, reuse?: boolean) => Promise<string>;
-  /** 「召唤」一个 AI 专家：在 dir 下新开会话并绑定专家 id（persona/引擎/技能由 experts.ts 恢复）。 */
-  addExpertTask: (expert: Expert, dir: string) => Promise<void>;
   /** 在某项目（dir）下新开一个绑工具的会话（claude/codex/openclaw…；「新建对话」也走这里）。
    *  dir 非空会落盘、重启后还在；是否落盘的判据只有 `isDurableSession`（session.ts）。 */
   addSession: (dir: string, tool: string, name: string, startupCmd: string) => void;
@@ -230,24 +227,6 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
     },
     [state.tasks],
   );
-
-  // 「召唤」专家：新开会话，name=专家名，绑 expert.id（Chat 据此注入 persona/引擎/技能）
-  const addExpertTask = useCallback(async (expert: Expert, dir: string) => {
-    const proj = normDir(dir);
-    const now = Date.now();
-    const id = newSessionId(`sess-${taskIdFromDir(dir)}`);
-    const task: Task = {
-      id, name: expert.name, dir, status: "idle", source: "manual",
-      assignee: null, external_ref: null, last_opened_at: now, created_at: now,
-      kind: "task", project: proj, expert: expert.id,
-    };
-    try {
-      const saved = await invoke<Task>("upsert_task", { task });
-      dispatch({ type: "upsert", task: { ...saved, project: proj, kind: "task", expert: expert.id } });
-    } catch {
-      dispatch({ type: "upsert", task });
-    }
-  }, []);
 
   // 在某项目（dir）下新开一个绑工具的会话（「新建对话」/ 项目 + 菜单都走这里）。
   //
@@ -426,7 +405,6 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
       value={{
         state,
         addTask,
-        addExpertTask,
         addSession,
         addToolSession,
         removeTask,

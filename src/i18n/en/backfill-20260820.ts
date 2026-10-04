@@ -29,12 +29,6 @@ export const backfill20260820: Record<string, string> = {
   "用哪个大脑": "AI model",
   "选": "Choose",
 
-  "召唤": "Hire",
-  "搜专家名称、职称或擅长的活": "Search by expert name, role, or specialty",
-  "热门": "Popular",
-  "没搜到匹配的专家，换个词试试": "No matching experts. Try another search.",
-  "自带技能 · 召唤后即可用": "Built-in skills · ready after hiring",
-  "召唤 {role} → 开一个会话": "Hire {role} → start a session",
 
   "已让 Claude Code 用中文回答（下次开新会话生效；在「我的 U-King」可撤销）":
     "Claude Code will answer in Chinese in new sessions. You can undo this in “My U-King.”",
@@ -100,8 +94,6 @@ export const backfill20260820: Record<string, string> = {
     "Close session (asks first if it has messages; does not delete the folder on disk)",
 
 
-  "挑一个专家 → 当场在这个工作台开一个绑好它的会话，直接干活出成果":
-    "Pick an expert → open a ready-to-use session in this workbench and start producing results",
   "重新显示新手引导": "Show onboarding again",
   "终端配色": "Terminal colors",
 };

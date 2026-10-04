@@ -49,10 +49,6 @@ export const ACTION = {
   RUNTIME_DRIVER_INSPECT: "runtime.driver.inspect",
   /** Install portable Node, Git (which brings bash.exe that Claude Code's Bash tool needs), PowerShell 7 and the CLI command guard under ~/.uking/runtime. No administrator rights needed. Best-effort: one failure does not stop the others, and every field honestly reports ok / skip / fail: <reason> — `skip` means the step does not exist on this platform, not that it succeeded. */
   RUNTIME_ENV_INSTALL_TOOLS: "runtime.env.install_tools",
-  /** Delete a hired expert pack from ~/.uking/experts/. Built-in experts are compiled-in constants and cannot be dismissed; asking for one returns dismissed:false rather than an error. */
-  RUNTIME_EXPERT_DISMISS: "runtime.expert.dismiss",
-  /** List expert packs under ~/.uking/experts. Each folder is one hired expert; reports which ones passed validation, which were rejected and why, and which declare skill packs that are not synced yet. Reads only; never writes. */
-  RUNTIME_EXPERT_INSPECT: "runtime.expert.inspect",
   /** Scan U-King's own footprint, changed configs and AI tools it installed. Reads only, deletes nothing. */
   RUNTIME_FOOTPRINT_INSPECT: "runtime.footprint.inspect",
   /** Delete or revert the footprint items you picked. Config items revert to their pre-U-King state; AI tools go through their own official uninstaller. Returns whether the app must exit to finish. */
@@ -61,8 +57,6 @@ export const ACTION = {
   RUNTIME_HARDWARE_INSPECT: "runtime.hardware.inspect",
   /** Tell apart 'Hermes can chat' from 'Hermes can open pages and screenshot'. Reads only. */
   RUNTIME_HERMES_BROWSER_INSPECT: "runtime.hermes_browser.inspect",
-  /** Search npm (and other registries) for skills/plugins that can be hired into this machine as experts. Returns not just what exists but **how to hire each one** (CLI / skill pack / harness tool). Read-only: never installs, never writes. An empty result reports whether the network answered, so 'nothing found' is never confused with 'could not reach'. */
-  RUNTIME_HIRE_SEARCH: "runtime.hire.search",
   /** Read who this U-King is (name, owner, role, traits), where its manual and logs live, and whether the manual has been published so other AIs can discover it. Reads only; never returns secret values. */
   RUNTIME_IDENTITY_INSPECT: "runtime.identity.inspect",
   /** Insert (or remove) a one-line pointer to ~/.uking/llms.txt inside the global memory files of the AI tools installed on this machine (Claude Code / Codex / AGENTS.md). Additive and fully reversible: our text lives inside a marked block, the user's own content is never modified. */
@@ -214,13 +208,10 @@ export type ActionInputMap = {
   "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush">; };
   "runtime.driver.inspect": Record<string, never>;
   "runtime.env.install_tools": { expected_state_version?: string; };
-  "runtime.expert.dismiss": { expected_state_version?: string; id: string; };
-  "runtime.expert.inspect": Record<string, never>;
   "runtime.footprint.inspect": Record<string, never>;
   "runtime.footprint.remove": { expected_state_version?: string; ids: Array<unknown>; preserve_user_data?: boolean; };
   "runtime.hardware.inspect": Record<string, never>;
   "runtime.hermes_browser.inspect": Record<string, never>;
-  "runtime.hire.search": { query: string; };
   "runtime.identity.inspect": Record<string, never>;
   "runtime.identity.link": { expected_state_version?: string; linked?: boolean; targets?: Array<unknown>; };
   "runtime.identity.publish": { expected_state_version?: string; };
@@ -308,13 +299,10 @@ export type ActionOutputMap = {
   "runtime.driver.apply_everywhere": Record<string, unknown>;
   "runtime.driver.inspect": Record<string, unknown>;
   "runtime.env.install_tools": Record<string, unknown>;
-  "runtime.expert.dismiss": Record<string, unknown>;
-  "runtime.expert.inspect": Record<string, unknown>;
   "runtime.footprint.inspect": Record<string, unknown>;
   "runtime.footprint.remove": Record<string, unknown>;
   "runtime.hardware.inspect": Record<string, unknown>;
   "runtime.hermes_browser.inspect": Record<string, unknown>;
-  "runtime.hire.search": Record<string, unknown>;
   "runtime.identity.inspect": Record<string, unknown>;
   "runtime.identity.link": Record<string, unknown>;
   "runtime.identity.publish": Record<string, unknown>;

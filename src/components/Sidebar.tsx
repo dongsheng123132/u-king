@@ -26,7 +26,6 @@ export type TabId =
   | "chat"
   | "termwb"
   | "create"
-  | "experts"
   | "myai"
   | "xiapan"
   | "skills"
@@ -198,14 +197,12 @@ const MORE: NavItem[] = [
   // 🔴 「AI 专家」和「AI 技能 / 上手」两条 1.0.3 从侧栏**撤掉**（用户 2026-08-18：
   // 「左侧的专家和 uchat 里的专家合并，左侧无专家和 ai 技能了」）。
   //
-  // 撤的理由不是它们没用，是**同一件事在两处各有一个入口**：专家墙
-  // （`opencodex/ExpertGallery.tsx`）本来就常驻 U-Workspace 左栏，客户天天从工作台点它；
-  // 侧栏那条只是套了个壳再挂一遍。按「舞台 / 演员」的口径，专家是**演员**——
-  // 演员在舞台上招，不在设置菜单里招。
+  // 撤的理由不是它们没用，是**同一件事在两处各有一个入口**。
+  // （2026-10-04：专家墙与招人整体删除，零用量证据；`ExpertGallery.tsx` / skillhub.cn 入口一并没了，
+  // 技能包逐包装/删清单 `SkillPackList` 先搬进了下面说的技能包页。）
   //
-  // **没有东西变得不可达**：技能页（SkillPack + 技能市场 + 教程）跟 `skillpack` tab
+  // **没有东西变得不可达**：技能页（SkillPack + SkillPackList + 教程）跟 `skillpack` tab
   // 是同一个渲染分支，而后者被作图 / 视频 / AI 创作的 `onGoSkillPack` 深链着。
-  // skillhub.cn 入口已挪进 ExpertGallery 顶部。
   // 「Codex 工作站」2026-08-03 从这里下沉到「实验室」——**不是因为它不好用**，
   // 而是它服务的对象（Codex 桌面版 GUI）已经不在主线上了。见 LAB 里的条目。
   // 「AI 加速」0.9.34 起放出：ukrt.exe 已内嵌进本体（airuntime.rs include_bytes，

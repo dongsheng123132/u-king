@@ -22,7 +22,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowUp, Check, ChevronDown, ChevronRight, Cpu, FilePlus2, FolderOpen, FolderPlus, Plus, ShieldCheck, Slash as SlashIcon, Square, Users } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, ChevronRight, Cpu, FilePlus2, FolderOpen, FolderPlus, Plus, ShieldCheck, Slash as SlashIcon, Square } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 
@@ -328,7 +328,6 @@ export function AttachButton({
   onSlash,
   hasWorkspace,
   approval,
-  experts,
   model,
 }: {
   /** 选中的真实路径（可多选）。宿主负责插进输入框 —— 和拖放共用同一个 handler。 */
@@ -340,8 +339,6 @@ export function AttachButton({
   hasWorkspace?: boolean;
   /** 审批档（轻助手：真能改）。 */
   approval?: { value: string; onChange: (v: string) => void; options: readonly { id: string; label: string }[] };
-  /** 用哪个专家。低频，进二级。 */
-  experts?: { value: string; list: { id: string; label: string }[]; onChange: (id: string) => void };
   /** 模型覆盖。19 项，**只能**进二级 —— 平铺会把菜单撑成一屏。 */
   model?: {
     value: string;
@@ -376,18 +373,6 @@ export function AttachButton({
   if (onSlash) {
     groups.push({ kind: "action", icon: SlashIcon, label: "调指令…", hint: "/", run: () => { setOpen(false); onSlash(); } });
   }
-  if (experts) {
-    groups.push({
-      kind: "sub", icon: Users, label: "专家",
-      value: experts.list.find((e) => e.id === experts.value)?.label ?? t("通用助手"),
-      items: [
-        { id: "", label: t("通用助手"), active: !experts.value },
-        ...experts.list.map((e) => ({ id: e.id, label: e.label, active: e.id === experts.value })),
-        { id: "__hire__", label: t("＋ 找专家 / 装技能…") },
-      ],
-      onPick: (id) => { setOpen(false); experts.onChange(id); },
-    });
-  }
   if (model) {
     /* 🔴 **海外贵的那批默认藏起来**（客户 2026-08-18：「尽量不要让他们碰到海外的模型，
        隐藏海外贵的模型，需要点击更多才展示之类的，避免他们碰到」）。
@@ -421,7 +406,7 @@ export function AttachButton({
     <span className="relative">
       <button
         onClick={() => { setOpen((v) => !v); setSub(null); }}
-        title={t("添加文件 / 选专家 / 换模型（也可以直接把文件拖进来）")}
+        title={t("添加文件 / 换模型（也可以直接把文件拖进来）")}
         className={cn(CHIP, CHIP_IDLE, "w-7 justify-center px-0")}
       >
         <Plus size={14} />

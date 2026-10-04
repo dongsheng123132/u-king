@@ -38,7 +38,6 @@ import {
 } from "lucide-react";
 import { Wizard } from "./Wizard";
 import { UWorkspace } from "./opencodex/UWorkspace";
-import type { Expert } from "./opencodex/experts";
 import { Sidebar, type TabId } from "./components/Sidebar";
 import { SkillPackList } from "./components/SkillPackList";
 import { ToolIcon } from "./components/ToolIcon";
@@ -206,9 +205,7 @@ export function App() {
    */
   const selfHeightTab = tab === "create" || tab === "draw" || tab === "video" || tab === "qrmerge";
   // 小程序浮层：首页图标条和小程序页都往这里塞，容器只有一个
-  // 「召唤」handoff：AI 专家页点召唤 → 存这里 + 切到 U-Workspace(chat) → UWorkspace 消费后清空
-  const [pendingExpert, setPendingExpert] = useState<Expert | null>(null);
-  // 「发一句话」handoff：DSH 插件页「让 AI 帮你挑」→ 存这里 + 切到 chat → UWorkspace 开会话把它发给 AI
+  // 「发一句话」handoff：页面里「让 AI 帮你…」→ 存这里 + 切到 chat → UWorkspace 开会话把它发给 AI
   const [pendingChatPrompt, setPendingChatPrompt] = useState<{ prompt: string; engine?: Engine; passportId?: string } | null>(null);
   // 访问过的 TUI 应用（懒挂载，挂载后常驻 display 切换保活，不卸载 → PTY 续跑）
   const [mountedTui, setMountedTui] = useState<Set<string>>(new Set());
@@ -1094,10 +1091,7 @@ export function App() {
               工作台里面 U-Chat / U-CLI / 文件 / 浏览器各有自己的边界，
               这一层兜的是工作台外壳自身（store / SessionList / 顶栏）。 */}
           <PanelBoundary name="U-Workspace">
-            {/* onGoCreate：「AI 创作」2026-08-23 从工作台右侧面板搬回侧栏独立页（一个能力一个入口）。
-                专家卡上「打开 AI 作图专家」那条 route 必须跟着改道到侧栏那一页，否则它又会变回
-                一句不兑现的承诺 —— Chat.tsx 那段注释记着它以前就是死的。 */}
-            <UWorkspace onToast={flash} pendingExpert={pendingExpert} onConsumed={() => setPendingExpert(null)} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} onGoCreate={(sub) => setTab(sub === "video" ? "video" : "draw")} paneMode={tab === "termwb" ? "cli" : "chat"} />
+            <UWorkspace onToast={flash} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} paneMode={tab === "termwb" ? "cli" : "chat"} />
           </PanelBoundary>
         </main>
 
@@ -1182,7 +1176,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "experts" || tab === "identity" || tab === "create"
+                tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "identity" || tab === "create"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan

@@ -1,5 +1,5 @@
 {
-  "pairs": 41,
+  "pairs": 40,
   "why": "自动收紧（解开了耦合）",
   "list": [
     "agent → device",
@@ -21,7 +21,6 @@
     "codex_proxy → device",
     "codex_proxy → providers",
     "device → providers",
-    "expert → skillpack",
     "feedback → codex_proxy",
     "feedback → device",
     "feedback → envfp",

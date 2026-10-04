@@ -156,7 +156,7 @@ for (const viewport of CASES) {
   await capture("home");
   await page.getByRole("button", { name: /U-Workspace/i }).first().click();
   await capture("workspace");
-  for (const name of ["Passports", "Board", "AI Experts"]) {
+  for (const name of ["Passports", "Board"]) {
     await page.getByRole("button", { name, exact: true }).first().click();
     await capture(name.toLowerCase().replace(/\s+/g, "-"));
   }

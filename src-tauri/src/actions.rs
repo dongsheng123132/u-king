@@ -385,8 +385,6 @@ pub const IDENTITY_INSPECT: &str = "runtime.identity.inspect";
 /// 这条回答**顺序和归属**：哪些是人点的、哪些是 AI 自己干的、动过哪些文件。
 /// 「夜班」的地基：没有时间轴，就没有「正常长什么样」，也就无从判断什么叫失控。
 pub const JOURNAL_INSPECT: &str = "runtime.journal.inspect";
-pub const EXPERT_INSPECT: &str = "runtime.expert.inspect";
-pub const HIRE_SEARCH: &str = "runtime.hire.search";
 /// 本地大模型：四个引擎各自「能不能用」。**一次给全四个**，因为客户真正的问题是
 /// 「我这台该用哪个」，逐个问等于让他自己做对比。
 pub const LOCALLLM_INSPECT: &str = "runtime.localllm.inspect";
@@ -408,7 +406,7 @@ pub const READ_ACTIONS: &[&str] = &[
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT,
-    WORKBENCH_INSPECT, WORKBENCH_SCAN, EXPERT_INSPECT, HIRE_SEARCH, LOCALLLM_INSPECT,
+    WORKBENCH_INSPECT, WORKBENCH_SCAN, LOCALLLM_INSPECT,
     LOCALLLM_CATALOG,
 ];
 
@@ -433,14 +431,11 @@ pub const MEDIA_IMAGE_DESCRIBE: &str = "media.image.describe";
 /// 按**单个包名**卸载技能包。幂等：已经没了再调一次照样返回成功、`removed` 为空。
 ///
 /// 在此之前本产品**只有装、没有拆**（客户 2026-08-18：「安装了太多预制 skill，还无法删除」）——
-/// 「安全卸载」页那条 `skills-in-tools` 是全删，粒度太粗：辞掉一个专家不该被迫清空所有技能。
+/// 「安全卸载」页那条 `skills-in-tools` 是全删，粒度太粗：删一个包不该被迫清空所有技能。
 pub const SKILLPACK_UNINSTALL: &str = "runtime.skillpack.uninstall";
 /// 自带技能包清单 + 每个装没装。只读。
 /// 「用户自己定装哪些」的前提是**看得见现在有哪些** —— 没有这条，装/删两个动作在界面上就是盲操作。
 pub const SKILLPACK_INSPECT: &str = "runtime.skillpack.inspect";
-/// 解聘一个**招进来的**专家（删 `~/.uking/experts/<id>/`）。内置专家辞不掉 —— 它们是代码常量。
-/// 幂等：已经没了再调一次返回 `dismissed:false`，不报错。
-pub const EXPERT_DISMISS: &str = "runtime.expert.dismiss";
 /// 「装完了，UChat 现在到底能不能用」。只读。
 ///
 /// 🔴 装机链路一直只回答**装没装**，不回答**能不能用**（客户 2026-08-18：

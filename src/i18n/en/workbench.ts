@@ -253,8 +253,6 @@ export const workbench: Record<string, string> = {
   // Chat.tsx —— 界面文案
   "对话大脑：自家助手 或 驱动 Claude Code 真身":
     "Chat brain: our own assistant or the real Claude Code driver",
-  "复杂/多文件任务，切到更强的引擎": "For complex / multi-file tasks, switch to a stronger engine",
-  "任务较重？切 {name} 更强": "Heavy task? Switch to {name} for more power",
   "选工作文件夹后 AI / 终端才能读写文件、跑命令":
     "Pick a working folder so the AI / terminal can read/write files and run commands",
   "选工作文件夹": "Pick working folder",
@@ -267,9 +265,6 @@ export const workbench: Record<string, string> = {
   "{name} 大脑要在一个工作文件夹里干活": "The {name} brain needs a working folder to operate in",
   "请先在「① 装 AI」装好该工具并在「② 虾盘云」一键配好驱动":
     "First install the tool under “① Install AI”, then set up the driver in one click under “② Xiapan Cloud”",
-  "{name} 已就位": "{name} is ready",
-  "下面点一个「试试这样问我」，或直接说你的需求":
-    "Click one of the “try asking me” prompts below, or just tell me what you need",
   "有什么可以帮你的？": "How can I help?",
   "画图 · 读写文件 · 跑命令 · 右上角开终端/浏览器——选个工作文件夹让它动手":
     "Draw · read/write files · run commands · open a terminal/browser from the top-right — pick a working folder to let it act",
@@ -444,7 +439,7 @@ export const workbench: Record<string, string> = {
   "帮我把这个 AI 工具卸载再重新装一遍：": "Uninstall and reinstall this AI tool for me: ",
   // ── 任务看板（TaskBoard.tsx）+ 自动化·长程记忆（AutomationPanel.tsx）──────────
   看板: "Board",
-  护照: "Passports",
+  "护照": "Passports",
   // 🔴 列名说的是**会话**不是任务：`Done` 会被读成「这活干完了」，而它只证明
   //    「那个会话文件没人写了」。中文侧同理（原来叫「已完成」）—— 见 TaskBoard.tsx 的 COLUMNS。
   没在跑: "Idle",
@@ -471,33 +466,7 @@ export const workbench: Record<string, string> = {
   "去配置 →": "Configure →",
   已停用: "Disabled",
   马上: "now",
-  "已招": "Hired",
-  // 1.0.3 专家墙：解聘 + 市场入口 + 起手词收行
-  "解聘（删掉这个专家包）": "Dismiss (delete this expert pack)",
-  "正在解聘…": "Dismissing…",
-  "还缺人？去技能市场 skillhub.cn 找": "Need someone else? Find them on skillhub.cn",
-  "找专家": "Find an expert",
-  "找专家 / 装技能": "Experts / skills",
-  // HireSearch —— 去市场现搜可招的人（动态，不自建货架）
-  "去市场找人": "Hire from the ecosystem",
-  "用哪个专家干这活（不挑就是通用助手）": "Which expert does this job (none = general assistant)",
-  "通用助手": "General assistant",
-  "现搜 npm / DSH 插件 / 技能包 —— 我们不自建货架，直接看生态里现在有什么。只搜不装。":
-    "Search npm / DSH plugins / skill packs live — we don't run a storefront, we show what the ecosystem has right now. Search only, never installs.",
-  "搜「飞书」「公众号」「cad」，或 keywords:dsh-plugin": "Try “feishu”, “wechat”, “cad”, or keywords:dsh-plugin",
-  "没连上市场（网络或代理）—— 这不代表没有，只代表这次没问到。":
-    "Couldn't reach the registry (network or proxy) — that means we didn't get an answer, not that nothing exists.",
-  "没搜到匹配的。换个词试试，比如工具名或用途。": "No matches. Try another word — a tool name or what you want it to do.",
-  "怎么招：": "How to hire: ",
-  "周装 {n}": "{n}/wk",
-  "复制装法": "Copy install",
-  "看详情": "Details",
-  "已复制安装命令，去终端粘贴执行": "Install command copied — paste it into the terminal",
-  "还有 {n} 条没显示 —— 把关键词写具体一点": "{n} more not shown — try a more specific keyword",
-  "也可以去 skillhub.cn 逛": "Or browse skillhub.cn",
   "还有 {n} 个": "{n} more",
-  "缺技能包": "Missing skill pack",
-  "缺工具": "Missing tool",
 
   // 输入框重排（2026-08-18 按 DSH 收：上面两三个等宽下拉、框内只留能力、框外零控件）
   "描述你要做的事…": "Describe what you want done…",
@@ -505,7 +474,6 @@ export const workbench: Record<string, string> = {
   "{p}（点开可换文件夹 / 用外部应用打开）": "{p} (click to switch folder / open externally)",
   "换一个文件夹…": "Switch folder…",
   "用外部应用打开": "Open with",
-  "＋ 找专家 / 装技能…": "+ Find an expert / add skills…",
   "关掉右边的文件栏": "Close the file column",
   "在终端右边开一栏：文件树 + 预览": "Open a column beside the terminal: file tree + preview",
   "等于打一个 /": "same as typing /",
@@ -542,11 +510,10 @@ export const workbench: Record<string, string> = {
   "在这个文件夹里打开": "Open this folder in",
   // `+` 改成二级菜单（照 WorkBuddy / MiniMax / Claude Cowork）
   "也可以直接拖进来": "or just drag it in",
-  "添加文件 / 选专家 / 换模型（也可以直接把文件拖进来）":
-    "Add files / pick an expert / switch model (you can also drag files in)",
+  "添加文件 / 换模型（也可以直接把文件拖进来）":
+    "Add files / switch model (you can also drag files in)",
   "这一轮：动手前不逐条问你": "This run: won't ask before each action",
   "更多（海外旗舰 · 更费额度）": "More (overseas flagships · pricier)",
-  "专家": "Expert",
   "权限": "Permissions",
 
   "新窗口": "New window",
@@ -572,9 +539,8 @@ export const workbench: Record<string, string> = {
   "彻底删除「{name}」？它的 {n} 条对话记录将无法找回。":
     "Permanently delete \"{name}\"? Its {n} message(s) cannot be recovered.",
 
-  // 「更多」折叠（2026-08-25）：护照/AI 专家收进一个折叠入口
+  // 「更多」折叠（2026-08-25）：护照收进一个折叠入口
   "更多": "More",
-  "护照 / AI 专家": "Passports / AI experts",
   "当前不在这个视图上": "You're not on the chat view right now",
   "图片识别失败: {e}": "Image recognition failed: {e}",
   "⚠️ 图片识别失败：{e}。图片没有交给当前对话模型。": "⚠️ Image recognition failed: {e}. The image was not sent to the current chat model.",

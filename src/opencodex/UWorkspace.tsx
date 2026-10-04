@@ -8,9 +8,10 @@
  * 虾盘云那层只在 Chat 里，绝不进开源基座。删掉只动 App.tsx 一行。
  *
  * ## 视图（借鉴 WorkBuddy 的左栏）
- * `chat`（默认，会话）/ `experts`（AI 专家墙）/ `passports`（任务护照）。
- * 后两个是**盖在会话之上的面板**，不是路由切换 —— 所有 Chat 实例照旧挂着、display 保活，
- * PTY 和对话一个都不掉。挑完专家，点任意会话就回到原处。（「自动化」视图 2026-10-04 随定时任务删除。）
+ * `chat`（默认，会话）/ `passports`（任务护照）。
+ * 护照是**盖在会话之上的面板**，不是路由切换 —— 所有 Chat 实例照旧挂着、display 保活，
+ * PTY 和对话一个都不掉；点任意会话就回到原处。（「自动化」视图 2026-10-04 随定时任务删除，
+ * 「AI 专家」视图同日随专家墙删除。）
  */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -18,46 +19,36 @@ import { WorkbenchProvider, useWorkbench } from "./store";
 import { dirBasename, type Task, type WorkView, type Engine } from "./types";
 import { SessionList } from "./SessionList";
 import { Chat } from "./Chat";
-import { ExpertGallery } from "./ExpertGallery";
 import { PassportBoard } from "./PassportBoard";
 import { queueHandoff, type Handoff } from "./handoff";
-import { findExpert, type Expert } from "./experts";
 import { useI18n } from "../i18n";
 
-export function UWorkspace({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsumedChat, onInstallClaude, onGoCreate, paneMode }: {
+export function UWorkspace({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, paneMode }: {
   onToast?: (m: string) => void;
-  pendingExpert?: Expert | null;
-  onConsumed?: () => void;
   /** 一条待投递的对话（DSH 插件页「让 AI 帮你挑」）—— 来了就开会话、把它发给 AI。 */
   pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string } | null;
   onConsumedChat?: () => void;
   onInstallClaude?: () => void;
-  /** 专家卡的 route 指向作图/视频时，切到侧栏「AI 创作」那一页（面板已撤，见 App.tsx 注释）。 */
-  onGoCreate?: (sub: "draw" | "video") => void;
   /** 侧栏「对话工作台」vs「终端工作台」两个入口共用同一个 UWorkspace 实例，
    *  区别只是每个 Chat 实例默认停在对话态还是终端态（同一批会话，不建第二份）。 */
   paneMode?: "chat" | "cli";
 }) {
   return (
     <WorkbenchProvider>
-      <Inner onToast={onToast} pendingExpert={pendingExpert} onConsumed={onConsumed} pendingChatPrompt={pendingChatPrompt} onConsumedChat={onConsumedChat} onInstallClaude={onInstallClaude} onGoCreate={onGoCreate} paneMode={paneMode} />
+      <Inner onToast={onToast} pendingChatPrompt={pendingChatPrompt} onConsumedChat={onConsumedChat} onInstallClaude={onInstallClaude} paneMode={paneMode} />
     </WorkbenchProvider>
   );
 }
 
-function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsumedChat, onInstallClaude, onGoCreate, paneMode }: {
+function Inner({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, paneMode }: {
   onToast?: (m: string) => void;
-  pendingExpert?: Expert | null;
-  onConsumed?: () => void;
   pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string } | null;
   onConsumedChat?: () => void;
   onInstallClaude?: () => void;
-  /** 专家卡的 route 指向作图/视频时，切到侧栏「AI 创作」那一页（面板已撤，见 App.tsx 注释）。 */
-  onGoCreate?: (sub: "draw" | "video") => void;
   paneMode?: "chat" | "cli";
 }) {
   const { t: tr } = useI18n();
-  const { state, addTask, addExpertTask, setTaskStatus, activate, renameTask } = useWorkbench();
+  const { state, addTask, setTaskStatus, activate, renameTask } = useWorkbench();
   const autoCreated = useRef(false);
   const [view, setView] = useState<WorkView>("chat");
 
@@ -88,40 +79,9 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
     return { sessionId, sessionName: name };
   };
 
-  /** 召唤一个专家 = 开一个绑该专家的会话 + 回到对话视图。**页面版和工作台内的专家墙共用这一条路。** */
-  const summon = (e: Expert) => {
-    // 带 `route` 的专家（作图 / 视频）= 侧栏那一页的快捷入口，卡片上写的就是「打开」不是「召唤」。
-    // 🔴 跳转只发生在**用户此刻点了那张卡**这一瞬，且不建会话。
-    // 以前这条路挂在 Chat 的 effect 里，而工作台把每个会话都常驻挂载（display 保活）——
-    // 于是「历史上召唤过一次作图专家」变成「以后每次进工作台都被弹回作图页」，
-    // 客户两次反馈的「强制自动跳回这个界面」就是它。会话本身也是多余的：
-    // 用户要的是那一页，不是一个绑着作图 persona 的对话框。
-    // 宿主没传 onGoCreate 时才退回开会话 —— 宁可这条路绕一点，也不要点了没反应。
-    if (e.route && onGoCreate) {
-      onGoCreate(e.route === "video" ? "video" : "draw");
-      return;
-    }
-    void invoke<{ home_dir?: string }>("get_env")
-      .then((env) => addExpertTask(e, env?.home_dir || "."))
-      .catch(() => addExpertTask(e, "."))
-      .finally(() => {
-        void invoke("install_skill_pack").catch(() => {}); // 技能落盘（best-effort）
-        setView("chat");
-      });
-  };
-
-  // 「召唤」handoff：AI 专家**页**点召唤 → App 存 pendingExpert + 切到本页 → 这里开会话。
-  // （工作台内的专家墙不走这条 —— 它直接调 summon，少绕一圈 App 状态。）
-  useEffect(() => {
-    if (!state.loaded || !pendingExpert) return;
-    summon(pendingExpert);
-    onConsumed?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.loaded, pendingExpert, onConsumed]);
-
-  // 「发一句话」handoff（DSH 插件页「让 AI 帮你挑」）：跟召唤专家同一条路 ——
+  // 「发一句话」handoff（AI 优化大师等页面的「让 AI 帮你…」）——
   // 建一个会话 → 把提示词投进信箱 → 切到对话视图（Chat 挂载时自取并自动发给 AI）。
-  // 走 `addTask`（普通任务型会话）而不是 addExpertTask：这条没有 persona，就是一段任务提示词。
+  // 走 `addTask`（普通任务型会话）：没有 persona，就是一段任务提示词。
   useEffect(() => {
     if (!state.loaded || !pendingChatPrompt) return;
     void (async () => {
@@ -142,7 +102,7 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
 
   return (
     <div className="flex h-full min-h-[420px] rounded-card border border-white/[0.08] overflow-hidden bg-bg-2">
-      {/* 左：真 SessionList —— 项目分组 + 拖拽排序 + worktree（复用基座，不自造）+ 专家/自动化入口 */}
+      {/* 左：真 SessionList —— 项目分组 + 拖拽排序 + worktree（复用基座，不自造）+ 护照入口 */}
       <SessionList view={view} onView={setView} />
       {/* 右：每个任务(项目)一个 Chat 实例常驻，display 切换保活（切会话不杀 PTY / 不丢对话/预览） */}
       <div className="flex-1 min-w-0 min-h-0 relative">
@@ -156,8 +116,8 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
               {/* onStatus：会话跑起来/跑完/跑挂了都染左侧那个小圆点。
                   会话是 display 保活的 —— 你在看会话 A 时 B 照样在跑，B 挂了以前**没有任何地方会说**
                   （轻助手那侧只弹一条会自己消失的 toast，Claude 那侧只在它自己的对话里贴一句）。 */}
-              {/* 🔴 不再往 Chat 传 onGoCreate：常驻挂载的会话不该有导航权（见 summon 注释）。 */}
-              <Chat sessionId={t.id} initialWorkspace={t.dir} onToast={onToast} expert={findExpert(t.expert)} onInstallClaude={onInstallClaude} taskName={t.name} onFindExpert={() => setView("experts")} onSummonExpert={summon}
+              {/* 🔴 常驻挂载的会话不该有导航权：不往 Chat 传任何「跳去别的页」的回调。 */}
+              <Chat sessionId={t.id} initialWorkspace={t.dir} onToast={onToast} onInstallClaude={onInstallClaude} taskName={t.name}
                 paneMode={paneMode}
                 onStatus={(s) => setTaskStatus(t.id, s)}
                 /* 自动命名接线（2026-08-25）：Chat 首条消息会调 onTitle 当会话标题，
@@ -168,34 +128,18 @@ function Inner({ onToast, pendingExpert, onConsumed, pendingChatPrompt, onConsum
           ))
         )}
 
-        {/* 功能面板：盖在会话之上（会话没被卸载，只是不显示）。滚动条各自独立。 */}
-        {view !== "chat" && (
-          view === "passports" ? (
-            // 护照页自带内边距和滚动，不再套外层 px/py。
-            <div className="absolute inset-0 bg-bg-2">
-              <PassportBoard
-                onHandoff={handoffToSession}
-                onOpenSession={(id) => { activate(id); setView("chat"); }}
-                // 护照没写 scope 时的兜底：当前正开着的那个会话的目录。
-                // 仍然可能是空的 —— 那时护照页会问用户选一个，**不静默挑**。
-                fallbackDir={state.tasks.find((t) => t.id === state.activeId)?.dir}
-              />
-            </div>
-          ) : (
-            <div className="absolute inset-0 overflow-y-auto bg-bg-2 px-5 py-4">
-              {view === "experts" && (
-                <div className="space-y-4">
-                  <header>
-                    <h2 className="text-[15px] font-semibold text-ink-0">{tr("AI 专家")}</h2>
-                    <p className="text-[12px] text-ink-4 mt-0.5">
-                      {tr("挑一个专家 → 当场在这个工作台开一个绑好它的会话，直接干活出成果")}
-                    </p>
-                  </header>
-                  <ExpertGallery onSummon={summon} dense />
-                </div>
-              )}
-            </div>
-          )
+        {/* 功能面板：盖在会话之上（会话没被卸载，只是不显示）。 */}
+        {view === "passports" && (
+          // 护照页自带内边距和滚动，不再套外层 px/py。
+          <div className="absolute inset-0 bg-bg-2">
+            <PassportBoard
+              onHandoff={handoffToSession}
+              onOpenSession={(id) => { activate(id); setView("chat"); }}
+              // 护照没写 scope 时的兜底：当前正开着的那个会话的目录。
+              // 仍然可能是空的 —— 那时护照页会问用户选一个，**不静默挑**。
+              fallbackDir={state.tasks.find((t) => t.id === state.activeId)?.dir}
+            />
+          </div>
         )}
       </div>
     </div>

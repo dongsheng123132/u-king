@@ -39,8 +39,7 @@ import { DiffView } from "./panels/DiffView";
 import { QuickPrompts, type Best } from "./QuickPrompts";
 import { useComposerMenu } from "./ComposerMenu";
 import { AttachButton, Composer, ComposerSelect } from "./Composer";
-import { buildSystemPrompt, type Expert } from "./experts";
-import { allExperts } from "./experts";
+import { buildSystemPrompt } from "./experts";
 import { deliver, takeHandoff, type Handoff } from "./handoff";
 import { releaseYield, reportTermWidth } from "../lib/yieldChain";
 import type { ProviderPreset } from "../Wizard";
@@ -204,8 +203,7 @@ function saveChatItems(sessionId: string, items: Item[]) {
   void invoke("chat_archive_replace", { sessionId, items: trimmed }).catch(() => {});
 }
 
-export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, expert, onInstallClaude, taskName, onStatus, onFindExpert, onSummonExpert, paneMode = "chat" }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; expert?: Expert; onInstallClaude?: () => void; taskName?: string; /** 点那排的「找专家」→ 切到左栏专家墙。 */ onFindExpert?: () => void;
-  /** 点一位专家 → 带着他开一个会话（宿主负责建会话，本组件不自己造）。 */ onSummonExpert?: (e: Expert) => void;
+export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = "", onTitle, onInstallClaude, taskName, onStatus, paneMode = "chat" }: { onToast?: (m: string) => void; sessionId?: string; initialWorkspace?: string; onTitle?: (t: string) => void; onInstallClaude?: () => void; taskName?: string;
   /** 这一轮跑起来了 / 跑完了 / 跑挂了 —— 宿主拿去染左侧列表那个小圆点。不传也照常能用。 */
   onStatus?: (s: "running" | "idle" | "error") => void;
   /** 「对话工作台」vs「终端工作台」两个侧栏入口共用同一批会话：cli = 默认停在终端态
@@ -215,11 +213,11 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   // 矮屏（见 lib/useViewport.ts）：顶栏和「按发送前该知道的两件事」那条在
   // 1366×768 上各自都还占着宽松间距，而对话正文只剩三四行。
   const { short } = useViewport();
-  // 对话大脑：默认 Claude Code（世界级 agent，底层走虾盘云 deepseek·同计费·免配置）；专家按 enginePolicy 定，
-  // 通用工作台无专家时也默认 claude。2026-10-04 起大脑下拉只提供 Claude Code（其余引擎先藏不删）。没装 Claude 时下方会引导一键装。
-  const [engine, setEngine] = useState<Engine>(expert?.enginePolicy.default ?? "claude");
-  // 专家的系统提示（persona + 可用技能）；无专家时是 base。engine 影响作图技能提示（原生工具 vs 跑脚本）。
-  const systemText = useMemo(() => buildSystemPrompt(expert, engine), [expert, engine]);
+  // 对话大脑：默认 Claude Code（世界级 agent，底层走虾盘云 deepseek·同计费·免配置）。
+  // 2026-10-04 起大脑下拉只提供 Claude Code（其余引擎先藏不删）。没装 Claude 时下方会引导一键装。
+  const [engine, setEngine] = useState<Engine>("claude");
+  // 轻助手的系统提示（2026-10-04 专家墙删除后只剩基础提示词；老会话里残留的 expert 字段不再注入 persona）。
+  const systemText = useMemo(() => buildSystemPrompt(), []);
   const [items, setItems] = useState<Item[]>(() => loadChatItemsSync(sessionId));
   // 后端水合 + 保存策略（2026-08-25，fable5 终审 FIX-FIRST 三项的修法）：
   //
@@ -1051,16 +1049,10 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
       >
         <div className={cn("flex flex-col h-full min-h-0", !rightOpen && "max-w-[820px] mx-auto w-full")}>
           <header className={cn("flex items-center gap-2 border-b border-white/[0.06] flex-wrap", short ? "pb-1.5" : "pb-3 mb-1")}>
-            {expert ? <span className="text-[16px]">{expert.emoji}</span> : <Bot size={16} className="text-accent" />}
-            <span className="text-[14px] font-semibold text-ink-0">{expert ? expert.name : "U-Workspace"}</span>
+            <Bot size={16} className="text-accent" />
+            <span className="text-[14px] font-semibold text-ink-0">U-Workspace</span>
             {/* 大脑选择器**已挪到输入框正下方那条**（和工作文件夹/打开方式同一条）——
                 它跟「在哪儿干活」是同一类信息：按发送之前该知道的事。这里不留副本。 */}
-            {/* 引擎升级提示 chip：专家默认引擎下，若声明了 escalate，一键切到更强引擎 */}
-            {expert?.enginePolicy.escalate && engine === expert.enginePolicy.default && (
-              <button onClick={() => setEngine(expert.enginePolicy.escalate!)} title={t("复杂/多文件任务，切到更强的引擎")} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-amber-500/[0.12] border border-amber-500/30 text-[11px] text-amber-500 hover:bg-amber-500/[0.2]">
-                {t("任务较重？切 {name} 更强", { name: (ENGINES.find((x) => x.id === expert.enginePolicy.escalate)?.label ?? "").split("（")[0] })}
-              </button>
-            )}
             {/* 正文字号（测试报告 #007「字体大小固定」）。放在顶栏而不是设置页：会想调它的时候
                 人正在读，跑去设置页调完再回来那一趟，等于让他放弃。
                 🔴 客户 2026-08-18 问「这个放大缩小有用吗，没用就删除」——**有用**，
@@ -1159,18 +1151,9 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
               </div>
             ) : engine === "claude" || engine === "codex" ? (
               /* claude / codex：都走结构化卡片（ChatPanel + agent/claude.rs / agent/codex.rs 的 JSONL） */
-              <ChatPanel key={engine} taskId={`${sessionId}-${engine}`} cwd={workspace} active agent={engine} title={taskName} system={expert ? systemText : undefined} onRunInTerminal={pasteToTerminal} onStatus={onStatus} onQuickPick={applyQuick} onPreview={previewFile}
+              <ChatPanel key={engine} taskId={`${sessionId}-${engine}`} cwd={workspace} active agent={engine} title={taskName} onRunInTerminal={pasteToTerminal} onStatus={onStatus} onQuickPick={applyQuick} onPreview={previewFile}
                 brainSlot={brainSelect}
                 modelPicker={modelPicker}
-                experts={{
-                  value: expert?.id ?? "",
-                  list: allExperts().map((e) => ({ id: e.id, label: `${e.emoji} ${t(e.name)}` })),
-                  onChange: (id: string) => {
-                    if (id === "__hire__") { onFindExpert?.(); return; }
-                    const e = allExperts().find((x) => x.id === id);
-                    if (e) onSummonExpert?.(e);
-                  },
-                }}
                 seedPrompt={seed && seed.engine === engine ? seed.prompt : null}
                 onSeedSent={() => { if (seed) { deliver(sessionId, seed.passportId); setSeed(null); } }}
                 onGoManage={() => (engine === "claude" && onInstallClaude ? onInstallClaude() : onToast?.(t("请先在「① 装 AI」装好该工具并在「② 虾盘云」一键配好驱动")))} />
@@ -1199,22 +1182,11 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
               只放大**正文**，工具卡片那些次要信息保持原尺寸 —— 全放大等于什么都没突出。 */}
           {/* 2026-09-06 Astra UI 规格 C 节：两条聊天链路切引擎不该像换了个软件 ——
               消息容器对齐 ChatPanel 的文档流形制（max-w-2xl 居中单列），气泡样式同步对齐
-              （见下方文本消息渲染处）。空态：专家场景保留原有专家名片（红线要求专家信息全保留）；
-              普通场景只留品牌两行，交给下方 composer 区域连同起手词组成「整块居中」，
+              （见下方文本消息渲染处）。空态只留品牌两行，交给下方 composer 区域连同起手词组成「整块居中」，
               不在消息区再摆第二套空态说明（原来的图标/问句/按钮跟下方品牌两行是两套并存的空态区，
-              和 ChatPanel 只有一套的形制不一致）。 */}
+              和 ChatPanel 只有一套的形制不一致）。（专家名片空态 2026-10-04 随专家墙删除。） */}
           <div className="flex-1 overflow-y-auto py-2 select-text" style={{ fontSize: chatFont }}>
             <div className="max-w-2xl mx-auto space-y-4">
-            {items.length === 0 && expert && (
-              <div className="h-full grid place-items-center text-center px-4"><div className="flex flex-col items-center gap-3">
-                <div className="grid place-items-center w-14 h-14 rounded-2xl bg-accent/[0.10] border border-accent/20 text-[28px]">{expert.emoji}</div>
-                <div>
-                  <div className="text-[17px] font-semibold text-ink-0">{t("{name} 已就位", { name: expert.name })}</div>
-                  <div className="text-[12.5px] text-ink-2 mt-1 max-w-sm leading-relaxed">{expert.tagline}</div>
-                </div>
-                <div className="text-[11.5px] text-ink-3">{t("下面点一个「试试这样问我」，或直接说你的需求")}</div>
-              </div></div>
-            )}
             {items.map((it, i) => {
               if (it.type === "approval") {
                 const isCmd = it.tool === "run_command";
@@ -1364,19 +1336,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                 <span>{t("轻助手是直连模型 API 跑的，这一轮没有命令行等价物。想要「对话框底下就是终端」——点这里切到 Claude Code 终端。")}</span>
               </button>
             )}
-            {/* 快捷调用：专家会话用专家自己的「试试这样问我」（那才是它真会的活）；
-                通用会话摆**专家条**（不再是起手词），且只在对话为空时出现 ——
-                教学一次就够，聊起来了还占地方是干扰。
-                🔴 起手词没删：`/` 指令面板仍从 `ALL_QUICK` 取全部词条，换掉的只是默认铺开的那一块。 */}
-            {expert ? (
-              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                {expert.quickPrompts.map(({ label, template }) => (
-                  <button key={label} onClick={() => applyQuick(template)} className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-accent/[0.10] border border-accent/30 text-[11px] text-ink-1 hover:bg-accent/[0.16] hover:text-ink-0">
-                    {label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
             {/* 提示词队列：忙时排队，本轮完自动发下一条 */}
             {queue.length > 0 && (
               <div className="flex items-center gap-1.5 mb-2 flex-wrap">
@@ -1434,15 +1393,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                     hasWorkspace={!!workspace}
                     approval={{ value: mode, onChange: setMode, options: MODES }}
                     model={modelPicker}
-                    experts={{
-                      value: expert?.id ?? "",
-                      list: allExperts().map((e) => ({ id: e.id, label: `${e.emoji} ${t(e.name)}` })),
-                      onChange: (id) => {
-                        if (id === "__hire__") { onFindExpert?.(); return; }
-                        const e = allExperts().find((x) => x.id === id);
-                        if (e) onSummonExpert?.(e);
-                      },
-                    }}
                   />
                   {brainSelect}
                   {/* 🔴 审批档**已折进 `+` 菜单**（客户：「权限……最好是自动模式，也不要让客户选择，
@@ -1465,8 +1415,8 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                 🔴 放上面时它挤在 slogan 和输入框中间，把「这是什么」和「在这儿打字」隔开了；
                 放下面则是「先看到能打字，再看到可以打什么」—— 顺序对得上人的动作。
                 只在对话为空时出现：它是教学，不是常驻工具条。 */}
-            {items.length === 0 && !expert && (
-              <QuickPrompts onPick={applyQuick} onFindExpert={onFindExpert} className="mt-2" />
+            {items.length === 0 && (
+              <QuickPrompts onPick={applyQuick} className="mt-2" />
             )}
           </div>
           </div>

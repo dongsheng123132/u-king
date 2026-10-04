@@ -2193,96 +2193,6 @@
       "bindings": [
         {
           "surface": "cli",
-          "target": "cli:action run runtime.expert.inspect --json --no-input"
-        }
-      ],
-      "description": "List expert packs under ~/.uking/experts. Each folder is one hired expert; reports which ones passed validation, which were rejected and why, and which declare skill packs that are not synced yet. Reads only; never writes.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 5000
-      },
-      "id": "runtime.expert.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "dir",
-          "dir_exists",
-          "packs",
-          "rejected",
-          "truncated",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect hired experts (expert packs)"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.hire.search --json --no-input"
-        }
-      ],
-      "description": "Search npm (and other registries) for skills/plugins that can be hired into this machine as experts. Returns not just what exists but **how to hire each one** (CLI / skill pack / harness tool). Read-only: never installs, never writes. An empty result reports whether the network answered, so 'nothing found' is never confused with 'could not reach'.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 20000
-      },
-      "id": "runtime.hire.search",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "query": {
-            "description": "What kind of actor you need — e.g. `keywords:dsh-plugin ppt`, `公众号`, `cad`. Registry search syntax is passed through.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "query",
-          "hits",
-          "sources",
-          "truncated",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Search the open ecosystem for hireable actors"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.uu_remote.inspect --json --no-input"
         }
       ],
@@ -4171,58 +4081,6 @@
     {
       "bindings": [
         {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.expert.dismiss --json --no-input"
-        }
-      ],
-      "description": "Delete a hired expert pack from ~/.uking/experts/. Built-in experts are compiled-in constants and cannot be dismissed; asking for one returns dismissed:false rather than an error.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 15000
-      },
-      "id": "runtime.expert.dismiss",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          },
-          "id": {
-            "description": "Expert id (folder name under ~/.uking/experts). Only [a-z0-9-], 1..=64.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "dismissed"
-        ],
-        "type": "object"
-      },
-      "title": "Dismiss a hired expert"
-    },
-    {
-      "bindings": [
-        {
           "surface": "cli",
           "target": "cli:action run runtime.skillpack.inspect --json --no-input"
         }
@@ -4637,8 +4495,6 @@
       "runtime.journal.inspect",
       "runtime.workbench.inspect",
       "runtime.workbench.scan",
-      "runtime.expert.inspect",
-      "runtime.hire.search",
       "runtime.localllm.inspect",
       "runtime.localllm.catalog"
     ]

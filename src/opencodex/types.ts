@@ -44,7 +44,7 @@ export type RightKind = "terminal" | "browser" | "files";
  *
  * 切到面板时**不卸载任何会话**（Chat 实例照旧 display:none 保活，PTY 不断）。
  */
-export type WorkView = "chat" | "experts" | "passports";
+export type WorkView = "chat" | "passports";
 
 /** 每个会话的三区布局（运行时内存，不落盘）。中=对话恒在；右=可切+收起；下=终端抽屉。 */
 export interface PanelLayout {
@@ -74,7 +74,8 @@ export interface Task {
   // —— worktree：此任务是 git worktree 时设置。worktree_repo = 主仓库路径；与主任务同一 project 分组 ——
   worktree_repo?: string | null;
   worktree_branch?: string | null;
-  // —— AI 专家：此会话由某专家「召唤」而来，绑定其 id（persona/引擎/技能由 experts.ts 恢复）——
+  // —— 【已弃用，仅读兼容】AI 专家功能 2026-10-04 删除；老会话文件里还带这个字段，保留它是为了
+  //    原样读写不丢键、反序列化不失败。**不再有任何代码读它**（会话按普通会话打开，persona 不再注入）——
   expert?: string | null;
 }
 

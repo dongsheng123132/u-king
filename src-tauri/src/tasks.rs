@@ -52,7 +52,9 @@ pub struct Task {
     /// 手动拖拽排序权重（1-based）。由 `reorder_tasks` 整体赋值；新建=0 → 自动冒顶。
     #[serde(default)]
     pub order: i64,
-    /// AI 专家 id（此会话由某专家「召唤」而来）；普通会话为 None。
+    /// 【已弃用，仅读兼容】AI 专家 id（此会话曾由某专家「召唤」而来）。
+    /// 专家功能 2026-10-04 删除，**没有任何代码再读它**；字段保留是因为客户机上的老
+    /// tasks.json 里带着这个键 —— 反序列化必须继续成功、回写时不丢键。别当成可删的死字段。
     #[serde(default)]
     pub expert: Option<String>,
 }
@@ -254,6 +256,34 @@ mod tests {
         // 缺 status/source 的那条走缺省值，而不是整份文件解析失败
         let second = got.iter().find(|t| t.id == "sess-tabc-2").unwrap();
         assert_eq!((second.status.as_str(), second.source.as_str()), ("idle", "manual"));
+    }
+
+    /// 专家功能 2026-10-04 删除，但客户机上的老会话文件里仍带 `"expert":"<id>"`。
+    /// 这个键必须照样读得出来（不许整份解析失败 = 老用户会话全丢），改名回写时也不丢键。
+    #[test]
+    fn legacy_expert_key_still_loads_and_survives_rewrite() {
+        let sb = sandboxed("tasks-legacy-expert-key");
+        std::fs::create_dir_all(sb.root().join(".uking")).unwrap();
+        let legacy = r#"{
+          "version": 1,
+          "tasks": [
+            {"id":"sess-tool-claude-old1","name":"网站设计专家","dir":"D:/demo","kind":"tool",
+             "tool":"claude","startup_cmd":"claude","expert":"web-designer","created_at":100}
+          ]
+        }"#;
+        std::fs::write(sb.root().join(".uking").join("tasks.json"), legacy).unwrap();
+
+        let got = list_tasks();
+        assert_eq!(got.len(), 1, "带 expert 键的老会话不许丢: {got:?}");
+        assert_eq!(got[0].expert.as_deref(), Some("web-designer"));
+
+        let mut renamed = got[0].clone();
+        renamed.name = "改个名".into();
+        upsert_task(renamed).unwrap();
+        let got = list_tasks();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].name, "改个名");
+        assert_eq!(got[0].expert.as_deref(), Some("web-designer"), "回写不许丢弃用字段");
     }
 
     /// 「新建对话」落盘 → 读回，kind / tool / startup_cmd / name 一个不丢；

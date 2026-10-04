@@ -29,8 +29,6 @@ mod doc;
 mod device;
 mod draw;
 mod envfp;
-mod expert;
-mod hire;
 mod feedback;
 mod metrics;
 mod model_catalog;
@@ -2163,31 +2161,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             None,
         ),
         actions::readonly(
-            actions::EXPERT_INSPECT,
-            "Inspect hired experts (expert packs)",
-            "List expert packs under ~/.uking/experts. Each folder is one hired expert; reports which ones passed validation, which were rejected and why, and which declare skill packs that are not synced yet. Reads only; never writes.",
-            5_000,
-            &["dir", "dir_exists", "packs", "rejected", "truncated", "ready", "blockers"],
-            |_, _, _| Ok(serde_json::to_value(expert::inspect()).unwrap_or_default()),
-        ),
-        actions::readonly_req(
-            actions::HIRE_SEARCH,
-            "Search the open ecosystem for hireable actors",
-            "Search npm (and other registries) for skills/plugins that can be hired into this machine as experts. Returns not just what exists but **how to hire each one** (CLI / skill pack / harness tool). Read-only: never installs, never writes. An empty result reports whether the network answered, so 'nothing found' is never confused with 'could not reach'.",
-            20_000,
-            serde_json::json!({
-                "query": { "type": "string", "description": "What kind of actor you need — e.g. `keywords:dsh-plugin ppt`, `公众号`, `cad`. Registry search syntax is passed through." }
-            }),
-            // `query` 必填：没有搜索词的搜索没有意义，核心该拦下来而不是回一个空列表
-            //（回空列表会被读成「生态里没有」—— 本模块最想防的就是这个误读）。
-            &["query"],
-            &["query", "hits", "sources", "truncated", "ready", "blockers"],
-            |_, input, _| {
-                let q = input.get("query").and_then(|v| v.as_str()).unwrap_or_default();
-                Ok(serde_json::to_value(hire::search(q)).unwrap_or_default())
-            },
-        ),
-        actions::readonly(
             actions::UU_REMOTE_INSPECT,
             "Inspect screen-sharing assistance (UU Remote)",
             "Read whether NetEase UU Remote is installed so the author can see this screen. Reads only.",
@@ -3113,21 +3086,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 // `/uking-aigc` 只是纯文本发给模型，容易被当成陌生指令格式而拒绝执行。
                 let _ = providers::ensure_openclaw_text_commands();
                 Ok(serde_json::json!({ "default_dir": default_dir, "installed": installed }))
-            },
-            None,
-        ),
-        actions::write(
-            actions::EXPERT_DISMISS,
-            "Dismiss a hired expert",
-            "Delete a hired expert pack from ~/.uking/experts/. Built-in experts are compiled-in constants and cannot be dismissed; asking for one returns dismissed:false rather than an error.",
-            15_000,
-            "required",
-            serde_json::json!({ "id": { "type": "string", "description": "Expert id (folder name under ~/.uking/experts). Only [a-z0-9-], 1..=64." } }),
-            &["id"],
-            &["dismissed"],
-            |_, input, _| {
-                let id = input["id"].as_str().unwrap_or_default();
-                Ok(serde_json::json!({ "dismissed": expert::dismiss(id)? }))
             },
             None,
         ),

@@ -300,7 +300,6 @@ export function ChatPanel({
   brainSlot,
   composerFooter,
   modelPicker,
-  experts,
   onPreview,
   seedPrompt,
   onSeedSent,
@@ -311,7 +310,7 @@ export function ChatPanel({
   onGoManage?: () => void;
   /** 对话大脑 CLI：claude（agent/claude.rs）或 codex（agent/codex.rs）。命令走 `${agent}_send` 等。 */
   agent?: "claude" | "codex";
-  /** 专家 persona（系统提示）：claude 走 --append-system-prompt，codex 首轮 prepend。 */
+  /** 系统提示：claude 走 --append-system-prompt，codex 首轮 prepend。（原给专家 persona 用，专家 2026-10-04 删除后暂无调用方传入。） */
   system?: string;
   /** 会话显示名（用户自定义/工具名）—— 空态标题用它，别再写死「和 Claude Code 对话」。 */
   title?: string;
@@ -332,10 +331,7 @@ export function ChatPanel({
   modelPicker?: { value: string; allowFollow: boolean; list: { id: string; label: string }[]; onChange: (m: string) => void };
   /* `onOpenWith` / `workspace` 已删（2026-08-18）：「在这个文件夹里打开」那组从 `+` 里去掉了
      —— 右侧文件预览面板本来就有这个功能，同一个动作两个入口，改一个漏一个。 */
-  experts?: { value: string; list: { id: string; label: string }[]; onChange: (id: string) => void };
-  /* 🔴 `onFindExpert` / `onSummonExpert` **已删**（2026-08-18 随专家 chips 一起）：
-     选专家/找专家现在统一在输入框底下那条的「专家」下拉里（Chat.tsx），两个分支共用一份。
-     组件里留着两个没人调的 prop = 下一个人会以为这儿还有个专家入口。 */
+  /* 专家下拉（`experts` / `onFindExpert` / `onSummonExpert`）已全部删除（2026-10-04 专家墙下线）。 */
   /** 把一个产出文件送进宿主的右侧预览（网页/图片/视频）。
    *  本组件不拥有预览面板（那是 Chat 的），所以只发路径不自己渲染。不传则不显示预览按钮 ——
    *  **宁可没这个按钮，也不给一个点了没反应的**。 */
@@ -914,7 +910,6 @@ export function ChatPanel({
                   }}
                   hasWorkspace={!!cwd}
                   model={modelPicker}
-                  experts={experts}
                 />
                 {/* 🔴 大脑/模型**不在左槽** —— 已挪到发送键旁的右槽（客户 2026-08-18：
                     「我们就把选择 agent 放到右侧如何」）。WorkBuddy / Claude Cowork / MiniMax

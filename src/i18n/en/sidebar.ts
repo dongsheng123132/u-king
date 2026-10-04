@@ -21,7 +21,6 @@ export const sidebar: Record<string, string> = {
   "换模型 · 充值 · 用量": "Models · Top-up · Usage",
   "上手教程": "Getting Started",
   "技能市场 · 怎么用 AI": "Skill market · How to use AI",
-  "挑个专家帮你干活": "Pick an expert to work for you",
   // 旧核心三步（标签已改版；词条保留兜底老引用）
   "① 装 AI": "① Install AI",
   "一键装好 · 主推 ClawX": "One-click install · ClawX recommended",
@@ -35,8 +34,6 @@ export const sidebar: Record<string, string> = {
   "工作台": "Workbench",
   "对话 · 终端 · 会话": "Chat · Terminal · Sessions",
   "U-Chat 对话 · U-CLI 终端 · 作图，一站干活": "U-Chat · U-CLI terminal · image gen, all in one",
-  "AI 专家": "AI Experts",
-  "挑个专家帮你干活 · 更多去 skillhub": "Pick an expert to work for you · more on skillhub",
   "Codex 工作站": "Codex Station",
   "安装 · 配置 · 模板": "Install · Configure · Templates",
 

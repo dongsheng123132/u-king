@@ -21,7 +21,7 @@
  * `globals.css` 的浅色兼容层映射了 `border-white/*` `bg-white/[0.0x]`，唯独没有 `text-white/*`。
  * 现在 `scripts/check-theme-tokens.mjs` 会在构建期拦住它，别再写回去。
  *
- * 一份实现多处用（同 `Composer` / `ExpertGallery`）：谁有「新建项目」入口谁就调 `offer(dir)`
+ * 一份实现多处用（同 `Composer`）：谁有「新建项目」入口谁就调 `offer(dir)`
  * 并渲染 `node`，别复制第二份弹窗。
  */
 import { useCallback, useRef, useState } from "react";

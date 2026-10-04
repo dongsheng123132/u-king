@@ -15,7 +15,7 @@
  *     pageerror / console.error 为 0（原文全部收集）、没有 report_bug(ui_*) 上报。
  *  3. 我的 AI → 右上「体检 · 升级 →」进子页，「← 返回我的 AI」回来。
  *  4. AI 设置：「账号 · 充值」「用量账单」两个子 tab，用量账单里有「Token 水电表」那块。
- *  5. 工作台：页内「对话 ↔ 终端」切换；对话态无专家时，顶栏大脑处是静态标签「Claude Code」而不是 <select>。
+ *  5. 工作台：页内「对话 ↔ 终端」切换；对话态顶栏大脑处是静态标签「Claude Code」而不是 <select>。
  *  6. 每页横向溢出：`documentElement.scrollWidth > clientWidth`，外加**真正的滚动容器**（当前可见的 <main>
  *     与侧栏 <nav>）—— 后者才是 shot-toolhub.mjs 里记过教训的：页面内容裁在 <main overflow-y-auto> 上，
  *     只量 documentElement 永远量不出横向溢出。
@@ -762,12 +762,12 @@ async function runViewport(browser, vp) {
       check(pane.cli.found && pane.cli.disabled === false, "「终端」按钮可点（会话有 dir，未 disabled）");
       check(pane.chat.active === true && pane.cli.active === false, "初始是对话态（对话=激活，终端=未激活）", JSON.stringify(pane));
 
-      // 「无专家」：Chat 顶栏标题在无专家时是 "U-Workspace"，有专家时是专家名（Chat.tsx: `expert ? expert.name : "U-Workspace"`）。
+      // Chat 顶栏标题恒为 "U-Workspace"（专家功能 2026-10-04 删除，原先有专家时会换成专家名）。
       const wsText = await page.evaluate(() => {
         const m = [...document.querySelectorAll("main")].find((x) => getComputedStyle(x).display !== "none");
         return m ? m.innerText : "";
       });
-      check(wsText.includes("U-Workspace"), "当前会话是无专家会话（顶栏标题为 U-Workspace，不是专家名）");
+      check(wsText.includes("U-Workspace"), "当前会话顶栏标题为 U-Workspace");
 
       // 大脑区
       const brain = await page.evaluate(SCAN_BRAIN);

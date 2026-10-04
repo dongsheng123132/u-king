@@ -7,7 +7,7 @@
  * 两次都是 `cargo check` / `pnpm build` / `action conformance` **全绿**发出去的 ——
  * 排版没有跑道就只能等客户截图，而客户只会在第三次踩到时说「还是不对」。
  *
- * 矮视口是关键档：`+` 菜单贴着输入框往上弹，视口越矮，「专家 / 模型」那两行离底边越近。
+ * 矮视口是关键档：`+` 菜单贴着输入框往上弹，视口越矮，「模型」那一行离底边越近。
  *
  * 用法：node scripts/check-submenu-fit.mjs   （需先 pnpm dev；换端口用 UKING_DEV_URL=）
  * 退出码：0 = 全在视口内；1 = 有一档被切。
@@ -19,7 +19,7 @@ const URL = process.env.UKING_DEV_URL || "http://localhost:1430/";
 /** 想看图就 `UKING_SHOT_OUT=<目录>`；不设就只出数字。 */
 const SHOT = process.env.UKING_SHOT_OUT || "";
 if (SHOT) mkdirSync(SHOT, { recursive: true });
-const PLUS_TITLE = "添加文件 / 选专家 / 换模型（也可以直接把文件拖进来）";
+const PLUS_TITLE = "添加文件 / 换模型（也可以直接把文件拖进来）";
 
 /** 视口不是屏幕分辨率：扣掉任务栏 + 原生标题栏才是网页拿到的高度。矮的那两档是本跑道的主场。 */
 const CASES = [
@@ -61,7 +61,7 @@ const TAURI_SHIM = () => {
  * 🔴 空会话的排版**结构上**出不了这个问题，两处都在把输入框往上顶：
  *  - 起手词（21 条那块）只在 `items.length === 0` 时渲染，占着输入框下面一百多像素；
  *  - 整列还带 `justify-center`，空态是**垂直居中**的，输入框离底边有 245px。
- * 聊过一句之后两样都没了，输入框贴着窗口底边，`+` 菜单的「专家 / 模型」两行离底只剩几十像素
+ * 聊过一句之后两样都没了，输入框贴着窗口底边，`+` 菜单的「模型」那一行离底只剩几十像素
  * —— 这才是子菜单往下长会被切的那一档。不掰这一下，本跑道就是对着一个不会出问题的布局报绿。
  *
  * 掰完必须验「`+` 真的往下走了」（下面那道 60px 的判据），否则选择器哪天失配，
@@ -76,7 +76,7 @@ const EMULATE_CHATTED = () => {
   /* 🔴 认「整列」要同时看 `flex-col`：`+` 按钮自己的 class 里也有 `justify-center`
      （`w-7 justify-center px-0`），只按这一个词往上找，第一跳就停在按钮身上 —— 那一步
      什么都没改，而 `col:true` 照样为真。这条正是本跑道的判据差点被自己骗过去的地方。 */
-  const plus = document.querySelector('button[title^="添加文件 / 选专家"]');
+  const plus = document.querySelector('button[title^="添加文件 / 换模型"]');
   let col = plus?.parentElement;
   while (col && !(String(col.className || "").includes("justify-center") && String(col.className || "").includes("flex-col"))) col = col.parentElement;
   if (col) col.style.justifyContent = "flex-end";
@@ -131,8 +131,8 @@ for (const c of CASES) {
   await plus.click();
   await page.waitForTimeout(300);
 
-  /* 「专家」和「模型」都要验：它们在菜单里的行高不同，离底边的距离也不同。 */
-  for (const label of ["专家", "模型"]) {
+  /* 子菜单只剩「模型」一项（「专家」2026-10-04 随专家墙删除）。 */
+  for (const label of ["模型"]) {
     const row = page.getByRole("button", { name: new RegExp(`^${label}`) }).first();
     if (!(await row.count())) { rows.push({ case: c.name, sub: label, err: "菜单里没有这一项" }); continue; }
     await row.hover();

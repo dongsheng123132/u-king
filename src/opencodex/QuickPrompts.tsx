@@ -21,7 +21,7 @@ import { useEffect, useState } from "react";
 import {
   Bug, Code2, Film, FileCode, FileSearch, FileText, Languages, LayoutTemplate,
   Image as ImageIcon, PenLine, Presentation, Save, ScrollText, Smile, Sparkles,
-  Table, Terminal, Wand2, ListChecks, UserRound, ChevronDown, Users,
+  Table, Terminal, Wand2, ListChecks, UserRound, ChevronDown,
   Download, Wrench, Stethoscope, RefreshCw, HardDriveDownload,
 } from "lucide-react";
 import type { Engine } from "./types";
@@ -133,11 +133,9 @@ const FIRST_ROW = 5;
 
 const SCENE_KEY = "uking.chat.quickscene";
 
-export function QuickPrompts({ onPick, onFindExpert, className }: {
+export function QuickPrompts({ onPick, className }: {
   /** 点了填哪句话；`best` = 这活哪个大脑拿手（没有就是「当前这个就行」）。 */
   onPick: (template: string, best?: Best) => void;
-  /** 点「找专家」→ 打开左栏专家墙。不传就不显示这颗（独立终端页那类地方没有左栏）。 */
-  onFindExpert?: () => void;
   className?: string;
 }) {
   const { t } = useI18n();
@@ -209,19 +207,6 @@ export function QuickPrompts({ onPick, onFindExpert, className }: {
             )}
           >
             {t("还有 {n} 个", { n: items.length - FIRST_ROW })} <ChevronDown size={11} />
-          </button>
-        )}
-        {/* 「找专家」—— 起手词是**一句话模板**，专家是**带 persona + 技能的一整套**。
-            用户原话：「和起手词差不多，但重很多」。摆在同一行末尾，让人知道还有更重的一档。 */}
-        {onFindExpert && (
-          <button
-            onClick={onFindExpert}
-            className={cn(
-              "inline-flex items-center gap-1 px-2.5 rounded-full border border-accent/30 bg-accent/[0.08] text-[11px] text-accent hover:bg-accent/[0.14]",
-              short ? "h-6" : "h-7",
-            )}
-          >
-            <Users size={12} /> {t("找专家")}
           </button>
         )}
       </div>

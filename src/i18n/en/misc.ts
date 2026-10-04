@@ -1,4 +1,4 @@
-/** 英文覆盖字典 · 进阶/连接器/动态/教程/专家（Advanced/Connectors/Feed/Tutorial/Experts）。 */
+/** 英文覆盖字典 · 进阶/连接器/动态/教程（Advanced/Connectors/Feed/Tutorial）+ 一批通用词。 */
 export const misc: Record<string, string> = {
   "（{n}）": "({n})",
   "本机": "This PC",
@@ -227,130 +227,12 @@ export const misc: Record<string, string> = {
   "打开失败": "Failed to open",
   "重新打开": "Reopen",
 
-  // ── Experts.tsx ────────────────────────────────────────────────
-  "AI 专家": "AI Experts",
-  "精品技能，召唤即用 —— 点一个专家，带着它进 U-Workspace 直接干活出成果":
-    "Curated skills, summon and go — pick an expert and take it into U-Workspace to get results",
-  "技能市场 skillhub.cn": "Skill market skillhub.cn",
-  "海量 AI 专家 / 技能包 —— 做视频、炒股看盘、写作排版、办公…注册后搜关键词一键装，装完回 U-Workspace 直接用":
-    "Tons of AI experts / skill packs — video, stock watching, writing & layout, office work… sign up, search a keyword, install in one click, then use it back in U-Workspace",
-  "精选场景": "Featured scenarios",
-  "能力介绍": "What it does",
-  "擅长领域": "Strengths",
-  "试试这样问我": "Try asking me",
-  "打开{name}": "Open {name}",
-  "召唤 {role} → 进 U-Workspace 干活": "Summon {role} → work in U-Workspace",
+  // ── 通用词（原 Experts.tsx / experts.ts 的标签；专家墙 2026-10-04 删除后仍被其它页引用，故保留） ──
   "全部": "All",
-  "产品设计": "Product design",
-  "内容创作": "Content creation",
-  "效率办公": "Productivity",
-
-  // ── opencodex/experts.ts（专家数据，Experts.tsx 渲染处 t() 包） ──
-  // 专家名
-  "网站设计专家": "Website Design Expert",
-  "PPT·文档专家": "PPT·Docs Expert",
-  "数据表格专家": "Data & Spreadsheet Expert",
-  "海报·短视频专家": "Poster·Short-Video Expert",
-  "AI 作图专家": "AI Image Expert",
-  "AI 视频专家": "AI Video Expert",
-  "简历专家": "Resume Expert",
-  "文案专家": "Copywriting Expert",
-  "翻译·润色专家": "Translation·Polishing Expert",
-  // 职称
-  "资深网页设计师": "Senior web designer",
-  "PPT·文档顾问": "PPT·docs consultant",
-  "数据分析师": "Data analyst",
-  "视觉设计总监": "Visual design director",
-  "AI 绘画师": "AI illustrator",
-  "AI 视频师": "AI video maker",
-  "求职顾问": "Career advisor",
-  "新媒体文案": "Social media copywriter",
-  "翻译专家": "Translation specialist",
-  // 能力介绍 desc
-  "澄清需求 → 信息架构 → 现代 Tailwind 风格的单页原型，hero 配图用 AI 生成，右侧实时预览，边看边改。":
-    "Clarify needs → information architecture → a modern Tailwind-style single-page prototype, with AI-generated hero art and a live preview on the right so you can tweak as you go.",
-  "先出大纲再逐页逐段填充，PPT 默认出**可直接打开的真 .pptx**、Word 出**真 .docx**（也能出 HTML/Markdown）。":
-    "Outline first, then fill in page by page and paragraph by paragraph; by default PPT outputs a real, openable .pptx and Word a real .docx (HTML/Markdown also available).",
-  "把杂乱数据整理成结构化表格，导出可直接打开、数字能求和的真 .xlsx；也能做多表报表、台账、清单。":
-    "Turn messy data into structured tables, exported as a real, openable .xlsx where numbers can be summed; also does multi-sheet reports, ledgers, and lists.",
-  "AI 出图做海报封面、AI 文生视频、AI 配音，成果自动进右侧预览。懂尺寸与提示词工作法。":
-    "AI art for poster covers, AI text-to-video, AI voiceover — results flow into the right-side preview automatically. Knows sizing and prompt craft.",
-  "把你的一句话扩成专业画面描述再出图，图进右侧预览可放大。懂提示词工作法。":
-    "Expands your one-liner into a professional scene description before generating; images appear in the right preview and can be zoomed. Knows prompt craft.",
-  "文字描述 → 视频，异步出片、落盘到工作区，成果可预览。":
-    "Text description → video, rendered asynchronously and saved to the workspace, with a preview of the result.",
-  "问清经历和目标岗位，产出结构清晰、有量化成果的简历，导出可直接投递的真 .docx。":
-    "Clarify your background and target role, produce a clearly structured resume with quantified results, and export a real .docx ready to send.",
-  "按平台调性写吸睛文案（标题/正文/话题标签/emoji），要配图就 AI 出图，成果进右侧预览。":
-    "Write eye-catching copy in each platform's voice (title/body/hashtags/emoji); AI-generate images when needed, with results in the right-side preview.",
-  "地道翻译（不生硬直译）、润色、改写、语气调整；长文可读文件、结果可存文件。":
-    "Natural translation (no stiff word-for-word), polishing, rewriting, and tone adjustment; long text can be read from files and results saved to files.",
-  // 一句话选它做什么 tagline
-  "做网站 / 落地页 / H5，出可预览的成品": "Build websites / landing pages / H5, with previewable results",
-  "做 PPT / 文档 / 报告，可预览可导出": "Make PPT / docs / reports, previewable and exportable",
-  "整理数据 / 做报表，出真 Excel": "Organize data / build reports, output real Excel",
-  "做海报 / 短视频素材 / 配音": "Make posters / short-video assets / voiceover",
-  "专心作图，一句话出图": "Focused on images — one sentence, one picture",
-  "文字生成视频，异步出片": "Text to video, rendered asynchronously",
-  "帮你写简历，出真 Word": "Write your resume, output real Word",
-  "小红书/公众号/朋友圈文案 + 配图": "RED / WeChat / Moments copy + images",
-  "中英互译 / 润色 / 改写": "CN↔EN translation / polishing / rewriting",
-  // 擅长领域 tags（含中文的）
-  "网站设计": "Web design",
-  "落地页": "Landing page",
   "文档": "Docs",
-  "报告": "Report",
-  "数据整理": "Data wrangling",
-  "报表": "Reports",
-  "台账": "Ledger",
-  "海报": "Poster",
-  "短视频": "Short video",
-  "配音": "Voiceover",
-  "封面": "Cover",
   "作图": "Image gen",
-  "配图": "Illustration",
   "提示词": "Prompts",
   "视频": "Video",
   "文生视频": "Text-to-video",
-  "简历": "Resume",
-  "求职": "Job hunting",
-  "小红书": "RED",
-  "公众号": "WeChat OA",
-  "文案": "Copy",
   "标题": "Headlines",
-  "翻译": "Translation",
-  "润色": "Polishing",
-  "中英": "CN↔EN",
-  // 试试这样问我 quickPrompts.template
-  "帮我做一个奶茶店的落地页，清新风、有点单和门店位置":
-    "Build me a bubble-tea shop landing page, fresh style, with a menu and store location",
-  "帮我做一个极简的个人作品集单页，深色风": "Build me a minimal single-page personal portfolio, dark theme",
-  "帮我做一个 SaaS 产品官网首页，含 hero、功能卡、定价、页脚":
-    "Build me a SaaS product homepage with a hero, feature cards, pricing, and footer",
-  "帮我做一份 8 页的创业路演 PPT，主题是 AI 办公助手":
-    "Make me an 8-page startup pitch deck on the theme of an AI office assistant",
-  "帮我把这周的工作整理成一份周报 Word 文档": "Turn this week's work into a weekly-report Word doc",
-  "帮我做一份产品介绍 PPT，突出卖点和对比": "Make me a product intro deck highlighting selling points and comparisons",
-  "帮我把这些销售数据整理成 Excel 报表：（把数据贴这里）":
-    "Organize this sales data into an Excel report: (paste the data here)",
-  "帮我做一个记账台账 Excel，含日期/项目/金额/分类": "Make me a bookkeeping ledger in Excel with date/item/amount/category",
-  "帮我把这段文字里的信息整理成一张 Excel 表格：": "Organize the information in this text into an Excel table:",
-  "帮我画一张周年庆活动海报，喜庆红金风": "Draw me an anniversary event poster in a festive red-and-gold style",
-  "帮我做一张公众号封面图，科技风": "Make me a WeChat Official Account cover image, tech style",
-  "帮我生成一段 5 秒的产品短视频片头": "Generate me a 5-second product short-video intro",
-  "画一只戴墨镜的橘猫，卡通风格": "Draw an orange cat wearing sunglasses, cartoon style",
-  "画一幅中国风水墨山水，留白，意境": "Paint a Chinese-style ink landscape, with negative space and mood",
-  "画一座赛博朋克风格的夜晚城市，霓虹": "Draw a cyberpunk-style night city with neon",
-  "生成一段小猫在月球上散步的视频": "Generate a video of a kitten walking on the moon",
-  "生成一段咖啡杯在桌上冒热气的短视频": "Generate a short video of a coffee cup steaming on a table",
-  "帮我写一份简历，目标岗位是（岗位），我的经历是：":
-    "Write me a resume for the target role of (role); my background is:",
-  "帮我优化这段工作经历，让它更有说服力：": "Improve this work experience to make it more persuasive:",
-  "帮我写一篇小红书笔记，主题是（主题），带标题和话题标签":
-    "Write me a RED post on the topic of (topic), with a title and hashtags",
-  "帮我写一篇公众号推文，主题是：": "Write me a WeChat Official Account article on the topic:",
-  "帮我写一条朋友圈文案，卖点是：": "Write me a Moments post; the selling point is:",
-  "帮我把这段中文翻译成地道英文：": "Translate this Chinese into natural English:",
-  "帮我把这段英文翻译成中文：": "Translate this English into Chinese:",
-  "帮我润色这段文字，让它更专业通顺：": "Polish this text to make it more professional and fluent:",
 };
