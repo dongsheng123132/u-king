@@ -1,14 +1,14 @@
 /**
  * 统一「成果海报」组件 —— 把各功能的战绩数据画成一张想晒出去的竖版 PNG，一键存到本地。
  *
- * 设计目标：**激起分享欲 + 引流**。Token 压缩机 / AI 优化大师 / Token 账单三处复用同一张海报模板，
+ * 设计目标：**激起分享欲 + 引流**。AI 优化大师 / Token 账单等处复用同一张海报模板（Token 压缩机那处 2026-10-04 已随功能退役），
  * 只传各自的 `spec`（已本地化）。海报底部带 U-King 二维码（扫码去官网下载）——分享 = 拉新客。
  *
  * **整块可插拔 · 纯前端**：
  *  - 只靠 props（`spec` + `onToast`）通信，不碰后端新命令；
  *  - 出图走原生 Canvas 2D（零第三方截图库，合"体积优先"），二维码用已有 `qrcode` 依赖；
  *  - 存盘**复用**现成的 `export_qr_merge`（通用 base64→原生另存为 PNG，不为它新增 Rust 命令）。
- *  删除本组件只需删本文件 + 三处 `<ShareButton>` 引用。
+ *  删除本组件只需删本文件 + 各处 `<ShareButton>` 引用。
  */
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";

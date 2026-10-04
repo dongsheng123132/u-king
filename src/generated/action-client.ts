@@ -119,14 +119,6 @@ export const ACTION = {
   RUNTIME_PROVIDER_SAVE: "runtime.provider.save",
   /** Answers the one question the install flow never answered: is U-Workspace usable on this machine right now. Each check reports whether the thing WORKS, not whether it was installed — `claude` is really executed, the driver is read from disk, the balance is really queried. Every failed check carries a concrete fix. */
   RUNTIME_READINESS_INSPECT: "runtime.readiness.inspect",
-  /** Run the real rtk over two built-in sample logs (a build log and a test run) and return the before/after text side by side. Proves what is cut and what is kept. Reads only; the samples are embedded, no user files are touched. */
-  RUNTIME_RTK_DEMO: "runtime.rtk.demo",
-  /** Read whether RTK is installed, enabled as a Claude Code hook, and how many tokens it saved. Reads only. */
-  RUNTIME_RTK_INSPECT: "runtime.rtk.inspect",
-  /** Merge or remove U-King's RTK hook in the user's ~/.claude/settings.json. Touches only our own keys. */
-  RUNTIME_RTK_SET_ENABLED: "runtime.rtk.set_enabled",
-  /** Remove U-King's RTK hook from ~/.claude/settings.json and delete the rtk binary. Touches nothing else the user configured. */
-  RUNTIME_RTK_UNINSTALL: "runtime.rtk.uninstall",
   /** Report every bundled skill pack with a one-line summary and how many tool directories currently hold it. `installed` means the folder is really on disk, not that we once called install. */
   RUNTIME_SKILLPACK_INSPECT: "runtime.skillpack.inspect",
   /** Export the bundled skill packs and copy them into each detected tool's skills directory. Pass `name` to install just one pack (the reverse of runtime.skillpack.uninstall); omit it to sync all. Scripts carry no keys; they read ~/.uking/device.json at runtime. */
@@ -243,10 +235,6 @@ export type ActionInputMap = {
   "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
   "runtime.provider.save": { expected_state_version?: string; provider: Record<string, unknown>; };
   "runtime.readiness.inspect": Record<string, never>;
-  "runtime.rtk.demo": Record<string, never>;
-  "runtime.rtk.inspect": Record<string, never>;
-  "runtime.rtk.set_enabled": { enabled: boolean; expected_state_version?: string; };
-  "runtime.rtk.uninstall": { expected_state_version?: string; };
   "runtime.skillpack.inspect": Record<string, never>;
   "runtime.skillpack.install": { expected_state_version?: string; name?: string; };
   "runtime.skillpack.uninstall": { expected_state_version?: string; name: string; };
@@ -334,10 +322,6 @@ export type ActionOutputMap = {
   "runtime.provider.restore": Record<string, unknown>;
   "runtime.provider.save": Record<string, unknown>;
   "runtime.readiness.inspect": Record<string, unknown>;
-  "runtime.rtk.demo": Record<string, unknown>;
-  "runtime.rtk.inspect": Record<string, unknown>;
-  "runtime.rtk.set_enabled": Record<string, unknown>;
-  "runtime.rtk.uninstall": Record<string, unknown>;
   "runtime.skillpack.inspect": Record<string, unknown>;
   "runtime.skillpack.install": Record<string, unknown>;
   "runtime.skillpack.uninstall": Record<string, unknown>;

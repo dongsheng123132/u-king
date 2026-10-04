@@ -41,6 +41,7 @@ export const feedback: Record<string, string> = {
   "复制": "Copy",
   "约 {m} 分钟后自动断开": "Disconnects automatically in about {m} min",
   "远程协助已开启，请把协助编号发给作者": "Remote assistance is on — send the code to the author",
+  "已开启": "On",
   "已停止远程协助": "Remote assistance stopped",
   "已复制协助编号：{id}": "Copied assistance code: {id}",
   "开启失败：": "Failed to enable: ",

@@ -621,81 +621,6 @@
       "bindings": [
         {
           "surface": "cli",
-          "target": "cli:action run runtime.rtk.inspect --json --no-input"
-        }
-      ],
-      "description": "Read whether RTK is installed, enabled as a Claude Code hook, and how many tokens it saved. Reads only.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 10000
-      },
-      "id": "runtime.rtk.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "installed",
-          "enabled",
-          "ready",
-          "blockers"
-        ],
-        "type": "object"
-      },
-      "title": "Inspect the token squeezer (RTK)"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.rtk.demo --json --no-input"
-        }
-      ],
-      "description": "Run the real rtk over two built-in sample logs (a build log and a test run) and return the before/after text side by side. Proves what is cut and what is kept. Reads only; the samples are embedded, no user files are touched.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 30000
-      },
-      "id": "runtime.rtk.demo",
-      "input_schema": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "ready",
-          "blockers",
-          "cases"
-        ],
-        "type": "object"
-      },
-      "title": "Demonstrate what the token squeezer actually cuts"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.hermes_browser.inspect --json --no-input"
         }
       ],
@@ -2873,59 +2798,6 @@
         },
         {
           "surface": "cli",
-          "target": "cli:action run runtime.rtk.set_enabled --json --no-input"
-        }
-      ],
-      "description": "Merge or remove U-King's RTK hook in the user's ~/.claude/settings.json. Touches only our own keys.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 30000
-      },
-      "id": "runtime.rtk.set_enabled",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "description": "true = enable the hook, false = remove it.",
-            "type": "boolean"
-          },
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "enabled"
-        ],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "enabled",
-          "message"
-        ],
-        "type": "object"
-      },
-      "title": "Turn the token squeezer on or off"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
           "target": "cli:action run runtime.driver.apply_everywhere --json --no-input"
         }
       ],
@@ -3222,52 +3094,6 @@
         "type": "object"
       },
       "title": "Read back what each AI tool would actually run"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.rtk.uninstall --json --no-input"
-        }
-      ],
-      "description": "Remove U-King's RTK hook from ~/.claude/settings.json and delete the rtk binary. Touches nothing else the user configured.",
-      "effects": {
-        "audit_required": true,
-        "class": "write",
-        "confirmation": "always",
-        "reversible": true,
-        "risk": "medium"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 60000
-      },
-      "id": "runtime.rtk.uninstall",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_state_version": {
-            "description": "Optional. The state_version you read before deciding. Mismatch returns conflict instead of overwriting.",
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "message"
-        ],
-        "type": "object"
-      },
-      "title": "Uninstall the token squeezer"
     },
     {
       "bindings": [
@@ -4472,8 +4298,6 @@
       "runtime.driver.inspect",
       "runtime.footprint.inspect",
       "runtime.toolbox.inspect",
-      "runtime.rtk.inspect",
-      "runtime.rtk.demo",
       "runtime.hermes_browser.inspect",
       "runtime.clawx.inspect",
       "runtime.openclaw2.inspect",

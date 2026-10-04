@@ -421,7 +421,7 @@ export function Manager({
 }: {
   onGoCodex?: () => void;
   onGoAdvanced?: () => void;
-  /** 跳到某个全屏配置页（本地大模型 / DSH 插件 / Token 压缩机 / 让 AI 认识 U-King）。
+  /** 跳到某个全屏配置页（本地大模型 / 让 AI 认识 U-King 等）。
    *  2026-08-22 这批页面从侧栏摘掉、入口收进本页「高级」分区 —— 页面和路由原样保留，
    *  App 那边照 tab id 渲染，这里只负责跳（同 Codex 专区那条的手法）。 */
   onGoPage?: (tab: string) => void;
@@ -1703,9 +1703,9 @@ export function Manager({
             <Suspense fallback={<div className="py-10 text-center text-[12px] text-ink-4">{t("加载中…")}</div>}>
               <Meter
                 onToast={flash}
-                // 水电表建议卡里的两个跳转：「去开 Token 压缩机」是别的全屏页 → onGoPage("rtk")；
-                // 「去换模型」本来就是回「AI 设置」——现在水电表已经在这页里了，所以落到本页「工具分配」子 tab
-                // （哪个 AI 用哪家、用什么模型），不再整页跳走。其余 id 一律交给 onGoPage。
+                // 水电表建议卡里的跳转：「去换模型」本来就是回「AI 设置」——现在水电表已经在这页里了，
+                // 所以落到本页「工具分配」子 tab（哪个 AI 用哪家、用什么模型），不再整页跳走。
+                // 其余 id 一律交给 onGoPage。（「去开 Token 压缩机」那条 2026-10-04 随压缩机退役删除。）
                 onGoto={(tab) => {
                   if (tab === "manage") setSettingsTab("tools");
                   else onGoPage?.(tab);
@@ -2703,7 +2703,6 @@ export function Manager({
         <div className="grid gap-2 sm:grid-cols-2">
           {[
             { tab: "identity", icon: IdCard, label: t("让 AI 认识 U-King"), sub: t("往 CLAUDE.md 插一行指针 · 随时可撤") },
-            { tab: "rtk", icon: Zap, label: t("Token 压缩机"), sub: t("AI 编程省 token · 不降智 · 开源 RTK") },
           ].map(({ tab, icon: Icon, label, sub }) => (
             <section
               key={tab}

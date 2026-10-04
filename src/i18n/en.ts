@@ -18,7 +18,6 @@ import { misc } from "./en/misc";
 import { workbench } from "./en/workbench";
 import { panels } from "./en/panels";
 import { redline } from "./en/redline";
-import { rtk } from "./en/rtk";
 import { feedback } from "./en/feedback";
 import { identity } from "./en/identity";
 import { localllm } from "./en/localllm";
@@ -42,7 +41,6 @@ export const EN: Record<string, string> = {
   ...workbench,
   ...panels,
   ...redline,
-  ...rtk,
   ...localllm,
   ...feedback,
   ...identity,

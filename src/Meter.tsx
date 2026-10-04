@@ -709,14 +709,6 @@ export function Meter({ onToast, onGoto }: { onToast: (m: string) => void; onGot
                       ) : null}
                     </div>
                     <p className="text-[12px] text-ink-3 mt-1.5 leading-relaxed">{tip.detail}</p>
-                    {tip.id === "enable_squeezer" && onGoto ? (
-                      <button
-                        onClick={() => onGoto("rtk")}
-                        className="mt-2 text-[12px] text-accent hover:underline"
-                      >
-                        {t("去开 Token 压缩机 →")}
-                      </button>
-                    ) : null}
                     {tip.id === "switch_cheap_model" && onGoto ? (
                       <button
                         onClick={() => onGoto("manage")}

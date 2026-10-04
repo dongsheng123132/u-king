@@ -59,7 +59,7 @@ mod origin;
 mod toolbox;
 mod providers;
 mod report;
-mod rtk;
+mod rtk_retire;
 mod skillpack;
 mod tasks;
 mod term;
@@ -804,7 +804,7 @@ async fn airuntime_report_score(score: u32, version: String) -> Option<i64> {
 //
 // `metrics` 不 import `usage_local` / `envfp`，它们也不认识 `metrics`：
 // 功能模块之间禁止互相依赖，两边由 lib.rs 这个组合根接起来（与
-// `breakdown(days, rtk::is_active())` 注入压缩机状态同一手法）。
+// 「组合根注入」同一手法）。
 
 /// 把 `usage_local` 的即时聚合落成**当天的用量快照**。
 ///
@@ -812,7 +812,7 @@ async fn airuntime_report_score(score: u32, version: String) -> Option<i64> {
 /// 「优化前长什么样」才有处可查。同一天重复调是覆盖语义，不会记重。
 /// 会扫日志，**只在后台线程调**。
 fn metrics_rollup_now() {
-    let u = usage_local::breakdown(1, rtk::is_active());
+    let u = usage_local::breakdown(1);
     let rows: Vec<metrics::UsageRow> = u
         .items
         .iter()
@@ -1232,19 +1232,6 @@ pub(crate) fn recipe_table() -> Vec<actions::Recipe> {
             ],
             verify: "最后一次 runtime.driver.inspect 里，各工具的 provider 都是 xiapan",
         },
-        Recipe {
-            id: "recipe.token.turn_on_squeezer",
-            title: "客户嫌费钱：先看花在哪，再决定要不要开 Token 压缩机",
-            when: "客户说「太烧钱了」「token 用得好快」「能不能省点」",
-            preconditions: &[],
-            steps: &[
-                Step { action: "runtime.usage_local.inspect", note: "先拿事实。没看花在哪就开压缩机，是拿一个不知道有没有用的开关去回答一个没量过的问题" },
-                Step { action: "runtime.rtk.inspect", note: "看现在装没装、开没开。注意 ready 才算数 —— 装了且开了但 rtk 不在 PATH 上，一分钱都省不到" },
-                Step { action: "runtime.rtk.demo", note: "当场跑真 rtk 出压缩前后对比，让客户自己看砍了什么、留了什么。这一步是卖信任，不是卖功能" },
-                Step { action: "runtime.rtk.set_enabled", note: "写动作，要 --yes。客户看过 demo 再开，别替他决定" },
-            ],
-            verify: "runtime.rtk.inspect 的 ready:true（不是 installed:true —— 装了 ≠ 在省）",
-        },
         // ★ 办公主线：客户拿来一份**已有的**文件要改几个字。
         // 这条配方存在的意义是钉死「改完必须读回来」—— 不读回来就没人知道到底改没改上。
         Recipe {
@@ -1640,40 +1627,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             },
             None,
         )),
-        actions::readonly(
-            actions::RTK_INSPECT,
-            "Inspect the token squeezer (RTK)",
-            "Read whether RTK is installed, enabled as a Claude Code hook, and how many tokens it saved. Reads only.",
-            10_000,
-            // required 里钉上 ready：**动作必须回答「能不能用」，不是「装没装」**。
-            // 这次 bug 的通用教训 —— installed/enabled 全是 true、形状全对，
-            // 但世界是坏的，跑道一个字都没报。
-            &["installed", "enabled", "ready", "blockers"],
-            |_, _, _| action_json(rtk::status()),
-        ),
-        // 现场演示：当场跑真的 rtk，把压缩前后原文摆出来。**它是「原理透明」的实现**——
-        // 客户/AI 都能自己核对我们砍了什么、留了什么，而不是只能信一个百分比。
-        // 没装 rtk 时返回 ready:false（不是报错）：跑道会把它收进 not_ready 段，
-        // 「客户没装」是事实不是 bug（readiness 约定）。
-        actions::readonly(
-            actions::RTK_DEMO,
-            "Demonstrate what the token squeezer actually cuts",
-            "Run the real rtk over two built-in sample logs (a build log and a test run) and return the before/after text side by side. Proves what is cut and what is kept. Reads only; the samples are embedded, no user files are touched.",
-            30_000,
-            &["ready", "blockers", "cases"],
-            |_, _, _| match rtk::demo() {
-                Ok(cases) => Ok(serde_json::json!({
-                    "ready": true,
-                    "blockers": [],
-                    "cases": action_json(cases)?,
-                })),
-                Err(e) => Ok(serde_json::json!({
-                    "ready": false,
-                    "blockers": [e],
-                    "cases": [],
-                })),
-            },
-        ),
         actions::readonly(
             actions::HERMES_BROWSER_INSPECT,
             "Inspect Hermes browser takeover",
@@ -2401,9 +2354,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &["days", "total_cny", "total_calls", "items", "source"],
             |_, input, _| {
                 let days = input.get("days").and_then(|v| v.as_i64()).unwrap_or(30);
-                // 组合根注入「压缩机在不在生效」：usage_local 不认识 rtk（模块间不互相 import），
-                // 但省钱建议里该提这一条。用 is_active() 而不是 status() —— 后者要起子进程。
-                action_json(usage_local::breakdown(days, rtk::is_active()))
+                action_json(usage_local::breakdown(days))
             },
         ),
         // ★ Token 水电表。跟上面那条 `usage_local` 的分工：那个只回答「按模型花了多少」，
@@ -2430,8 +2381,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                 // 逐条流水：默认不给（30 天窗口下可能好几万条，没人要的时候不该背这份内存）。
                 // 上限 2000 由 schema 挡住 —— 入参真的会校验，不是写着好看的。
                 let detail = input.get("detail").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                // 同 usage_local：压缩机在不在生效由组合根注入（usage_local 不认识 rtk）。
-                action_json(usage_local::meter(days, rtk::is_active(), balance, detail))
+                action_json(usage_local::meter(days, balance, detail))
             },
         ),
         // 脱敏诊断正文。远程排障就靠它 —— 一条 `action run` 顶掉过去的 `--feedback-test`。
@@ -2503,22 +2453,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                     context_menu::unregister()?;
                 }
                 Ok(serde_json::json!({ "enabled": on }))
-            },
-            None,
-        ),
-        actions::write(
-            actions::RTK_SET_ENABLED,
-            "Turn the token squeezer on or off",
-            "Merge or remove U-King's RTK hook in the user's ~/.claude/settings.json. Touches only our own keys.",
-            30_000,
-            "required",
-            serde_json::json!({ "enabled": { "type": "boolean", "description": "true = enable the hook, false = remove it." } }),
-            &["enabled"],
-            &["enabled", "message"],
-            |_, input, _| {
-                let on = input["enabled"].as_bool().unwrap_or(false);
-                let msg = rtk::set_enabled(on)?;
-                Ok(serde_json::json!({ "enabled": on, "message": msg }))
             },
             None,
         ),
@@ -2671,19 +2605,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
                     .collect();
                 Ok(serde_json::json!({ "targets": list }))
             },
-        ),
-        actions::write(
-            actions::RTK_UNINSTALL,
-            "Uninstall the token squeezer",
-            // 别写死 `rtk.exe`：非 Windows 上那个文件就叫 `rtk`（见 rtk::rtk_exe）。
-            "Remove U-King's RTK hook from ~/.claude/settings.json and delete the rtk binary. Touches nothing else the user configured.",
-            60_000,
-            "required",
-            serde_json::json!({}),
-            &[],
-            &["message"],
-            |_, _, _| Ok(serde_json::json!({ "message": rtk::uninstall()? })),
-            None,
         ),
         // 幂等靠 install_uu_remote 里的前置去重（已装就跳过下载），不是靠这里声明一句。
         // 带进度：86MB 下载 + 安装能跑一两分钟，声明「无进度」等于让 UI 只能干等转圈。
@@ -4425,13 +4346,6 @@ async fn detect_hardware() -> serde_json::Value {
     run_action_blocking(actions::HARDWARE_INSPECT).await
 }
 
-/// Token 压缩机（RTK）状态：装没装 / 开没开 / 累计省了多少 token。
-/// 薄壳，真身是影核动作 `runtime.rtk.inspect`。
-#[tauri::command]
-async fn rtk_status() -> serde_json::Value {
-    run_action_blocking(actions::RTK_INSPECT).await
-}
-
 // ───────────────────── 本地大模型（四引擎，全是薄壳）─────────────────────
 
 /// 本地引擎在「AI 设置」里的驱动 id。固定前缀 = 起停可 upsert / 可撤下，
@@ -4743,40 +4657,6 @@ async fn read_llms_doc(full: bool) -> Result<String, String> {
     })
     .await
     .map_err(|e| format!("读取任务异常: {e}"))?
-}
-
-/// Token 压缩机现场演示：当场跑真 rtk，返回压缩前后对比。
-/// 薄壳，真身是影核动作 `runtime.rtk.demo`。
-#[tauri::command]
-async fn rtk_demo() -> serde_json::Value {
-    run_action_blocking(actions::RTK_DEMO).await
-}
-
-/// 安装 Token 压缩机（下载 rtk.exe + 解压，进度走事件 `uking:rtk_progress`）。
-#[tauri::command]
-async fn rtk_install(app: AppHandle) -> Result<String, String> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        rtk::install(&move |msg: &str| {
-            let _ = app2.emit("uking:rtk_progress", msg.to_string());
-        })
-    })
-    .await
-    .map_err(|e| format!("安装 Token 压缩机异常: {e}"))?
-}
-
-/// 开/关 Token 压缩机（往 ~/.claude/settings.json 合并/删我们的 hook；重启 Claude Code 生效）。
-#[tauri::command]
-async fn rtk_set_enabled(enabled: bool) -> Result<String, String> {
-    let v = run_write_action(actions::RTK_SET_ENABLED, serde_json::json!({ "enabled": enabled })).await?;
-    Ok(action_field(v, "message", serde_json::Value::Null).as_str().unwrap_or("").to_string())
-}
-
-/// 卸载 Token 压缩机（关 hook + 删 rtk.exe，绝不动用户其它配置）。
-#[tauri::command]
-async fn rtk_uninstall() -> Result<String, String> {
-    let v = run_write_action(actions::RTK_UNINSTALL, serde_json::json!({})).await?;
-    Ok(action_field(v, "message", serde_json::Value::Null).as_str().unwrap_or("").to_string())
 }
 
 /// 一键装一个厨具（走 winget/brew，进度走事件 `uking:toolbox_progress`）。
@@ -7162,178 +7042,6 @@ fn show_main_window(app: &AppHandle) {
     );
 }
 
-/// 把 PATH 上**含有 rtk 的目录**全部摘掉，模拟客户机（rtk 没接进 PATH）的处境。
-/// 只摘这些、不清空整条 PATH —— rtk 内部还要调 git / ls，清空了失败的原因就不唯一了。
-fn path_without_rtk() -> String {
-    let raw = std::env::var("PATH").unwrap_or_default();
-    let kept: Vec<_> = std::env::split_paths(&raw)
-        .filter(|d| !["rtk", "rtk.exe", "rtk.cmd", "rtk.bat"].iter().any(|n| d.join(n).is_file()))
-        .collect();
-    std::env::join_paths(kept).map(|s| s.to_string_lossy().to_string()).unwrap_or(raw)
-}
-
-/// 在给定 PATH 下用 bash 跑一条命令，回 (退出码, 合并输出)。
-fn sh_with_path(bash: &std::path::Path, cmd: &str, path: &str) -> (i32, String) {
-    let out = std::process::Command::new(bash)
-        .args(["-c", cmd])
-        .env("PATH", path)
-        .output();
-    match out {
-        Ok(o) => (
-            o.status.code().unwrap_or(-1),
-            format!(
-                "{}{}",
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr)
-            ),
-        ),
-        Err(e) => (-1, format!("spawn 失败: {e}")),
-    }
-}
-
-/// `--rtk-hook-test` 的实现。见调用处的注释。
-fn rtk_hook_test() -> i32 {
-    let Some(rtk_exe) = rtk::probe_exe_path() else {
-        eprintln!("SKIP 本机没装 Token 压缩机（rtk），这条跑道验不了 —— 先 rtk_install");
-        return 1;
-    };
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("FAIL 拿不到自身路径: {e}");
-            return 1;
-        }
-    };
-    // ① 真 spawn 一次自己（客户机上跑的就是这条），喂一条 PreToolUse 报文
-    let input = rtk::probe_input_json("git status");
-    let mut child = match std::process::Command::new(&exe)
-        .arg("rtk-hook")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("FAIL 起不来 `rtk-hook`: {e}");
-            return 1;
-        }
-    };
-    {
-        use std::io::Write;
-        if let Some(mut si) = child.stdin.take() {
-            let _ = si.write_all(input.as_bytes());
-        }
-    }
-    let out = match child.wait_with_output() {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("FAIL 读 `rtk-hook` 输出失败: {e}");
-            return 1;
-        }
-    };
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-    let mut fails: Vec<String> = Vec::new();
-
-    // ② stdout 必须是干净 JSON（多打一个字节 Claude Code 就解析不了）
-    let parsed: Option<serde_json::Value> = serde_json::from_str(stdout.trim()).ok();
-    let Some(v) = parsed else {
-        eprintln!("FAIL stdout 不是合法 JSON（Claude Code 会直接报错）：{:?}", stdout);
-        return 1;
-    };
-    let cmd = v
-        .pointer("/hookSpecificOutput/updatedInput/command")
-        .and_then(|c| c.as_str())
-        .unwrap_or("")
-        .to_string();
-    println!("改写后命令: {cmd}");
-    if !cmd.contains(&rtk_exe.replace('\\', "/")) {
-        fails.push(format!("改写后的命令没带 rtk 绝对路径：{cmd}"));
-    }
-
-    // ③ 决定性证据：在**摘掉 rtk 的 PATH** 上，裸命令必须失败、改写后的必须成功。
-    //    两条一起断言 = 自带变异验证：只留后者的话，改坏了也可能因为开发机 PATH 上
-    //    恰好有 rtk 而报绿。
-    let scrubbed = path_without_rtk();
-    match which_bash() {
-        Some(bash) => {
-            let (naked_code, naked_out) = sh_with_path(&bash, "rtk git status", &scrubbed);
-            if naked_code == 0 {
-                fails.push(format!(
-                    "对照组没成立：摘掉 rtk 的 PATH 上裸 `rtk` 竟然还跑得通（本跑道此刻证明不了任何事）。输出：{}",
-                    naked_out.trim()
-                ));
-            } else {
-                println!("对照组 OK: 裸 `rtk` 在摘净的 PATH 上退出码 {naked_code}（正是客户机现象）");
-            }
-            // ★ 判据只对**被测对象**敏感：区分「找不到 rtk」（我们要验的）和
-            // 「进程压根起不来」（机器的事）。实测发版当天紧跟在全量构建之后跑，
-            // 这一步吐过一次 `0xC0000142`（STATUS_DLL_INIT_FAILED，资源压力下起不来进程），
-            // 连跑 3 次又全绿 —— **把它算成产品失败就是喊狼**，喊几次之后没人再信这条跑道。
-            const DLL_INIT_FAILED: i32 = -1073741502; // 0xC0000142
-            let mut attempt = 0;
-            let (code, sout) = loop {
-                let r = sh_with_path(&bash, &cmd, &scrubbed);
-                attempt += 1;
-                if r.0 != DLL_INIT_FAILED || attempt >= 3 {
-                    break r;
-                }
-                eprintln!("（第 {attempt} 次遇到 0xC0000142：机器起不来进程，跟被测项无关，重试）");
-                std::thread::sleep(std::time::Duration::from_millis(1500));
-            };
-            if code == 0 {
-                println!("改写后命令 OK: 同一条 PATH 上退出码 0 —— PATH 与它无关");
-            } else if code == DLL_INIT_FAILED {
-                // 重试仍然起不来 = 这台机器此刻跑不了这条跑道。**如实说「没验成」，
-                // 而不是说「产品坏了」** —— 两者对读的人意味着完全不同的下一步。
-                fails.push(
-                    "环境问题，本次没验成：连试 3 次都是 0xC0000142（进程起不来，常见于机器负载高时）。\
-                     这**不是**产品失败，等机器闲下来重跑一次"
-                        .into(),
-                );
-            } else {
-                fails.push(format!(
-                    "改写后的命令在同一条 PATH 上失败（退出码 {code}）：{}",
-                    sout.trim()
-                ));
-            }
-        }
-        None => fails.push("找不到 bash，验不了「换个 shell 还跑不跑得起来」这半边".into()),
-    }
-
-    if fails.is_empty() {
-        println!("✓ rtk-hook 全部通过（fail-open + 不依赖 PATH）");
-        0
-    } else {
-        for f in &fails {
-            eprintln!("FAIL {f}");
-        }
-        1
-    }
-}
-
-/// 找 bash 绝对路径（Windows 上是 Git Bash）。**先解析成绝对路径再 spawn** ——
-/// 后面要用改过的 PATH 起它，靠名字解析会解析到哪一个说不准。
-fn which_bash() -> Option<std::path::PathBuf> {
-    let raw = std::env::var("PATH").unwrap_or_default();
-    let names: &[&str] = if cfg!(windows) { &["bash.exe"] } else { &["bash", "sh"] };
-    for dir in std::env::split_paths(&raw) {
-        for n in names {
-            let p = dir.join(n);
-            if p.is_file() {
-                return Some(p);
-            }
-        }
-    }
-    #[cfg(windows)]
-    for c in ["C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe"] {
-        let p = std::path::PathBuf::from(c);
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-    None
-}
 
 /// `--help` 的正文。
 ///
@@ -7384,13 +7092,13 @@ pub fn run() {
     let args: Vec<String> = std::env::args().collect();
     // 影核协议通用 CLI：U-King.exe action list|describe|manifest|run <id> --json --no-input
     // 当前切片只提供只读 runtime.command_guard.inspect；未知动作/非法输入返回结构化错误且不副作用。
-    // Token 压缩机的 hook 包装器：U-King.exe rtk-hook（读 stdin 出 stdout）。
-    //
-    // **必须排在所有分支最前面，且这条路径上一个字节都不许往 stdout 多打** ——
-    // Claude Code 把 stdout 当 JSON 解析，多一行日志就等于把 hook 弄坏。
-    // 它挂在客户的**每一条 Bash 命令**上，所以也不碰 ulog / actions / 单实例那些。
+    // Token 压缩机已退役（2026-10-04），但客户机的 Claude Code settings.json 里可能还挂着我们的
+    // hook：`U-King.exe rtk-hook`，每条 Bash 命令都会调它。**这个分支不能删，也必须排在所有分支最前面** ——
+    // 删了的话 `rtk-hook` 参数会落进 GUI 启动（每条命令把窗口顶到前台，或起一个永不退出的 GUI）。
+    // 新实现 = 读完 stdin 丢掉、stdout 零字节、退出码 0（Claude Code 按原命令执行），
+    // 同样不碰 ulog / actions / 单实例。至少保留到 2026-12-31，见 rtk_retire.rs。
     if args.get(1).map(String::as_str) == Some("rtk-hook") {
-        std::process::exit(rtk::run_hook_wrapper());
+        std::process::exit(rtk_retire::run_hook_passthrough());
     }
 
     // ★ 换 Key 之后把新 Key 写回各 AI 工具 —— 接在组合根，因为只有这儿同时认识
@@ -7724,25 +7432,6 @@ pub fn run() {
             .cloned()
             .unwrap_or_else(|| "hermes".into());
         std::process::exit(run_install_test_cjk(&tool));
-    }
-    // ★ Token 压缩机 hook 的无头取证：证明改写出来的命令**不依赖 PATH 也跑得起来**。
-    //
-    // 为什么非单开这条不可：客户机上的失败长这样 —— 状态面板一切正常（installed/enabled
-    // 都是 true），`cargo test` 全绿，`action conformance` 全绿，而那台机器上**每一条**
-    // Bash 命令都退出码 127。坏掉的东西一个字节都不在动作表里，它在「hook 吐出来的那行
-    // 字符串，被另一个 shell 执行时能不能解析到程序」这件事上。
-    //
-    // 判据刻意设计成**自带变异验证**：同一条 PATH 下，裸 `rtk …` 必须失败、
-    // 改写后的必须成功。只断言后者的话，把绝对路径替换删掉、而恰好开发机 PATH 上有 rtk，
-    // 这条跑道会照样报绿 —— 那正是老版本给自己发假绿灯的那个姿势。
-    //
-    // 🔴 **这条不许加 `#[cfg(windows)]`**。它要治的就是一个 macOS 独有的 bug ——
-    // 第一版恰好把它插进了下面那条 `#[cfg(windows)]` 和它修饰的 `if` 中间，于是
-    // 「为修 Mac bug 写的跑道」在 Mac 上被编译掉了，而 Windows 侧 cargo check /
-    // cargo test / release 构建**全绿，一个字都没提**（顺带还把 `--pwsh-test` 的
-    // Windows 门弄丢，Mac CI 才炸出来）。跑道被编译掉 = 没有跑道。
-    if args.iter().any(|a| a == "--rtk-hook-test") {
-        std::process::exit(rtk_hook_test());
     }
     // 便携 PS7 无头验证：U-King.exe --pwsh-test（强制走下载路径，验证 OSS 下载+SHA+解压+便携命中）
     #[cfg(windows)]
@@ -8719,13 +8408,14 @@ pub fn run() {
             // 修 0.9.92 及更早版本写坏的 Codex 配置（`wire_api="chat"` 让新版 Codex 整份
             // 配置加载失败、秒退，Issue #364）。只动带我们标记的文件，拿不到 key 也先救启动。
             std::thread::spawn(providers::heal_codex_wire_api);
-            // 修 0.9.94 及更早版本装的**旧版 Token 压缩机 hook**：它把命令改写成裸 `rtk …`，
-            // 而 macOS 上我们从没把 shim 接进过 PATH（`prepend_user_path` 是 PowerShell 实现，
-            // Mac 分支压根没调）→ 客户机上**每一条 Bash 命令**退出码 127，整台机器的 AI 变废。
-            // 能升级成绝对路径写法就升级，升不了就摘掉。**不能等客户来点开关** ——
-            // 他看到的是「Claude Code 什么都干不了」，没有任何线索指向这个默认关着的省钱开关。
+            // Token 压缩机退役（2026-10-04）：把客户机 ~/.claude/settings.json 里我们挂的 hook 摘掉，
+            // 并删掉我们自己的 rtk 文件。解析失败/写失败只记日志（不弹窗、不阻塞），下次启动再试。
             std::thread::spawn(|| {
-                let _ = rtk::heal_legacy_hook();
+                // 原子写由这里（组合根）注入：临时文件 + rename + 回读校验，rtk_retire 不直接依赖 providers。
+                match rtk_retire::unhook_once(&installer::user_home_dir(), &providers::atomic_write) {
+                    Ok(note) => ulog::write("rtk", &note),
+                    Err(e) => ulog::write("rtk", &format!("退役清理没做成：{e}")),
+                }
             });
             // 首启激活内置指纹 Key：服务端 mint 真实 token + 送体验额度，「插上就能用」靠它。
             // 走 get_device_key（而非裸 ensure_activated）—— 它带「charged=false 时强制再激活」
@@ -8879,7 +8569,6 @@ pub fn run() {
             localllm_install,
             localllm_model_add,
             localllm_logs,
-            rtk_status,
             identity_status,
             save_identity,
             publish_identity,
@@ -8890,10 +8579,6 @@ pub fn run() {
             reset_device_wallet,
             link_identity,
             read_llms_doc,
-            rtk_demo,
-            rtk_install,
-            rtk_set_enabled,
-            rtk_uninstall,
             install_capability_tool,
             load_skill,
             load_free_registry,

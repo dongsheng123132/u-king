@@ -73,7 +73,6 @@ const Identity = lazy(() => import("./Identity").then((m) => ({ default: m.Ident
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
-const TokenSqueezer = lazy(() => import("./TokenSqueezer").then((m) => ({ default: m.TokenSqueezer })));
 const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
 const LocalLLM = lazy(() => import("./LocalLLM").then((m) => ({ default: m.LocalLLM })));
 const Advanced = lazy(() => import("./Advanced").then((m) => ({ default: m.Advanced })));
@@ -1176,7 +1175,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "localllm" || tab === "rtk" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "identity" || tab === "create"
+                tab === "localllm" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "identity" || tab === "create"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1208,7 +1207,7 @@ export function App() {
               aigcNudge={
                 setupState?.next_step === "done" &&
                 !aigcDismissed &&
-                !["skillpack", "create", "draw", "qrmerge", "video", "rtk", "advanced"].includes(tab)
+                !["skillpack", "create", "draw", "qrmerge", "video", "advanced"].includes(tab)
               }
               onGoAigc={() => {
                 localStorage.setItem("uking.aigcNudgeDone", "1");
@@ -1286,8 +1285,6 @@ export function App() {
               </div>
             ) : tab === "airuntime" ? (
               <AiRuntime onToast={flash} onGoSetup={() => setTab("setup")} onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "airuntime-doctor" }); setTab("chat"); }} />
-            ) : tab === "rtk" ? (
-              <TokenSqueezer onToast={flash} />
             ) : tab === "meter" ? (
               <Meter onToast={flash} onGoto={setTab} />
             ) : tab === "localllm" ? (

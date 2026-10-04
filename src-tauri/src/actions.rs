@@ -313,8 +313,6 @@ pub const CODEX_INSPECT: &str = "runtime.codex.inspect";
 pub const DRIVER_INSPECT: &str = "runtime.driver.inspect";
 pub const FOOTPRINT_INSPECT: &str = "runtime.footprint.inspect";
 pub const TOOLBOX_INSPECT: &str = "runtime.toolbox.inspect";
-pub const RTK_INSPECT: &str = "runtime.rtk.inspect";
-pub const RTK_DEMO: &str = "runtime.rtk.demo";
 pub const HERMES_BROWSER_INSPECT: &str = "runtime.hermes_browser.inspect";
 pub const CLAWX_INSPECT: &str = "runtime.clawx.inspect";
 pub const OPENCLAW2_INSPECT: &str = "runtime.openclaw2.inspect";
@@ -401,7 +399,7 @@ pub const CREATOR_VIDEO_SUBMIT: &str = "runtime.creator.video.submit";
 pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
     MODEL_CATALOG_INSPECT, HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
-    FOOTPRINT_INSPECT, TOOLBOX_INSPECT, RTK_INSPECT, RTK_DEMO, HERMES_BROWSER_INSPECT,
+    FOOTPRINT_INSPECT, TOOLBOX_INSPECT, HERMES_BROWSER_INSPECT,
     CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
@@ -413,7 +411,6 @@ pub const READ_ACTIONS: &[&str] = &[
 // —— 写动作（会改这台机器）——
 pub const DRIVER_APPLY: &str = "runtime.driver.apply";
 pub const CONTEXT_MENU_SET: &str = "runtime.context_menu.set";
-pub const RTK_SET_ENABLED: &str = "runtime.rtk.set_enabled";
 pub const DRIVER_APPLY_EVERYWHERE: &str = "runtime.driver.apply_everywhere";
 pub const PROVIDER_SAVE: &str = "runtime.provider.save";
 pub const PROVIDER_DELETE: &str = "runtime.provider.delete";
@@ -422,7 +419,6 @@ pub const PROVIDER_RESTORE: &str = "runtime.provider.restore";
 /// 立项理由见 `providers::EffectiveConfig`：在它之前，「切换成功」的唯一凭据是
 /// 逐字节回读比对，那只能证明「文件里是我写的内容」。
 pub const PROVIDER_EFFECTIVE: &str = "runtime.provider.effective";
-pub const RTK_UNINSTALL: &str = "runtime.rtk.uninstall";
 pub const DESKTOP_PIN: &str = "runtime.desktop.pin";
 pub const SKILLPACK_INSTALL: &str = "runtime.skillpack.install";
 /// 图片识别会把用户显式选择的图片发往视觉模型并消耗额度；因此是确认型写动作，

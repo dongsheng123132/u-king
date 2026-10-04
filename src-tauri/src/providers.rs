@@ -998,7 +998,7 @@ fn dsh_dir() -> PathBuf {
 /// 这期间进程崩溃，或 rename 因为杀软/同步盘占用目标句柄而失败（sharing violation），
 /// 目标文件已经被删掉且没有回滚，客户机上会看到配置文件凭空消失。直接 rename，失败就是
 /// 失败（原文件还在原地，只是没被换成新内容），不会有「文件被删但换不上新的」这个中间态。
-fn atomic_write(path: &PathBuf, data: &[u8]) -> Result<(), String> {
+pub(crate) fn atomic_write(path: &PathBuf, data: &[u8]) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {e}"))?;
     }

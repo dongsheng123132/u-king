@@ -50,7 +50,6 @@ export const sidebar: Record<string, string> = {
   "AI 优化大师": "AI Optimizer",
   "让 AI 工具跑得更稳、更省 token": "Make AI tools run steadier and cheaper on tokens",
   "Token 压缩机": "Token Squeezer",
-  "AI 编程省 token · 不降智 · 开源 RTK": "Save coding tokens · no quality loss · open-source RTK",
   "AI 设置": "AI Settings",
   // 「让 AI 认识 U-King」侧栏条目（页面正文的翻译在 en/identity.ts）
   "让 AI 认识 U-King": "Let AIs discover U-King",

@@ -42,7 +42,6 @@ export type TabId =
   | "meter"
   | "identity"
   | "localllm"
-  | "rtk"
   | "usbgenie";
 
 type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
@@ -216,13 +215,10 @@ const MORE: NavItem[] = [
   // { id: "meter", label: "Token 水电表", sub: "所有 AI 用了多少 token · 花在哪 · 怎么省", icon: Gauge },
   // 2026-10-03 收敛方案初稿判「冻」，同日产品负责人裁决**保留**（「AI 优化大师我感觉还可以留下」）。
   { id: "airuntime", label: "AI 优化大师", sub: "让 AI 工具跑得更稳、更省 token", icon: Wand2 },
-  // 「Token 压缩机」2026-08-10 降到实验室（Issue #376，客户机 macOS 0.9.94 实锤）：
-  // 它的 hook 把每条命令改写成裸 `rtk …`，而 Mac 上我们从没把 shim 接进过 PATH
-  // → 那台机器上**每一条 Bash 命令**退出码 127，整台机器的 AI 变废。
-  // 根因已修（hook 改走 U-King 包装器，绝对路径，见 rtk.rs::hook_command），
-  // 但**它伤过客户，得在实验室待一版**再谈回来 —— 而且它本来就符合实验室标准：
-  // 唯一一个会改写用户每一条命令的功能，风险最不对称。
-  // 恢复：把下面这行加回 MORE、并从 LAB 摘掉即可（页面/路由/动作一个没删）。
+  // 「Token 压缩机」2026-10-04 退役（零用量证据，收敛方案第 4 步）：页面、后端、动作全删；
+  // 只留 `rtk_retire.rs`（`rtk-hook` 空壳入口 + 自动摘除客户机 hook，至少保留到 2026-12-31）。
+  // 历史：2026-08-10 它的 hook 把每条命令改写成裸 `rtk …`，Mac 上每条 Bash 命令退出码 127
+  // （Issue #376）—— 所以退役时**不能**直接删入口，见 rtk_retire.rs 头注释。
   // GEO 体检 2026-10-04 删除，见收敛方案证据表。
   // 备份/同步 2026-10-04 删除，见收敛方案证据表。
   // 「本地大模型」2026-08-25 从「AI 设置 → 高级」的入口卡**升回侧栏**（用户拍板：

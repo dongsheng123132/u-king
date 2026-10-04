@@ -303,11 +303,7 @@ impl Pricing {
 /// 时间窗口两道闸：**文件 mtime 粗筛**（跳过整个陈旧文件，省 IO）+ **逐行时间戳精筛**
 /// （一个长会话文件可能横跨窗口边界，只按 mtime 会把窗口外的量算进来）。
 /// 跑很多文件，lib.rs 以 spawn_blocking 转调别卡 UI。
-/// `squeezer_active` = Token 压缩机此刻真的在生效吗。
-///
-/// **由组合根注入，不在这里 import rtk** —— 功能模块之间禁止互相依赖（设计取舍铁律②），
-/// 否则删 rtk 模块就得连着改这里。`lib.rs` 知道两边，让它传。
-pub fn breakdown(days: i64, squeezer_active: bool) -> LocalUsage {
+pub fn breakdown(days: i64) -> LocalUsage {
     let prefs = read_prefs();
     let pricing = Pricing::of(&prefs);
     // `breakdown` 只回答「按模型花了多少」，不出流水 —— 不收 events。
@@ -319,7 +315,7 @@ pub fn breakdown(days: i64, squeezer_active: bool) -> LocalUsage {
     let total_input_tokens = items.iter().map(|i| i.input_tokens).sum();
     let total_output_tokens = items.iter().map(|i| i.output_tokens).sum();
 
-    let tips = build_tips(days, total_cny, &items, squeezer_active);
+    let tips = build_tips(days, total_cny, &items);
     LocalUsage {
         days,
         total_cny,
@@ -657,7 +653,7 @@ pub struct Meter {
 /// `balance_cny` = 账上还剩多少钱（人民币）。**本模块不发网络请求**（只读动作不该联网），
 /// 余额由组合根/调用方传进来；给了才算「还能用几天」，没给就是 `null`——不猜。
 /// `detail` = 最多返回几条逐条流水（0 = 不要明细，默认路径）。上限由调用方的契约管。
-pub fn meter(days: i64, squeezer_active: bool, balance_cny: Option<f64>, detail: usize) -> Meter {
+pub fn meter(days: i64, balance_cny: Option<f64>, detail: usize) -> Meter {
     let days = days.clamp(1, 365);
     let prefs = read_prefs();
     let pricing = Pricing::of(&prefs);
@@ -791,7 +787,7 @@ pub fn meter(days: i64, squeezer_active: bool, balance_cny: Option<f64>, detail:
         blockers.push(format!("{}：{why}", tool_label(tool)));
     }
 
-    let mut tips = build_tips(days, window_cny, &by_model, squeezer_active);
+    let mut tips = build_tips(days, window_cny, &by_model);
     tips.extend(build_meter_tips(days, &cache, &by_project, &pace, window_cny));
 
     let (events, events_meta) = fold_events(scan.events, &pricing, detail);
@@ -1026,7 +1022,7 @@ const CHEAP_IN: f64 = 2.0;
 const CHEAP_OUT: f64 = 8.0;
 
 /// 从聚合结果里算出建议。每条要么给得出可核对的数，要么就不给数。
-fn build_tips(days: i64, total_cny: f64, items: &[LocalUsageItem], squeezer_active: bool) -> Vec<UsageTip> {
+fn build_tips(days: i64, total_cny: f64, items: &[LocalUsageItem]) -> Vec<UsageTip> {
     let mut tips = Vec::new();
     // 花得太少（几毛钱）时任何建议都是噪音，直接不给。
     if total_cny < 1.0 || items.is_empty() {
@@ -1067,19 +1063,6 @@ fn build_tips(days: i64, total_cny: f64, items: &[LocalUsageItem], squeezer_acti
             title: format!("{:.0}% 的钱花在 AI 的「输出」上", out_cost / total_cny * 100.0),
             detail: "输出单价通常是输入的 4~5 倍。在 CLAUDE.md 里加一句「直接给结果，不复述、不解释」，\
                      省的是最贵的那部分。"
-                .into(),
-            saving_cny: 0.0,
-        });
-    }
-
-    // ③ 压缩机没开 —— 只在真有 Claude Code 用量时提，且**不编一个精确数字**：
-    //    hook 只压 Bash 命令的输出，占输入的多少因人而异，给个假精度不如不给。
-    if !squeezer_active && items.iter().any(|i| i.tool == "claude") {
-        tips.push(UsageTip {
-            id: "enable_squeezer",
-            title: "Token 压缩机还没在生效".into(),
-            detail: "它把 AI 跑命令后那些啰嗦输出压扁再喂给模型，报错和 diff 一个不丢。\
-                     去「Token 压缩机」页开一下，那页有现场演示可以先看效果。"
                 .into(),
             saving_cny: 0.0,
         });
@@ -2199,8 +2182,8 @@ mod tests {
     #[test]
     fn pennies_get_no_advice() {
         let items = vec![item("claude", "claude-opus-4-8", 0.4, 10_000, 2_000)];
-        assert!(build_tips(30, 0.4, &items, true).is_empty());
-        assert!(build_tips(30, 0.0, &[], true).is_empty());
+        assert!(build_tips(30, 0.4, &items).is_empty());
+        assert!(build_tips(30, 0.0, &[]).is_empty());
     }
 
     /// 贵模型占大头 → 给换档建议，且**省下的钱是算出来的**（同样 token × 便宜档单价之差），
@@ -2211,7 +2194,7 @@ mod tests {
             item("claude", "claude-opus-5", 108.0, 1_000_000, 0), // opus 输入 ¥108/M
             item("claude", "deepseek-v4", 2.0, 1_000_000, 0),
         ];
-        let tips = build_tips(30, 110.0, &items, true);
+        let tips = build_tips(30, 110.0, &items);
         let t = tips.iter().find(|t| t.id == "switch_cheap_model").expect("应给换档建议");
         // 同样 100 万输入 token：opus ¥108 → deepseek ¥2，差 ¥106（30 天窗口=每月）
         assert!((t.saving_cny - 106.0).abs() < 0.5, "算出来的是 {}", t.saving_cny);
@@ -2222,19 +2205,8 @@ mod tests {
     #[test]
     fn cheap_model_hog_gets_no_switch_tip() {
         let items = vec![item("claude", "deepseek-v4", 50.0, 25_000_000, 0)];
-        let tips = build_tips(30, 50.0, &items, true);
+        let tips = build_tips(30, 50.0, &items);
         assert!(!tips.iter().any(|t| t.id == "switch_cheap_model"));
-    }
-
-    /// 压缩机没生效才提；已经在省了就别再唠叨。
-    #[test]
-    fn squeezer_tip_only_when_inactive() {
-        let items = vec![item("claude", "deepseek-v4", 50.0, 25_000_000, 0)];
-        assert!(build_tips(30, 50.0, &items, false).iter().any(|t| t.id == "enable_squeezer"));
-        assert!(!build_tips(30, 50.0, &items, true).iter().any(|t| t.id == "enable_squeezer"));
-        // Codex-only 的用户不提（hook 只接管 Claude Code，提了也没用）
-        let codex_only = vec![item("codex", "gpt-5-codex", 50.0, 1_600_000, 0)];
-        assert!(!build_tips(30, 50.0, &codex_only, false).iter().any(|t| t.id == "enable_squeezer"));
     }
 
     /// 输出占比高 → 提「让 AI 少啰嗦」，因为输出单价是输入的 4~5 倍。
@@ -2242,15 +2214,15 @@ mod tests {
     fn output_heavy_gets_shorter_replies_tip() {
         // deepseek：输入 ¥2/M、输出 ¥8/M。100 万输入(¥2) + 100 万输出(¥8) → 输出占 80%
         let items = vec![item("claude", "deepseek-v4", 10.0, 1_000_000, 1_000_000)];
-        assert!(build_tips(30, 10.0, &items, true).iter().any(|t| t.id == "shorter_replies"));
+        assert!(build_tips(30, 10.0, &items).iter().any(|t| t.id == "shorter_replies"));
     }
 
     /// 天数窗口要折算成「每月」，7 天的数据不能当一个月报。
     #[test]
     fn saving_is_normalised_to_a_month() {
         let items = vec![item("claude", "claude-opus-5", 108.0, 1_000_000, 0)];
-        let week = build_tips(7, 110.0, &items, true);
-        let month = build_tips(30, 110.0, &items, true);
+        let week = build_tips(7, 110.0, &items);
+        let month = build_tips(30, 110.0, &items);
         let w = week.iter().find(|t| t.id == "switch_cheap_model").unwrap().saving_cny;
         let m = month.iter().find(|t| t.id == "switch_cheap_model").unwrap().saving_cny;
         assert!(w > m * 4.0, "7 天花这么多，折成月应该更高：周 {w} vs 月 {m}");
