@@ -238,6 +238,7 @@ mod tests {
     /// ★ Claude Code 真身：`claude.cmd` 包的是**原生 exe**，不是 .js。
     /// 这条最关键 —— 只认 .js 的解包器会在这里悄悄回落到「照旧跑 .cmd」，
     /// bug 一个字都没修，测试却全绿。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn unwraps_shim_that_wraps_native_exe() {
         let root = std::env::temp_dir().join("uking-launcher-test-exe");
@@ -262,6 +263,7 @@ mod tests {
     /// npm 的 node 壳（codex 真身就是这个形状）：解成 `node <cli.js>`。
     /// 同时钉死那个坑 —— 壳开头的 `IF EXIST "%dp0%\node.exe"` 是解释器探测，
     /// 认成目标就会起一个空 node 挂在那儿等 stdin（表现成卡死，比报错更难查）。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn unwraps_npm_node_shim_and_ignores_interpreter_probe() {
         let root = std::env::temp_dir().join("uking-launcher-test-npm");
@@ -290,6 +292,7 @@ mod tests {
 
     /// pnpm 壳有 IF/ELSE 两个分支、写的是 `%~dp0\..\..`，且**第一条路径可能不存在**。
     /// 必须取第一个真实存在的，不能盲取第一个或最后一个。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn unwraps_pnpm_style_shim_picking_existing_path() {
         let root = std::env::temp_dir().join("uking-launcher-test-pnpm");

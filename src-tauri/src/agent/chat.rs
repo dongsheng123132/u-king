@@ -1118,6 +1118,7 @@ mod tests {
 
     /// GBK（ACP 双字节）流同理：任意切块位置的增量解码，必须和整段一次解出的结果一致
     /// ——对比对象是 ansi_to_string(全量)，所以断言不依赖测试机的具体代码页。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn chunked_ansi_matches_whole_decode() {
         // 「中文测试OK」的 GBK 字节（0xD6D0 CEC4 B2E2 CAD4 + ASCII）

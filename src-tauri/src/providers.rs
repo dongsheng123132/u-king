@@ -3780,7 +3780,9 @@ mod managed_provider_identity_tests {
                 )
                 .unwrap();
 
-                let crush = root.join("LocalAppData").join("crush").join("crush.json");
+                // 用产品自己的路径函数：Windows 是 %LOCALAPPDATA%\crush，其余平台是 ~/.config/crush。
+                // 以前写死 LocalAppData，Mac/Linux 上 apply_crush 写的是另一个文件，这条用例在非 Windows 上恒红。
+                let crush = crush_config_path();
                 std::fs::create_dir_all(crush.parent().unwrap()).unwrap();
                 std::fs::write(
                     &crush,
@@ -7067,6 +7069,7 @@ mod tool_discovery_source_tests {
 
     /// ③ 排序契约：同一个工具在 machine 和 portable 两处都被发现时，两条都保留，
     /// 且 `machine` 排在前——本机装的优先，不让盘上的遮蔽本机的。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn same_tool_found_in_both_sources_keeps_both_and_sorts_machine_first() {
         let machine_dir = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
@@ -7095,6 +7098,7 @@ mod tool_discovery_source_tests {
     /// `discover_tools_from` 用 `cmd`（"openclaw"）去搜索、但仍然用 `name`（"clawx"）
     /// 报告和回查 `active`，防止「改回按 name 搜索」这种退化重演（`clawx` 会从
     /// 「设备发现」里永久消失，即使 openclaw 明明装在这台机器上）。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn config_target_is_discovered_via_its_real_executable_name() {
         let machine_dir = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
@@ -9633,6 +9637,7 @@ mod hermes_home_tests {
 
     /// 客户机自愈：旧落点里我们写的那份好配置，要能搬到 Hermes 真会读的 home。
     /// 光把落点改对是不够的 —— 客户升级后若不再点一次「一键配好」，真 home 里的坏配置还在。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn migrates_our_config_out_of_the_legacy_dir() {
         with_sandbox("migrate", |root| {

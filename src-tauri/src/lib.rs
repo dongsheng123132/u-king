@@ -3209,6 +3209,19 @@ mod device_wallet_sync_tests {
                 for name in ["qwen", "crush"] {
                     std::fs::write(root.join("npm").join(format!("{name}.cmd")), "@echo fake").unwrap();
                 }
+                // 非 Windows 认的是**无后缀、带执行位**的文件，`.cmd` 在这里等于没造 —— 于是两个目标被
+                // 「未安装」短路，这条用例在 Mac/Linux 上恒红。search_paths 在 Unix 上会扫 $HOME/.local/bin。
+                #[cfg(not(windows))]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let bin = root.join(".local").join("bin");
+                    std::fs::create_dir_all(&bin).unwrap();
+                    for name in ["qwen", "crush"] {
+                        let p = bin.join(name);
+                        std::fs::write(&p, "#!/bin/sh\n").unwrap();
+                        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+                    }
+                }
 
                 // ── qwen：已由我们接管、客户挑了 glm-5 ──
                 providers::wallet_sync_test_bridge::apply_qwen_as_uking(&p, "sk-old", "glm-5")

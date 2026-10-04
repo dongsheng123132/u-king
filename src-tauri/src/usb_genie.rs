@@ -1370,6 +1370,7 @@ mod tests {
             "non-removable root was not rejected: {error}"
         );
     }
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn target_identity_must_match_the_displayed_root() {
         let expected = PortableTarget {
