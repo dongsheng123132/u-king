@@ -51,7 +51,6 @@ import type { ProviderPreset } from "./Wizard";
 import { type ModelGroup, priceyModelHint, codexProtocolHint } from "./lib/models";
 import { useXiapanModels } from "./lib/useXiapanModels";
 import { ShareButton } from "./components/ShareCard";
-import { FreerouterCard } from "./components/FreerouterCard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./lib/providerTemplates";
 import { FREE_GUIDE, type FreeGuide } from "./lib/freeGuide";
 import { askConfirm } from "./lib/confirm";
@@ -1568,11 +1567,8 @@ export function Manager({
           已保存的本机供应商或 Key。 */}
       {settingsTab === "free" && (
         <>
-          {/* Free Router 一键装跑（2026-08-31 会审定案）：本地免费路由网关。
-              放体检卡之后、虾盘云引导之前 —— 它是「进了免费页、想要更多免费模型」的进阶路，
-              不是主漏斗。上游钉 SHA + tarball 哈希双校验，Key 只落本机 .env。 */}
-          <FreerouterCard onToast={flash} />
-          {/* 两类供给不能混账：虾盘云是 U-King 可负责的设备钱包余额；免费路线是客户
+          {/* （Free Router 一键装跑卡 2026-10-04 随 freerouter.rs 删除，零用量证据；本页其余内容不变。）
+              两类供给不能混账：虾盘云是 U-King 可负责的设备钱包余额；免费路线是客户
               自己在第三方领取的 Key。把两者放在同一入口，既让小白有一条稳定主路，
               又不把「注册送/试用/限流」说成 U-King 的免费 Token。 */}
           <section className="mb-3 rounded-card border border-accent/25 bg-accent/[0.055] shadow-card overflow-hidden">

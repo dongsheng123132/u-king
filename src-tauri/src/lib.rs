@@ -24,7 +24,6 @@ mod codex_proxy;
 mod context_menu;
 mod crashlog;
 /// 本地优先创作画布的项目权威存储；浏览器缓存只是预览缓存。
-mod freerouter;
 mod doc;
 mod device;
 mod draw;
@@ -8518,11 +8517,6 @@ pub fn run() {
             ai_checkup,
             doctor_report,
             upgrade_cli_tool,
-            freerouter::freerouter_status,
-            freerouter::freerouter_install,
-            freerouter::freerouter_set_key,
-            freerouter::freerouter_start,
-            freerouter::freerouter_stop,
             open_recharge,
             term_open,
             term::term_open_external,

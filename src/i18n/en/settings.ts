@@ -52,7 +52,6 @@ export const settings: Record<string, string> = {
     "Register a provider once — Claude Code, Codex, ClawX and Hermes all reference it from here. Edit it in one place and every AI using it follows.",
   "一处登记，所有 AI 共用，Key 只填一次。改一处，用到它的 AI 全都跟着变。":
     "Register once, share across every AI, and enter the key only once. Edit it in one place and every AI using it follows.",
-  "地址": "Endpoint",
   "正在被 {tools} 使用": "In use by {tools}",
   "已在 {n}/{total} 个工具启用:{tools}": "Enabled in {n}/{total} tools: {tools}",
 
@@ -510,30 +509,13 @@ export const settings: Record<string, string> = {
   "未安装 —— 先去装机向导安装，装了才谈得上升级":
     "Not installed — install it first from the setup wizard; there is nothing to update yet",
 
-  // ── Free Router 本地免费路由（FreerouterCard，2026-08-31）──
-  "Free Router · 本地免费路由": "Free Router · local free router",
-  "运行中": "Running",
-  "把 OpenRouter 免费模型汇成一个本地接口，限流/下架自动换下一家 —— 需要先有 OpenRouter Key":
-    "Bundles OpenRouter free models into one local endpoint and auto-fails-over when one is rate-limited or retired — requires an OpenRouter key first",
+  // ── 通用词（原 Free Router 卡用；2026-10-04 卡删除后仍被其它页引用，故保留）──
   "一键安装": "Install",
   "启动": "Start",
   "停止": "Stop",
-  "Free Router 已安装": "Free Router installed",
-  "Free Router 已在后台运行：": "Free Router is running in the background: ",
   "已停止": "Stopped",
   "安装失败：": "Install failed: ",
-  "OpenRouter Key ✓ 已配置": "OpenRouter key ✓ configured",
-  "还没有配 OpenRouter Key": "No OpenRouter key yet",
-  "填 Key": "Enter key",
-  "Key 已保存到本机 .env（不会上传）": "Key saved to the local .env file (never uploaded)",
-  "本地接口": "Local endpoint",
-  "模型名": "model name",
-  "复制地址": "Copy endpoint",
-  "复制模型": "Copy model",
   "已复制{label}": "Copied {label}",
-  "仅支持 OpenAI Chat Completions 工具，不能直连 Codex 或 Claude Code（仅本机可访问）":
-    "For OpenAI Chat Completions tools only; not Codex or Claude Code (localhost only)",
-  "版本": "ver",
 
   // ── CustomProviderModal 弹窗升级（astra-ui-design-2.md B 节，2026-09-06）──
   "从模板选择": "Choose from a template",
