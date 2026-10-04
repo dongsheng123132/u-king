@@ -75,7 +75,6 @@ export const toolhub: Record<string, string> = {
   "或在下面挑一个装": "Or pick one to install below",
   "命令行工具打开方式：": "Open CLI tools in:",
   // 复审 high 修复（LAB_TOOLS 不再计入「已安装」主网格）：已装的实验室工具单收一条紧凑分区。
-  "实验室（已装）": "Lab (installed)",
 
   // 2026-09-29 三次改版（Launchpad 式 logo 墙 + 行内展开详情条）新增：
   // 分体按钮「启动」旁 ▾ 弹出的两项，以及详情条里描述当前打开方式的同一行小字——

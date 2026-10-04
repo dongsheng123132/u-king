@@ -6,8 +6,8 @@ export const redline: Record<string, string> = {
   "渲染中…": "Rendering…",
   "正在渲染真实版式（借本机 LibreOffice，首次约十几秒）…":
     "Rendering the real layout via your local LibreOffice (the first run takes ~15s)…",
-  "这台电脑没装 LibreOffice，只能看文字大纲。装上它（工具箱 →「厨具工具箱」）就能看到真实版式。":
-    "LibreOffice isn't installed on this PC, so only a text outline is available. Install it (Toolbox → “Kitchen Toolbox”) to see the real layout.",
+  "这台电脑没装 LibreOffice，只能看文字大纲。装上 LibreOffice 就能看到真实版式。":
+    "LibreOffice isn't installed on this PC, so only a text outline is available. Install LibreOffice to see the real layout.",
 
   // viewers/MdViewer.tsx
   Markdown: "Markdown",

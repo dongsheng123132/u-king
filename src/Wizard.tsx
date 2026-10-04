@@ -717,7 +717,7 @@ export function Wizard({
         push({
           role: "uking",
           text: r.startsWith("__ERR__")
-            ? t("⚠️ {tool} 没装上（不影响使用，之后可在「厨具工具箱」里再装）：{err}", { tool: ENV_NAMES[id] ?? id, err: r.slice(7) })
+            ? t("⚠️ {tool} 没装上（不影响使用，之后可再运行一次装机向导补装）：{err}", { tool: ENV_NAMES[id] ?? id, err: r.slice(7) })
             : t("✅ {tool} 就绪。", { tool: ENV_NAMES[id] ?? id }),
         });
         continue;

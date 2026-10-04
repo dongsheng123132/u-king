@@ -18,11 +18,9 @@ import { openRecharge } from "./lib/recharge";
 import type { DeviceKey, DriverStatus, EffectiveConfig } from "./lib/types";
 import {
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Cpu,
   Download,
-  FlaskConical,
   FolderTree,
   Gift,
   LifeBuoy,
@@ -2199,7 +2197,6 @@ function MyAI({
   const { t: tr } = useI18n();
   // 实验室工具先摘出去：首页只留「一键装好你的全部 AI」这条主线上的东西。
   const mainline = tools.filter((t) => !LAB_TOOLS.has(t.id));
-  const labTools = tools.filter((t) => LAB_TOOLS.has(t.id));
   // ★ 主推两件（2026-08-03 定稿）：**Claude Code + Hermes**。判据是「能不能把活干成」，
   // 不是「省不省钱」—— claude 干活最强、Hermes 是唯一有内置记忆的（MEMORY.md/USER.md 常开，
   // `hermes memory status` 实测）。一个把活干成，一个越用越懂你，两件就够开箱。
@@ -2583,59 +2580,7 @@ function MyAI({
         </section>
       )}
 
-      {/* 实验室工具：不在 AI 主线上的，收在最下面、默认折叠。
-          「还能用、但别当主力」——把话说明白比偷偷藏起来诚实。 */}
-      {labTools.length > 0 && <LabTools tools={labTools} onOpen={onOpen} onLaunch={onLaunch} />}
     </div>
-  );
-}
-
-/** 首页最底的「实验室」折叠区 —— 装了也好、没装也好，统一按「点开才看得到」处理。 */
-function LabTools({
-  tools,
-  onOpen,
-  onLaunch,
-}: {
-  tools: ToolInfo[];
-  onOpen: (t: ToolInfo) => void;
-  onLaunch: (t: ToolInfo) => void;
-}) {
-  const { t: tr } = useI18n();
-  const [open, setOpen] = useState(false);
-  return (
-    <section>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 py-2 text-left text-ink-4 hover:text-ink-2 transition-colors"
-      >
-        <FlaskConical size={13} className="text-amber-400/70" />
-        <span className="text-[12.5px] font-medium">{tr("实验室 · 还在测试的工具")}</span>
-        <span className="text-[10px] text-ink-5">{tools.length}</span>
-        <ChevronDown size={13} className={cn("transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <>
-          <p className="mb-3 text-[11px] text-ink-5 leading-relaxed">
-            {tr("这些不在「装好你的 AI」这条主线上，还在打磨。能用，但别当主力。")}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {tools.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => (t.launch_app && t.installed ? onLaunch(t) : onOpen(t))}
-                className="text-left rounded-xl border border-white/[0.06] bg-bg-1/40 hover:bg-bg-1 hover:border-white/[0.12] px-4 py-3.5 transition-colors"
-              >
-                <div className="text-[13px] font-medium text-ink-1">{t.name}</div>
-                <p className="mt-1 text-[11px] text-ink-3 leading-snug line-clamp-2">{t.summary}</p>
-                <div className="mt-2.5 text-[11px] font-medium text-ink-4 inline-flex items-center gap-1">
-                  {t.launch_app && t.installed ? tr("打开") : tr("去看看")}
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </section>
   );
 }
 

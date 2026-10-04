@@ -279,7 +279,7 @@ fn hint_for(code: &str) -> &'static str {
         "unauthorized" => "Key 无效或没配 —— 去「AI 设置」重新应用一次驱动",
         "model_not_allowed" => "这个 token 没开这个模型的白名单，服务端加一下",
         "not_installed" => "先装上对应工具再调这个动作",
-        "chrome_missing" => "到「厨具工具箱」安装 Google Chrome 后再试",
+        "chrome_missing" => "先安装 Google Chrome 后再试",
         "browser_start_failed" => "Chrome 已安装但没能启动；重试启动，仍失败再查看错误详情或联系技术支持",
         "version_mismatch" => "浏览器运行时版本不匹配；在浏览器面板安装固定版本后再试",
         "image_missing" => "图片文件已不在原位置 —— 让用户重新选一次图片，重试同一个路径没用",

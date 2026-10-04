@@ -450,7 +450,7 @@ pub fn install_tool(id: &str, on_progress: &(dyn Fn(&str) + Send + Sync)) -> Res
     // 同步跑完就返回 —— pip 没有「装完还要等系统注册」的问题，不需要下面那套轮询探测。
     if !def.pip_pkg.is_empty() {
         let py = python_exe().ok_or_else(|| {
-            "找不到 Python —— 先在厨具工具箱里装 Python，或跑一次任意 pip 系工具的安装（会自动装便携版）".to_string()
+            "找不到 Python —— 先装好 Python，或跑一次任意 pip 系工具的安装（会自动装便携版）".to_string()
         })?;
         on_progress(&format!("开始安装 {}（python -m pip，走国内源）…", def.name));
         let mut cmd = std::process::Command::new(&py);

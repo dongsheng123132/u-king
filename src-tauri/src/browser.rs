@@ -237,7 +237,7 @@ fn classify_chrome_start_failure(detail: &str) -> String {
 
 fn classify_chrome_start_failure_with(chrome_installed: bool, detail: &str) -> String {
     if !chrome_installed {
-        "chrome_missing: 未检测到 Google Chrome。请到「厨具工具箱」安装 Chrome 后再试。".into()
+        "chrome_missing: 未检测到 Google Chrome。请先安装 Chrome 后再试。".into()
     } else {
         format!("browser_start_failed: 已检测到 Google Chrome，但浏览器会话没能启动：{detail}")
     }

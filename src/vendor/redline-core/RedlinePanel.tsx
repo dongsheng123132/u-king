@@ -124,7 +124,7 @@ export function RedlinePanel({ host, path, fileName }: RedlinePanelProps) {
     <div className="flex flex-col h-full min-h-0 select-text">
       {noRenderer && (
         <div className="shrink-0 px-3 py-1.5 text-[11px] text-warning-700 dark:text-warning-400 bg-amber-500/[0.08] border-b border-amber-500/20">
-          {t("这台电脑没装 LibreOffice，只能看文字大纲。装上它（工具箱 →「厨具工具箱」）就能看到真实版式。")}
+          {t("这台电脑没装 LibreOffice，只能看文字大纲。装上 LibreOffice 就能看到真实版式。")}
         </div>
       )}
       {doc.units.length > 1 && (

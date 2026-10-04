@@ -192,10 +192,6 @@ export const app: Record<string, string> = {
   "还能装这些": "You can also install",
 
   // 首页最底的实验室折叠区（2026-07-27 做减法）
-  "实验室 · 还在测试的工具": "Labs · tools still in testing",
-  "这些不在「装好你的 AI」这条主线上，还在打磨。能用，但别当主力。":
-    "These aren't part of the core \"get your AI set up\" flow and are still being polished. Usable, but don't rely on them.",
-  "去看看": "Take a look",
   "一键安装": "One-click install",
 
   // ---- ToolMarket ----

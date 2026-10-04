@@ -428,7 +428,8 @@ pub fn summary(since_ms: i64) -> Value {
     })
 }
 
-/// 清空全部记录（客户的数据，客户能自己删干净）。
+/// 清空全部记录（仅测试用）。对应的 GUI 命令 `journal_clear` 随时间轴页面于 2026-10-04 删除。
+#[cfg(test)]
 pub fn clear() -> Result<(), String> {
     let dir = journal_dir();
     let Ok(rd) = std::fs::read_dir(&dir) else { return Ok(()) }; // 没有目录 = 已经是空的

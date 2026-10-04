@@ -404,7 +404,7 @@ export const backfill: Record<string, string> = {
   "好嘞，开始装 👇 先装 Claude Code（干活最强），再装 Hermes（自带记忆，越用越懂你），最后把终端环境配好，": "Alright, starting setup 👇 First Claude Code (most capable), then Hermes (built-in memory, learns as you use), and finally the terminal environment,",
   "全程走国内加速 + 自动验证修复。第一个装完你就能开始干活了，后面的继续补。装完自动接好虾盘云驱动。": "Uses domestic acceleration + auto-verify & fix throughout. Start working after the first one installs; the rest will follow. Automatically connects to Xiapan Cloud provider when done.",
   "正在配环境：{tool}（走系统包管理器，装不上会自动跳过）…": "Configuring environment: {tool} (uses system package manager, auto-skips if fails)…",
-  "⚠️ {tool} 没装上（不影响使用，之后可在「厨具工具箱」里再装）：{err}": "⚠️ {tool} failed to install (won't affect usage, can install later in “Kitchen Toolbox”): {err}",
+  "⚠️ {tool} 没装上（不影响使用，之后可再运行一次装机向导补装）：{err}": "⚠️ {tool} failed to install (won't affect usage; you can run the setup wizard again to install it later): {err}",
   "✅ {tool} 就绪。": "✅ {tool} ready.",
   "环境注意：{list}": "Environment Notes: {list}",
   "DeepSeek Harness 已装好，正在用本机专属 Key 接入虾盘云…": "DeepSeek Harness installed. Connecting to Xiapan Cloud with this machine's exclusive Key…",

@@ -236,12 +236,6 @@ async fn install_uu_remote(app: AppHandle) -> Result<String, String> {
     Ok(v.get("message").and_then(|m| m.as_str()).unwrap_or_default().to_string())
 }
 
-/// 行为时间轴。薄壳，真身是影核动作 `runtime.journal.inspect`。
-#[tauri::command]
-async fn journal_inspect(days: Option<i64>) -> serde_json::Value {
-    run_action_input(actions::JOURNAL_INSPECT, serde_json::json!({ "days": days.unwrap_or(1) })).await
-}
-
 /// 开 / 关本地行为记录。
 ///
 /// ★ **故意不做成影核动作** —— 不是漏了。
@@ -250,7 +244,8 @@ async fn journal_inspect(days: Option<i64>) -> serde_json::Value {
 /// 后面干什么都不会留痕，而报告依然一片正常。这不是理论风险，是把审计日志和被审计者
 /// 放进同一个权限域的经典错误。
 ///
-/// 所以这个开关**只从 GUI 走**（人坐在机器前，亲手关）。同理 [`journal_clear`]。
+/// 所以这个开关**只从 GUI 走**（人坐在机器前，亲手关）。（原先的「清空记录」命令 `journal_clear` 与时间轴页面
+/// 一起于 2026-10-04 删除，目前 GUI 里也没有这个开关的界面。）
 /// 代价是 CLI/MCP 关不了它 —— 这个代价是**故意付的**。
 #[tauri::command]
 fn journal_set_enabled(enabled: bool) -> Result<(), String> {
@@ -267,12 +262,6 @@ fn journal_set_enabled(enabled: bool) -> Result<(), String> {
         journal::note("journal.enabled", "用户开启了行为记录");
     }
     Ok(())
-}
-
-/// 清空全部行为记录。客户的数据，客户能自己删干净。理由同上：**只从 GUI 走**。
-#[tauri::command]
-fn journal_clear() -> Result<(), String> {
-    journal::clear()
 }
 
 /// 下载 + 静默安装 DeepSeek Harness 桌面版（Windows，NSIS `/S /currentuser`，约 280MB）。
@@ -8325,9 +8314,7 @@ pub fn run() {
             install_clawx,
             uu_remote_status,
             install_uu_remote,
-            journal_inspect,
             journal_set_enabled,
-            journal_clear,
             install_dsh_desktop,
             pin_to_desktop,
             open_codex_guide,

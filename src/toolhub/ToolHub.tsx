@@ -269,13 +269,8 @@ export function ToolHub({
   // 「已装」只数主线工具——`LAB_TOOLS`（Open365 等）不算。Open365 后端 `installed` 恒 true
   // （按需下载设计，见 App.tsx `LAB_TOOLS` 注释），不摘掉的话空态判断永远拿不到 0，
   // 全新用户第一次进来就看不到「还没装 AI 工具」引导（复审 high：确认属实的回归）。
-  // 已装的实验室工具单独收进 `installedLab`，在下面一个小分区里露出，不是直接消失。
   const installed = useMemo(
     () => visibleTools.filter((t) => t.installed && !LAB_TOOLS.has(t.id)),
-    [visibleTools],
-  );
-  const installedLab = useMemo(
-    () => visibleTools.filter((t) => t.installed && LAB_TOOLS.has(t.id)),
     [visibleTools],
   );
   const installableAll = useMemo(() => visibleTools.filter((t) => !t.installed), [visibleTools]);
@@ -1060,30 +1055,6 @@ export function ToolHub({
             renderTile={renderInstalledTile}
             renderDetail={(t, caretLeft) => detailShell(t, caretLeft, renderInstalledDetail(t))}
           />
-        </section>
-      )}
-
-      {installedLab.length > 0 && (
-        // Open365 等「实验室」工具已装时的落脚点——它们不进上面「已安装」主网格（不算进
-        // 「一键装好你的全部 AI」这条主线，见 App.tsx `LAB_TOOLS` 注释），但也不该点了就
-        // 从这页彻底消失，所以单独收一条紧凑分区。点击复用 MyAI 里 `LabTools` 同一套判断
-        // （装了 GUI 应用就直接打开，否则走 onOpen 的兜底），不走上面瓷砖/详情条那套复杂
-        // 交互——这些工具本来就不接 U-King 的模型切换，保留原逻辑，这次改版没有碰它。
-        <section className="space-y-2">
-          <h2 className="text-[12px] font-medium text-ink-4">{tr("实验室（已装）")}</h2>
-          <div className="flex flex-wrap gap-2">
-            {installedLab.map((t) => (
-              <button
-                key={t.id}
-                data-tool-id={t.id}
-                onClick={() => (t.launch_app && t.installed ? onLaunch(t) : onOpen(t))}
-                className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05] text-[12px] text-ink-2"
-              >
-                <ToolIcon tool={t.id} size={14} active />
-                {t.name}
-              </button>
-            ))}
-          </div>
         </section>
       )}
 
