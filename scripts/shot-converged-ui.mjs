@@ -14,7 +14,7 @@
  *  2. 逐个点这 8 项：渲染出非空内容、没有 PanelBoundary/根 ErrorBoundary 的崩溃兜底文案、
  *     pageerror / console.error 为 0（原文全部收集）、没有 report_bug(ui_*) 上报。
  *  3. 我的 AI → 右上「体检 · 升级 →」进子页，「← 返回我的 AI」回来。
- *  4. AI 设置：「账号 · 充值」「用量账单」两个子 tab，用量账单里有「Token 水电表」那块。
+ *  4. AI 设置：「账号 · 充值」「用量账单」两个子 tab。（用量账单里原有的「Token 水电表」块 2026-10-04 已删除。）
  *  5. 工作台：页内「对话 ↔ 终端」切换；对话态顶栏大脑处是静态标签「Claude Code」而不是 <select>。
  *  6. 每页横向溢出：`documentElement.scrollWidth > clientWidth`，外加**真正的滚动容器**（当前可见的 <main>
  *     与侧栏 <nav>）—— 后者才是 shot-toolhub.mjs 里记过教训的：页面内容裁在 <main overflow-y-auto> 上，
@@ -180,25 +180,6 @@ const daily = Array.from({ length: 14 }, (_, i) => {
 });
 const USAGE_TREND = { daily, today_tokens: 48200, week_tokens: 512300, samples: 14 };
 
-const totals = (cny, calls, i, o) => ({ cny, calls, input_tokens: i, output_tokens: o, tokens: i + o });
-const METER = {
-  days: 7, ready: true, blockers: [],
-  window: totals(12.6, 340, 4200000, 380000), today: totals(1.8, 41, 520000, 48000),
-  yesterday: totals(2.1, 52, 610000, 55000), last7: totals(12.6, 340, 4200000, 380000),
-  daily: daily.slice(-7).map((d) => ({ date: d.date, cny: d.tokens / 10000, tokens: d.tokens, calls: 20 })),
-  by_model: [{ model: "deepseek-v4-pro", tool: "claude", cny: 9.8, count: 280, input_tokens: 3600000, output_tokens: 300000 }],
-  by_tool: [{ name: "claude", detail: "Claude Code", cny: 9.8, tokens: 3900000, calls: 280, share: 0.78 }],
-  by_project: [{ name: "uking-mini", detail: DEMO_DIR, cny: 9.8, tokens: 3900000, calls: 280, share: 0.78 }],
-  cache: { non_cached_input: 900000, cache_read: 3000000, cache_creation: 300000, hit_rate: 0.71, saved_cny: 4.2 },
-  pace: { daily_avg_cny: 1.8, month_projection_cny: 54, today_vs_avg: 1, days_left: 71, balance_cny: 128.5 },
-  tips: [],
-  sources: [
-    { tool: "claude", label: "Claude Code", dir: "C:/Users/demo/.claude/projects", exists: true, countable: true, enabled: true, subscription: false, covered: true, files: 12, note: "" },
-    { tool: "codex", label: "Codex CLI", dir: "C:/Users/demo/.codex/sessions", exists: true, countable: true, enabled: true, subscription: false, covered: true, files: 3, note: "" },
-  ],
-  events: [], events_meta: { total: 0, returned: 0, truncated: 0, returned_cny: 0 },
-};
-
 /** `airuntime_doctor` 真实后端返回的是 **JSON 字符串**（AiRuntime.tsx: `JSON.parse(await invoke<string>(...))`）。
  *  第一版 shim 没给它，落到 default 的 null → `JSON.parse(null)` 得 null → `reportScore(null)` 读 `d.score`
  *  抛未处理的 Promise rejection —— 那是 shim 缺数据造成的假错误（真后端永远返回对象），不是收敛引入的回归，
@@ -215,7 +196,7 @@ const AIRUNTIME_DOCTOR = JSON.stringify({
 const SHIM_DATA = {
   airuntimeDoctor: AIRUNTIME_DOCTOR,
   tools: TOOLS, driver: DRIVER, providers: PROVIDERS, deviceKey: DEVICE_KEY, env: ENV, tasks: TASKS,
-  usageTrend: USAGE_TREND, meter: METER,
+  usageTrend: USAGE_TREND,
   launchPlans: TOOL_DEFS.map((d) => ({ tool_id: d.id, mode: LAUNCH_MODE_BY_ID[d.id] ?? "none" })),
   checkUpdate: { current: "1.3.7", latest: "1.3.7", has_update: false, checked_ok: true, notes: "", download_url: "" },
   setupState: { has_tool: true, has_driver: true, charged: true, clawx_needs_xiapan: false, next_step: "done", hint: "" },
@@ -255,7 +236,6 @@ const SHIM = (D) => {
       case "upsert_task": return args?.task ?? null;
       case "detect_stack": return D.detectStack;
       case "get_usage_trend": return D.usageTrend;
-      case "query_usage_meter": return D.meter;
       case "airuntime_doctor": return D.airuntimeDoctor;
       // lib.rs: `async fn fetch_optimize_advice() -> Vec<advice::Advice>` —— 真后端永远是数组（失败也返回空数组）。
       // 落到 default 的 null 会让 AiRuntime 的 `advice.length` 抛错、整页被 PanelBoundary 接走：那是 shim 的锅。
@@ -706,7 +686,7 @@ async function runViewport(browser, vp) {
       await shot(page, "myai-back");
     });
 
-    /* ---- 4. AI 设置：账号 · 充值 / 用量账单 / Token 水电表 ---- */
+    /* ---- 4. AI 设置：账号 · 充值 / 用量账单 ---- */
     await scenario("manage-subtabs", async () => {
       await clickEntry(page, "AI 设置");
       await page.locator('[data-testid="manager-subtab-account"]').first().waitFor({ state: "visible", timeout: 10000 });
@@ -725,28 +705,12 @@ async function runViewport(browser, vp) {
       await shot(page, "manage-account");
 
       await use.first().click();
-      await page.getByText("Token 水电表", { exact: false }).first().waitFor({ state: "visible", timeout: 10000 });
+      await page.getByText("用量账单 · 钱花在哪了", { exact: false }).first().waitFor({ state: "visible", timeout: 10000 });
       await settle(page, 1200);
       await assertPageSane(page, "AI 设置 → 用量账单");
-      const meterSummary = page.locator("details > summary", { hasText: "Token 水电表" });
       const billSummary = page.locator("details > summary", { hasText: "用量账单" });
-      check((await meterSummary.count()) === 1, "用量账单子 tab 里有「Token 水电表」折叠块（源码文案「Token 水电表 · 所有 AI 工具」）", `匹配 ${await meterSummary.count()} 个`);
       check((await billSummary.count()) === 1, "用量账单子 tab 里有「用量账单 · 钱花在哪了」折叠块", `匹配 ${await billSummary.count()} 个`);
-      if ((await meterSummary.count()) === 1) {
-        const info = await meterSummary.first().evaluate((s) => {
-          const d = s.parentElement;
-          return {
-            open: d.open,
-            summaryText: (s.textContent || "").trim(),
-            bodyTextLen: ((d.innerText || "").replace((s.innerText || ""), "")).replace(/\s+/g, "").length,
-            loadingStill: (d.innerText || "").includes("加载中"),
-          };
-        });
-        check(info.open, "Token 水电表块默认展开(details[open])");
-        check(info.bodyTextLen > 0 && !info.loadingStill, "Token 水电表块有内容且不再停在「加载中…」", JSON.stringify(info));
-      }
-      const c = await readShimCounters(page);
-      note(`query_usage_meter 调用 ${c.calls.query_usage_meter ?? 0} 次（水电表数据是 shim 里编的，只证明挂载/渲染，不证明口径）`);
+      check((await page.locator("details > summary", { hasText: "Token 水电表" }).count()) === 0, "用量账单子 tab 里已没有「Token 水电表」块（2026-10-04 删除）");
       await shot(page, "manage-usage");
     });
 
@@ -865,7 +829,7 @@ for (const [k, v] of [...uncoveredAll.entries()].sort((a, b) => a[0].localeCompa
 }
 log("===== shim 给了假数据的命令（页面拿到的是编的值）=====");
 log("  get_env list_tools get_driver_status get_device_key list_providers check_update get_setup_state term_snapshot_pending");
-log("  take_update_flag instance_role list_tasks upsert_task detect_stack get_usage_trend query_usage_meter");
+log("  take_update_flag instance_role list_tasks upsert_task detect_stack get_usage_trend");
 log("  airuntime_doctor fetch_optimize_advice report_bug action_parity_call(runtime.tool.inspect)  plugin:event|*（订阅 id）");
 
 log("\n===== 观察记录（非断言）=====");

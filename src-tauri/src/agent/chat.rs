@@ -342,7 +342,7 @@ fn tools_spec(has_workspace: bool, allow_actions: bool) -> Value {
                 "name": "uking_action",
                 "description": "操作/查询 U-King 自己（这台机器上装的管家）：体检、硬件、Ollama 本地大模型、Token 压缩机、用量花费、优化报告、驱动、定时任务、网站体检、远程协助、AI 作图/视频历史，以及改配置、装工具、备份、清理等管理操作。不知道有哪些可用动作时，把 action_id 传空字符串（\"\"）会返回全部动作清单和用途。写操作（改配置/删除/安装/卸载/备份/清理）会自动弹确认框，用户点了同意才执行，被拒绝就停下。",
                 "parameters": { "type": "object", "properties": {
-                    "action_id": { "type": "string", "description": "影核动作 id，一律 runtime.* 前缀，形如 runtime.stack.inspect / runtime.usage_meter.inspect / runtime.provider.save / runtime.backup.create。不传或传空则列出全部可用动作" },
+                    "action_id": { "type": "string", "description": "影核动作 id，一律 runtime.* 前缀，形如 runtime.stack.inspect / runtime.usage_local.inspect / runtime.provider.save / runtime.backup.create。不传或传空则列出全部可用动作" },
                     "input": { "type": "object", "description": "该动作的入参对象（可选）。绝大多数查询动作不需要；写动作按需传。写动作不需要自己带 confirm，确认由用户点击完成" }
                 }, "required": [] }
             }

@@ -39,7 +39,6 @@ export type TabId =
   | "feedback"
   | "guide"
   | "airuntime"
-  | "meter"
   | "identity"
   | "localllm"
   | "usbgenie";
@@ -60,10 +59,9 @@ const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
   // 「我的 AI」点安装后进的流程页——它们激活时都高亮「我的 AI」(toolhub)。
   myai: "toolhub",
   setup: "toolhub",
-  // 2c：「虾盘云 · 充值」(xiapan) 并成「AI 设置 → 账号 · 充值」子 tab，「Token 水电表」(meter)
-  // 并成「AI 设置 → 用量账单」里的第一段——两个旧页面渲染分支保留（深链仍可达），激活时高亮「AI 设置」。
+  // 2c：「虾盘云 · 充值」(xiapan) 并成「AI 设置 → 账号 · 充值」子 tab——旧页面渲染分支保留
+  // （深链仍可达），激活时高亮「AI 设置」。（「Token 水电表」(meter) 那一条 2026-10-04 随水电表删除。）
   xiapan: "manage",
-  meter: "manage",
 };
 
 /** 核心 4 项 —— 按「客户每天真正干什么」排，不是按「我们做了什么」排。
@@ -207,12 +205,8 @@ const MORE: NavItem[] = [
   // 「AI 加速」0.9.34 起放出：ukrt.exe 已内嵌进本体（airuntime.rs include_bytes，
   // 首次使用自动释放到 ~/.uking/ukrt/），客户机不再依赖外部分发，报错卡问题不存在了。
   // 注：AI 优化大师规划做成「独立开源工具箱」，故暂不与厨具工具箱合并（保持互不污染，2026-07-23）。
-  // 「省钱三件套」按 量 → 调 → 压 的顺序摆在一起：先有表看得见，调和压才有得对照。
-  // 水电表是这条线的地基（原本只是「AI 设置」页里一个折叠小节，没人找得到）。
-  // 🔴 2026-10-03 收敛方案 §5 第 2c 步：**撤入口，保页面**。水电表并进「AI 设置 → 用量账单」子 tab
-  // 的第一段（与下面的「用量账单」后端不同，不去重）；`tab === "meter"` 渲染分支原样保留。
-  // 恢复：解除下面这行注释，把 `Gauge` 加回顶部 lucide import，并把 NAV_ALIAS 里 meter 一行去掉。
-  // { id: "meter", label: "Token 水电表", sub: "所有 AI 用了多少 token · 花在哪 · 怎么省", icon: Gauge },
+  // 「Token 水电表」2026-10-04 删除（零用量证据，收敛方案第 4 步）：页面、挂载、后端读表与偏好全删；
+  // 「AI 设置 → 用量账单」的每日柱图与「钱花在哪了」明细（usage_local::breakdown）保留。
   // 2026-10-03 收敛方案初稿判「冻」，同日产品负责人裁决**保留**（「AI 优化大师我感觉还可以留下」）。
   { id: "airuntime", label: "AI 优化大师", sub: "让 AI 工具跑得更稳、更省 token", icon: Wand2 },
   // 「Token 压缩机」2026-10-04 退役（零用量证据，收敛方案第 4 步）：页面、后端、动作全删；

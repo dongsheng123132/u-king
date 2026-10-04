@@ -2518,7 +2518,7 @@
           "target": "cli:action run runtime.usage_local.inspect --json --no-input"
         }
       ],
-      "description": "Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever the user has enabled in ~/.uking/usage-tools.json. Reads metadata only, never prompt text, never uploads.",
+      "description": "Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever of them have logs on this machine. Reads metadata only, never prompt text, never uploads.",
       "effects": {
         "audit_required": false,
         "class": "read",
@@ -2557,74 +2557,6 @@
         "type": "object"
       },
       "title": "Inspect local AI spend by model"
-    },
-    {
-      "bindings": [
-        {
-          "surface": "desktop",
-          "target": "tauri:command/action_run"
-        },
-        {
-          "surface": "cli",
-          "target": "cli:action run runtime.usage_meter.inspect --json --no-input"
-        }
-      ],
-      "description": "Aggregate local AI session logs into a utility-meter style report: daily readings, today/yesterday/7d/window totals, spend by model / tool / project, prompt-cache hit rate and savings, burn pace, and deterministic money-saving tips. Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi (whichever the user enabled). `sources` lists EVERY AI tool detected on the machine — including ones that can never be counted — each with the reason, so the totals are never mistaken for the whole picture. Tools the user marked as flat-rate subscriptions still report tokens but always cost 0. Reads metadata only, never prompt text, never uploads, never hits the network.",
-      "effects": {
-        "audit_required": false,
-        "class": "read",
-        "confirmation": "never",
-        "reversible": true,
-        "risk": "low"
-      },
-      "execution": {
-        "cancellable": false,
-        "headless": true,
-        "idempotent": true,
-        "progress_events": false,
-        "timeout_ms": 60000
-      },
-      "id": "runtime.usage_meter.inspect",
-      "input_schema": {
-        "additionalProperties": false,
-        "properties": {
-          "balance_cny": {
-            "description": "Remaining account balance in CNY. Supply it to get days_left; omitted means days_left is null (never guessed).",
-            "type": "number"
-          },
-          "days": {
-            "description": "Look-back window in days (default 30).",
-            "maximum": 365,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "detail": {
-            "description": "Return up to N per-call ledger rows in `events` (newest first; 0 = none). Each row is one model call — EXCEPT Hermes, whose rows are whole-session rollups (`session_rollup: true`). `events_meta.truncated` says how many rows were cut: the rows are NOT the whole window, only its total is.",
-            "maximum": 2000,
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "output_schema": {
-        "required": [
-          "days",
-          "ready",
-          "blockers",
-          "window",
-          "today",
-          "daily",
-          "by_model",
-          "by_project",
-          "cache",
-          "pace",
-          "sources",
-          "source"
-        ],
-        "type": "object"
-      },
-      "title": "Read the local token meter (usage over time, by project, cache and pace)"
     },
     {
       "bindings": [
@@ -4312,7 +4244,6 @@
       "runtime.optimizer.inspect",
       "runtime.origin.inspect",
       "runtime.usage_local.inspect",
-      "runtime.usage_meter.inspect",
       "runtime.diagnostics.collect",
       "runtime.identity.inspect",
       "runtime.chat.inspect",

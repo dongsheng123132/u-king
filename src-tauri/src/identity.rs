@@ -446,7 +446,7 @@ fn render_skills(skills: &[(String, String)]) -> String {
          装它要走 GUI 或 `install_capability_tool`（本机走 {pkg_mgr}），装完再重跑脚本即可。\n\n\
          **要花钱的能力（作图 / 视频 / 联网模型）用哪把 Key？** 脚本运行时自己读\n\
          `~/.uking/device.json` 里这台机器的内置 Key，**你不用问用户要、也不要往脚本里写 Key**。\n\
-         余额不足脚本会明说，充值走 `runtime.usage_meter.inspect` 里给的入口。\n\n",
+         余额不足脚本会明说，让用户去 U-King 的「AI 设置 → 账号 · 充值」充值。\n\n",
         cli = cli_invocation()
     ));
     s

@@ -567,7 +567,6 @@ export const settings: Record<string, string> = {
   "钱包管理 → 账号 · 充值": "Wallet → Account · Top up",
   "账号 · 充值": "Account · Top up",
   "余额 · 充值 · 内置 Key · 一键配好": "Balance · Top up · Built-in key · One-click setup",
-  "Token 水电表 · 所有 AI 工具": "Token Meter · All AI tools",
   "加回": "Add back",
   "待填密钥": "Key not set",
   "暂不支持此协议测速": "Latency test isn't supported for this protocol",

@@ -133,10 +133,8 @@ export const ACTION = {
   RUNTIME_TOOL_LAUNCH: "runtime.tool.launch",
   /** Read which capability tools (ffmpeg / Chrome / PowerShell 7 / Python …) are installed. Reads only. */
   RUNTIME_TOOLBOX_INSPECT: "runtime.toolbox.inspect",
-  /** Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever the user has enabled in ~/.uking/usage-tools.json. Reads metadata only, never prompt text, never uploads. */
+  /** Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever of them have logs on this machine. Reads metadata only, never prompt text, never uploads. */
   RUNTIME_USAGE_LOCAL_INSPECT: "runtime.usage_local.inspect",
-  /** Aggregate local AI session logs into a utility-meter style report: daily readings, today/yesterday/7d/window totals, spend by model / tool / project, prompt-cache hit rate and savings, burn pace, and deterministic money-saving tips. Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi (whichever the user enabled). `sources` lists EVERY AI tool detected on the machine — including ones that can never be counted — each with the reason, so the totals are never mistaken for the whole picture. Tools the user marked as flat-rate subscriptions still report tokens but always cost 0. Reads metadata only, never prompt text, never uploads, never hits the network. */
-  RUNTIME_USAGE_METER_INSPECT: "runtime.usage_meter.inspect",
   /** Remove only this target's PicoClaw credential file. This cannot revoke a copied or lost key; rotate it with the provider. */
   RUNTIME_USB_GENIE_CREDENTIAL_REMOVE: "runtime.usb_genie.credential_remove",
   /** Install U-King's pinned PicoClaw runtime into the selected target. It only writes the U-King/AI-Genie subtree and never formats or scans unrelated files. API keys are referenced, never accepted as input or returned. */
@@ -243,7 +241,6 @@ export type ActionInputMap = {
   "runtime.tool.launch": { expected_state_version?: string; tool_id: string; };
   "runtime.toolbox.inspect": Record<string, never>;
   "runtime.usage_local.inspect": { days?: number; };
-  "runtime.usage_meter.inspect": { balance_cny?: number; days?: number; detail?: number; };
   "runtime.usb_genie.credential_remove": { expected_state_version?: string; target_id: string; target_root: string; };
   "runtime.usb_genie.deploy": { credential_ref: "none" | "official_device"; expected_state_version?: string; target_id: string; target_root: string; zip_path?: string; };
   "runtime.usb_genie.inspect": Record<string, never>;
@@ -330,7 +327,6 @@ export type ActionOutputMap = {
   "runtime.tool.launch": Record<string, unknown>;
   "runtime.toolbox.inspect": Record<string, unknown>;
   "runtime.usage_local.inspect": Record<string, unknown>;
-  "runtime.usage_meter.inspect": Record<string, unknown>;
   "runtime.usb_genie.credential_remove": Record<string, unknown>;
   "runtime.usb_genie.deploy": Record<string, unknown>;
   "runtime.usb_genie.inspect": Record<string, unknown>;

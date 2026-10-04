@@ -2346,7 +2346,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
         actions::readonly_opt(
             actions::USAGE_LOCAL_INSPECT,
             "Inspect local AI spend by model",
-            "Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever the user has enabled in ~/.uking/usage-tools.json. Reads metadata only, never prompt text, never uploads.",
+            "Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever of them have logs on this machine. Reads metadata only, never prompt text, never uploads.",
             60_000,
             serde_json::json!({
                 "days": { "type": "integer", "minimum": 1, "maximum": 365, "description": "Look-back window in days (default 30)." }
@@ -2355,33 +2355,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             |_, input, _| {
                 let days = input.get("days").and_then(|v| v.as_i64()).unwrap_or(30);
                 action_json(usage_local::breakdown(days))
-            },
-        ),
-        // ★ Token 水电表。跟上面那条 `usage_local` 的分工：那个只回答「按模型花了多少」，
-        // 这个回答「**什么时候**用的、**哪个项目**在耗、缓存有没有在帮你省、按这个速度还能用多久」
-        // —— 省 token 得有对照才成立，一个只给总数的账单对照不出任何东西。
-        // 两者读同一份日志、走同一次扫描代码，不是两套统计（宪法第 8 条）。
-        //
-        // `balance_cny` 由调用方传：**只读动作不发网络请求**，所以余额不在这里查；
-        // 给了才算「还能用几天」，没给就是 null —— 不猜一个数吓客户。
-        actions::readonly_opt(
-            actions::USAGE_METER_INSPECT,
-            "Read the local token meter (usage over time, by project, cache and pace)",
-            "Aggregate local AI session logs into a utility-meter style report: daily readings, today/yesterday/7d/window totals, spend by model / tool / project, prompt-cache hit rate and savings, burn pace, and deterministic money-saving tips. Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi (whichever the user enabled). `sources` lists EVERY AI tool detected on the machine — including ones that can never be counted — each with the reason, so the totals are never mistaken for the whole picture. Tools the user marked as flat-rate subscriptions still report tokens but always cost 0. Reads metadata only, never prompt text, never uploads, never hits the network.",
-            60_000,
-            serde_json::json!({
-                "days": { "type": "integer", "minimum": 1, "maximum": 365, "description": "Look-back window in days (default 30)." },
-                "balance_cny": { "type": "number", "description": "Remaining account balance in CNY. Supply it to get days_left; omitted means days_left is null (never guessed)." },
-                "detail": { "type": "integer", "minimum": 0, "maximum": 2000, "description": "Return up to N per-call ledger rows in `events` (newest first; 0 = none). Each row is one model call — EXCEPT Hermes, whose rows are whole-session rollups (`session_rollup: true`). `events_meta.truncated` says how many rows were cut: the rows are NOT the whole window, only its total is." }
-            }),
-            &["days", "ready", "blockers", "window", "today", "daily", "by_model", "by_project", "cache", "pace", "sources", "source"],
-            |_, input, _| {
-                let days = input.get("days").and_then(|v| v.as_i64()).unwrap_or(30);
-                let balance = input.get("balance_cny").and_then(|v| v.as_f64());
-                // 逐条流水：默认不给（30 天窗口下可能好几万条，没人要的时候不该背这份内存）。
-                // 上限 2000 由 schema 挡住 —— 入参真的会校验，不是写着好看的。
-                let detail = input.get("detail").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                action_json(usage_local::meter(days, balance, detail))
             },
         ),
         // 脱敏诊断正文。远程排障就靠它 —— 一条 `action run` 顶掉过去的 `--feedback-test`。
@@ -4563,54 +4536,6 @@ async fn save_identity(patch: serde_json::Value) -> Result<serde_json::Value, St
     run_write_action(actions::IDENTITY_SAVE, patch).await
 }
 
-/// 一轮对话的花费（¥）——以前对话里那行「这轮花了多少」用它。
-///
-/// 🔴 **当前无调用方**（2026-09-15 起）：对话终端改成直接显示真实 token 数
-/// （ChatPanel.tsx），不再显示这个估算 ¥ —— 客户实测发现它跟真实账单对不上。
-/// 没删这个命令：水电表/管理页的口径推导仍参考它，删了要重新走一遍全量构建，
-/// 收益不匹配。别指望它还在被对话面板调用。
-///
-/// 🔴 **为什么不用上游 CLI 自己报的 `cost_usd`**：那是按它认得的那家官方价算的。
-/// 客户走虾盘云跑 `deepseek-v4-flash` 时，Claude Code 拿 Anthropic 的价目表算，
-/// 出来要么是 0（不认识这个模型名）要么离谱 —— 显示一个跟真实扣费无关的数字，
-/// 比不显示更坏：客户会拿它去对账，然后不信任我们所有的数字。
-///
-/// 这里用的是**水电表那份唯一价表**（`usage_local::price_per_million`），
-/// 所以「这轮花了 ¥x」和「这个月花了 ¥y」是同一个口径，加得起来。
-/// 缓存读按输入价的 1/10 计（各家都远低于全价，取一个保守的统一折扣，宁可估高不估低）。
-#[tauri::command]
-fn chat_cost_cny(model: String, input: u64, output: u64, cache_read: u64, cache_write: u64) -> f64 {
-    let (pin, pout) = usage_local::price_per_million(&resolve_priced_model(&model));
-    let m = 1_000_000.0;
-    (input as f64 * pin + cache_write as f64 * pin + cache_read as f64 * pin * 0.1 + output as f64 * pout) / m
-}
-
-/// 把「界面上选的那个」翻成**能查到价的模型名**。
-///
-/// 🔴 为什么需要这一步（2026-08-18 客户问「一个你好 0.11 元是真的吗」时查出来的）：
-/// 前端传的是 `model || agent` —— 而模型下拉的**默认值是空**（「模型：跟随驱动设置」），
-/// 于是绝大多数用户传进来的其实是 `"claude"` / `"codex"` 这种**大脑名，不是模型名**。
-/// `price_per_million("claude")` 一个分支都不匹配 → 落到兜底 15/60，
-/// 而他真正在跑的若是虾盘云的 deepseek（2/8），**这一路一直高估 7.5 倍**。
-///
-/// 修法是去问「这个大脑现在配的是哪个模型」（用户自己在 AI 设置里配的那个），
-/// 而不是拿大脑名去猜价。查不到才退到各自的官方默认族 —— 那时至少猜的是对的那一家。
-fn resolve_priced_model(model: &str) -> String {
-    let m = model.trim();
-    let is_engine_name = m.is_empty() || m == "claude" || m == "codex" || m == "claude-cli";
-    if !is_engine_name {
-        return m.to_string();
-    }
-    let st = providers::driver_status();
-    let configured = if m == "codex" { st.codex_model.as_deref() } else { st.claude_model.as_deref() };
-    if let Some(c) = configured.filter(|s| !s.trim().is_empty()) {
-        return c.to_string();
-    }
-    // 没配 = 走官方直连的默认模型。**这时候猜的是对的那一家**：
-    // Claude Code 默认 sonnet 族、Codex 默认 gpt-5 族，比落到「未知模型 15/60」准得多。
-    if m == "codex" { "gpt-5".into() } else { "sonnet".into() }
-}
-
 /// 手动重编说明书 —— 升级完 U-King（动作表变了）点一下就跟上。
 #[tauri::command]
 async fn publish_identity() -> Result<serde_json::Value, String> {
@@ -5476,47 +5401,6 @@ async fn query_local_usage(days: Option<i64>) -> serde_json::Value {
         None => serde_json::json!({}),
     };
     run_action_input(actions::USAGE_LOCAL_INSPECT, input).await
-}
-
-/// Token 水电表：按天读数 + 按项目/工具/模型分账 + 缓存账 + 用得多快 + 省钱建议。
-/// 薄壳，真身是影核动作 `runtime.usage_meter.inspect`。
-///
-/// `balance_cny` 让前端把已经查到的余额传进来（**动作本身不联网**），
-/// 有它才算得出「按这个速度还能用几天」。
-#[tauri::command]
-async fn query_usage_meter(days: Option<i64>, balance_cny: Option<f64>, detail: Option<u32>) -> serde_json::Value {
-    let mut input = serde_json::Map::new();
-    if let Some(d) = days {
-        input.insert("days".into(), serde_json::json!(d));
-    }
-    if let Some(b) = balance_cny {
-        input.insert("balance_cny".into(), serde_json::json!(b));
-    }
-    // 逐条流水（水电表页那块「流水」）。不传 = 不要，动作那边默认 0。
-    if let Some(n) = detail {
-        input.insert("detail".into(), serde_json::json!(n));
-    }
-    run_action_input(actions::USAGE_METER_INSPECT, serde_json::Value::Object(input)).await
-}
-
-/// 「数据来源」面板：本机探测到的**全部** AI 工具 + 各自算不算得到 + 用户勾了没有。
-///
-/// **只 stat 几个目录、不扫日志**，毫秒级返回 —— 开个设置页不该等几百 MB 会话日志扫完。
-/// 真正的用量走 `query_usage_meter`。
-#[tauri::command]
-fn usage_sources() -> Vec<usage_local::SourceStatus> {
-    usage_local::detect_sources()
-}
-
-/// 保存「算哪些工具 / 哪些是包月」。
-///
-/// **故意不进影核动作表**：它只改 U-King 自己的一份报表口径偏好，不碰客户机器上任何东西
-/// —— 跟 `set_provider_order` 同一类判断（那是界面偏好，这是报表口径），不是业务动作。
-/// 另一层考虑：这个开关决定了报告里那个总数**算得全不全**，把它交给 AI 去调，
-/// 等于让被统计的一方能自己把账关小（同 `journal_set_enabled` 不进动作表的理由）。
-#[tauri::command]
-fn set_usage_sources(disabled: Vec<String>, subscription: Vec<String>) -> Result<(), String> {
-    usage_local::write_prefs(&usage_local::UsagePrefs { disabled, subscription })
 }
 
 /// 当前驱动状态（settings.json / config.toml 回显）。
@@ -8572,7 +8456,6 @@ pub fn run() {
             identity_status,
             save_identity,
             publish_identity,
-            chat_cost_cny,
             set_identity_secret,
             rotate_device_key,
             adopt_device_key,
@@ -8621,9 +8504,6 @@ pub fn run() {
             query_balance,
             query_usage_breakdown,
             query_local_usage,
-            query_usage_meter,
-            usage_sources,
-            set_usage_sources,
             get_driver_status,
             get_device_key,
             save_health_report,

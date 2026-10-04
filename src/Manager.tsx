@@ -9,7 +9,7 @@
  *  - 每行可「测试连通」（让模型真回一句话）
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
@@ -24,7 +24,6 @@ import {
   ChevronUp,
   Cpu,
   ExternalLink,
-  Gauge,
   Gift,
   Image as ImageIcon,
   KeyRound,
@@ -62,10 +61,6 @@ import type { DeviceKey, DrawRoute, DriverStatus, EffectiveConfig } from "./lib/
 import { ACTION, createTauriActionClient } from "./generated/action-client";
 
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
-
-// Token 水电表（2026-10-03 收敛 2c 并进「用量账单」子 tab 的第一段）。照 App.tsx 的写法懒加载：
-// 只在切到 usage 子 tab 时才挂载——不在 usage 时不挂 Meter，它的 `query_usage_meter` 读表也就不会跑。
-const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
 
 /** 「AI 设置」页内分区 id。导出给 App.tsx（`manageInitialTab` 深链 + `renderAccount` 的跳转回调）共用一份。
  *  2026-10-03 收敛 2c 新增 `account`（账号 · 充值）。 */
@@ -1688,35 +1683,10 @@ export function Manager({
         </div>
       )}
 
-      {/* Token 水电表（2026-10-03 收敛 2c 从侧栏独立页并进来）：用量子 tab 的第一段，下面是原来的「用量账单」。
-          🔴 两者**不能去重**：水电表读各 AI 工具自己的本地会话日志（`query_usage_meter`，覆盖所有工具、
-          按项目/缓存分账），用量账单读虾盘云设备钱包的服务端流水（`query_local_usage` 等）——口径、后端都不同。
-          条件渲染保持：不在 usage 子 tab 时不挂 Meter（它挂载即读表）。 */}
-      {settingsTab === "usage" && (
-        <details open className="group/meter rounded-card border border-white/[0.08] bg-bg-1/70 shadow-card overflow-hidden">
-          <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none text-[13px] font-medium text-ink-1 hover:bg-white/[0.02]">
-            <Gauge size={14} className="text-accent" />
-            {t("Token 水电表 · 所有 AI 工具")}
-            <ChevronDown size={15} className="ml-auto text-ink-4 transition-transform group-open/meter:rotate-180" />
-          </summary>
-          <div className="px-3 pb-4 pt-1">
-            <Suspense fallback={<div className="py-10 text-center text-[12px] text-ink-4">{t("加载中…")}</div>}>
-              <Meter
-                onToast={flash}
-                // 水电表建议卡里的跳转：「去换模型」本来就是回「AI 设置」——现在水电表已经在这页里了，
-                // 所以落到本页「工具分配」子 tab（哪个 AI 用哪家、用什么模型），不再整页跳走。
-                // 其余 id 一律交给 onGoPage。（「去开 Token 压缩机」那条 2026-10-04 随压缩机退役删除。）
-                onGoto={(tab) => {
-                  if (tab === "manage") setSettingsTab("tools");
-                  else onGoPage?.(tab);
-                }}
-              />
-            </Suspense>
-          </div>
-        </details>
-      )}
-
       {/* 用量账单 —— 每日消耗 + 「钱花在哪了」明细。
+          🔴 数据来源（如实）：每日柱图读 `get_usage_trend`（usage.rs 的本地样本）；「钱花在哪了」明细读
+          `query_local_usage`（usage_local::breakdown）= **本机各 AI 工具自己的会话日志**（含你自己的 Key），
+          不是虾盘云服务端流水。（上面曾有一块「Token 水电表」，2026-10-04 零用量证据删除。）
           自己占一个分区后不再需要「默认折叠」（折叠是当初为了别霸占第一屏，现在第一屏归「工具分配」了），
           所以 `open` 常开：进到这个分区就是来看账单的，还要再点一下才展开是白设一道门。 */}
       {settingsTab === "usage" && (

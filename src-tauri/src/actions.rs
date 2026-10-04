@@ -352,7 +352,6 @@ pub const WORKBENCH_INSPECT: &str = "runtime.workbench.inspect";
 /// 这个答「他手上到底有什么」。**只 stat 不读内容**，也不碰他机器上的使用记录。
 pub const WORKBENCH_SCAN: &str = "runtime.workbench.scan";
 pub const USAGE_LOCAL_INSPECT: &str = "runtime.usage_local.inspect";
-pub const USAGE_METER_INSPECT: &str = "runtime.usage_meter.inspect";
 pub const DIAGNOSTICS_COLLECT: &str = "runtime.diagnostics.collect";
 /// U-King 自己的身份 + 「给 AI 的说明书」状态。**外围 AI 的第一站** ——
 /// 别家 AI 装在同一台机器上，靠它知道「这儿站着一个能干活的 U-King」。
@@ -402,7 +401,7 @@ pub const READ_ACTIONS: &[&str] = &[
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, HERMES_BROWSER_INSPECT,
     CLAWX_INSPECT, OPENCLAW2_INSPECT, OPENCLAW2_PREFLIGHT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT,
     TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
-    OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, USAGE_METER_INSPECT, DIAGNOSTICS_COLLECT,
+    OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, LOCALLLM_INSPECT,
     LOCALLLM_CATALOG,

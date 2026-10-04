@@ -73,7 +73,6 @@ const Identity = lazy(() => import("./Identity").then((m) => ({ default: m.Ident
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
-const Meter = lazy(() => import("./Meter").then((m) => ({ default: m.Meter })));
 const LocalLLM = lazy(() => import("./LocalLLM").then((m) => ({ default: m.LocalLLM })));
 const Advanced = lazy(() => import("./Advanced").then((m) => ({ default: m.Advanced })));
 const DemoUninstaller = lazy(() => import("./DemoUninstaller").then((m) => ({ default: m.DemoUninstaller })));
@@ -1285,8 +1284,6 @@ export function App() {
               </div>
             ) : tab === "airuntime" ? (
               <AiRuntime onToast={flash} onGoSetup={() => setTab("setup")} onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "airuntime-doctor" }); setTab("chat"); }} />
-            ) : tab === "meter" ? (
-              <Meter onToast={flash} onGoto={setTab} />
             ) : tab === "localllm" ? (
               <LocalLLM onToast={flash} />
             ) : tab === "advanced" ? (
