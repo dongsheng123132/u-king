@@ -128,8 +128,7 @@ pub fn install_to_local(mut on_progress: impl FnMut(&str, u64)) -> Result<Instal
 }
 
 /// 递归复制目录。跳过 `node_modules` / `.git` 这类无关目录。
-/// `pub(crate)`：tools.rs 复制 Open365 到本地时复用（公共能力不复制）。
-pub(crate) fn copy_dir_recursive(
+fn copy_dir_recursive(
     dir: &Path,
     dst_root: &Path,
     src_root: &Path,

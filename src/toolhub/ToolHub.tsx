@@ -1100,7 +1100,7 @@ export function ToolHub({
               onClick={() => { onInstallSelection(batchSelection); setBatchMode(false); setBatchSelection([]); }}>
               {tr("安装所选（{n}）", { n: batchSelection.length })}
             </button>}
-            {CATS.map((c) => (
+            {CATS.filter((c) => c.id !== "lab" || LAB_TOOLS.size > 0).map((c) => (
               <button
                 key={c.id}
                 onClick={() => setCategory(c.id)}

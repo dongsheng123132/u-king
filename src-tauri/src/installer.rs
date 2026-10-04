@@ -1795,14 +1795,6 @@ pub(crate) fn chrome_installed() -> bool {
     }
 }
 
-/// 让其它模块按**安装器同一套 PATH 解析规则**运行一个只读 CLI，并拿到合并输出。
-///
-/// 不能在调用方裸 `Command::new`：双击启动 U-King 时，进程 PATH 经常没有 npm 全局目录，
-/// 会出现安装器判定「已装」、体检报告却说「命令不存在」的自相矛盾。
-pub fn run_tool_capture(cmdline: &str) -> Result<(i32, String), String> {
-    run_capture(cmdline, portable_node_dir().as_deref())
-}
-
 pub fn detect_stack() -> StackDetect {
     StackDetect {
         node: probe("node"),

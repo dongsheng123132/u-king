@@ -66,8 +66,6 @@ const UPGRADE_TOOLS = [
   "codex",
   "openclaw",
   "hermes",
-  "qwen-code",
-  "crush",
   "opencode",
   "dsh",
   "pi",
@@ -331,7 +329,7 @@ export function DoctorCard({
                   ) : (
                     <CircleDashed size={11} />
                   )}
-                  {report?.tools.find((tool) => tool.target === (id === "claude-code" ? "claude" : id === "qwen-code" ? "qwen" : id))?.label ?? id}
+                  {report?.tools.find((tool) => tool.target === (id === "claude-code" ? "claude" : id))?.label ?? id}
                   {st.state === "ok" && st.note ? <span className="font-mono text-ink-5">{st.note}</span> : null}
                 </span>
               );

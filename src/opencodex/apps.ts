@@ -6,7 +6,7 @@
  */
 
 // 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突
-export type TuiAppId = "mimo" | "codebuddy" | "qodercn" | "kimi" | "grok" | "muse" | "agy" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi";
+export type TuiAppId = "mimo" | "codebuddy" | "qodercn" | "kimi" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "opencode" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -38,12 +38,6 @@ export const TUI_APPS: TuiApp[] = [
     prompts: [{ label: "启动", cmd: "qodercn" }], configTargets: [], group: "cli", hidden: true },
   { id: "kimi", toolId: "kimi-code", name: "Kimi Code", tool: "kimi",
     prompts: [{ label: "启动", cmd: "kimi" }], configTargets: [], group: "cli", hidden: true },
-  { id: "grok", toolId: "grok-build", name: "Grok Build", tool: "grok",
-    prompts: [{ label: "启动", cmd: "grok" }], configTargets: [], group: "cli", hidden: true },
-  { id: "muse", toolId: "muse-code", name: "Muse Code", tool: "muse",
-    prompts: [{ label: "启动", cmd: "muse" }], configTargets: [], group: "cli", hidden: true },
-  { id: "agy", toolId: "antigravity-cli", name: "Antigravity CLI", tool: "agy",
-    prompts: [{ label: "启动", cmd: "agy" }], configTargets: [], group: "cli", hidden: true },
   {
     id: "claude",
     toolId: "claude-code",
@@ -140,58 +134,6 @@ export const TUI_APPS: TuiApp[] = [
     // uking-managed route，Web / terminal 共用同一份 `$DSH_HOME`。
     configTargets: ["dsh"],
     group: "cli",
-  },
-  {
-    // ★ 2026-08-03 新上架。**本机实测过才写进来的**（口径见下），不是照 awesome-list 抄的 ——
-    // 同一轮筛选里 PyPI 上的 `goose-ai` 是抢注空包、OpenCode 1.4.3 的 `run` 在干净 HOME 下
-    // 挂 90 秒零输出，两个都没进来。上架四条硬门槛，缺一条就不上：
-    //   ① 装得上：npm 12 个包 / 19s（npmmirror 源）
-    //   ② 接得上虾盘云：`~/.qwen/settings.json` 的 modelProviders.openai[]（形状取自包内
-    //      自带的 qc-helper/docs/configuration/auth.md，权威来源，不是猜的）
-    //   ③ 非交互塞得进任务：`qwen -p "…"` → exit 0 / 12.5s / **stdout 只有答案、stderr 空**
-    //   ④ 工具调用真能跑：让它读文件，默认审批档就通过，不用 --yolo（8.8s 拿到真内容）
-    // ③ 那条是竞技场的地基：stdout 干净才解析得动「谁干活利索」。
-    id: "qwen",
-    toolId: "qwen-code",
-    name: "Qwen Code",
-    tool: "qwen",
-    prompts: [
-      { label: "启动", cmd: "qwen" },
-      { label: "继续上次", cmd: "qwen --continue" },
-    ],
-    configTargets: ["qwen"],
-    group: "cli",
-    // ★ 2026-08-05 隐藏。**不是因为它坏** —— 沙箱实测（U-King 配好的虾盘云）真回话。
-    // 是因为慢：35.7s，全场最慢的一档（pi 7.1s / claude 9.6s / crush 12.1s）。
-    // 主推线是「Claude Code + Hermes」（0.9.88 定），它既不快也不差异化，占一格 Dock
-    // 只会让客户多一次「该选哪个」的犹豫。apply_qwen 保留：已装的客户照样自动配上。
-    hidden: true,
-  },
-  {
-    // ★ 2026-08-03 新上架，同上四条门槛实测：
-    //   ① npm 48 包 / 7s（内含 Go 单二进制，装完 `crush version` = v0.88.0）
-    //   ② 虾盘云走 crush.json 的 providers + **models.large/small 必须显式指过去** ——
-    //      只写 providers 不写 models，它会拿 OPENAI_API_KEY 去打 api.openai.com 报
-    //      「Incorrect API key」，看起来像我们的 Key 坏了，其实是根本没走我们的端点。
-    //      这个坑第一次配就踩到了，别再让客户踩。
-    //   ③ `crush run "…"` → exit 0 / 8.4s / stdout 干净 / stderr 空，且支持管道
-    //   ④ 只读工具调用 exit 0 / 9.4s
-    id: "crush",
-    toolId: "crush",
-    name: "Crush",
-    tool: "crush",
-    prompts: [
-      { label: "启动", cmd: "crush" },
-      { label: "继续上次", cmd: "crush --continue" },
-    ],
-    configTargets: ["crush"],
-    group: "cli",
-    // ★ 2026-08-05 隐藏。要说清楚的是：**它现在是能用的** —— 上面②那条注释当年没查到
-    // 真正的坑，真因是配置写错了目录（我们写 ~/.config/crush，crush v0.88 在 Windows 读
-    // %LOCALAPPDATA%\crush），2026-08-04 已修并实测 12.1s 通过。
-    // 隐藏的理由是重叠而非故障：和 Claude Code / Codex 干同一件事，没有差异化价值。
-    // 代码和 apply_crush 全部保留 —— 已装的客户升级后配置照旧生效，不会突然坏。
-    hidden: true,
   },
   {
     // ★ 2026-08-03 上架，但**只当交互式 TUI 用**（★192k，社区最大的开源 coding agent）。

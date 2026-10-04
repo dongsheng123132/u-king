@@ -1,6 +1,6 @@
 {
-  "pairs": 46,
-  "why": "dshdesk 是新的可插拔叶子模块（同 uuswitch 的定位：只管装/检测/启动一个具体工具），tools/providers 探测/配置『dsh 装没装』时直接调它的 installed()/launch()，同 tools→uuswitch 既有先例；删 dshdesk 时这两处引用点也在文件头注释列出的『要动的文件』里",
+  "pairs": 45,
+  "why": "自动收紧（解开了耦合）",
   "list": [
     "agent → device",
     "agent → journal",
@@ -40,7 +40,6 @@
     "report → metrics",
     "toolprobe → tools",
     "tools → dshdesk",
-    "tools → install",
     "tools → providers",
     "tools → term",
     "tools → toolprobe",

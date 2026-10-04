@@ -46,7 +46,6 @@ limited to:
 - OpenClaw, ClawX — their respective project authors
 - pi — Earendil Inc. and contributors (per the pi.dev site footer)
 - OpenCode — the opencode project (github.com/anomalyco/opencode)
-- Obsidian — Obsidian and its owner (official logo used to identify the supported application)
 - UU Remote (UU远程) — NetEase (网易)
 - Doubao (豆包), Volcengine (火山引擎) — ByteDance (字节跳动)
 - QwenWork (千问办公), Bailian (百炼), ModelScope (魔搭) — Alibaba (阿里巴巴)
@@ -79,8 +78,6 @@ Full license texts for the MIT-licensed icon sources are kept in
 Icons from lobehub/lobe-icons (https://github.com/lobehub/lobe-icons, MIT,
 Copyright (c) 2023 LobeHub), package @lobehub/icons-static-svg:
 
-- `src/assets/logos/doubao.svg` (icons/doubao-color.svg, v1.95.1). This is a
-  third-party redraw, not an asset published by the trademark owner.
 - `src/assets/providers/*.svg` — all 15 files; each header comment names its
   lobe-icons file (bailian, groq, hunyuan, longcat, mistral, modelscope,
   opencode, openrouter, qianfan, siliconflow, stepfun, volcengine, xai,
@@ -97,10 +94,6 @@ and `zhipu.svg` are byte-identical (ignoring line breaks) to lobe-icons v1.95.1
 from v1.95.1 (older release or locally recolored). Provenance is therefore
 inferred as lobe-icons (MIT), exact source and version 来源待核.
 
-Obsidian: the original gradient mark is used unchanged to identify the supported
-application. The mark remains the owner's trademark; this project grants no
-rights to reuse it. Brand guidelines: https://obsidian.md/brand.
-
 Icons from official product sites or repositories:
 
 Artwork verified on 2026-10-03 (unmodified; product identification only):
@@ -109,10 +102,6 @@ Artwork verified on 2026-10-03 (unmodified; product identification only):
 - `src/assets/logos/mimo.svg` — https://mimo.mi.com/static/mimo-code.a1594b207bbc4bee.svg
 - `src/assets/logos/codebuddy.svg` — https://download.codebuddy.cn/web/website/a156fee78f35e874d407848198e5f96a4cf383ef/assets/logo.svg
 - `src/assets/logos/qoder.svg` — https://qoder.cn/favIcon.svg
-- `src/assets/logos/grok.svg` — https://grok.com/images/favicon.svg
-- `src/assets/logos/antigravity.svg` — https://www.antigravity.google/favicon.svg
-- `src/assets/logos/muse.ico` — https://dev.meta.ai/favicon.ico?favicon.0o~z3n2dfavrq.ico
-- `src/assets/logos/obsidian.svg` — https://obsidian.md/images/obsidian-logo-gradient.svg
 
 These are brand assets, not artwork relicensed under Apache-2.0. All marks
 remain owned by their respective owners. Kimi Code's official repository is
@@ -135,12 +124,6 @@ tools. Source URLs are recorded here instead of modifying the original files.
   `<style>`; U-King kept only the inner svg, with its geometry and colors
   unchanged).
   MIT, Copyright (c) 2025 opencode. Trademark remains with its owner.
-- `src/assets/logos/qwenwork.svg` — mark cropped from the page-header logo of
-  the QwenWork official site (qwenwork.cn, image hosted on img.alicdn.com).
-  Brand asset of its owner, no open-source license; nominative use only.
-- `src/assets/logos/workbuddy.svg` — favicon of the WorkBuddy official page
-  (www.codebuddy.cn/work/), unmodified. Brand asset of its owner (Tencent
-  Cloud), no open-source license; nominative use only.
 - `src/assets/logos/uu-remote.png` — the single 64x64 frame of the favicon of
   the UU Remote official site (uuyc.163.com), converted from ICO to PNG. Brand
   asset of its owner (NetEase), no open-source license; nominative use only.
@@ -154,6 +137,5 @@ tools. Source URLs are recorded here instead of modifying the original files.
 
 Icons drawn by U-King (inline SVG in `ToolIcon.tsx`, covered by the Apache
 License 2.0 of this project, not derived from any third-party logo):
-`XiapanDisk` (虾盘云), `HarnessDoctorGlyph` (Harness Doctor), `Open365Glyph`
-(Open365), `UuSwitchGlyph` (uu-switch). The U-King and 虾盘云 marks remain
+`XiapanDisk` (虾盘云), `UuSwitchGlyph` (uu-switch). The U-King and 虾盘云 marks remain
 covered by the trademark notice above.

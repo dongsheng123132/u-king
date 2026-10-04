@@ -430,26 +430,6 @@ async fn install_dsh_desktop(app: AppHandle) -> Result<String, String> {
     .map_err(|e| format!("安装 DeepSeek Harness 异常: {e}"))?
 }
 
-/// 进阶区：下载并拉起 Hermes 桌面版安装器（下一步下一步，非静默）。
-/// 进度走事件 `uking:hermes_progress`。下载失败返回 Err，前端回退「打开官网下载页」。
-#[tauri::command]
-async fn install_hermes_app(app: AppHandle) -> Result<String, String> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        tools::install_hermes_app(&move |msg: &str| {
-            let _ = app2.emit("uking:hermes_progress", msg.to_string());
-        })
-    })
-    .await
-    .map_err(|e| format!("安装 Hermes 异常: {e}"))?
-}
-
-/// Hermes 官网下载页（前端下载失败时回退打开）。
-#[tauri::command]
-fn hermes_download_page() -> String {
-    tools::hermes_download_page()
-}
-
 /// 绿色版「固定到桌面」：给当前运行的 exe 建桌面快捷方式。
 #[tauri::command]
 async fn pin_to_desktop() -> Result<String, String> {
@@ -6730,37 +6710,6 @@ async fn save_health_report() -> Result<String, String> {
         .map_err(|e| format!("生成体检报告异常: {e}"))?
 }
 
-/// 把 Harness Doctor 的稳定 JSON 压成人话段落。这里只取 summary/status/fix_id，绝不把
-/// details 里的绝对路径或任何环境值抄进截图报告；完整排障信息走 Doctor 自己的脱敏 bundle。
-fn format_harness_doctor_section(raw: Option<&str>) -> String {
-    use std::fmt::Write as _;
-
-    let mut out = String::from("【四大 AI 工具深度体检】\n");
-    let Some(raw) = raw else {
-        out.push_str("  ⚪ Harness Doctor 未安装（可在下面工具列表一键安装；现有基础体检不受影响）\n");
-        return out;
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw.trim()) else {
-        out.push_str("  ⚠️ Harness Doctor 返回了无法识别的报告，请重新安装后再试\n");
-        return out;
-    };
-    let summary = &v["summary"];
-    let pass = summary["pass"].as_u64().unwrap_or(0);
-    let warn = summary["warn"].as_u64().unwrap_or(0);
-    let fail = summary["fail"].as_u64().unwrap_or(0);
-    let _ = writeln!(out, "  总结：✅ {pass} 通过 · ⚠️ {warn} 提醒 · ❌ {fail} 失败");
-    if let Some(checks) = v["checks"].as_array() {
-        for item in checks.iter().filter(|item| item["status"].as_str() != Some("pass")).take(12) {
-            let mark = if item["status"].as_str() == Some("fail") { "❌" } else { "⚠️" };
-            let text = item["summary"].as_str().unwrap_or("未提供说明");
-            let fix = item["fix_id"].as_str().map(|id| format!(" · 修复标识 {id}")).unwrap_or_default();
-            let _ = writeln!(out, "  {mark} {text}{fix}");
-        }
-    }
-    out.push_str("  完整脱敏支持包：harness-doctor bundle --target all --output harness-support.json\n");
-    out
-}
-
 fn build_and_write_health_report() -> Result<String, String> {
     use std::fmt::Write as _;
 
@@ -6769,13 +6718,6 @@ fn build_and_write_health_report() -> Result<String, String> {
     let dk = device::get_device_key().ok();
     let clawx = providers::clawx_app_installed();
     let hermes = tools::hermes_app_installed() || installer::tool_installed("hermes");
-    let harness_doctor = if installer::tool_installed("harness-doctor") {
-        installer::run_tool_capture("harness-doctor --target all --json --no-ports")
-            .ok()
-            .map(|(_, output)| output)
-    } else {
-        None
-    };
 
     // ✅ v1.2.3 / ❌ 未检测到
     let probe = |p: &installer::CmdProbe| -> String {
@@ -6828,8 +6770,6 @@ fn build_and_write_health_report() -> Result<String, String> {
     let _ = writeln!(r, "  Hermes         {}", yn(hermes));
     let _ = writeln!(r);
 
-    r.push_str(&format_harness_doctor_section(harness_doctor.as_deref()));
-    let _ = writeln!(r);
 
     let _ = writeln!(r, "【当前用的模型驱动】");
     let claude_chan = chan(&driver.claude_base);
@@ -9537,8 +9477,6 @@ pub fn run() {
             install_uuswitch,
             import_to_uuswitch,
             install_dsh_desktop,
-            install_hermes_app,
-            hermes_download_page,
             pin_to_desktop,
             open_codex_guide,
             open_codex_cli_guide,
@@ -9762,37 +9700,6 @@ pub fn run() {
                 }
             }
         });
-}
-
-#[cfg(test)]
-mod harness_doctor_report_tests {
-    use super::format_harness_doctor_section;
-
-    #[test]
-    fn missing_doctor_stays_an_honest_optional_result() {
-        let out = format_harness_doctor_section(None);
-        assert!(out.contains("未安装"));
-        assert!(!out.contains("❌"), "可选工具没装不能冒充机器故障");
-    }
-
-    #[test]
-    fn report_only_projects_safe_summary_fields() {
-        let raw = r#"{
-          "summary":{"pass":3,"warn":1,"fail":1},
-          "checks":[
-            {"status":"pass","summary":"Node ok","details":{"path":"C:\\Users\\secret"},"fix_id":null},
-            {"status":"warn","summary":"Proxy environment is active","details":{"token":"sk-never-copy-this"},"fix_id":"review_proxy_environment"},
-            {"status":"fail","summary":"DSH command missing","details":{"path":"C:\\Users\\secret"},"fix_id":"install_dsh"}
-          ]
-        }"#;
-        let out = format_harness_doctor_section(Some(raw));
-        assert!(out.contains("✅ 3 通过 · ⚠️ 1 提醒 · ❌ 1 失败"));
-        assert!(out.contains("review_proxy_environment"));
-        assert!(out.contains("install_dsh"));
-        assert!(!out.contains("secret"));
-        assert!(!out.contains("sk-never-copy-this"));
-        assert!(!out.contains("Node ok"), "通过项不该把截图报告淹没");
-    }
 }
 
 #[cfg(test)]

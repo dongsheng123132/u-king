@@ -1,5 +1,5 @@
 /**
- * 进阶 / App 版 —— 桌面 App 工具（Hermes 桌面版 / ClawX）的「装机半自动 + 配置教程化」页。
+ * 进阶 / App 版 —— 桌面 App 工具（ClawX）的「装机半自动 + 配置教程化」页。
  *
  * 产品取舍（2026-06-19 定）：GUI app 的模型配置**不做全自动**（实践证明 app 自动写配置坑太多
  * —— 配置文件格式/路径/内存副本各种时机问题，切了没反应是头号售后单）。改为：
@@ -12,13 +12,10 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertTriangle,
   Check,
   Copy,
-  Download,
-  ExternalLink,
   Info,
   KeyRound,
   Link2,
@@ -119,7 +116,7 @@ function CopyField({
   );
 }
 
-/** 一组「复制 Key / Base URL / 模型」—— Hermes 与 ClawX 教程共用。
+/** 一组「复制 Key / Base URL / 模型」—— ClawX 教程用（Hermes 桌面版入口已删，2026-10-04）。
  *  模型可**下拉换不同 id**（默认满血 deepseek-v4-pro，也可选 Claude/GPT 等）再复制。 */
 function CredentialBlock({
   deviceKey,
@@ -529,8 +526,6 @@ export function Advanced({
 }) {
   const { t } = useI18n();
   const [tools, setTools] = useState<ToolInfo[]>([]);
-  const [hermesProgress, setHermesProgress] = useState<string | null>(null);
-  const [installing, setInstalling] = useState(false);
   const [clawxConfig, setClawxConfig] = useState<string | null>(null);
   const [clawxBusy, setClawxBusy] = useState(false);
 
@@ -554,40 +549,9 @@ export function Advanced({
     refresh.current();
   }, []);
 
-  const hermes = tools.find((t) => t.id === "hermes-app");
   const clawx = tools.find((t) => t.id === "clawx");
-  const hermesInstalled = !!hermes?.installed;
   const clawxInstalled = !!clawx?.installed;
 
-  const installHermes = async () => {
-    if (installing) return;
-    setInstalling(true);
-    setHermesProgress(t("正在下载 Hermes 安装器…"));
-    const un = await listen<string>("uking:hermes_progress", (e) => setHermesProgress(e.payload));
-    try {
-      const msg = await invoke<string>("install_hermes_app");
-      onToast(msg);
-      // 安装器是用户手动点下一步，装完时机不定 —— 稍候再刷新一次检测状态。
-      window.setTimeout(() => refresh.current(), 4000);
-    } catch (e) {
-      onToast(String(e));
-      // 下载失败（国际站慢/被墙）→ 回退打开官网下载页让用户自己下。
-      const page = await invoke<string>("hermes_download_page").catch(
-        () => "https://hermes-agent.nousresearch.com/",
-      );
-      await openUrl(page).catch(() => {});
-    } finally {
-      un();
-      setHermesProgress(null);
-      setInstalling(false);
-    }
-  };
-
-  const launchHermes = () => {
-    invoke("launch_app", { app: "hermes-app" })
-      .then(() => onToast(t("正在打开 Hermes…")))
-      .catch(() => onToast(t("没找到 Hermes，请先安装，或从开始菜单打开")));
-  };
   const launchClawx = () => {
     invoke("launch_app", { app: "clawx" })
       .then(() => onToast(t("正在打开 ClawX…")))
@@ -634,89 +598,13 @@ export function Advanced({
           <span className="text-[11px] text-ink-4">{t("给想用图形界面的高级用户")}</span>
         </div>
         <p className="text-[12px] leading-relaxed text-ink-3">
-          {t("这里是 ")}<b className="text-ink-1">Hermes / ClawX</b>{t(" 等桌面 App。装机我们帮你「下一步下一步」装好；")}
+          {t("这里是 ")}<b className="text-ink-1">ClawX</b>{t(" 等桌面 App。装机我们帮你「下一步下一步」装好；")}
           <b className="text-ink-1">{t("模型配置请照下面教程，自己把 Key 复制进 App 的设置里")}</b>
           {t("—— App 的自动配置坑多（切了常没反应），手动粘一次最稳，你也能当场看到生效。")}
           <br />
           <span className="text-ink-4">{t("（命令行工具的「一键切换模型」仍在「AI 设置」页，那层可靠、不受此影响。）")}</span>
         </p>
       </section>
-
-      {/* Hermes 桌面版入口已隐藏（2026-07-08 产品决策）：Hermes 改为只用 TUI —— 点「启动」即进
-          终端对话（像 Claude Code）、自动配好虾盘云内部模型；桌面 App 装机坑多、与 TUI 能力重复，
-          且客户会二选一犯难。代码整段保留，把下面的 false 改回 true 即可恢复桌面 App 入口。 */}
-      {false && (
-      <section className="rounded-card border border-white/[0.08] bg-bg-2/70 overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/[0.06]">
-          <span className="grid place-items-center w-11 h-11 rounded-lg bg-bg-3 shrink-0">
-            <ToolIcon tool="hermes" size={28} active={hermesInstalled} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold text-ink-0">{t("Hermes 桌面版（Nous 官方）")}</div>
-            <div className="text-[11.5px] text-ink-3">
-              {toolsLoading ? (
-                <span className="text-ink-4">{t("检测中…")}</span>
-              ) : hermesInstalled ? (
-                <span className="text-success-400">{t("✓ 已安装")}</span>
-              ) : (
-                t("Nous Research 自进化 AI 智能体 · 官方图形版")
-              )}
-            </div>
-          </div>
-          {hermesInstalled ? (
-            <button
-              onClick={launchHermes}
-              className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0"
-            >
-              <Sparkles size={14} /> {t("打开 Hermes")}
-            </button>
-          ) : (
-            <button
-              onClick={installHermes}
-              disabled={installing}
-              className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent-600 shrink-0 disabled:opacity-60"
-            >
-              <Download size={14} /> {installing ? t("安装中…") : t("下载安装 Hermes")}
-            </button>
-          )}
-        </div>
-
-        {hermesProgress && (
-          <div className="flex items-center gap-2 px-5 py-2.5 bg-accent/[0.06] text-[12px] text-ink-1 border-b border-white/[0.06]">
-            <Download size={13} className="text-accent animate-pulse shrink-0" />
-            <span className="truncate">{hermesProgress}</span>
-          </div>
-        )}
-
-        <div className="px-5 py-4 space-y-3.5">
-          <div className="flex items-center gap-1.5 text-[12px] text-ink-2">
-            <Info size={13} className="text-accent" />
-            {t("装好后，照下面 4 步把虾盘云接进 Hermes（一次配好，永久生效）：")}
-          </div>
-          <Steps
-            items={[
-              <>{t("装好后点上方 ")}<b className="text-ink-1">{t("「打开 Hermes」")}</b>{t("，进入 Hermes 主界面。")}</>,
-              <>{t("在 Hermes 里打开 ")}<b className="text-ink-1">{t("设置（Settings）→ 供应商（Providers）")}</b>{t("，新增一个 ")}<b className="text-ink-1">{t("OpenAI 兼容")}</b>{t(" 供应商。")}</>,
-              <>{t("把下面三项")}<b className="text-ink-1">{t("复制粘贴")}</b>{t("进去（点右边「复制」按钮，再到 Hermes 对应输入框粘贴）：")}</>,
-              <>{t("填好后")}<b className="text-ink-1">{t("保存并选中该供应商/模型")}</b>{t("，回到对话框发一句话测试，能回话即成功。")}</>,
-            ]}
-          />
-          <CredentialBlock deviceKey={deviceKey} onToast={onToast} onRecharge={onRecharge} onDeviceKeyChange={onDeviceKeyChange} />
-          <div className="flex items-center gap-3 pt-0.5 text-[11px] text-ink-4">
-            <button
-              onClick={() => openUrl("https://hermes-agent.nousresearch.com/").catch(() => {})}
-              className="inline-flex items-center gap-1 hover:text-ink-2"
-            >
-              <ExternalLink size={11} /> {t("Hermes 官网")}
-            </button>
-            {!deviceKey?.key && <span>{t("· 内置 Key 检测中，稍候即可复制")}</span>}
-            {deviceKey?.charged === false && (
-              <span className="text-accent">{t("· 内置 Key 未充值，去「AI 设置」充值后可用")}</span>
-            )}
-          </div>
-        </div>
-      </section>
-      )}
 
       {/* ClawX 配置教程（ClawX 安装仍在「我的 AI」，这里只放配置教程） */}
       <section className="rounded-card border border-white/[0.08] bg-bg-2/70 overflow-hidden">

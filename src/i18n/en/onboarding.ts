@@ -376,6 +376,4 @@ export const onboarding: Record<string, string> = {
     "🔎 Self-check passed: Claude Code really runs, the provider is wired up, there's balance, and the skill packs are in place — U-Workspace is ready.",
   "🔎 自检发现 {n} 件事还没到位（其余都好了）：":
     "🔎 Self-check found {n} thing(s) not ready yet (everything else is fine):",
-  "Harness Doctor 已装好。回到「我的 AI」点它可立即体检；之后生成 AI 体检报告时也会自动附上四个 Harness 的诊断摘要。":
-    "Harness Doctor is installed. Click it in \"My AI\" to run a checkup anytime; future AI health reports will automatically include diagnostics from all four harnesses.",
 };

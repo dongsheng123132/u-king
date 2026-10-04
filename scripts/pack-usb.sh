@@ -68,30 +68,6 @@ cp "$HERE/src-tauri/icons/icon.ico" "$OUT/U-King/icon.ico" 2>/dev/null || true
 cp "$HERE/website/usb-guide.html" "$OUT/使用说明书.html" 2>/dev/null || \
   echo "[WARN] 未找到 website/usb-guide.html，跳过说明书"
 
-# —— Open365 开源电脑管家（无广告替代「安全卫士」）随盘带 ——
-# 独立小工具（PowerShell 引擎 + 系统 csc 编译的 WinForms 壳，~150KB）。U-King 检测到 U 盘根目录
-# 的 Open365/ 会亮出「电脑管家」卡片，首点自动装到本地并建桌面快捷方式。删除本集成只需删这段 +
-# tools.rs 的 open365 相关。源在本机 ~/Desktop/Open365（可用环境变量 OPEN365_SRC 覆盖）。
-OPEN365_SRC="${OPEN365_SRC:-$HOME/Desktop/Open365}"
-if [ -f "$OPEN365_SRC/install.ps1" ]; then
-  mkdir -p "$OUT/Open365"
-  # 只带运行所需：exe + 引擎 + 动作核心 + GUI 源(供 install.ps1 现编译/透明可审计) + 安装脚本 + 许可。
-  # 跳过 .git / _dist / tests / tools / docs / 备份 等开发目录。逐项拷（set -e 下容忍缺项）。
-  #
-  # ★ core/ 从 Open365 1.3.0（影核协议改造）起是**必带**的：GUI 的启动项 / 进程 /
-  #   垃圾扫描 / 安全体检 / 网络诊断全部改走 core/action-core.ps1，缺了它这些页面
-  #   只会显示「读取失败」——而且不报错，静默坏掉。下面的自检就是防这个的。
-  for item in Open365.exe engine gui core install.ps1 open365.bat open365.ps1 LICENSE NOTICE README.md VERSION action-parity.json; do
-    [ -e "$OPEN365_SRC/$item" ] && cp -r "$OPEN365_SRC/$item" "$OUT/Open365/" || true
-  done
-  for must in Open365.exe engine gui core/action-core.ps1 core/registry.ps1 install.ps1; do
-    [ -e "$OUT/Open365/$must" ] || { echo "[FAIL] 随盘 Open365 缺 $must —— 装出来会静默半残，中止"; exit 1; }
-  done
-  echo "[OK] 已随盘带 Open365 电脑管家 v$(cat "$OPEN365_SRC/VERSION" 2>/dev/null || echo '?') -> $OUT/Open365"
-else
-  echo "[WARN] 未找到 Open365 源（$OPEN365_SRC），跳过随盘带电脑管家（设 OPEN365_SRC 指定路径）"
-fi
-
 cat > "$OUT/自述-先看我.txt" <<'TXT'
 U-King 个人 AI 操作系统 · U 盘版
 

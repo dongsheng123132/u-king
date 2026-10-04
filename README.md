@@ -34,7 +34,7 @@ AI CLI 的第一步常常卡在 Node、PATH、镜像、配置文件和模型连�
 
 | 场景 | U-King 提供的能力 |
 | --- | --- |
-| 安装 AI 工具 | 自动准备 Node 运行时与 PATH，并安装、验证和修复常用 CLI。当前清单覆盖 Claude Code、Codex CLI、Pi、OpenClaw、OpenCode、Qwen Code、Crush、Cline 等。 |
+| 安装 AI 工具 | 自动准备 Node 运行时与 PATH，并安装、验证和修复常用 CLI。当前清单覆盖 Claude Code、Codex CLI、Pi、OpenClaw、OpenCode、Cline 等。 |
 | 配置模型 | 以本地配置文件为中心，写入 Claude Code、Codex 等工具的供应商设置；支持自带 key，也可选择官方可选中转。 |
 | 验证是否真的可用 | 不只判断“装好了”，还会执行版本检查与模型连通测试，失败时提供可见的诊断过程。 |
 | 日常使用 | 内置基于 PTY 的真终端，自动带上工具环境；多 AI 工作台按项目组织会话、任务和文件。 |

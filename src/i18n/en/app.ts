@@ -158,7 +158,6 @@ export const app: Record<string, string> = {
   "装好就是聊天窗口，不用敲命令": "Once installed it's just a chat window — no commands",
   "Hermes 终端 AI 助手": "Hermes terminal AI assistant",
   "命令行智能体，复杂活干得更利落": "A command-line agent — handles complex work more cleanly",
-  "打开 Hermes": "Open Hermes",
   "一键安装 Hermes": "One-click install Hermes",
   "ClawX 图形版 AI 助手": "ClawX graphical AI assistant",
   "最适合小白：装好就是聊天窗口，不用敲命令": "Best for beginners: once installed it's just a chat window — no commands needed",

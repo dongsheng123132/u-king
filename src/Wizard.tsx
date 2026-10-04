@@ -135,20 +135,14 @@ export const TOOL_NAMES: Record<string, string> = {
   "qoder-cn": "Qoder CN CLI",
   "claude-app": "Claude 桌面版",
   "kimi-code": "Kimi Code",
-  "grok-build": "Grok Build",
-  "muse-code": "Muse Code",
-  "antigravity-cli": "Antigravity CLI",
 
   "claude-code": "Claude Code CLI",
   pi: "pi",
   hermes: "Hermes Agent",
   dsh: "DeepSeek Harness",
-  "harness-doctor": "Harness Doctor",
   codex: "Codex CLI",
   "codex-app": "Codex 桌面版",
   openclaw: "OpenClaw CLI（原版）",
-  "qwen-code": "Qwen Code",
-  crush: "Crush",
   opencode: "OpenCode",
 };
 
@@ -738,8 +732,6 @@ export function Wizard({
               ? t("开始安装 Claude 桌面版（官方安装包，装完检测能否启动）…")
               : tool === "codex-app"
               ? t("开始安装 Codex 桌面版（微软商店渠道，不通自动切国内镜像，装完自动验证）…")
-              : ["grok-build", "muse-code", "antigravity-cli"].includes(tool)
-              ? t("开始安装 {tool}（官方下载，装完自动验证）…", { tool: TOOL_NAMES[tool] })
               : t("开始安装 {tool}（走 npmmirror 国内加速，装完自动验证）…", { tool: t(TOOL_NAMES[tool]) }),
         });
         const logId = push({ role: "uking", log: [], logDone: false });
@@ -908,7 +900,7 @@ export function Wizard({
     if (ctx.current.installAllThenXiapan) {
       return finishInstallAll();
     }
-    if (Array.isArray(preselect) || ctx.current.queue.every((id) => ["claude-app", "grok-build", "muse-code", "antigravity-cli", "kimi-code", "mimo-code", "codebuddy-code", "qoder-cn"].includes(id))) {
+    if (Array.isArray(preselect) || ctx.current.queue.every((id) => ["claude-app", "kimi-code", "mimo-code", "codebuddy-code", "qoder-cn"].includes(id))) {
       push({ role: "uking", text: t("所选软件安装流程已结束。请在「我的 AI」中启动；支持的工具可换模型或充值，需要账号的工具在首次启动时登录。") });
       return finish();
     }
@@ -938,11 +930,6 @@ export function Wizard({
               ? t("（内置 Key 余额 {bal}）", { bal: dk.balance?.text ?? "" })
               : t("（内置 Key 余额为 0，使用前到「AI 设置」充值即可）")),
       });
-      return finish();
-    }
-    // Harness Doctor 是只读诊断工具，不需要模型驱动；安装后回到首页即可生成更深的体检报告。
-    if (ctx.current.queue.length === 1 && ctx.current.queue[0] === "harness-doctor") {
-      push({ role: "uking", text: t("Harness Doctor 已装好。回到「我的 AI」点它可立即体检；之后生成 AI 体检报告时也会自动附上四个 Harness 的诊断摘要。") });
       return finish();
     }
     return pickDriver();

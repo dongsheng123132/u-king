@@ -743,7 +743,7 @@ fn sh_single_quote(path: &str) -> String {
 /// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
 /// 附近注释，实现时不要漏掉这一条。
 pub fn validate_cmd(cmd: &str) -> bool {
-    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "grok", "muse", "agy", "claude", "codex", "openclaw", "hermes", "dsh", "harness-doctor", "opencode", "pi", "qwen", "crush", "node", "npm", "git", "ollama"];
+    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "claude", "codex", "openclaw", "hermes", "dsh", "opencode", "pi", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;
     if cmd.len() > MAX_LEN {
         return false;
@@ -1937,7 +1937,6 @@ mod tests {
         assert!(validate_cmd("openclaw gateway run --port 18789"));
         assert!(validate_cmd("dsh web"));
         assert!(validate_cmd("dsh --profile headless --help"));
-        assert!(validate_cmd("harness-doctor --target all --no-ports"));
         assert!(validate_cmd("npm install -g openclaw"));
         assert!(validate_cmd("pi --tools read"));
         assert!(validate_cmd("opencode --continue"));
@@ -1953,6 +1952,10 @@ mod tests {
         assert!(!validate_cmd("git ../escape")); // 路径穿越
         assert!(!validate_cmd("claude ..\\x")); // Windows 风格路径穿越
         assert!(!validate_cmd("powershell -c whoami")); // 程序名不在白名单
+        // 已下架的工具命令不再放行（2026-10-04 零用量删除）
+        assert!(!validate_cmd("harness-doctor --target all --no-ports"));
+        assert!(!validate_cmd("grok"));
+        assert!(!validate_cmd("crush"));
     }
 
     /// 非 ASCII 放行：中文提示词能通过，但 ASCII 层面的 shell 元字符依旧全部被挡。

@@ -683,21 +683,11 @@ pub fn scan() -> Vec<FootprintItem> {
             warn_tool,
         ));
     }
-    // Obsidian / UU 远程由官网安装，U-King 只提供下载入口；演示清场也把已装状态列出来，
+    // UU 远程由官网安装，U-King 只提供下载入口；演示清场也把已装状态列出来，
     // 但执行时仍只调用 Windows 注册表里登记的原始卸载程序，不直接删除安装目录。
     #[cfg(windows)]
     {
         let market = &p.market;
-        if market.iter().any(|t| t.id == "obsidian" && t.installed) {
-            v.push(FootprintItem::new(
-                "tool-obsidian",
-                "aitool",
-                "Obsidian 知识库",
-                "通过 Obsidian 官方卸载程序处理；不会删除你的笔记库文件夹".into(),
-                false,
-                "官网安装的软件，确认这台演示机没有要保留的资料后再勾选",
-            ));
-        }
         if market.iter().any(|t| t.id == "uu-remote" && t.installed) {
             v.push(FootprintItem::new(
                 "tool-uu-remote",
@@ -835,8 +825,6 @@ pub fn remove(id: &str, on_log: &(dyn Fn(&str) + Send + Sync)) -> Result<String,
         #[cfg(windows)]
         "tool-open365" => uninstall_ai_tool("open365", on_log),
         #[cfg(windows)]
-        "tool-obsidian" => uninstall_registered_app(&["Obsidian"], "Obsidian", on_log),
-        #[cfg(windows)]
         "tool-uu-remote" => uninstall_registered_app(&["UU远程", "UURemote", "GameViewer"], "UU远程", on_log),
 
         other if other.starts_with("kit-") => crate::toolbox::uninstall_tool(&other[4..], on_log),
@@ -937,7 +925,7 @@ fn uninstall_app(exe: Option<PathBuf>, on_log: &(dyn Fn(&str) + Send + Sync)) ->
 
 /// 从 Windows 的「已安装应用」登记项启动原厂卸载程序。
 ///
-/// 只用于 U-King 仅提供下载入口、没有自己的安装器的工具（如 Obsidian / UU 远程）。
+/// 只用于 U-King 仅提供下载入口、没有自己的安装器的工具（如 UU 远程）。
 /// 不按目录名递归删除：注册表找不到原厂卸载串就直接报明白，让用户去 Windows 设置处理。
 #[cfg(windows)]
 fn uninstall_registered_app(
@@ -1173,8 +1161,10 @@ if ($done) { 'ok' } else { 'notfound' }
     }
 }
 
-// 前端 App.tsx 里 UNINSTALLABLE 集合镜像下方 match 支持的 tool_id（url 型第三方工具 Obsidian/UU远程
+// 前端 App.tsx 里 UNINSTALLABLE 集合镜像下方 match 支持的 tool_id（url 型第三方工具 UU远程
 // 不由我们装，不提供一键卸载）。改这里的支持列表时同步前端那份。
+// 例外：harness-doctor / hermes-app / open365 三个分支只供「装机·体检」逐项清理老客户机上的
+// 残留用（这三个工具已从工具目录下架，前端不再有它们的卸载入口，所以不在 UNINSTALLABLE 里）。
 
 /// 彻底卸载某个 AI 工具（首页卡片「卸载」）。删本体 + 一切会被探测成"已装"的残留，
 /// 卸载后 `detect` 即变"未装"、重装 U-King 也不再冒出来。返回一句人话结果。

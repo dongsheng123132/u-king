@@ -29,33 +29,21 @@ mkdirSync(OUT, { recursive: true });
  * `config_target` 照抄同文件 `TOOL_SPECS` 同 id 条目（后端 `list_tools` 按 id 从那里填，
  * 2026-09-30 加；`null` = 不接驱动切换）。uu-switch 2026-09-30 已下架（`hidden: true`）。
  * `installed` 不在这张表里——那是每个场景自己决定的演示状态，不是抄来的。
- * `open365` 后端 `installed: true` 是硬编码常量（按需下载设计，见 tools.rs 同名注释），
- * 这里同样硬编码，不随场景切换——这正是 `LAB_TOOLS` 要把它从主「已装」网格摘出去、
- * 单独放"实验室（已装）"分区的原因（ToolHub.tsx `installed` 那段注释）。
  */
 const TOOL_DEFS = [
   { id: "claude-code", name: "Claude Code CLI", kind: "standalone", launch_cmd: "claude", launch_app: "", hidden: false, config_target: "claude" },
   { id: "codex", name: "Codex CLI", kind: "standalone", launch_cmd: "codex", launch_app: "", hidden: false, config_target: "codex" },
   { id: "openclaw", name: "OpenClaw CLI（龙虾）", kind: "deep", launch_cmd: "openclaw", launch_app: "", hidden: true, config_target: "clawx" },
-  { id: "qwen-code", name: "Qwen Code", kind: "standalone", launch_cmd: "qwen", launch_app: "", hidden: true, config_target: "qwen" },
   { id: "pi", name: "pi", kind: "standalone", launch_cmd: "pi", launch_app: "", hidden: false, config_target: "pi" },
   { id: "opencode", name: "OpenCode", kind: "standalone", launch_cmd: "opencode", launch_app: "", hidden: false, config_target: "opencode" },
-  { id: "crush", name: "Crush", kind: "standalone", launch_cmd: "crush", launch_app: "", hidden: true, config_target: "crush" },
   { id: "clawx", name: "OpenClaw 桌面版（ClawX）", kind: "deep", launch_cmd: "", launch_app: "clawx", hidden: false, config_target: "clawx" },
   { id: "hermes", name: "Hermes Agent（Nous 官方）", kind: "deep", launch_cmd: "hermes", launch_app: "", hidden: false, config_target: "hermes" },
   // Windows 分支（cfg!(windows)）：官方桌面版，launch_app="dsh-desktop"、launch_cmd=""。
   { id: "dsh", name: "DeepSeek Harness（官方桌面版）", kind: "deep", launch_cmd: "", launch_app: "dsh-desktop", hidden: false, config_target: "dsh" },
-  { id: "harness-doctor", name: "Harness Doctor（AI 工具体检）", kind: "utility", launch_cmd: "harness-doctor --target all --no-ports", launch_app: "", hidden: false, config_target: null },
-  { id: "obsidian", name: "Obsidian 知识库", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
   { id: "uu-remote", name: "UU远程（手机控电脑）", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
-  { id: "doubao", name: "豆包工作台", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
-  { id: "qwenwork", name: "千问办公", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
-  { id: "workbuddy", name: "WorkBuddy", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
   // Windows/macOS 分支：Codex 桌面版，插在数组下标 2（这里顺序不影响 ToolHub 渲染，
   // ToolHub 不依赖 list_tools 的原始顺序做任何跨工具比较）。
   { id: "codex-app", name: "Codex 桌面版", kind: "standalone", launch_cmd: "", launch_app: "codex-app", hidden: false, config_target: "codex" },
-  { id: "open365", name: "Open365 电脑管家（开源）", kind: "standalone", launch_cmd: "", launch_app: "open365", hidden: false, config_target: null, alwaysInstalled: true },
-  { id: "hermes-app", name: "Hermes 桌面版（Nous 官方）", kind: "deep", launch_cmd: "", launch_app: "hermes-app", hidden: true, config_target: "hermes" },
   { id: "uu-switch", name: "uu-switch 模型切换器", kind: "standalone", launch_cmd: "", launch_app: "uu-switch", hidden: true, config_target: null },
 ];
 
@@ -65,30 +53,21 @@ const TOOL_DEFS = [
  * 编的是同一个平台假设，两处必须对得上）。2026-09-29 复审 medium 修复：ToolHub 的详情条不再
  * 只用 `launch_app` 是否非空二分"桌面应用/走 launchPref 分体按钮"，改成读 `runtime.tool.inspect`
  * 回来的真实 `mode`（`RouteTab`/`ExternalTerm` 各自是单按钮，不听 `launchPref`）——这份表就是
- * 喂给下面 shim 里 `action_parity_call` 分支的假数据源，不建这张表的话 hermes/harness-doctor
- * 这两个场景会因为拿不到 `mode` 而退回"未知"分支（单按钮但看不出问题），没法验证到分体 ▾
- * 只在 `embedded_pty` 工具（claude-code/codex/pi/opencode/crush）上出现这条真实行为。
+ * 喂给下面 shim 里 `action_parity_call` 分支的假数据源，不建这张表的话 hermes
+ * 这个场景会因为拿不到 `mode` 而退回"未知"分支（单按钮但看不出问题），没法验证到分体 ▾
+ * 只在 `embedded_pty` 工具（claude-code/codex/pi/opencode）上出现这条真实行为。
  */
 const LAUNCH_MODE_BY_ID = {
   "claude-code": "embedded_pty",
   codex: "embedded_pty",
   openclaw: "route_tab",
-  "qwen-code": "embedded_pty",
   pi: "embedded_pty",
   opencode: "embedded_pty",
-  crush: "embedded_pty",
   clawx: "gui_app",
   hermes: "route_tab",
   dsh: "gui_app",
-  "harness-doctor": "external_term",
-  obsidian: "none",
   "uu-remote": "none",
-  doubao: "none",
-  qwenwork: "none",
-  workbuddy: "none",
   "codex-app": "gui_app",
-  open365: "gui_app",
-  "hermes-app": "gui_app",
   "uu-switch": "gui_app",
 };
 
@@ -113,7 +92,7 @@ function buildTools(installedIds) {
     name: d.name,
     summary: "",
     kind: d.kind,
-    installed: d.alwaysInstalled ? true : set.has(d.id),
+    installed: set.has(d.id),
     action: "install",
     target: "",
     launch_cmd: d.launch_cmd,
@@ -536,7 +515,7 @@ async function shotWide() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const manyInstalled = [
     "claude-code", "codex", "pi", "opencode", "clawx", "hermes", "dsh",
-    "harness-doctor", "obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy",
+    "uu-remote",
     "codex-app",
   ];
   const consoleErrors = await loadToolhub(page, { installedIds: manyInstalled, withModels: true });

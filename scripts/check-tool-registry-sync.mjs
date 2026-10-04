@@ -17,7 +17,7 @@
  *  ① `TUI_APPS[].toolId` 必须能在 `TOOL_SPECS[].id` 里找到（`toolId` 字段本身在
  *     `apps.ts` 里就注明是「tools.rs 里的 ToolInfo.id；注意 ≠ id」——两边的连接键
  *     是 `toolId`，不是 `TuiAppId` 那个路由用的 `id`，因为好几个工具路由 id 和
- *     `tools.rs` 的 id 对不上（`codex-cli`↔`codex`、`qwen`↔`qwen-code`）。
+ *     `tools.rs` 的 id 对不上（`codex-cli`↔`codex`、`kimi`↔`kimi-code`）。
  *  ② 找到对应项后，`TOOL_SPECS.cmd` 必须等于 `TUI_APPS.prompts[0].cmd` 的**第一个词**
  *     （不是整句相等——像 `openclaw` 那样第一条提示词是
  *     `"openclaw gateway run --allow-unconfigured --port 18789"`，只有第一个 token
@@ -41,19 +41,15 @@ const TS_FILE = "src/opencodex/apps.ts";
  * `TOOL_SPECS` 里没有 `toolId` 对应到 `TUI_APPS` 也完全正常的项，逐条写明理由：
  * - `clawx`：桌面 GUI，复用的是 `openclaw`（TUI_APPS 里那条）同一份 cmd("openclaw")/
  *   config_target("clawx")，只是多一个「桌面装没装」的判据，不该也没有第二个 TUI 入口。
- * - `harness-doctor`/`obsidian`/`uu-remote`/`codex-app`/`open365`/`hermes-app`/`uu-switch`：
- *   要么是纯体检工具，要么是纯 GUI/下载类应用，压根不是「终端里跑」的东西，
+ * - `uu-remote`/`codex-app`/`uu-switch`：
+ *   纯 GUI/下载类应用，压根不是「终端里跑」的东西，
  *   `apps.ts` 只登记 TUI（终端）应用，它们从设计上就不会出现在那张表里。
  */
 const ALLOWED_SPEC_WITHOUT_TUI_APP = new Set([
   "clawx",
-  "harness-doctor",
-  "obsidian",
   "uu-remote",
   "codex-app",
   "claude-app", // Native GUI app; has no TUI route.
-  "open365",
-  "hermes-app",
   "uu-switch",
 ]);
 

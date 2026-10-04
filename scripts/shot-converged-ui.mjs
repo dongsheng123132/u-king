@@ -102,28 +102,19 @@ const CRASH_MARKERS = [
 
 const DEMO_DIR = "C:\\demo\\uking-mini";
 
-/** 工具目录。前 20 个照抄 shot-toolhub.mjs（它核对过 tools.rs），后 8 个是 1.3.5/1.3.6 新增的，
+/** 工具目录。前面照抄 shot-toolhub.mjs（它核对过 tools.rs），后 5 个是 1.3.5/1.3.6 新增的，
  *  字段按同一形状补（只为让「我的 AI」的「更多 AI 工具」折叠组有东西可渲染）。 */
 const TOOL_DEFS = [
   { id: "claude-code", name: "Claude Code CLI", kind: "standalone", launch_cmd: "claude", launch_app: "", hidden: false, config_target: "claude" },
   { id: "codex", name: "Codex CLI", kind: "standalone", launch_cmd: "codex", launch_app: "", hidden: false, config_target: "codex" },
   { id: "openclaw", name: "OpenClaw CLI（龙虾）", kind: "deep", launch_cmd: "openclaw", launch_app: "", hidden: true, config_target: "clawx" },
-  { id: "qwen-code", name: "Qwen Code", kind: "standalone", launch_cmd: "qwen", launch_app: "", hidden: true, config_target: "qwen" },
   { id: "pi", name: "pi", kind: "standalone", launch_cmd: "pi", launch_app: "", hidden: false, config_target: "pi" },
   { id: "opencode", name: "OpenCode", kind: "standalone", launch_cmd: "opencode", launch_app: "", hidden: false, config_target: "opencode" },
-  { id: "crush", name: "Crush", kind: "standalone", launch_cmd: "crush", launch_app: "", hidden: true, config_target: "crush" },
   { id: "clawx", name: "OpenClaw 桌面版（ClawX）", kind: "deep", launch_cmd: "", launch_app: "clawx", hidden: false, config_target: "clawx" },
   { id: "hermes", name: "Hermes Agent（Nous 官方）", kind: "deep", launch_cmd: "hermes", launch_app: "", hidden: false, config_target: "hermes" },
   { id: "dsh", name: "DeepSeek Harness（官方桌面版）", kind: "deep", launch_cmd: "", launch_app: "dsh-desktop", hidden: false, config_target: "dsh" },
-  { id: "harness-doctor", name: "Harness Doctor（AI 工具体检）", kind: "utility", launch_cmd: "harness-doctor --target all --no-ports", launch_app: "", hidden: false, config_target: null },
-  { id: "obsidian", name: "Obsidian 知识库", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
   { id: "uu-remote", name: "UU远程（手机控电脑）", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
-  { id: "doubao", name: "豆包工作台", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
-  { id: "qwenwork", name: "千问办公", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
-  { id: "workbuddy", name: "WorkBuddy", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
   { id: "codex-app", name: "Codex 桌面版", kind: "standalone", launch_cmd: "", launch_app: "codex-app", hidden: false, config_target: "codex" },
-  { id: "open365", name: "Open365 电脑管家（开源）", kind: "standalone", launch_cmd: "", launch_app: "open365", hidden: false, config_target: null, alwaysInstalled: true },
-  { id: "hermes-app", name: "Hermes 桌面版（Nous 官方）", kind: "deep", launch_cmd: "", launch_app: "hermes-app", hidden: true, config_target: "hermes" },
   { id: "uu-switch", name: "uu-switch 模型切换器", kind: "standalone", launch_cmd: "", launch_app: "uu-switch", hidden: true, config_target: null },
   // 1.3.5 / 1.3.6 新增（src-tauri/src/tools.rs TOOL_SPECS 里的 id；name/launch 字段是示意值）
   { id: "mimo-code", name: "MiMo Code", kind: "standalone", launch_cmd: "mimo", launch_app: "", hidden: false, config_target: null },
@@ -131,18 +122,15 @@ const TOOL_DEFS = [
   { id: "qoder-cn", name: "Qoder CN CLI", kind: "standalone", launch_cmd: "qodercn", launch_app: "", hidden: false, config_target: null },
   { id: "claude-app", name: "Claude 桌面版", kind: "standalone", launch_cmd: "", launch_app: "claude-app", hidden: false, config_target: null },
   { id: "kimi-code", name: "Kimi Code", kind: "standalone", launch_cmd: "kimi", launch_app: "", hidden: false, config_target: null },
-  { id: "grok-build", name: "Grok Build", kind: "standalone", launch_cmd: "grok", launch_app: "", hidden: false, config_target: null },
-  { id: "muse-code", name: "Muse Code", kind: "standalone", launch_cmd: "muse", launch_app: "", hidden: false, config_target: null },
-  { id: "antigravity-cli", name: "Antigravity CLI", kind: "standalone", launch_cmd: "agy", launch_app: "", hidden: false, config_target: null },
 ];
 const INSTALLED_IDS = new Set(["claude-code", "codex", "hermes", "pi", "dsh"]);
 const LAUNCH_MODE_BY_ID = {
   "claude-code": "embedded_pty", codex: "embedded_pty", pi: "embedded_pty", opencode: "embedded_pty",
-  clawx: "gui_app", hermes: "route_tab", dsh: "gui_app", "harness-doctor": "external_term",
+  clawx: "gui_app", hermes: "route_tab", dsh: "gui_app",
 };
 const TOOLS = TOOL_DEFS.map((d) => ({
   id: d.id, name: d.name, summary: "", kind: d.kind,
-  installed: d.alwaysInstalled ? true : INSTALLED_IDS.has(d.id),
+  installed: INSTALLED_IDS.has(d.id),
   action: "install", target: "", launch_cmd: d.launch_cmd, launch_app: d.launch_app,
   hidden: d.hidden, config_target: d.config_target,
 }));

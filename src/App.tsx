@@ -2053,22 +2053,18 @@ export function toolTargets(t: Pick<ToolInfo, "id" | "config_target">): string[]
 /**
  * 「实验室」工具 —— 不算「已安装」主网格，已装的单收一条紧凑分区（2026-07-27 做减法）。
  *
- * 现在集合里**只剩 open365 一个**：
- *   · open365  自家电脑管家，品类是安全卫士替代品，不是 AI 工具；而且它 `installed` 恒 true
- *              （按需下载的设计），于是永远霸占「我装好的 AI 工具」区最显眼的位置
+ * 现在集合**是空的**（2026-10-04）：最后一个成员 open365（自家电脑管家，品类是安全卫士替代品，
+ * 不是 AI 工具）随工具目录删减下架了。机制（主网格摘出 / 「实验室」分类 / 紧凑分区）先留着，
+ * 下次有「没毕业」的工具再往里放；空集时 ToolHub 的「实验室」分类标签不显示。
  *
  * 历史（别照旧版注释理解）：这个集合原来还含 obsidian / uu-remote / doubao / qwenwork /
- * workbuddy（纯第三方或闭源消费级应用，action:url 点了只是跳官网，我们既不装也不管）。
- * 2026-10-02 提交 `3c01af392`（工具安装目录补全）把这五个**挪进了主列表**——不再算实验室，
- * 集合随之缩到只剩 open365，旧注释却没跟上，一直说「三类都在实验室」。
- * 它们现在在「我的 AI → 可安装」里归 `DAILY_APPS`（见下），默认折叠。
- *
- * 纯展示分组：后端的检测 / 启动 / 卸载能力一个没动，存量已装用户照常使用。
+ * workbuddy（纯第三方或闭源消费级应用），2026-10-02 提交 `3c01af392` 挪进了主列表，
+ * 之后 obsidian / doubao / qwenwork / workbuddy 也随 2026-10-04 的删减下架。
  *
  * 导出给 `toolhub/ToolHub.tsx`：「我的 AI」的「实验室」分类标签复用同一张名单，
  * 不在那边另起一份、又漂一次（宪法第 8 条）。
  */
-export const LAB_TOOLS = new Set(["open365"]);
+export const LAB_TOOLS = new Set<string>();
 
 /**
  * 「我的 AI → 可安装」区的**推荐名单**（有序，按这个顺序摆）。2026-10-03 收敛方案 §3.2。
@@ -2088,15 +2084,12 @@ export const RECOMMENDED_TOOLS: readonly string[] = ["claude-code", "codex", "he
 /**
  * 「日常软件」——不是 AI 编程工具，在「可安装」区单独折叠成一组（方案 §3.2 ③）。
  *
- * 这些多是闭源消费级应用或纯第三方（点了只是跳官网下载页，用自家模型、不接 U-King 的模型配置），
- * 放进 AI 工具里平铺只会稀释真正要装的那几个。10-02（`3c01af392`）把它们从实验室挪进主列表，
- * 这里把它们再收成一个默认折叠的组——**纯展示分组，不是下架**：后端的检测 / 启动 / 卸载
- * 一个没动，存量已装用户在「已安装」区照常看到它们。
- *
- * 跟 `LAB_TOOLS` 的关系：open365 同时在两边，各管各的——`LAB_TOOLS` 管「已装主网格」的归属
- * 和「实验室」分类标签，`DAILY_APPS` 只管「可安装」区分到哪一组。导出给 `toolhub/ToolHub.tsx`。
+ * 现在只剩 uu-remote（纯第三方，点了只是跳官网下载页，不接 U-King 的模型配置）：
+ * 2026-10-04 零用量删减把 obsidian / doubao / qwenwork / workbuddy / open365 从工具目录摘掉了，
+ * 这个分组保留，只是成员少了。**纯展示分组**：`LAB_TOOLS` 管「已装主网格」的归属和
+ * 「实验室」分类标签，`DAILY_APPS` 只管「可安装」区分到哪一组。导出给 `toolhub/ToolHub.tsx`。
  */
-export const DAILY_APPS = new Set(["obsidian", "uu-remote", "doubao", "qwenwork", "workbuddy", "open365"]);
+export const DAILY_APPS = new Set(["uu-remote"]);
 
 /**
  * 工具 id → 后端 `discover_tools` 用的探测名（`ToolDiscovery.name`）。
@@ -2112,7 +2105,7 @@ export function discoveryNameFor(id: string): string {
 }
 
 /** `DriverStatus` 里自带 *_model 字段的工具 → 读哪个字段。
- *  `covered: false` = `DriverStatus` 里压根没有这个工具的模型字段（pi / opencode / qwen / crush…），
+ *  `covered: false` = `DriverStatus` 里压根没有这个工具的模型字段（pi / opencode…），
  *  是「读不到」，**不是**「没配」——调用方必须分得开这两件事，见 `modelReadbackState`。 */
 function driverModelOf(
   t: Pick<ToolInfo, "id">,
@@ -2138,7 +2131,7 @@ function driverModelOf(
 }
 
 /** 这个工具的当前模型要不要靠 `runtime.provider.effective` 回读——有配置目标、但
- *  `DriverStatus` 又没有它的 *_model 字段（目前是 pi / opencode，以及藏着的 qwen / crush）。
+ *  `DriverStatus` 又没有它的 *_model 字段（目前是 pi / opencode；qwen / crush 的目录条目 2026-10-04 已下架）。
  *  `ToolHub` 只为这批工具去拉回读，其余工具一次都不多调。 */
 export function needsEffectiveReadback(t: ToolInfo): boolean {
   return !!t.config_target && !driverModelOf(t, null).covered;
@@ -2188,7 +2181,9 @@ export function modelReadbackState(
 }
 
 /** 支持「一键卸载」的工具 id —— 镜像后端 cleanup::uninstall_ai_tool 的 match（改一处同步另一处）。
- *  url 型第三方工具（Obsidian / UU远程）不由我们装，不给卸载入口。 */
+ *  url 型第三方工具（UU远程）不由我们装，不给卸载入口。
+ *  后端 `uninstall_ai_tool` 里 harness-doctor / hermes-app / open365 三个分支只供「装机·体检」
+ *  清理老客户机残留，这三个工具已下架，前端不再有入口，所以不在这份名单里。 */
 // 「AI 设置」里那四个配置目标 → 「我的 AI」工具 id 的对照表（原 MANAGER_TARGET_TOOL_ID）
 // 2026-09-04 随「左装右选 → 合并启动」一起删除：Manager 页不再自己触发装/启动，
 // 这张表的唯一消费者（onInstallTool/onLaunchTool 回调）已不存在。
@@ -2200,15 +2195,12 @@ const UNINSTALLABLE = new Set([
   "codex-app",
   "clawx",
   "hermes",
-  "hermes-app",
   "dsh",
-  "harness-doctor",
   "openclaw",
   // "cline" 已下架：不再展示，但保留卸载入口，存量已装用户仍可清掉。
   "cline",
   "ollama",
   "uu-switch",
-  "open365",
 ]);
 
 /** 是否支持「一键卸载」—— 镜像 `UNINSTALLABLE` 名单，导出函数而不是导出整个 Set，
@@ -2317,7 +2309,7 @@ function MyAI({
   // 24,300 token，实测），但**省钱是第二位的，先得能干活**。它照旧在下面「还能装这些」里，
   // 客户自己觉得好就装，装完点「一键接入虾盘云」也会自动配上（apply_xiapan_everywhere 已覆盖）。
   //
-  // 其余 CLI（Codex/Qwen/Crush/OpenCode）**一个都没删** —— 只是不在首页推，
+  // 其余 CLI（Codex/OpenCode）**一个都没删** —— 只是不在首页推，
   // 仍在下方「还能装这些」里可装、可切驱动、可进竞技场跑分。ClawX 从这里撤下（GUI 与
   // U-Workspace 是同一生态位，主线改推自家工作台）。
   const CORE_TRIO: { id: string; badge: string; title: string; desc: string }[] = [

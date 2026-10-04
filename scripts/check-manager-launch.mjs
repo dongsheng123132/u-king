@@ -9,11 +9,10 @@ const tools = [
   { id: 'hermes', name: 'Hermes Agent', installed: true, launch_cmd: 'hermes', launch_app: '', config_target: 'hermes', kind: 'deep' },
   { id: 'claude-app', name: 'Claude 桌面版', installed: true, launch_cmd: '', launch_app: 'claude-app', config_target: null, kind: 'standalone' },
   { id: 'kimi-code', name: 'Kimi Code', installed: false, launch_cmd: 'kimi', launch_app: '', config_target: null, kind: 'standalone' },
-  { id: 'grok-build', name: 'Grok Build', installed: false, launch_cmd: 'grok', launch_app: '', config_target: null, kind: 'standalone' },
   { id: 'mimo-code', name: 'MiMo Code', installed: false, launch_cmd: 'mimo', launch_app: '', config_target: null, kind: 'standalone', target: 'https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code' },
   { id: 'codebuddy-code', name: 'CodeBuddy Code', installed: false, launch_cmd: 'codebuddy', launch_app: '', config_target: null, kind: 'standalone' },
   { id: 'qoder-cn', name: 'Qoder CN CLI', installed: false, launch_cmd: 'qodercn', launch_app: '', config_target: null, kind: 'standalone' },
-  ...['muse-code', 'antigravity-cli', 'obsidian', 'clawx'].map(id => ({ id, name: id, installed: false, launch_cmd: '', launch_app: id, config_target: null, kind: 'standalone' })),
+  ...['clawx'].map(id => ({ id, name: id, installed: false, launch_cmd: '', launch_app: id, config_target: null, kind: 'standalone' })),
 ].map(t => ({ action: 'install', target: '', ...t, launch_mode: t.launch_app ? 'gui_app' : 'embedded_pty', hidden: false, summary: t.name }));
 const browser = await chromium.launch();
 const errors = [];
@@ -80,7 +79,7 @@ try {
     const toggle = page.getByTestId(group);
     if (await toggle.count()) await toggle.click();
   }
-  for (const id of ['kimi-code', 'grok-build', 'mimo-code', 'codebuddy-code', 'qoder-cn', 'muse-code', 'antigravity-cli', 'obsidian', 'clawx']) {
+  for (const id of ['kimi-code', 'mimo-code', 'codebuddy-code', 'qoder-cn', 'clawx']) {
     const icon = tile(id).locator('[data-icon-source="brand"] img');
     await icon.waitFor();
     await icon.evaluate(img => img.decode());

@@ -68,9 +68,9 @@ pub struct ToolSpec {
     /// 稳定 id，等于 `list_tools()` 里同一工具的 `ToolInfo.id`（如 `"claude-code"`）。
     pub id: &'static str,
     /// 探测/搜索用的可执行文件名。**不一定等于 `id`**——例如 `clawx`（ClawX 桌面版）
-    /// 复用的 CLI 可执行文件叫 `openclaw`，不叫 `clawx`；`claude-code`/`qwen-code` 这两个
-    /// id 是产品页文案，可执行文件其实是 `claude`/`qwen`。纯 GUI、没有独立 CLI 概念的工具
-    /// （Obsidian、UU远程…）留空串，不承担探测语义。
+    /// 复用的 CLI 可执行文件叫 `openclaw`，不叫 `clawx`；`claude-code` 这个
+    /// id 是产品页文案，可执行文件其实是 `claude`。纯 GUI、没有独立 CLI 概念的工具
+    /// （UU远程…）留空串，不承担探测语义。
     pub cmd: &'static str,
     /// 归属哪个驱动配置目标（`providers.rs` 里 `apply_provider`/`effective_config` 认的
     /// `target` 字符串）。`None` = 不接驱动切换体系（体检类/纯下载类工具）。
@@ -80,7 +80,7 @@ pub struct ToolSpec {
     /// 是否进「一键体检」清单；`Some(展示 label)` 时才进，label 就是体检卡片上显示的名字。
     pub in_checkup: Option<&'static str>,
     /// 无头探测参数（`toolprobe.rs` 用）：
-    /// - `None` —— 不在探测范围内（不是 CLI，或压根没接入这条跑道，如 `dsh`/Obsidian）。
+    /// - `None` —— 不在探测范围内（不是 CLI，或压根没接入这条跑道，如 `dsh`/UU远程）。
     /// - `Some(&[])` —— **在探测范围内，但没有可靠的一次性无头入口**（如 `openclaw`：
     ///   它的正常用法是 `gateway run` + 面板，不是一次性推理；硬测会把「我们没测对」
     ///   报成「它坏了」）。`toolprobe.rs` 见到空切片会如实标注「无头入口，测不了」，
@@ -103,6 +103,11 @@ pub enum LaunchMode {
     /// 独立 GUI 应用（如 ClawX 桌面版）：Rust 直接 `launch_app` 拉起。
     GuiApp,
     /// 一次性/诊断类 CLI，没有专属内嵌终端 tab：Rust 走 `term_open_external` 开系统终端窗口。
+    ///
+    /// 2026-10-04 起 `TOOL_SPECS` 里没有工具落这一档了（唯一的用户 harness-doctor 随工具目录
+    /// 删减下架），保留这个变体是因为 `runtime.tool.*` 动作的 `mode` 取值、前端 `launch_mode`
+    /// 联合类型与 `lib.rs` 的启动分派都认它——协议面不跟着删，等有新的一次性诊断类工具再用。
+    #[allow(dead_code)]
     ExternalTerm,
     /// 普通 CLI，有专属内嵌终端 tab：前端拿 `launch_cmd` 自己去内嵌 xterm 跑。
     EmbeddedPty,
@@ -434,21 +439,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
     },
     ToolSpec {
-        id: "grok-build", cmd: "grok", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "muse-code", cmd: "muse", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "antigravity-cli", cmd: "agy", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
         id: "claude-code",
         cmd: "claude",
         config_target: Some("claude"),
@@ -486,17 +476,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         // —— 有自己的专属页（ToolAppView 走 gateway 起停 + WebUI 时序），不能当普通 EmbeddedPty。
         launch_mode: LaunchMode::RouteTab,
         route_tab: Some("openclaw"),
-    },
-    ToolSpec {
-        id: "qwen-code",
-        cmd: "qwen",
-        config_target: Some("qwen"),
-        in_list_tools: false,
-        in_checkup: Some("Qwen Code"),
-        probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
-        // apps.ts::TUI_APPS 专属 tab id 是 "qwen"（toolId: "qwen-code"）—— 有内嵌终端。
-        launch_mode: LaunchMode::EmbeddedPty,
-        route_tab: None,
     },
     ToolSpec {
         // ClawX 桌面版：GUI，装没装走 `providers::clawx_app_installed()`（不是 `cmd` 探测），
@@ -548,7 +527,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: if cfg!(windows) { LaunchMode::GuiApp } else { LaunchMode::RouteTab },
         route_tab: if cfg!(windows) { None } else { Some("dsh") },
     },
-    // 🔴 下面 pi/opencode/crush 在 `TOOL_SPECS` 里的相对顺序不是随意的：
+    // 🔴 下面 pi/opencode 在 `TOOL_SPECS` 里的相对顺序不是随意的：
     // `providers::list_tools_targets()` 按本表原有顺序过滤派生 `LIST_TOOLS`，而
     // `apply_everywhere_contract_lists_every_target_the_backend_configures` 用例要求
     // 派生结果的**顺序**严格等于历史上手写的 `["claude","codex","clawx","hermes","dsh",
@@ -577,84 +556,14 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         route_tab: None,
     },
     ToolSpec {
-        id: "crush",
-        cmd: "crush",
-        config_target: Some("crush"),
-        in_list_tools: false,
-        in_checkup: Some("Crush"),
-        probe_args: Some(&["run", crate::toolprobe::PROMPT]),
-        // apps.ts::TUI_APPS 专属 tab id 是 "crush" —— 有内嵌终端。
-        launch_mode: LaunchMode::EmbeddedPty,
-        route_tab: None,
-    },
-    ToolSpec {
-        id: "harness-doctor",
-        cmd: "harness-doctor",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        // 有 launch_cmd（list_tools() 里 "harness-doctor --target all --no-ports"），但不在
-        // apps.ts::TUI_APPS 里、没有专属内嵌终端 tab —— 一次性诊断脚本，当前 App.tsx::launchTool
-        // 对它走的正是通用兜底分支 `invoke("term_open_external", ...)`，与此对齐。
-        launch_mode: LaunchMode::ExternalTerm,
-        route_tab: None,
-    },
-    ToolSpec {
-        id: "obsidian",
-        cmd: "",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        // list_tools() 里 launch_cmd=""、launch_app=""，action="url" 跳官网下载页
-        // ——App.tsx::launchTool 命中 `if (!t.launch_cmd) { flash(...); return; }`，没有可执行入口。
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
-    ToolSpec {
         id: "uu-remote",
         cmd: "",
         config_target: None,
         in_list_tools: false,
         in_checkup: None,
         probe_args: None,
-        // 同 obsidian：launch_cmd=""、launch_app=""，只能跳官网下载页。
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
-    ToolSpec {
-        // 豆包（字节跳动）：闭源消费级 AI 助手桌面版，用自家模型，不接受 U-King 的模型配置。
-        // 同 obsidian：launch_cmd=""、launch_app=""，只能跳官网下载页，config_target=None
-        // 保证不进体检/探测/模型配置链路。
-        id: "doubao",
-        cmd: "",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
-    ToolSpec {
-        // 千问办公（阿里，QwenWork）：同 doubao，闭源用自家模型，只跳官网下载页。
-        id: "qwenwork",
-        cmd: "",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
-    ToolSpec {
-        // WorkBuddy（腾讯云）：同 doubao，闭源订阅制，只跳官网下载页。
-        id: "workbuddy",
-        cmd: "",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
+        // list_tools() 里 launch_cmd=""、launch_app="uu-remote"（`launch_app` 先交给
+        // `installer::launch_managed_desktop` 拉起），未装时 action=url 跳官网下载页。
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
@@ -668,28 +577,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: None,
         probe_args: None,
         // list_tools() 里 launch_app="codex-app"（GUI，doLaunchApp 直接 invoke launch_app）。
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
-    ToolSpec {
-        id: "open365",
-        cmd: "",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        // list_tools() 里 launch_app="open365"。
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
-    ToolSpec {
-        id: "hermes-app",
-        cmd: "",
-        config_target: Some("hermes"),
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        // list_tools() 里 launch_app="hermes-app"。
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
@@ -715,10 +602,10 @@ mod tool_specs_tests {
     /// ——加/删一个工具，两边有一边忘了同步，这条测试就会红，而不是等到运行时才发现
     /// 体检/探测清单里少了一个工具。
     ///
-    /// 注：`list_tools()` 里 codex-app/open365/hermes-app/uu-switch 四项挂在
+    /// 注：`list_tools()` 里 codex-app/uu-switch 两项挂在
     /// `#[cfg(windows)]`/`#[cfg(any(windows, target_os = "macos"))]` 后面，`TOOL_SPECS`
     /// 目前没有对应套 cfg（const 数组内按元素条件编译不方便）。这条测试只在实际跑它的平台
-    /// 上生效——本仓库 `cargo test` 目前只在 Windows 机器上跑，跟这四项的 cfg 覆盖一致；
+    /// 上生效——本仓库 `cargo test` 目前只在 Windows 机器上跑，跟这两项的 cfg 覆盖一致；
     /// 如果以后要在纯 Linux CI 上跑这条测试，需要把 `TOOL_SPECS` 也拆成按平台 cfg 的子表。
     #[test]
     fn tool_specs_ids_match_list_tools_ids() {
@@ -763,14 +650,14 @@ mod tool_specs_tests {
         assert_eq!(target_of("pi").as_deref(), Some("pi"));
         assert_eq!(target_of("opencode").as_deref(), Some("opencode"));
         assert_eq!(target_of("hermes").as_deref(), Some("hermes"));
-        assert_eq!(target_of("harness-doctor"), None);
-        assert_eq!(target_of("doubao"), None);
+        assert_eq!(target_of("uu-remote"), None);
+        assert_eq!(target_of("kimi-code"), None);
 
         let dsh = tools.iter().find(|t| t.id == "dsh").expect("list_tools() 里没有 dsh");
         let json = serde_json::to_value(dsh).expect("ToolInfo 应可序列化");
         assert_eq!(json["config_target"], serde_json::json!("dsh"));
-        let doctor = tools.iter().find(|t| t.id == "harness-doctor").expect("list_tools() 里没有 harness-doctor");
-        let json = serde_json::to_value(doctor).expect("ToolInfo 应可序列化");
+        let uu_remote = tools.iter().find(|t| t.id == "uu-remote").expect("list_tools() 里没有 uu-remote");
+        let json = serde_json::to_value(uu_remote).expect("ToolInfo 应可序列化");
         assert!(json.get("config_target").is_some_and(|v| v.is_null()), "没有 target 时应序列化成 null 而不是缺键");
     }
 
@@ -870,7 +757,7 @@ mod launch_plan_tests {
     #[test]
     fn no_launcher_when_mode_is_none() {
         let s = spec(LaunchMode::None, None, "");
-        let p = plan("obsidian", Some(s), true, true, true, None, "").unwrap();
+        let p = plan("uu-remote", Some(s), true, true, true, None, "").unwrap();
         assert_eq!(p.status, LaunchStatus::NoLauncher);
     }
 
@@ -960,17 +847,6 @@ fn uking_home() -> PathBuf {
 const CLAWX_RELEASE_MANIFEST: &str = "https://oss.intelli-spectrum.com/latest/release-info.json";
 /// 兜底直链：网络/解析失败时用。**发现客户报 404 就把这里更到 release-info.json 的当前版本**。
 const CLAWX_FALLBACK_URL: &str = "https://oss.intelli-spectrum.com/latest/ClawX-0.4.11-win-x64.exe";
-
-/// Hermes 桌面版（Nous Research 官方 Electron app）Windows 安装器直链。
-/// 重要：① 域名 nousresearch.com 是**国际站**，国内裸网可能慢/不稳 —— 下载失败一律回退
-/// 「打开官网下载页」让用户自己下，绝不卡死（进阶区工具，不进小白一键流）。
-/// ② `?build=` 哈希官方升版会变（暂无可动态取的 release manifest），发现 404 就更新这里。
-/// ③ 这个 .exe 只是 ~7.5MB 下载器壳，真正运行时(Electron + Python/Node/ffmpeg + hermes runtime)
-///    首次启动才联网拉到 `%LOCALAPPDATA%\hermes` —— 所以慢网客户「装完首启动很慢」属正常，非 bug。
-const HERMES_APP_URL: &str =
-    "https://hermes-assets.nousresearch.com/Hermes-Setup.exe?build=9362ce2575e0";
-/// 下载失败时打开的官网下载页（让用户自己点平台对应的下载按钮）。
-const HERMES_APP_DOWNLOAD_PAGE: &str = "https://hermes-agent.nousresearch.com/";
 
 /// UU远程（原网易 GameViewer 远程，网易官方出品）下载页。手机/平板/另一台电脑远控这台机器 ——
 /// 定位「出门在外用手机盯着 AI 在电脑上干活、随时接管」。官方站 uuyc.163.com，全平台客户端都在这。
@@ -1122,122 +998,6 @@ fn tool_dir_installed(sub: &str) -> bool {
     uking_home().join("tools").join(sub).exists()
 }
 
-/// Obsidian 是否已装。Windows 默认按用户装到 `%LOCALAPPDATA%\Obsidian\Obsidian.exe`，
-/// 「为所有用户装」会落 Program Files；Mac 是 `/Applications/Obsidian.app`。
-fn obsidian_installed() -> bool {
-    #[cfg(windows)]
-    {
-        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into());
-        return Path::new(&local).join("Obsidian").join("Obsidian.exe").exists()
-            || Path::new(&pf).join("Obsidian").join("Obsidian.exe").exists();
-    }
-    #[cfg(not(windows))]
-    {
-        Path::new("/Applications/Obsidian.app").exists()
-    }
-}
-
-
-// =====================================================================
-//  Open365（开源电脑管家 · 独立可插拔）
-//  —— 无广告替代「安全卫士」类工具：网络修复 / 垃圾清理 / 启动项 / 强力卸载 /
-//     安全护盾(开 Windows 自带 Defender+防火墙+更新) / 守夜模式(AI 通宵不熄屏)。
-//  它是独立小工具（PowerShell 引擎 + 系统 csc 编译的 WinForms 壳，~200KB），
-//  U-King 只做「检测 + 一键装到本地 + 拉起」，不与其耦合。
-//  删除本集成：回退 tools.rs 这几处 + pack-usb.sh 的 Open365 拷贝行即可（≤2 文件）。
-//  仅 Windows（纯 PowerShell + WinForms，Mac/Linux 不适用）。
-// =====================================================================
-
-/// 装到本地后的常驻目录：`~/.uking/tools/open365`。
-fn open365_local_dir() -> PathBuf {
-    uking_home().join("tools").join("open365")
-}
-
-/// 找 Open365 源：优先本地已装目录；否则找运行 exe 同级的 `Open365/`（U 盘随盘带）。
-/// 判据是「有 Open365.exe 或 install.ps1」——两者任一即可跑起来。
-fn open365_source_dir() -> Option<PathBuf> {
-    let local = open365_local_dir();
-    if local.join("Open365.exe").exists() || local.join("install.ps1").exists() {
-        return Some(local);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let usb = dir.join("Open365");
-            if usb.join("Open365.exe").exists() || usb.join("install.ps1").exists() {
-                return Some(usb);
-            }
-        }
-    }
-    None
-}
-
-/// Open365 联网下载源（U 盘没随盘带、本地也没装时的兜底）。open365.zip 里是运行所需文件
-/// （Open365.exe / engine / gui / install.ps1 …）在根，解压到 `~/.uking/tools/open365` 即可跑。
-#[cfg(windows)]
-const OPEN365_ZIP_URLS: &[&str] = &[
-    "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/open365.zip",
-    "https://cloud.u-claw.org/download/open365.zip",
-    "https://u-claw.org.cn/download/open365.zip",
-];
-
-/// 联网下载 Open365 到本地目录并解压（curl 拉 zip → tar.exe 解，PowerShell 兜底）。
-/// 只在 U 盘没带、本地也没装时兜底（launch_open365 里调）。成功返回本地目录（已就绪）。
-#[cfg(windows)]
-fn download_open365() -> Result<PathBuf, String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let local = open365_local_dir();
-    std::fs::create_dir_all(&local).map_err(|e| format!("建目录失败: {e}"))?;
-    let zip = std::env::temp_dir().join("open365-uking.zip");
-    let _ = std::fs::remove_file(&zip);
-
-    let mut got = false;
-    for url in OPEN365_ZIP_URLS {
-        let status = std::process::Command::new(crate::installer::system_tool("curl"))
-            .args(["-fsSL", "-A", "Mozilla/5.0 U-King", "-m", "30", "-o", &zip.to_string_lossy(), url])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-        // zip ~100KB；>20KB 才算下到真包（挡错误页/截断）
-        if matches!(status, Ok(s) if s.success())
-            && std::fs::metadata(&zip).map(|m| m.len()).unwrap_or(0) > 20_000
-        {
-            got = true;
-            break;
-        }
-        let _ = std::fs::remove_file(&zip);
-    }
-    if !got {
-        return Err("下载 Open365 失败（网络不通）。稍后重试，或从带 Open365 文件夹的 U 盘运行。".into());
-    }
-
-    // 解压到本地目录：优先系统 tar.exe（Win10+ 内置，稳），失败回退 PowerShell Expand-Archive。
-    let tar_ok = std::process::Command::new(crate::installer::system_tool("tar"))
-        .args(["-xf", &zip.to_string_lossy(), "-C", &local.to_string_lossy()])
-        .creation_flags(CREATE_NO_WINDOW)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !tar_ok {
-        let ps = format!(
-            "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-            zip.to_string_lossy(),
-            local.to_string_lossy()
-        );
-        let _ = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-    }
-    let _ = std::fs::remove_file(&zip);
-
-    if local.join("install.ps1").exists() || local.join("Open365.exe").exists() {
-        Ok(local)
-    } else {
-        Err("Open365 解压后文件不完整，请重试。".into())
-    }
-}
-
 /// 给 Command 加「不弹黑窗」（Windows CREATE_NO_WINDOW），其他平台原样。
 trait NoWindow {
     fn no_window(&mut self) -> &mut Self;
@@ -1297,24 +1057,6 @@ fn catalog_with_probes(
             hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
-            id: "grok-build".into(), name: "Grok Build".into(), summary: "xAI 官方命令行编程助手，需要可访问海外服务的网络和官方账号。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "grok".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "muse-code".into(), name: "Muse Code".into(), summary: "Meta 官方命令行编程助手，需要海外网络及官方账号与计费设置。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "muse".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "antigravity-cli".into(), name: "Antigravity CLI".into(), summary: "Google 官方命令行编程助手，需要海外网络；首次启动登录 Google 账号。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "agy".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
             id: "claude-code".into(),
             name: "Claude Code CLI".into(),
             summary: "Anthropic 官方命令行编程助手。一键安装 + 国内驱动直连。".into(),
@@ -1366,23 +1108,6 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
-            // ★ 2026-08-03 新上架。本机实测四条门槛全过（详见 apps.ts 同名条目的注释）：
-            // npm 12 包/19s · `~/.qwen/settings.json` 接虾盘云 · `qwen -p` exit 0 且 stdout 干净
-            // · 只读工具调用默认审批档即通过。同轮被刷掉的：OpenCode（`run` 挂 90s 零输出）。
-            id: "qwen-code".into(),
-            name: "Qwen Code".into(),
-            summary: "阿里通义开源的终端编程 agent（fork 自 Gemini CLI）。中文强、装得轻，一键接虾盘云；支持 `qwen -p` 非交互塞任务。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "qwen".into(),
-            launch_app: "".into(),
-            // 2026-08-05 隐藏：实测能用但 35.7s 全场最慢，且与主推线重叠
-            hidden: true,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
             // ★ 2026-08-03 上架。四条门槛实测全过，且同任务同模型下**上下文只有 Claude Code 的 1/5**
             // （5,000 vs 24,300 token）——这就是它"快"的全部来源，不是更聪明。详见 apps.ts 同名条目。
             id: "pi".into(),
@@ -1417,22 +1142,6 @@ fn catalog_with_probes(
             // 「装得慢」是安装时才付的代价，不该换来「装完也找不到」。慢的那条已写进 summary
             // 里明说（153MB），让用户自己决定，而不是替他决定看不见。
             hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            // ★ 2026-08-03 新上架。Charm 出品（★27k），Go 单二进制。实测：npm 48 包/7s、
-            // `crush run` exit 0 且支持管道。配虾盘云有个必踩的坑写在 providers::apply_crush。
-            id: "crush".into(),
-            name: "Crush".into(),
-            summary: "Charm 出品的终端 AI 助手，界面精致、启动快，支持管道（cat 文件 | crush run \"…\"）。一键接虾盘云。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "crush".into(),
-            launch_app: "".into(),
-            // 2026-08-05 隐藏：已修好能用（12.1s），隐藏理由是与 Claude Code/Codex 重叠
-            hidden: true,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
@@ -1516,35 +1225,6 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
-            id: "harness-doctor".into(),
-            name: "Harness Doctor（AI 工具体检）".into(),
-            summary: "只读检查 DeepSeek Harness、Claude Code、Codex 和 OpenClaw：版本、Node、配置、端口、PATH 冲突；可生成不含 Key 和用户名的脱敏支持包。".into(),
-            kind: "utility".into(),
-            installed: false,
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "harness-doctor --target all --no-ports".into(),
-            launch_app: "".into(),
-            hidden: true,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            // Obsidian：进阶工具，给想搭「个人知识库」的高级用户。本体是 markdown 笔记库，
-            // 配合 ClawX / Hermes 读这个文件夹就成了「AI 能查的知识库」。不进一键全安装队列
-            // （小白用不上 + 300MB），只在工具市场放卡片，action:url 跳官网下载，自己点开装。
-            id: "obsidian".into(),
-            name: "Obsidian 知识库".into(),
-            summary: "本地 markdown 笔记库（进阶）。把资料/笔记存进它的文件夹，再让 ClawX/Hermes 指向该文件夹，就成了「AI 能查能答」的个人知识库。点开下载官网安装包。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "url".into(),
-            target: "https://obsidian.md/download".into(),
-            launch_cmd: "".into(),
-            launch_app: "obsidian".into(),
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
             // UU远程（网易官方）：手机/平板/另一台电脑远控这台机器。定位「让 AI 在电脑上干活时，
             // 人在外面也能用手机随时盯着、随时接管」—— 培养「手机遥控电脑用 AI」的习惯 + 顺带做安装推荐。
             // action=url 跳官网下载页（全平台客户端都在那，官网选平台最稳）。
@@ -1557,52 +1237,6 @@ fn catalog_with_probes(
             target: UU_REMOTE_DOWNLOAD_PAGE.into(),
             launch_cmd: "".into(),
             launch_app: "uu-remote".into(),
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            // 豆包工作台（字节跳动）：闭源网页工作台，用自家模型，不走 U-King 的模型配置
-            // ——不进体检/探测、不出现在任何模型配置/供应商链路里。action:url 跳官方工作台。
-            // 2026-09-06 查证：官方域名只认 doubao.com，网上有 win-doubao.com.cn 等仿冒站，不采用。
-            id: "doubao".into(),
-            name: "豆包工作台".into(),
-            summary: "字节跳动 AI 工作台，聊天/写作/读文档。用自家模型，不走 U-King 的模型配置。点开官方工作台（认准 doubao.com，勿信仿冒站）。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "url".into(),
-            target: "https://www.doubao.com/work".into(),
-            launch_cmd: "".into(),
-            launch_app: "doubao".into(),
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            // 千问办公（阿里，QwenWork）：闭源，同豆包，用自家模型，不走 U-King 的模型配置。
-            // 2026-09-06 查证。
-            id: "qwenwork".into(),
-            name: "千问办公".into(),
-            summary: "阿里 AI 办公工作台（QwenWork），智能体+钉钉生态。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "url".into(),
-            target: "https://qwenwork.cn/download".into(),
-            launch_cmd: "".into(),
-            launch_app: "qwenwork".into(),
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            // WorkBuddy（腾讯云）：闭源订阅制，同豆包，用自家模型，不走 U-King 的模型配置。
-            // 2026-09-06 查证。
-            id: "workbuddy".into(),
-            name: "WorkBuddy".into(),
-            summary: "腾讯云职场 AI 助手，订阅制付费。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "url".into(),
-            target: "https://www.codebuddy.cn/work/".into(),
-            launch_cmd: "".into(),
-            launch_app: "workbuddy".into(),
             hidden: false,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
@@ -1641,42 +1275,6 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
     );
-    // Open365 开源电脑管家：无广告替代「安全卫士」——网络修复 / 垃圾清理 / 启动项 /
-    // 强力卸载 / 安全护盾（开 Windows 自带三道防线）/ 守夜模式（AI 通宵不熄屏）。
-    // launch_app=open365：已装(或 U 盘随盘带)→「打开应用」拉起；首点自动装到本地 + 建桌面快捷方式。
-    // 仅 Windows（纯 PowerShell + WinForms）。
-    #[cfg(windows)]
-    v.push(ToolInfo {
-        id: "open365".into(),
-        name: "Open365 电脑管家（开源）".into(),
-        summary: "无广告 · 无弹窗 · 无捆绑，替代「安全卫士」：一键修网络 / 清垃圾 / 管开机启动 / 强力卸载 / 开齐 Windows 自带杀毒·防火墙·更新；还有「守夜模式」让 AI 通宵干活不熄屏。首次点会装到本地并建桌面快捷方式。".into(),
-        kind: "standalone".into(),
-        // 永远「可打开」：Windows 下按需下载 —— 点了本地/U 盘没有就联网拉 open365.zip（launch_open365）。
-        // 若报 installed=false，前端会走 onOpen 只打开官网页（客户「点了没下载到」的真因）。
-        installed: false,
-        action: "url".into(),
-        target: "https://u-claw.org.cn/uking/".into(),
-        launch_cmd: "".into(),
-        launch_app: "open365".into(),
-        hidden: false,
-        config_target: None, version: None, launch_mode: LaunchMode::None,
-    });
-    // Hermes 桌面版（Nous 官方 Electron app）：进阶区工具，hidden=true 不进小白市场/Dock，
-    // 只在「进阶/App 版」页露出（Advanced.tsx 自己调 list_tools 取状态）。后端检测/启动能力保留。
-    #[cfg(windows)]
-    v.push(ToolInfo {
-        id: "hermes-app".into(),
-        name: "Hermes 桌面版（Nous 官方）".into(),
-        summary: "Nous Research 自进化 AI 智能体的官方图形版。下一步下一步装好，再照教程把虾盘云 Key 填进去。".into(),
-        kind: "deep".into(),
-        installed: false,
-        action: "install".into(),
-        target: HERMES_APP_DOWNLOAD_PAGE.into(),
-        launch_cmd: "".into(),
-        launch_app: "hermes-app".into(),
-        hidden: true,
-        config_target: None, version: None, launch_mode: LaunchMode::None,
-    });
     // uu-switch —— 去广告版 cc-switch AI 模型切换器（我方 fork）。GUI 应用：一个窗口统一管
     // 所有 AI 工具（Claude Code / Codex …）的模型驱动，一键切换 + 内置计量看板。action=install
     // 走后端 install_uuswitch（下载 NSIS 静默装，不改用户任何 AI 配置）；装完 launch_app 启动。
@@ -1723,7 +1321,7 @@ fn catalog_with_probes(
 /// 「工具中心永远显示未安装、重装也还是不装」，静默且极难查。因此由
 /// `catalog_probe_tests::tool_probe_branches_cover_every_spec` 单测盯着这张表不漏 id。
 ///
-/// 平台专属条目（open365 / hermes-app / uu-switch 的分支与 ToolInfo 都只在 Windows 存在）
+/// 平台专属条目（uu-switch 的分支与 ToolInfo 只在 Windows 存在）
 /// 在非 Windows 平台返回 `None` 属正常，单测按平台豁免。
 fn probe_tool(id: &str) -> Option<bool> {
     Some(match id {
@@ -1731,16 +1329,11 @@ fn probe_tool(id: &str) -> Option<bool> {
         "codebuddy-code" => crate::installer::tool_installed("codebuddy"),
         "qoder-cn" => crate::installer::tool_installed("qodercn"),
         "kimi-code" => crate::installer::tool_installed("kimi"),
-        "grok-build" => crate::installer::tool_installed("grok"),
-        "muse-code" => crate::installer::tool_installed("muse"),
-        "antigravity-cli" => crate::installer::tool_installed("agy"),
         "claude-code" => crate::installer::tool_installed("claude"),
         "codex" => crate::installer::tool_installed("codex"),
         "openclaw" => crate::installer::tool_installed("openclaw") || openclaw_installed(),
-        "qwen-code" => crate::installer::tool_installed("qwen"),
         "pi" => crate::installer::tool_installed("pi"),
         "opencode" => crate::installer::tool_installed("opencode"),
-        "crush" => crate::installer::tool_installed("crush"),
         "clawx" => crate::providers::clawx_app_installed(),
         "hermes" => crate::installer::tool_installed("hermes") || tool_dir_installed("hermes"),
         "dsh" => if cfg!(windows) {
@@ -1748,18 +1341,9 @@ fn probe_tool(id: &str) -> Option<bool> {
             } else {
                 crate::installer::tool_installed("dsh")
             },
-        "harness-doctor" => crate::installer::tool_installed("harness-doctor"),
-        "obsidian" => crate::installer::managed_desktop_installed("obsidian"),
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
-        "doubao" => crate::installer::managed_desktop_installed("doubao"),
-        "qwenwork" => crate::installer::managed_desktop_installed("qwenwork"),
-        "workbuddy" => crate::installer::managed_desktop_installed("workbuddy"),
         "claude-app" => crate::installer::managed_desktop_installed("claude-app"),
         "codex-app" => crate::installer::codex_app_installed(),
-        #[cfg(windows)]
-        "open365" => true,
-        #[cfg(windows)]
-        "hermes-app" => hermes_app_installed(),
         #[cfg(windows)]
         "uu-switch" => crate::uuswitch::installed(),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
@@ -1819,12 +1403,12 @@ mod catalog_probe_tests {
     /// 全部改成查表（`catalog_with_probes`）之后，这个坑才第一次真的存在，所以补上守卫。
     #[test]
     fn tool_probe_branches_cover_every_spec() {
-        // open365 / hermes-app / uu-switch：分支和它们的 ToolInfo 都只在 Windows 存在，
-        // 但 TOOL_SPECS 是无 cfg 门控的常量数组（非 Windows 平台也含这三条）—— 按平台豁免。
+        // uu-switch：分支和它的 ToolInfo 都只在 Windows 存在，
+        // 但 TOOL_SPECS 是无 cfg 门控的常量数组（非 Windows 平台也含这一条）—— 按平台豁免。
         let platform_only: &[&str] = if cfg!(windows) {
             &[]
         } else {
-            &["open365", "hermes-app", "uu-switch"]
+            &["uu-switch"]
         };
         let missing: Vec<&str> = TOOL_SPECS
             .iter()
@@ -2094,9 +1678,7 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
     match app {
         "codex-app" => launch_codex_app(),
         "clawx" => launch_clawx_app(),
-        "hermes-app" => launch_hermes_app(),
         "uu-switch" => crate::uuswitch::launch(),
-        "open365" => launch_open365(),
         // DeepSeek Harness 官方桌面版（Windows）。两个键都指向同一实现，两条调用路径都要接上：
         // "dsh-desktop" 是 `ToolInfo.launch_app`（前端 `doLaunchApp` 直接传这个字符串）；
         // "dsh" 是 `TOOL_SPECS` 里的工具 id（`runtime.tool.launch` 的 GuiApp 分支传的是
@@ -2273,26 +1855,6 @@ fn editor_path_env() -> String {
     dirs.join(";")
 }
 
-/// 启动 Hermes 桌面版（Electron .exe，找安装位置直接拉起）。
-#[cfg(windows)]
-fn launch_hermes_app() -> Result<(), String> {
-    let exe = find_hermes_app_exe().ok_or("未找到 Hermes.exe（请先安装 Hermes 桌面版）")?;
-    std::process::Command::new(&exe)
-        .no_window()
-        .spawn()
-        .map_err(|e| format!("启动 Hermes 失败: {e}"))?;
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn launch_hermes_app() -> Result<(), String> {
-    std::process::Command::new("open")
-        .args(["-a", "Hermes"])
-        .spawn()
-        .map_err(|e| format!("启动 Hermes 失败: {e}"))?;
-    Ok(())
-}
-
 /// 启动 Codex 桌面版（MSIX，AppUserModelID = OpenAI.Codex_...!App）。
 /// 用 `explorer shell:AppsFolder\<AUMID>` 拉起，跟开始菜单点图标等效。
 #[cfg(windows)]
@@ -2399,59 +1961,6 @@ pub fn hermes_app_installed() -> bool {
     }
 }
 
-/// 帮用户**下载并运行 Hermes 桌面版安装器**（下一步下一步，非静默）。
-/// 进阶区工具：装机半自动即可，配置交给用户照教程手填（GUI app 自动配模型坑太多，不做）。
-/// 流程：下载 Hermes-Setup.exe(~7.5MB 壳) → 拉起安装界面让用户点「下一步」。
-/// 下载失败（国际站慢/被墙）→ 返回 Err，前端回退「打开官网下载页」。仅 Windows。
-#[cfg(windows)]
-pub fn install_hermes_app(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    let tmp = std::env::temp_dir().join("Hermes-Setup-uking.exe");
-    let _ = std::fs::remove_file(&tmp);
-
-    on_progress("正在下载 Hermes 安装器（约 8 MB）…");
-    let status = std::process::Command::new(crate::installer::system_tool("curl"))
-        .args([
-            "-sSL",
-            "-A",
-            "Mozilla/5.0 U-King",
-            "-m",
-            "120",
-            "-o",
-            &tmp.to_string_lossy(),
-            HERMES_APP_URL,
-        ])
-        .creation_flags(CREATE_NO_WINDOW)
-        .status()
-        .map_err(|e| format!("启动下载失败: {e}"))?;
-
-    let sz = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
-    // 壳子约 7.5MB；< 2MB 基本是下崩了（国际站不通/超时拿到错误页）。
-    if !status.success() || sz < 2_000_000 {
-        let _ = std::fs::remove_file(&tmp);
-        return Err("Hermes 安装器下载失败（官网在国内可能较慢）。已为你打开官网下载页，请手动下载安装。".into());
-    }
-
-    on_progress("下载完成，正在打开 Hermes 安装界面，请按提示点「下一步」…");
-    // 非静默：拉起安装界面让用户下一步下一步（用户明确要「能装一部分就行，不强求全自动」）。
-    std::process::Command::new(&tmp)
-        .spawn()
-        .map_err(|e| format!("启动 Hermes 安装程序失败: {e}"))?;
-    Ok("已打开 Hermes 安装程序，按提示点「下一步」装完即可。装好后回到本页点「打开 Hermes」，再照教程把虾盘云 Key 填进去。".into())
-}
-
-#[cfg(not(windows))]
-pub fn install_hermes_app(_on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, String> {
-    Err("当前平台请到官网下载 Hermes 桌面版安装包".into())
-}
-
-/// Hermes 官网下载页（下载失败时前端回退打开）。
-pub fn hermes_download_page() -> String {
-    HERMES_APP_DOWNLOAD_PAGE.to_string()
-}
-
 /// 当前进程是否以管理员身份运行（netsh 改防火墙必须管理员，否则白跑还喷错）。
 /// 用 `net session`（仅管理员能成功）静默探测，不引第三方 crate。
 #[cfg(windows)]
@@ -2538,158 +2047,6 @@ fn launch_clawx_app() -> Result<(), String> {
         .map_err(|e| format!("启动 ClawX 失败: {e}"))?;
     Ok(())
 }
-
-/// 拉起 Open365.exe。
-///
-/// **必须走 ShellExecute，不能用普通 spawn**：Open365 的清单里写了 `requireAdministrator`，
-/// 而 `Command::spawn`（CreateProcess）拉不起需要提升的程序 —— 直接 `os error 740
-/// 请求的操作需要提升`，客户点「打开应用」什么都不发生（线上实测 2026-07-27）。
-/// PowerShell 的 `Start-Process` 默认就是 ShellExecute，会正常弹 UAC；
-/// 它自带的 install.ps1 一直是这么起的，这里对齐同一种起法。
-#[cfg(windows)]
-fn spawn_open365_exe(exe: &Path, work_dir: &Path) -> Result<(), String> {
-    let ps = format!(
-        "Start-Process -FilePath '{}' -WorkingDirectory '{}'",
-        exe.to_string_lossy().replace('\'', "''"),
-        work_dir.to_string_lossy().replace('\'', "''")
-    );
-    std::process::Command::new(crate::installer::system_tool("powershell"))
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps])
-        .no_window()
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("启动 Open365 失败: {e}"))
-}
-
-/// 本版 U-King 期望的 Open365 版本 —— 本地低于它就刷新（无论当初是从 U 盘还是联网装的）。
-/// 发 Open365 新版时同步抬这个数；抬了但客户拿不到新包也不致命（下不动就照常起老版本）。
-#[cfg(windows)]
-const OPEN365_EXPECTED_VERSION: (u32, u32, u32) = (1, 3, 0);
-
-/// 读某个 Open365 目录的 VERSION，解析成 (主,次,修订)。读不到 / 解析不了当 (0,0,0)。
-#[cfg(windows)]
-fn open365_version_of(dir: &Path) -> (u32, u32, u32) {
-    let raw = std::fs::read_to_string(dir.join("VERSION")).unwrap_or_default();
-    let first = raw
-        .trim_start_matches('\u{feff}') // 可能带 UTF-8 BOM
-        .lines()
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let mut it = first.split('.').map(|p| p.trim().parse::<u32>().unwrap_or(0));
-    (
-        it.next().unwrap_or(0),
-        it.next().unwrap_or(0),
-        it.next().unwrap_or(0),
-    )
-}
-
-/// U 盘随盘带的那份 Open365（仅当这次是从带 Open365/ 的盘运行时才有）。
-#[cfg(windows)]
-fn open365_usb_dir() -> Option<PathBuf> {
-    let dir = std::env::current_exe().ok()?.parent()?.join("Open365");
-    if dir.join("Open365.exe").exists() || dir.join("install.ps1").exists() {
-        Some(dir)
-    } else {
-        None
-    }
-}
-
-#[cfg(windows)]
-fn launch_open365() -> Result<(), String> {
-    let local = open365_local_dir();
-    let local_exe = local.join("Open365.exe");
-
-    // 1) 本地已装好 → 先看要不要就地升级，再启动。
-    //    原来这里是「装过就直接起」，等于装过一次的客户永远停在旧版本：
-    //    高 DPI 挤成一团那版是这样，影核改造前缺 core/ 的旧安装更糟 ——
-    //    GUI 各页会静默显示「读取失败」，不报错、看不出是版本旧了。
-    if local_exe.exists() {
-        // 刷新源：优先 U 盘随盘带那份；没有（= 当初是联网兜底装的）就重新下一次。
-        //
-        // 只认 U 盘是上一版没修干净的地方：**联网装的那批客户永远升不上去** ——
-        // 本机实测就是这样，装着 1.2.2（高 DPI 挤成一团那版、还没有 core/），
-        // 而 U 盘刷新分支根本轮不到它。判据改成「本地版本 < 我们这一版随附的版本」，
-        // 与来源无关。
-        let stale = open365_version_of(&local) < OPEN365_EXPECTED_VERSION
-            || !local.join("core").join("action-core.ps1").exists();
-        let refresh_src = if stale {
-            match open365_usb_dir() {
-                Some(d) => Some(d),
-                // U 盘上没有 → 联网重下（下不动就跳过，照常启动老版本，绝不把人卡在门外）
-                None => download_open365().ok().filter(|d| *d != local),
-            }
-        } else {
-            None
-        };
-        if let Some(src) = refresh_src {
-            let newer = open365_version_of(&src) > open365_version_of(&local);
-            let missing_core = !local.join("core").join("action-core.ps1").exists()
-                && src.join("core").join("action-core.ps1").exists();
-            // 只覆盖/补齐文件，不删用户目录里的别的东西；exe 被占用（正开着）就跳过本次刷新
-            if (newer || missing_core)
-                && crate::install::copy_dir_recursive(&src, &local, &src, &mut |_, _| {}).is_ok()
-            {
-                // 刷新过就走 install.ps1 重编一次，保证 exe 与 gui/ 源码是同一版
-                let install = local.join("install.ps1");
-                if install.exists() {
-                    return std::process::Command::new(crate::installer::system_tool("powershell"))
-                        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-                        .arg(&install)
-                        .current_dir(&local)
-                        .no_window()
-                        .spawn()
-                        .map(|_| ())
-                        .map_err(|e| format!("升级 Open365 失败: {e}"));
-                }
-            }
-        }
-        spawn_open365_exe(&local_exe, &local)?;
-        return Ok(());
-    }
-
-    // 2) 找源（本地源 / U 盘随盘带）；都没有 → 联网下载兜底（解压进本地目录）
-    let src = match open365_source_dir() {
-        Some(s) => s,
-        None => download_open365()?,
-    };
-    let run_dir = if src == local {
-        local.clone()
-    } else {
-        std::fs::create_dir_all(&local).map_err(|e| format!("建目录失败: {e}"))?;
-        crate::install::copy_dir_recursive(&src, &local, &src, &mut |_, _| {})
-            .map_err(|e| format!("复制 Open365 到本地失败: {e}"))?;
-        local.clone()
-    };
-
-    // 3) 有 install.ps1 → 一键装（编译 exe + 桌面快捷方式 + 启动托盘）
-    let install = run_dir.join("install.ps1");
-    if install.exists() {
-        std::process::Command::new(crate::installer::system_tool("powershell"))
-            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(&install)
-            .current_dir(&run_dir)
-            .no_window()
-            .spawn()
-            .map_err(|e| format!("启动 Open365 安装失败: {e}"))?;
-        return Ok(());
-    }
-
-    // 4) 没 install.ps1 但有预编译 exe → 直接起
-    let exe = run_dir.join("Open365.exe");
-    if exe.exists() {
-        spawn_open365_exe(&exe, &run_dir)?;
-        return Ok(());
-    }
-    Err("Open365 文件不完整（缺 Open365.exe / install.ps1）".into())
-}
-
-#[cfg(not(windows))]
-fn launch_open365() -> Result<(), String> {
-    Err("Open365 电脑管家目前仅支持 Windows".into())
-}
-
 
 // 工具「是否已装」统一走 installer::tool_installed（注入便携 PATH + 真跑 --version），
 // 不再用裸 `where`/`which` —— 后者不注入 PATH，会与装机向导的判定打架（漏判已装）。

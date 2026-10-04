@@ -12,18 +12,11 @@ import minimaxLogo from "../assets/logos/minimax.svg";
 import hermesLogo from "../assets/logos/hermes.png"; // Nous Research 官方吉祥物头像
 import piLogo from "../assets/logos/pi.svg"; // pi.dev 官方标记 + 深色圆角底块（官方原件跟系统主题走，直接用会在浅底上消失）
 import opencodeLogo from "../assets/logos/opencode.svg"; // 官方 mark，自带 #131010 方形深底（圆角由 ROUNDED_IMG 补）
-import doubaoLogo from "../assets/logos/doubao.svg"; // lobe-icons 第三方重绘（MIT），不是豆包官方素材；见 NOTICE
-import qwenworkLogo from "../assets/logos/qwenwork.svg";
-import workbuddyLogo from "../assets/logos/workbuddy.svg";
 import uuRemoteLogo from "../assets/logos/uu-remote.png"; // 官网只有 64px 位图；2x 屏略糊，有矢量源再换
 
 import mimoLogo from "../assets/logos/mimo.svg";
 import codebuddyLogo from "../assets/logos/codebuddy.svg";
 import qoderLogo from "../assets/logos/qoder.svg";
-import grokLogo from "../assets/logos/grok.svg";
-import antigravityLogo from "../assets/logos/antigravity.svg";
-import museLogo from "../assets/logos/muse.ico";
-import obsidianLogo from "../assets/logos/obsidian.svg";
 import clawxLogo from "../assets/logos/clawx.svg";
 
 type Props = { tool: string; size?: number; active?: boolean; className?: string };
@@ -33,10 +26,6 @@ const LOGO: Record<string, string> = {
   "mimo-code": mimoLogo,
   "codebuddy-code": codebuddyLogo,
   "qoder-cn": qoderLogo,
-  "grok-build": grokLogo,
-  "muse-code": museLogo,
-  "antigravity-cli": antigravityLogo,
-  obsidian: obsidianLogo,
   clawx: clawxLogo,
   claude: claudeLogo,
   openai: openaiLogo,
@@ -50,9 +39,6 @@ const LOGO: Record<string, string> = {
   hermes: hermesLogo,
   pi: piLogo,
   opencode: opencodeLogo,
-  doubao: doubaoLogo,
-  qwenwork: qwenworkLogo,
-  workbuddy: workbuddyLogo,
   "uu-remote": uuRemoteLogo,
 };
 
@@ -123,55 +109,6 @@ function XiapanDisk({ size }: { size: number }) {
   );
 }
 
-function HarnessDoctorGlyph({ size }: { size: number }) {
-  // 自家「Harness Doctor（AI 工具体检）」：青→蓝渐变圆角块（沿用虾盘云 XiapanDisk 的渐变，同属自家品牌族）
-  // + 白色心电脉冲线（体检语义）。自带填充，深/浅底都可见；未装时父层 grayscale 灰显。
-  const gid = useGradId("uk-hd-");
-  return (
-    <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#22d3ee" />
-          <stop offset="100%" stopColor="#2563eb" />
-        </linearGradient>
-      </defs>
-      <rect x="8" y="8" width="104" height="104" rx="28" fill={`url(#${gid})`} />
-      <path
-        d="M18 64 H38 L48 38 L64 92 L76 54 L82 64 H102"
-        stroke="#ffffff"
-        strokeWidth="8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function Open365Glyph({ size }: { size: number }) {
-  // 自家「Open365 电脑管家」：品牌绿 #2f7d4f 渐变盾牌 + 白色对勾（安全护盾语义）。
-  // 盾牌加一圈浅绿描边，深色底上轮廓也清楚。
-  const gid = useGradId("uk-o365-");
-  return (
-    <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#4aa877" />
-          <stop offset="100%" stopColor="#2f7d4f" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M60 8 L102 22 V56 C102 82 84 102 60 112 C36 102 18 82 18 56 V22 Z"
-        fill={`url(#${gid})`}
-        stroke="#86e0ae"
-        strokeOpacity="0.7"
-        strokeWidth="3"
-        strokeLinejoin="round"
-      />
-      <path d="M39 60 L54 75 L83 44" stroke="#ffffff" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function UuSwitchGlyph({ size }: { size: number }) {
   // 自家「uu-switch 模型切换器」：靛蓝渐变圆角块 + 上右下左两根反向箭头（来回切换语义）。
   // 不借用上游 cc-switch 的 logo。
@@ -215,13 +152,8 @@ function normTool(tool: string): string {
   // 它们都不会被上面的规则先吃掉（已逐个 id 核对）。
   if (t === "pi") return "pi";
   if (t === "opencode" || t === "open-code") return "opencode";
-  if (t.includes("doubao") || t.includes("豆包")) return "doubao";
-  if (t.includes("qwenwork") || t.includes("千问办公")) return "qwenwork";
-  if (t.includes("workbuddy")) return "workbuddy";
   if (t === "uu-remote" || t === "uuremote" || t.includes("uu远程")) return "uu-remote";
   if (t === "uu-switch" || t === "uuswitch") return "uu-switch";
-  if (t.includes("harness-doctor")) return "harness-doctor";
-  if (t.includes("open365")) return "open365";
   return t;
 }
 
@@ -244,10 +176,6 @@ export function ToolIcon({ tool, size = 24, active = true, className = "" }: Pro
     );
   } else if (id === "xiapan") {
     inner = <XiapanDisk size={size} />;
-  } else if (id === "harness-doctor") {
-    inner = <HarnessDoctorGlyph size={size} />;
-  } else if (id === "open365") {
-    inner = <Open365Glyph size={size} />;
   } else if (id === "uu-switch") {
     inner = <UuSwitchGlyph size={size} />;
   } else if (LOGO[id]) {
