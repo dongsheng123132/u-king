@@ -204,7 +204,9 @@ const METRICS = {
     label: "CLAUDE.md 行数（每次会话全量进上下文）",
     target: 300,
     fmt: String,
-    measure: () => ({ value: readFileSync("CLAUDE.md", "utf8").split("\n").length }),
+    // 公开仓里这份文件叫 AGENTS.md（私有仓时代叫 CLAUDE.md）。以前写死 CLAUDE.md，公开仓里
+    // 整个预算脚本一启动就 ENOENT 崩掉 —— 「涨了就拦」的闸门从建仓起一次都没真正跑过。
+    measure: () => ({ value: readFileSync(existsSync("CLAUDE.md") ? "CLAUDE.md" : "AGENTS.md", "utf8").split("\n").length }),
   },
   // CLAUDE.md 的预算表里「活跃分支 5」这条，2026-08-19 之前**根本没人量** —— 于是它跟
   // 那张表刚立时的处境一模一样：写在文档里，不阻断任何东西，就是一句抱怨。
