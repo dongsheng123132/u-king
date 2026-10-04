@@ -29,12 +29,15 @@ pub fn run_hook_passthrough() -> i32 {
 }
 
 /// 是不是我们（或 rtk）装的 hook 命令：新写法 `"<exe>" rtk-hook`（独立参数，别被目录名骗），
-/// 或老写法 `"<path>/rtk(.exe)" hook claude`（可执行文件名必须是 rtk，免得误删别家的 `hook claude`）。
+/// 或老写法 `"<home>/.uking/tools/rtk/rtk(.exe)" hook claude`。
+/// 老写法必须指向**我们下载的那份 rtk**（`/.uking/tools/rtk/`）：客户自己装的 rtk
+/// （裸 `rtk hook claude`、`/usr/local/bin/rtk hook claude`）跟 U-King 无关，不许摘。
 fn is_our_hook(cmd: &str) -> bool {
     cmd.split_whitespace().any(|t| t.trim_matches('"') == "rtk-hook")
         || cmd.find("hook claude").is_some_and(|i| {
-            let exe = cmd[..i].trim().trim_matches('"').replace('\\', "/");
-            matches!(exe.rsplit('/').next(), Some("rtk" | "rtk.exe"))
+            let exe = cmd[..i].trim().trim_matches('"').replace('\\', "/").to_ascii_lowercase();
+            exe.contains("/.uking/tools/rtk/")
+                && matches!(exe.rsplit('/').next(), Some("rtk" | "rtk.exe"))
         })
 }
 
@@ -109,6 +112,9 @@ mod tests {
     const OLD: &str = r#""C:/Users/a b/.uking/tools/rtk/rtk.exe" hook claude"#;
     /// 目录名含 rtk-hook 但不是独立参数（第一版判据被它骗过）：不许误删。
     const TRAP: &str = r#""C:/uking-test-rtk-hook-heal/x.exe" run"#;
+    /// 客户自己装的 rtk（不在 `.uking/tools/rtk/` 下）：跟 U-King 无关，不许摘。
+    const USER_RTK: &str = "rtk hook claude";
+    const USER_RTK_PATH: &str = "/usr/local/bin/rtk hook claude";
 
     fn w(p: &PathBuf, d: &[u8]) -> Result<(), String> { std::fs::write(p, d).map_err(|e| e.to_string()) }
     fn write(root: &Path, json: &str) -> PathBuf {
@@ -133,8 +139,9 @@ mod tests {
     fn removes_new_and_old_style_keeps_others_and_never_overwrites_backup() {
         with_sandbox("rtk-retire-mixed", &[".claude"], |r| {
             let src = format!(
-                r#"{{"env":{{"K":"v"}},"hooks":{{"PreToolUse":[{},{},{},{},{}],"Stop":[{}]}}}}"#,
-                hook(NEW), hook("other-tool --pre"), hook(OLD), hook("foo hook claude"), hook(TRAP), hook("bye")
+                r#"{{"env":{{"K":"v"}},"hooks":{{"PreToolUse":[{},{},{},{},{},{},{}],"Stop":[{}]}}}}"#,
+                hook(NEW), hook("other-tool --pre"), hook(OLD), hook("foo hook claude"), hook(TRAP),
+                hook(USER_RTK), hook(USER_RTK_PATH), hook("bye")
             );
             let p = write(r, &src);
             std::fs::write(bak(&p), "SENTINEL").unwrap();
@@ -142,7 +149,7 @@ mod tests {
             let v = load(&p);
             let left: Vec<&str> = v["hooks"]["PreToolUse"].as_array().unwrap().iter()
                 .map(|e| e["hooks"][0]["command"].as_str().unwrap()).collect();
-            assert_eq!(left, ["other-tool --pre", "foo hook claude", TRAP], "别家的条目一条不许动");
+            assert_eq!(left, ["other-tool --pre", "foo hook claude", TRAP, USER_RTK, USER_RTK_PATH], "别家的条目一条不许动");
             assert!(v["env"]["K"] == "v" && v["hooks"]["Stop"].is_array());
             assert_eq!(std::fs::read_to_string(bak(&p)).unwrap(), "SENTINEL");
         });
