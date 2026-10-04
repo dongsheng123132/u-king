@@ -8,7 +8,7 @@
 U-King 是一个 Tauri 2 桌面应用：React 负责装机、配置和多 AI 工作台；Rust 负责系统探测、工具安装、
 模型配置、PTY、AI 子进程、文件持久化及对外 Action API。U-King 自身没有集中式业务数据库，主要状态存成
 用户目录下的 JSON / JSONL / YAML / TOML 文件，以及被管理 AI 工具各自的配置文件；少数兼容链路会读取或
-修改 Hermes、uu-switch 等外部工具的 SQLite 数据库。
+修改 Hermes 等外部工具的 SQLite 数据库。
 
 ## 先看哪几个文件
 
@@ -275,7 +275,7 @@ U-King 自身没有集中式业务数据库或 SQL ORM。主要持久化边界�
 | `~/.uking/artifacts/` | 生成产物和索引 | `artifacts.rs` |
 | `~/.uking/journal/`、用量/指标文件 | 本地活动记录与统计 | `journal.rs`、`usage_local.rs`、`metrics.rs` |
 | `.claude`、`.codex`、`.openclaw`、Hermes 配置 | 被管理工具的供应商、模型和凭据引用 | `providers.rs` |
-| 外部 SQLite（Hermes、uu-switch 等） | 本地用量读取、供应商导入与兼容写入；不是 U-King 的主状态库 | `usage_local.rs`、`uuswitch.rs` |
+| 外部 SQLite（Hermes 等） | 本地用量读取与兼容写入；不是 U-King 的主状态库 | `usage_local.rs` |
 | U 盘 `U-King/AI-Genie/` | runtime、data、启动器、metadata、可选凭据 | `usb_genie.rs` |
 | 浏览器 `localStorage` | 少量纯 UI 偏好和旧会话迁移兼容 | 各 React 组件 |
 

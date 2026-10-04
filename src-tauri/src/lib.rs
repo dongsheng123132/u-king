@@ -71,7 +71,6 @@ mod desktop_app;
 mod tray;
 mod uninstall;
 mod ulog;
-mod uuswitch;
 mod usage;
 mod usage_local;
 // webview2 无条件编译：模块内部自己按平台分流（非 Windows 下 `installed()` 恒为 true、
@@ -279,42 +278,6 @@ fn journal_set_enabled(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 fn journal_clear() -> Result<(), String> {
     journal::clear()
-}
-
-/// uu-switch（去广告版 cc-switch 模型切换器）安装包下载直链（我方下载源，固定名）。
-/// 前端「打开下载页 / 手动装」兜底点这个。
-#[tauri::command]
-fn get_uuswitch_download_url() -> String {
-    uuswitch::download_url()
-}
-
-/// 下载 + 静默安装 uu-switch（NSIS /S，~8 MB）。进度走事件 `uking:uuswitch_progress`。
-/// 装完不改用户任何 AI 配置（切驱动是用户在 uu-switch 里主动做的事）。
-#[tauri::command]
-async fn install_uuswitch(app: AppHandle) -> Result<String, String> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        uuswitch::install(&move |msg: &str| {
-            let _ = app2.emit("uking:uuswitch_progress", msg.to_string());
-        })
-    })
-    .await
-    .map_err(|e| format!("安装 uu-switch 异常: {e}"))?
-}
-
-/// 一键把「虾盘云（Claude + Codex）+ 你在用的工具配置」导入 uu-switch（写 ~/.cc-switch/config.json，
-/// 非破坏式合并）。虾盘云用 U-King 设备 Key + 端点 + deepseek-v4-pro / gpt-5.3-codex，两侧切换等效；
-/// 在用配置读 ~/.claude、~/.codex 原样搬进来。
-#[tauri::command]
-async fn import_to_uuswitch(app: AppHandle) -> Result<String, String> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        uuswitch::import_to_uuswitch(&move |msg: &str| {
-            let _ = app2.emit("uking:uuswitch_progress", msg.to_string());
-        })
-    })
-    .await
-    .map_err(|e| format!("导入 uu-switch 异常: {e}"))?
 }
 
 /// 下载 + 静默安装 DeepSeek Harness 桌面版（Windows，NSIS `/S /currentuser`，约 280MB）。
@@ -8927,9 +8890,6 @@ pub fn run() {
             journal_inspect,
             journal_set_enabled,
             journal_clear,
-            get_uuswitch_download_url,
-            install_uuswitch,
-            import_to_uuswitch,
             install_dsh_desktop,
             pin_to_desktop,
             open_codex_guide,

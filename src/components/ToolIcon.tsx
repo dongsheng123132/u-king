@@ -1,5 +1,4 @@
 /** Brand artwork is bundled locally. Sources and trademark attribution are in NOTICE. */
-import { useId } from "react";
 import claudeLogo from "../assets/logos/claude.svg";
 import openaiLogo from "../assets/logos/openai.svg";
 // Codex 改内联单色标记（CodexMark，fill=currentColor），不再用硬编码白 fill 的 svg 资源
@@ -47,12 +46,6 @@ const ROUNDED_IMG = new Set(["opencode"]);
 
 /** 首字母方块兜底色（仅未知 id 用；有专属图标/logo 的不会走到这里）。 */
 const FALLBACK_BG = "#5e6ad2";
-
-/** 内联 SVG 里 <linearGradient> 的 id 必须页面内唯一：App 用 display:none 切页保活，
- *  重复 id 时 url(#id) 可能解析到隐藏页里的那份而不渲染。新增的自家字形用 useId 隔离。 */
-function useGradId(prefix: string): string {
-  return prefix + useId().replace(/[^a-zA-Z0-9_-]/g, "");
-}
 
 function CodexMark({ size }: { size: number }) {
   // Codex 官方标记（LobeHub），单色 fill=currentColor —— 由父层 text-ink-1 上色，
@@ -109,29 +102,6 @@ function XiapanDisk({ size }: { size: number }) {
   );
 }
 
-function UuSwitchGlyph({ size }: { size: number }) {
-  // 自家「uu-switch 模型切换器」：靛蓝渐变圆角块 + 上右下左两根反向箭头（来回切换语义）。
-  // 不借用上游 cc-switch 的 logo。
-  const gid = useGradId("uk-uusw-");
-  return (
-    <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#818cf8" />
-          <stop offset="100%" stopColor="#4f46e5" />
-        </linearGradient>
-      </defs>
-      <rect x="8" y="8" width="104" height="104" rx="28" fill={`url(#${gid})`} />
-      <g stroke="#ffffff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M26 42 H92" />
-        <path d="M77 28 L93 42 L77 56" />
-        <path d="M94 78 H28" />
-        <path d="M43 64 L27 78 L43 92" />
-      </g>
-    </svg>
-  );
-}
-
 /** tool/provider id 归一（兼容 ToolInfo.id、TUI tag、驱动 id、中文名 几套命名）。 */
 function normTool(tool: string): string {
   const t = tool.toLowerCase();
@@ -147,13 +117,12 @@ function normTool(tool: string): string {
   if (t.includes("glm") || t.includes("zhipu") || t.includes("智谱")) return "glm";
   if (t.includes("minimax")) return "minimax";
   if (t.includes("xiapan") || t.includes("虾盘")) return "xiapan";
-  // 以下是后加的工具：短/易撞的 id（pi、opencode、uu-*）用精确匹配 + 少量别名，不用裸 includes ——
-  // 「pi」是任何含 pi 字样名字的子串，「opencode」带 code 字样，uu-remote 与 uu-switch 必须分开。
+  // 以下是后加的工具：短/易撞的 id（pi、opencode、uu-remote）用精确匹配 + 少量别名，不用裸 includes ——
+  // 「pi」是任何含 pi 字样名字的子串，「opencode」带 code 字样。
   // 它们都不会被上面的规则先吃掉（已逐个 id 核对）。
   if (t === "pi") return "pi";
   if (t === "opencode" || t === "open-code") return "opencode";
   if (t === "uu-remote" || t === "uuremote" || t.includes("uu远程")) return "uu-remote";
-  if (t === "uu-switch" || t === "uuswitch") return "uu-switch";
   return t;
 }
 
@@ -176,8 +145,6 @@ export function ToolIcon({ tool, size = 24, active = true, className = "" }: Pro
     );
   } else if (id === "xiapan") {
     inner = <XiapanDisk size={size} />;
-  } else if (id === "uu-switch") {
-    inner = <UuSwitchGlyph size={size} />;
   } else if (LOGO[id]) {
     inner = (
       <img

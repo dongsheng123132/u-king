@@ -213,8 +213,8 @@ pub fn all_providers() -> Vec<ProviderPreset> {
 
 /// 虾盘云给 Codex 用的默认模型（单一真相源）。
 ///
-/// 之所以要这么一个函数：同一句话原本抄在三处（这里的预设、`codex_proxy::DIRECT_MODEL`、
-/// `uuswitch` 导给 uu-switch 的 config.toml），改一处漏两处就会出现「U-King 里跑便宜的、
+/// 之所以要这么一个函数：同一句话原本抄在几处（这里的预设、`codex_proxy::DIRECT_MODEL`、
+/// 曾经导给 uu-switch 的 config.toml），改一处漏几处就会出现「U-King 里跑便宜的、
 /// 从 uu-switch 切一下变回贵的」。宪法第 8 条：同一事实存在几份就会漂移几份。
 pub fn xiapan_codex_model() -> String {
     builtin_providers()
@@ -1219,7 +1219,7 @@ pub const DEEPSEEK_AUTO_COMPACT_WINDOW: &str = "200000";
 ///   等价、同样截断 authority（`evil.com\@api.u-claw.org` 真 host 是 evil.com）；③ host 段 LDH
 ///   字符集闸 + C0 控制字符 + 非数字端口 + `[]` 开头一律拒（自家域是 DNS 名，不可能是 IPv6
 ///   字面量），未知形状 fail-closed，绝不把解析不出的怪串认成自家。
-/// `pub(crate)`：lib.rs / uuswitch.rs 的「端点是不是虾盘云」判定也走这一份（避免
+/// `pub(crate)`：lib.rs 的「端点是不是虾盘云」判定也走这一份（避免
 /// contains("u-claw.org") 在伪域/fake 域上误命中——见 23b6bbd 修 host 后缀匹配的
 /// 同一病灶）。私有就编不过——见 working copy 引入 4 处调用时漏改可见性的那次。
 pub(crate) fn is_xiapan_endpoint(base: &str) -> bool {

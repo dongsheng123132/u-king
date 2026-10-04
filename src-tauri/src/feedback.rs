@@ -155,7 +155,6 @@ fn friendly_log_name(stem: &str) -> String {
         "rtk" => "Token 压缩机",
         "mcp" => "MCP 连接器",
         "skillpack" => "AI 技能包",
-        "uuswitch" => "uu-switch 导入",
         "launch" => "启动 GUI 应用",
         other => other,
     }

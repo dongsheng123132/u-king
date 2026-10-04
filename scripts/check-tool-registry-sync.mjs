@@ -41,7 +41,7 @@ const TS_FILE = "src/opencodex/apps.ts";
  * `TOOL_SPECS` 里没有 `toolId` 对应到 `TUI_APPS` 也完全正常的项，逐条写明理由：
  * - `clawx`：桌面 GUI，复用的是 `openclaw`（TUI_APPS 里那条）同一份 cmd("openclaw")/
  *   config_target("clawx")，只是多一个「桌面装没装」的判据，不该也没有第二个 TUI 入口。
- * - `uu-remote`/`codex-app`/`uu-switch`：
+ * - `uu-remote`/`codex-app`：
  *   纯 GUI/下载类应用，压根不是「终端里跑」的东西，
  *   `apps.ts` 只登记 TUI（终端）应用，它们从设计上就不会出现在那张表里。
  */
@@ -50,7 +50,6 @@ const ALLOWED_SPEC_WITHOUT_TUI_APP = new Set([
   "uu-remote",
   "codex-app",
   "claude-app", // Native GUI app; has no TUI route.
-  "uu-switch",
 ]);
 
 /** 从 `start` 位置的 `[` 开始，返回与之配对的 `]` 的下标（简单方括号计数）。 */

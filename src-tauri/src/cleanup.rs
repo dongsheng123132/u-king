@@ -346,7 +346,6 @@ struct Probes {
     clawx_app: bool,
     hermes_app: bool,
     ollama: bool,
-    uuswitch: bool,
     market: Vec<crate::tools::ToolInfo>,
     kits: Vec<crate::toolbox::ToolStatus>,
 }
@@ -399,12 +398,6 @@ fn probe_all() -> Probes {
             { false }
         });
         let ollama = s.spawn(ollama_installed);
-        let uuswitch = s.spawn(|| {
-            #[cfg(windows)]
-            { crate::uuswitch::installed() }
-            #[cfg(not(windows))]
-            { false }
-        });
         let market = s.spawn(|| {
             #[cfg(windows)]
             { crate::tools::list_tools() }
@@ -437,7 +430,6 @@ fn probe_all() -> Probes {
             clawx_app: clawx_app.join().unwrap_or(false),
             hermes_app: hermes_app.join().unwrap_or(false),
             ollama: ollama.join().unwrap_or(false),
-            uuswitch: uuswitch.join().unwrap_or(false),
             market: market.join().unwrap_or_default(),
             kits: kits.join().unwrap_or_default(),
         }
@@ -662,16 +654,6 @@ pub fn scan() -> Vec<FootprintItem> {
             warn_tool,
         ));
     }
-    if p.uuswitch {
-        v.push(FootprintItem::new(
-            "tool-uu-switch",
-            "aitool",
-            "uu-switch 模型切换器",
-            "U-King 安装的 cc-switch / uu-switch 应用（走 MSI 官方卸载）".into(),
-            false,
-            warn_tool,
-        ));
-    }
     #[cfg(windows)]
     if uking_home().join("tools").join("open365").exists() {
         v.push(FootprintItem::new(
@@ -820,8 +802,6 @@ pub fn remove(id: &str, on_log: &(dyn Fn(&str) + Send + Sync)) -> Result<String,
         #[cfg(windows)]
         "tool-hermes" => uninstall_app(crate::tools::find_hermes_app_exe(), on_log),
         "tool-ollama" => uninstall_ollama(on_log),
-        #[cfg(windows)]
-        "tool-uu-switch" => uninstall_uuswitch(on_log),
         #[cfg(windows)]
         "tool-open365" => uninstall_ai_tool("open365", on_log),
         #[cfg(windows)]
@@ -1115,52 +1095,6 @@ fn uninstall_appx(name: &str, on_log: &(dyn Fn(&str) + Send + Sync)) -> Result<S
     }
 }
 
-/// 卸载 uu-switch（我方 MSI 安装）：优先跑注册表里的静默卸载串，兜底删安装目录。仅 Windows。
-#[cfg(windows)]
-fn uninstall_uuswitch(on_log: &(dyn Fn(&str) + Send + Sync)) -> Result<String, String> {
-    on_log("正在卸载 uu-switch…");
-    // 注册表卸载串（HKCU 优先，per-user MSI；再 HKLM）。找到 QuietUninstallString/UninstallString 就跑。
-    let ps = r#"
-$roots = @(
-  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-  'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-$done = $false
-foreach ($r in $roots) {
-  Get-ChildItem $r -ErrorAction SilentlyContinue | ForEach-Object {
-    $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-    if ($p.DisplayName -like '*uu-switch*' -or $p.DisplayName -like '*uu switch*') {
-      $u = $p.QuietUninstallString; if (-not $u) { $u = $p.UninstallString }
-      if ($u) {
-        if ($u -match 'msiexec') { $u = ($u -replace '/I','/X') + ' /qn /norestart' }
-        cmd /c $u
-        $done = $true
-      }
-    }
-  }
-}
-if ($done) { 'ok' } else { 'notfound' }
-"#;
-    let out = Command::new(crate::installer::system_tool("powershell"))
-        .args(["-NoProfile", "-NonInteractive", "-Command", ps])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| format!("启动卸载失败: {e}"))?;
-    let ok = String::from_utf8_lossy(&out.stdout).contains("ok");
-    // 兜底：卸载串没找到/没删净时，删掉安装目录，至少让检测变"未装"。
-    if let Some(exe) = crate::uuswitch::find_exe() {
-        if let Some(dir) = exe.parent() {
-            let _ = std::fs::remove_dir_all(dir);
-        }
-    }
-    if ok {
-        Ok("已卸载 uu-switch".into())
-    } else {
-        Ok("已移除 uu-switch（若开始菜单仍有残留项，可在 Windows 设置→应用 里清理）".into())
-    }
-}
-
 // 前端 App.tsx 里 UNINSTALLABLE 集合镜像下方 match 支持的 tool_id（url 型第三方工具 UU远程
 // 不由我们装，不提供一键卸载）。改这里的支持列表时同步前端那份。
 // 例外：harness-doctor / hermes-app / open365 三个分支只供「装机·体检」逐项清理老客户机上的
@@ -1225,8 +1159,6 @@ pub fn uninstall_ai_tool(tool_id: &str, on_log: &(dyn Fn(&str) + Send + Sync)) -
         "clawx" => uninstall_app(crate::tools::find_clawx_exe(), on_log),
         #[cfg(windows)]
         "hermes-app" => uninstall_app(crate::tools::find_hermes_app_exe(), on_log),
-        #[cfg(windows)]
-        "uu-switch" => uninstall_uuswitch(on_log),
         #[cfg(windows)]
         "open365" => {
             // 我方轻量工具：删本地目录 + 桌面快捷方式即可（没有官方卸载程序）。

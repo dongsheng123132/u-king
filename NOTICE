@@ -137,5 +137,5 @@ tools. Source URLs are recorded here instead of modifying the original files.
 
 Icons drawn by U-King (inline SVG in `ToolIcon.tsx`, covered by the Apache
 License 2.0 of this project, not derived from any third-party logo):
-`XiapanDisk` (虾盘云), `UuSwitchGlyph` (uu-switch). The U-King and 虾盘云 marks remain
+`XiapanDisk` (虾盘云). The U-King and 虾盘云 marks remain
 covered by the trademark notice above.

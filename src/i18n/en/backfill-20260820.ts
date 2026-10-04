@@ -16,18 +16,8 @@ export const backfill20260820: Record<string, string> = {
   "安装包下载失败：": "Installer download failed: ",
   " —— 已为你打开官网下载页，手动下载安装即可":
     " — The official download page is open. Download and install it manually.",
-  "已检测到 uu-switch，正在打开…": "uu-switch detected. Opening it…",
-  "开始下载并安装 uu-switch（约 12 MB）…": "Downloading and installing uu-switch (about 12 MB)…",
-  "，可到工具卡点「打开下载页」手动装": ". You can use “Open download page” on the tool card to install it manually",
   "；没配：{list}": "; not configured: {list}",
   "一个都没配上 —— 详情见下": "Nothing was configured — see details below",
-  "正在导入到 uu-switch（虾盘云 + 你在用的配置）…":
-    "Importing into uu-switch (Xiapan Cloud + your active configurations)…",
-  "导入 uu-switch 失败：": "Failed to import into uu-switch: ",
-  "一键导入到 uu-switch（虾盘云 + 在用配置）":
-    "Import into uu-switch (Xiapan Cloud + active configurations)",
-  "一键把虾盘云(Claude+Codex) + 你在用的工具配置导入 uu-switch":
-    "Import Xiapan Cloud (Claude + Codex) and your active tool configurations into uu-switch",
   "一键导入": "Import all",
 
   "已保存": "Saved",

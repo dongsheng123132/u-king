@@ -662,35 +662,9 @@ export function App() {
       }
       return;
     }
-    if (t.id === "uu-switch") {
-      // uu-switch（去广告版 cc-switch 模型切换器）= GUI 应用，走后端下载 + 静默安装（不进向导）。
-      // 已装 → 直接打开；没装 → 下载安装（进度用 toast），装完自动打开。装完不改用户任何配置。
-      const fresh = await refresh().catch(() => null);
-      const cur = fresh?.find((x) => x.id === "uu-switch");
-      if (cur?.installed) {
-        flash(tr("已检测到 uu-switch，正在打开…"));
-        doLaunchApp(cur);
-        return;
-      }
-      flash(tr("开始下载并安装 uu-switch（约 12 MB）…"));
-      const un = await listen<string>("uking:uuswitch_progress", (e) => flash(e.payload));
-      try {
-        const msg = await invoke<string>("install_uuswitch");
-        un();
-        flash(msg);
-        const after = await refresh().catch(() => null);
-        if (after?.find((x) => x.id === "uu-switch")?.installed) doLaunchApp(t);
-      } catch (e) {
-        un();
-        flash(tr("自动安装未成：") + String(e) + tr("，可到工具卡点「打开下载页」手动装"));
-        const url = await invoke<string>("get_uuswitch_download_url").catch(() => t.target);
-        await openUrl(url).catch(() => {});
-      }
-      return;
-    }
     if (t.id === "dsh" && env?.platform === "windows") {
       // DeepSeek Harness 官方桌面版（Windows）：GUI 应用，走后端下载 + 静默安装（不进向导），
-      // 同 uu-switch 那段的「已装直开、没装先装」模式。装完/已装还按需（未配过才配，已手动切过
+      // 「已装直开、没装先装」的模式。装完/已装还按需（未配过才配，已手动切过
       // 的一律不碰）把虾盘云写进它的底层配置——同 ToolAppView::ensureWebToolConfigured 的口径，
       // 这样即便用户全程只在工具卡片这里点、从没进过「DeepSeek Harness」专属页，模型也是配好的。
       const applyXiapanIfUnconfigured = async () => {
@@ -944,23 +918,6 @@ export function App() {
       flash(tr("接入失败：") + String(e));
     }
   }, [refresh, tr]);
-
-  // 一键把「虾盘云（Claude + Codex）+ 你在用的工具配置」导入 uu-switch（写 ~/.cc-switch/config.json，
-  // 非破坏式合并）。虾盘云用 U-King 设备 Key + 端点 + preset 默认模型（deepseek-v4-flash /
-  // deepseek-v4-flash-codex），两侧切换等效 —— 模型名后端从 preset 读，别在这条注释里再写死一份。
-  const importToUuswitch = useCallback(async () => {
-    // 有库时后端要关 uu-switch→写库→重开，进度走事件（关闭/写入…）。
-    const un = await listen<string>("uking:uuswitch_progress", (e) => flash(e.payload));
-    try {
-      flash(tr("正在导入到 uu-switch（虾盘云 + 你在用的配置）…"));
-      const msg = await invoke<string>("import_to_uuswitch");
-      flash(msg);
-    } catch (e) {
-      flash(tr("导入 uu-switch 失败：") + String(e));
-    } finally {
-      un();
-    }
-  }, [tr]);
 
   // ⚠️ 已彻底移除「打开即自动接虾盘云」逻辑（2026-06-17）。
   // 旧行为侵入性太强：U-King 一启动就把虾盘云写进 Claude Code / Codex / ClawX 的底层配置，
@@ -1438,7 +1395,6 @@ export function App() {
                   setTab("manage");
                 }}
                 onApplyXiapan={applyXiapan}
-                onImportXiapan={importToUuswitch}
                 onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onSelfUpdate={doSelfUpdate}
                 onManageProviders={(editId) => setProviderMgr({ editId })}
@@ -1459,7 +1415,7 @@ export function App() {
                     onGoWorkspace={() => setTab("chat")}
                   />
                 )}
-                <ToolMarket tools={tools} onOpen={openTool} onLaunch={launchTool} onImportXiapan={importToUuswitch} />
+                <ToolMarket tools={tools} onOpen={openTool} onLaunch={launchTool} />
               </>
             )}
             </Suspense>
@@ -2157,7 +2113,6 @@ const UNINSTALLABLE = new Set([
   // "cline" 已下架：不再展示，但保留卸载入口，存量已装用户仍可清掉。
   "cline",
   "ollama",
-  "uu-switch",
 ]);
 
 /** 是否支持「一键卸载」—— 镜像 `UNINSTALLABLE` 名单，导出函数而不是导出整个 Set，
@@ -2222,7 +2177,6 @@ function MyAI({
   onGoManage,
   onGoManageFree,
   onApplyXiapan,
-  onImportXiapan,
   onRecharge,
   onSelfUpdate,
   onBackToHub,
@@ -2244,7 +2198,6 @@ function MyAI({
   /** 免费模型导流卡专用：跳「AI 设置」并直接落在「免费算力」分区（见 App 里 manageInitialTab）。 */
   onGoManageFree?: () => void;
   onApplyXiapan: () => void;
-  onImportXiapan: () => void;
   onRecharge: () => void;
   /** 本体一键升级（App 的 doSelfUpdate，带进度/失败账本/重启流程）—— 传给顶部 DoctorCard。 */
   onSelfUpdate?: () => void;
@@ -2607,18 +2560,6 @@ function MyAI({
                     </div>
                   </div>
 
-                  {/* uu-switch 专属：一键把「虾盘云(Claude+Codex) + 你在用的工具配置」写进它的驱动列表。
-                      B2 规格未涉及这个入口，原样保留在卡底；行高压到 h-8（原 py-2.5）。 */}
-                  {t.id === "uu-switch" && (
-                    <button
-                      onClick={onImportXiapan}
-                      className="w-full flex items-center gap-1.5 border-t border-white/[0.06] bg-bg-0/60 px-3 h-8 text-[11.5px] text-accent hover:text-accent-600 hover:bg-bg-1/80 transition-colors"
-                    >
-                      <Download size={12} />
-                      {tr("一键导入到 uu-switch（虾盘云 + 在用配置）")}
-                      <ChevronRight size={12} className="ml-auto" />
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -2715,12 +2656,10 @@ function ToolMarket({
   tools,
   onOpen,
   onLaunch,
-  onImportXiapan,
 }: {
   tools: ToolInfo[];
   onOpen: (t: ToolInfo) => void;
   onLaunch: (t: ToolInfo) => void;
-  onImportXiapan: () => void;
 }) {
   const { t: tr } = useI18n();
   return (
@@ -2756,7 +2695,6 @@ function ToolMarket({
             <div className="mt-3 flex gap-2">
               {t.installed && t.launch_app ? (
                 // 已装的 GUI 应用（ClawX / Codex 桌面版）→ 打开应用。
-                // uu-switch 额外给「导入虾盘云」——把虾盘云写进它的 Claude 驱动列表（两侧切换等效）。
                 <>
                   <button
                     onClick={() => onLaunch(t)}
@@ -2764,15 +2702,6 @@ function ToolMarket({
                   >
                     <Sparkles size={13} /> {tr("打开应用")}
                   </button>
-                  {t.id === "uu-switch" && (
-                    <button
-                      onClick={onImportXiapan}
-                      className="inline-flex items-center justify-center gap-1 px-2.5 h-8 rounded-md border border-white/[0.10] text-ink-2 text-[11px] hover:bg-white/[0.04]"
-                      title={tr("一键把虾盘云(Claude+Codex) + 你在用的工具配置导入 uu-switch")}
-                    >
-                      <Download size={12} /> {tr("一键导入")}
-                    </button>
-                  )}
                 </>
               ) : t.installed && t.launch_cmd ? (
                 <>

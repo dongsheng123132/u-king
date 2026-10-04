@@ -115,7 +115,6 @@ const TOOL_DEFS = [
   { id: "dsh", name: "DeepSeek Harness（官方桌面版）", kind: "deep", launch_cmd: "", launch_app: "dsh-desktop", hidden: false, config_target: "dsh" },
   { id: "uu-remote", name: "UU远程（手机控电脑）", kind: "standalone", launch_cmd: "", launch_app: "", hidden: false, config_target: null },
   { id: "codex-app", name: "Codex 桌面版", kind: "standalone", launch_cmd: "", launch_app: "codex-app", hidden: false, config_target: "codex" },
-  { id: "uu-switch", name: "uu-switch 模型切换器", kind: "standalone", launch_cmd: "", launch_app: "uu-switch", hidden: true, config_target: null },
   // 1.3.5 / 1.3.6 新增（src-tauri/src/tools.rs TOOL_SPECS 里的 id；name/launch 字段是示意值）
   { id: "mimo-code", name: "MiMo Code", kind: "standalone", launch_cmd: "mimo", launch_app: "", hidden: false, config_target: null },
   { id: "codebuddy-code", name: "CodeBuddy Code", kind: "standalone", launch_cmd: "codebuddy", launch_app: "", hidden: false, config_target: null },

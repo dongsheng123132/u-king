@@ -510,7 +510,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
     },
     ToolSpec {
         // Windows（2026-09-25 起）：官方桌面版，普通 GUI 应用，Rust 直接 `launch_app` 拉起
-        // （同 uu-switch/ClawX），不再走 RouteTab 专属页时序。`cmd`/`config_target`/
+        // （同 ClawX），不再走 RouteTab 专属页时序。`cmd`/`config_target`/
         // `in_list_tools` 保持不动——`settings.yaml`/`.credentials.yaml` 读写口径没变，
         // 体检/驱动切换/`tool_specs_ids_match_list_tools_ids` 这条顺序用例都还认这个 id。
         // Mac/Linux：未改，仍是 npm 装的 CLI，RouteTab 到 ToolAppView 专属页
@@ -580,17 +580,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
-    ToolSpec {
-        id: "uu-switch",
-        cmd: "",
-        config_target: None,
-        in_list_tools: false,
-        in_checkup: None,
-        probe_args: None,
-        // list_tools() 里 launch_app="uu-switch"。
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
 ];
 
 #[cfg(test)]
@@ -602,10 +591,10 @@ mod tool_specs_tests {
     /// ——加/删一个工具，两边有一边忘了同步，这条测试就会红，而不是等到运行时才发现
     /// 体检/探测清单里少了一个工具。
     ///
-    /// 注：`list_tools()` 里 codex-app/uu-switch 两项挂在
+    /// 注：`list_tools()` 里 codex-app 这一项挂在
     /// `#[cfg(windows)]`/`#[cfg(any(windows, target_os = "macos"))]` 后面，`TOOL_SPECS`
     /// 目前没有对应套 cfg（const 数组内按元素条件编译不方便）。这条测试只在实际跑它的平台
-    /// 上生效——本仓库 `cargo test` 目前只在 Windows 机器上跑，跟这两项的 cfg 覆盖一致；
+    /// 上生效——本仓库 `cargo test` 目前只在 Windows 机器上跑，跟这一项的 cfg 覆盖一致；
     /// 如果以后要在纯 Linux CI 上跑这条测试，需要把 `TOOL_SPECS` 也拆成按平台 cfg 的子表。
     #[test]
     fn tool_specs_ids_match_list_tools_ids() {
@@ -1275,28 +1264,6 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
     );
-    // uu-switch —— 去广告版 cc-switch AI 模型切换器（我方 fork）。GUI 应用：一个窗口统一管
-    // 所有 AI 工具（Claude Code / Codex …）的模型驱动，一键切换 + 内置计量看板。action=install
-    // 走后端 install_uuswitch（下载 NSIS 静默装，不改用户任何 AI 配置）；装完 launch_app 启动。
-    // 仅 Windows 露出（本轮只发 Windows 包，未托管 Mac 包）；删本卡只动本处 + uuswitch.rs + App.tsx。
-    // ★ 2026-09-30 用户决定下架（自有换模型即 cc-switch 同类，不再露出这张卡）：hidden=true，
-    //   App.tsx / ToolHub 都按 `!x.hidden` 过滤，所以不进「我的 AI」也不进可安装列表。
-    //   模块（uuswitch.rs）与 installed 检测 / launch 路由保留——已装用户仍能在「装机·体检」
-    //   （cleanup.rs 直接探 `uuswitch::installed()`，不经本卡）里卸载它。
-    #[cfg(windows)]
-    v.push(ToolInfo {
-        id: "uu-switch".into(),
-        name: "uu-switch 模型切换器".into(),
-        summary: "一个窗口管好所有 AI 工具的模型驱动（Claude Code/Codex…），一键切换 + 用量看板。基于 cc-switch 的去广告纯净版，后续可从 U-King 一键导入虾盘云。".into(),
-        kind: "standalone".into(),
-        installed: false,
-        action: "install".into(),
-        target: crate::uuswitch::download_url(),
-        launch_cmd: "".into(),
-        launch_app: "uu-switch".into(),
-        hidden: true,
-        config_target: None, version: None, launch_mode: LaunchMode::None,
-    });
     // `config_target` 的唯一来源：按 id 从 TOOL_SPECS 取（见字段文档）。TOOL_SPECS 里查不到的
     // id（理论上不会有，`tool_specs_ids_match_list_tools_ids` 单测守着）保持 None，
     // 也就是「不接驱动切换」，宁可少露一个换模型入口，也不编一个 target。
@@ -1320,9 +1287,6 @@ fn catalog_with_probes(
 /// 「装没装」只由这里决定。新增工具时忘了补一行**不会编译报错、也不会 panic** —— 表现是
 /// 「工具中心永远显示未安装、重装也还是不装」，静默且极难查。因此由
 /// `catalog_probe_tests::tool_probe_branches_cover_every_spec` 单测盯着这张表不漏 id。
-///
-/// 平台专属条目（uu-switch 的分支与 ToolInfo 只在 Windows 存在）
-/// 在非 Windows 平台返回 `None` 属正常，单测按平台豁免。
 fn probe_tool(id: &str) -> Option<bool> {
     Some(match id {
         "mimo-code" => crate::installer::tool_installed("mimo"),
@@ -1344,8 +1308,6 @@ fn probe_tool(id: &str) -> Option<bool> {
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
         "claude-app" => crate::installer::managed_desktop_installed("claude-app"),
         "codex-app" => crate::installer::codex_app_installed(),
-        #[cfg(windows)]
-        "uu-switch" => crate::uuswitch::installed(),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
         _ => return None,
     })
@@ -1403,17 +1365,9 @@ mod catalog_probe_tests {
     /// 全部改成查表（`catalog_with_probes`）之后，这个坑才第一次真的存在，所以补上守卫。
     #[test]
     fn tool_probe_branches_cover_every_spec() {
-        // uu-switch：分支和它的 ToolInfo 都只在 Windows 存在，
-        // 但 TOOL_SPECS 是无 cfg 门控的常量数组（非 Windows 平台也含这一条）—— 按平台豁免。
-        let platform_only: &[&str] = if cfg!(windows) {
-            &[]
-        } else {
-            &["uu-switch"]
-        };
         let missing: Vec<&str> = TOOL_SPECS
             .iter()
             .map(|s| s.id)
-            .filter(|id| !platform_only.contains(id))
             .filter(|id| probe_tool(id).is_none())
             .collect();
         assert!(
@@ -1678,7 +1632,6 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
     match app {
         "codex-app" => launch_codex_app(),
         "clawx" => launch_clawx_app(),
-        "uu-switch" => crate::uuswitch::launch(),
         // DeepSeek Harness 官方桌面版（Windows）。两个键都指向同一实现，两条调用路径都要接上：
         // "dsh-desktop" 是 `ToolInfo.launch_app`（前端 `doLaunchApp` 直接传这个字符串）；
         // "dsh" 是 `TOOL_SPECS` 里的工具 id（`runtime.tool.launch` 的 GuiApp 分支传的是

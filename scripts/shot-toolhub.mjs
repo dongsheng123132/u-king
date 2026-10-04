@@ -27,7 +27,7 @@ mkdirSync(OUT, { recursive: true });
  * 工具目录——id/name/kind/launch_cmd/launch_app/hidden 照抄
  * `src-tauri/src/tools.rs::list_tools()` 里的真实字面量（2026-09-29 读源码核对）；
  * `config_target` 照抄同文件 `TOOL_SPECS` 同 id 条目（后端 `list_tools` 按 id 从那里填，
- * 2026-09-30 加；`null` = 不接驱动切换）。uu-switch 2026-09-30 已下架（`hidden: true`）。
+ * 2026-09-30 加；`null` = 不接驱动切换）。（uu-switch 2026-10-04 已删除。）
  * `installed` 不在这张表里——那是每个场景自己决定的演示状态，不是抄来的。
  */
 const TOOL_DEFS = [
@@ -44,7 +44,6 @@ const TOOL_DEFS = [
   // Windows/macOS 分支：Codex 桌面版，插在数组下标 2（这里顺序不影响 ToolHub 渲染，
   // ToolHub 不依赖 list_tools 的原始顺序做任何跨工具比较）。
   { id: "codex-app", name: "Codex 桌面版", kind: "standalone", launch_cmd: "", launch_app: "codex-app", hidden: false, config_target: "codex" },
-  { id: "uu-switch", name: "uu-switch 模型切换器", kind: "standalone", launch_cmd: "", launch_app: "uu-switch", hidden: true, config_target: null },
 ];
 
 /**
@@ -68,7 +67,6 @@ const LAUNCH_MODE_BY_ID = {
   dsh: "gui_app",
   "uu-remote": "none",
   "codex-app": "gui_app",
-  "uu-switch": "gui_app",
 };
 
 /** 拼 `runtime.tool.inspect` action 的假返回——ToolHub 只读 `tool_id`/`mode` 这两个字段，

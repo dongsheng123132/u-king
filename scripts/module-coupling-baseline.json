@@ -1,5 +1,5 @@
 {
-  "pairs": 45,
+  "pairs": 41,
   "why": "自动收紧（解开了耦合）",
   "list": [
     "agent → device",
@@ -18,7 +18,6 @@
     "cleanup → toolbox",
     "cleanup → tools",
     "cleanup → uninstall",
-    "cleanup → uuswitch",
     "codex_proxy → device",
     "codex_proxy → providers",
     "device → providers",
@@ -43,9 +42,6 @@
     "tools → providers",
     "tools → term",
     "tools → toolprobe",
-    "tools → uuswitch",
-    "usb_targets → usb_genie",
-    "uuswitch → device",
-    "uuswitch → providers"
+    "usb_targets → usb_genie"
   ]
 }
