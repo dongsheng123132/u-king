@@ -33,7 +33,7 @@ export function buildProviderRepairPrompt(input: ProviderRepairPromptInput): str
     "这是 U-King「AI 设置」里用户自配供应商后的连通故障，请诊断并给出修复。",
     ...facts,
     "Key 已在本机该供应商下保存（掩码），不要向用户索要 Key，也不要让用户把 Key 发到对话里。",
-    "先调只读动作 runtime.checkup.inspect（工具配置体检）与 runtime.provider.effective（回读该工具实际生效的 base_url/model）。",
+    "先调只读动作 runtime.driver.inspect（各工具当前接在哪家供应商）与 runtime.provider.effective（回读该工具实际生效的 base_url/model）。",
     "诊断出根因后，如需改配置，调 runtime.provider.save（保存供应商）→ runtime.driver.apply（接管到目标工具）；两者都是写动作会自动弹确认框，向用户解释每一步再执行。",
     "404/Not Found 类报错优先查 baseUrl 路径层（少/多 /v1、域名错），不是模型 id 或 Key。",
     "请先给一句结论（哪里错了），再动手修。",

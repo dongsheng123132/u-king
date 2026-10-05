@@ -430,7 +430,7 @@ export function Guide({
       </section>
 
       {/* 官网链接 —— 多端点探测（会审 2026-08-27：裸域 u-king.org 境内 SNI reset 点不动，
-          改调 resolve_site_url：u-claw.org.cn/uking/ 首选、www.u-king.org 备选、全挂 fallback 国内地址） */}
+          改调 resolve_site_url：u-claw.org.cn/uking/，探不到 fallback 国内地址） */}
       <section className="flex flex-wrap items-center gap-3 text-[12px]">
         <button
           onClick={() => {

@@ -3,7 +3,7 @@
 //! ## 设计
 //!
 //! - **skill 清单**：`skills/install-windows.json` 内嵌兜底；启动安装前先尝试从
-//!   `https://www.u-king.org/skills/install-windows.json` 拉新版（version 更大即覆盖），
+//!   `SKILL_URLS`（u-claw.org.cn 首选）拉新版（version 更大即覆盖），
 //!   实现「服务器控制下发安装逻辑」。离线 / 网站没上线 → 静默用内嵌版。
 //! - **步骤类型**：`ensure_node`（缺 Node 自动装便携版到 ~/.uking/runtime）、
 //!   `npm_install`（走 npmmirror 国内源）、`run`（任意命令）。
@@ -29,8 +29,6 @@ const SKILL_URLS: &[&str] = &[
     // u-claw.org.cn 是唯一全国内可达子域（cloud.u-claw.org 部分网络 GFW SNI reset，见 CLAUDE.md/Issue#18）
     "https://u-claw.org.cn/uking/install-windows.json",
     "https://cloud.u-claw.org/uking/install-windows.json",
-    "https://www.u-king.org/skills/install-windows.json",
-    "https://u-king-org.vercel.app/skills/install-windows.json",
 ];
 
 /// 免费路线独立 Registry：只接受已人工核验的条目。自动巡检只能生成候选，不能越过
@@ -38,7 +36,6 @@ const SKILL_URLS: &[&str] = &[
 const FREE_REGISTRY_URLS: &[&str] = &[
     "https://u-claw.org.cn/uking/free-registry.json",
     "https://cloud.u-claw.org/uking/free-registry.json",
-    "https://www.u-king.org/free-registry.json",
 ];
 
 // ============================================================
@@ -511,7 +508,6 @@ const VERSION_URLS: &[&str] = &[
     // u-claw.org.cn 国内可达优先（cloud.u-claw.org 部分网络 SNI reset）
     "https://u-claw.org.cn/uking/version.json",
     "https://cloud.u-claw.org/uking/version.json",
-    "https://www.u-king.org/version.json",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -765,8 +761,10 @@ fn semver_gt(a: &str, b: &str) -> bool {
 const SELF_EXE_URLS: &[&str] = &[
     // 阿里云 OSS 国内主源（5MB/s，远快于新加坡的 19KB/s）
     "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/U-King.exe",
+    // 已备案的国内主站（2026-10-04 实测 200，与 OSS 同一文件）。原来 OSS 之后只剩 cloud.u-claw.org
+    // （部分国内网络 SNI reset）和已失效的 www.u-king.org，OSS 一挂国内就没有可用的兜底。
+    "https://u-claw.org.cn/download/U-King.exe",
     "https://cloud.u-claw.org/download/U-King.exe",
-    "https://www.u-king.org/download/U-King.exe",
 ];
 
 #[cfg(target_os = "macos")]
@@ -777,7 +775,6 @@ const SELF_MAC_ZIP_URLS: &[&str] = &[
     "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/U-King-Mac.zip",
     "https://cloud.u-claw.org/download/U-King-Mac.zip",
     "https://u-claw.org.cn/download/U-King-Mac.zip",
-    "https://www.u-king.org/download/U-King-Mac.zip",
 ];
 
 // ====== 自升级暂存文件（都放 exe 同目录，dotfile 隐藏，和 current_exe 同盘） ======
@@ -1499,7 +1496,6 @@ pub fn self_update(_progress: &dyn Fn(&str, u8), _ack_terminal_count: Option<usi
 const SETUP_URLS: &[&str] = &[
     "https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/U-King-Setup.exe",
     "https://u-claw.org.cn/download/U-King-Setup.exe",
-    "https://www.u-king.org/download/U-King-Setup.exe",
 ];
 
 /// 下载目录（拿不到就退回临时目录）。放「下载」里而不是藏在 temp：
@@ -7277,16 +7273,19 @@ mod tests {
 
     #[test]
     fn update_picker_uses_highest_version_from_out_of_order_responses() {
-        let responses = vec![
-            (VERSION_URLS[2].to_string(), r#"{"version":"1.1.0"}"#.to_string()),
-            (VERSION_URLS[1].to_string(), r#"{"version":"1.3.0"}"#.to_string()),
-            (VERSION_URLS[0].to_string(), r#"{"version":"1.2.0"}"#.to_string()),
-        ];
-
-        let info = pick_update_from_responses("1.0.0", &responses);
-        assert!(info.checked_ok);
-        assert_eq!(info.latest, "1.3.0");
-        assert!(info.has_update);
+        // 不按下标写死源的个数（2026-10-04 删掉两个失效回落源后，写死 [2] 的用例直接越界）。
+        // 「最高版本」既可能先到、也可能后到，两种顺序都要取到它。
+        let (first, last) = (VERSION_URLS[0], *VERSION_URLS.last().unwrap());
+        assert_ne!(first, last, "前提：至少两个版本源");
+        for responses in [
+            vec![(last.to_string(), r#"{"version":"1.3.0"}"#.to_string()), (first.to_string(), r#"{"version":"1.2.0"}"#.to_string())],
+            vec![(last.to_string(), r#"{"version":"1.1.0"}"#.to_string()), (first.to_string(), r#"{"version":"1.3.0"}"#.to_string())],
+        ] {
+            let info = pick_update_from_responses("1.0.0", &responses);
+            assert!(info.checked_ok);
+            assert_eq!(info.latest, "1.3.0");
+            assert!(info.has_update);
+        }
     }
 
     #[test]
@@ -7316,7 +7315,7 @@ mod tests {
     #[test]
     fn update_picker_breaks_version_ties_by_declared_source_order() {
         let responses = vec![
-            (VERSION_URLS[2].to_string(), r#"{"version":"1.2.0","notes":"第三源"}"#.to_string()),
+            (VERSION_URLS.last().unwrap().to_string(), r#"{"version":"1.2.0","notes":"末位源"}"#.to_string()),
             (VERSION_URLS[0].to_string(), r#"{"version":"1.2.0","notes":"第一源"}"#.to_string()),
         ];
 

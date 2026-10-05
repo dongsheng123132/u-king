@@ -920,7 +920,7 @@ export function ChatPanel({
                     value={model}
                     onChange={pickModel}
                     icon={Cpu}
-                    title={t("这一轮用哪个模型（不选就跟着「虾盘云」里配的走）")}
+                    title={t("这一轮用哪个模型（不选就跟着驱动设置走：虾盘云，或你自己的官方登录 / Key）")}
                   >
                     <option value="">{t("模型：跟随驱动设置")}</option>
                     {agent === "codex"

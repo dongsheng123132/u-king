@@ -1902,18 +1902,6 @@ pub fn find_hermes_app_exe() -> Option<PathBuf> {
     None
 }
 
-/// Hermes 桌面版是否已装（探测 Electron exe）。仅 Windows 有 app 接管；其他平台返回 false。
-pub fn hermes_app_installed() -> bool {
-    #[cfg(windows)]
-    {
-        find_hermes_app_exe().is_some()
-    }
-    #[cfg(not(windows))]
-    {
-        Path::new("/Applications/Hermes.app").exists()
-    }
-}
-
 /// 当前进程是否以管理员身份运行（netsh 改防火墙必须管理员，否则白跑还喷错）。
 /// 用 `net session`（仅管理员能成功）静默探测，不引第三方 crate。
 #[cfg(windows)]

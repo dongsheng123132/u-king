@@ -186,25 +186,6 @@ pub fn stop() -> Result<(), String> {
 // 照 `codex_proxy` 的样子把 command 定义在模块内：这几个都不碰 `AppHandle`，
 // 放这儿 lib.rs 只需登记三行，删这个模块也只动 lib.rs + 前端两处（宪法第 12 条）。
 
-#[tauri::command]
-pub fn claude_bridge_status() -> BridgeStatus {
-    status()
-}
-
-#[tauri::command]
-pub fn claude_bridge_start(
-    openai_base: String,
-    key: Option<String>,
-    model: Option<String>,
-) -> Result<BridgeStatus, String> {
-    start(&openai_base, key.as_deref().unwrap_or(""), model.as_deref().unwrap_or(""))
-}
-
-#[tauri::command]
-pub fn claude_bridge_stop() -> Result<(), String> {
-    stop()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

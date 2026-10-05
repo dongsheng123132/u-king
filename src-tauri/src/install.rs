@@ -261,25 +261,3 @@ pub fn pin_current_exe_to_desktop() -> Result<String, String> {
     Err("当前平台暂不支持「固定到桌面」".into())
 }
 
-/// 打开本地安装目录（资源管理器 / Finder）。
-pub fn reveal_install_dir() -> Result<(), String> {
-    let dir = install_dir();
-    if !dir.exists() {
-        return Err("尚未安装到本地".into());
-    }
-    #[cfg(windows)]
-    {
-        std::process::Command::new("explorer")
-            .arg(dir)
-            .spawn()
-            .map_err(|e| format!("打开目录失败: {e}"))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(dir)
-            .spawn()
-            .map_err(|e| format!("打开目录失败: {e}"))?;
-    }
-    Ok(())
-}

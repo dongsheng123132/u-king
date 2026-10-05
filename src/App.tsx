@@ -1008,7 +1008,7 @@ export function App() {
           className="shrink-0 border-b border-warning-500/40 bg-warning-500/15 px-3 py-1.5 text-[12.5px] text-warning-700 dark:text-warning-400"
         >
           {tr(
-            "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但定时任务、技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。",
+            "这是并行调试实例（第二个 U-King）—— 界面、终端、工作目录跟第一个完全一样，但技能包同步、Codex 代理自愈都由第一个负责，这里不重复跑；这里新建的任务和对话续接不会保存。",
           )}
         </div>
       )}
@@ -1042,7 +1042,7 @@ export function App() {
           onToggleTheme={() => setTheme((m) => (m === "dark" ? "light" : "dark"))}
           // 官网 = 品牌域 u-king.org（2026-07 已从 Vercel 迁到自有服务器，与 u-claw.org.cn 同机，
                     // 根路径 serve 落地页）。⚠️ 境内裸网 SNI reset（2026-08 实测）→ 不直开品牌域，
-                    // 先调 resolve_site_url 后端探测：u-claw.org.cn/uking/ 首选（境内 200），www.u-king.org 备选，
+                    // 先调 resolve_site_url 后端探测：u-claw.org.cn/uking/（已备案主站，境内 200），
                     // 全挂 fallback 国内地址——点击必须能出来（多 AI 会审 2026-08-27 裁决 P0）。
                     onOpenSite={() => {
                       void (async () => {

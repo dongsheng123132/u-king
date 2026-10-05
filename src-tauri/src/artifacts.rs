@@ -216,16 +216,6 @@ pub fn unseen_count() -> usize {
     list().iter().filter(|a| !a.seen).count()
 }
 
-pub fn mark_seen(ids: &[String]) {
-    let mut idx = read_index();
-    for a in idx.items.iter_mut() {
-        if ids.is_empty() || ids.contains(&a.id) {
-            a.seen = true;
-        }
-    }
-    write_index(&idx);
-}
-
 /// 盘上的绝对路径 —— 这就是回给终端客户端的那个 path。
 pub fn path_of(id: &str) -> Option<PathBuf> {
     list()

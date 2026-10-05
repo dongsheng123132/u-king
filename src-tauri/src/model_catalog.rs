@@ -45,13 +45,13 @@ const EMBEDDED: &str = include_str!("../models/xiapan-models.json");
 const CATALOG_NAME: &str = "xiapan-models";
 
 /// 线上副本，依次尝试，第一个「合法且更新」的生效。顺序和 `installer.rs::SKILL_URLS` 保持一致
-/// （国内直连 Vercel 经常不通，所以 u-claw.org.cn 放第一；闸门会核对两边的域名序列没漂）。
+/// （u-claw.org.cn 放第一；闸门会核对两边的域名序列没漂）。
+/// 2026-10-04 删掉 www.u-king.org（HTTPS 握手失败）与 u-king-org.vercel.app（DEPLOYMENT_NOT_FOUND，
+/// 部署已不存在、名字可能被他人注册）两个回落源 —— 官网只认已备案的 u-claw.org.cn。
 const CATALOG_URLS: &[&str] = &[
     // u-claw.org.cn 是唯一全国内可达子域（cloud.u-claw.org 部分网络 GFW SNI reset）
     "https://u-claw.org.cn/uking/xiapan-models.json",
     "https://cloud.u-claw.org/uking/xiapan-models.json",
-    "https://www.u-king.org/skills/xiapan-models.json",
-    "https://u-king-org.vercel.app/skills/xiapan-models.json",
 ];
 
 /// 单次拉取上限：目录只有几 KB，超过这个量级的响应一定不是它（也防被劫持成大文件）。

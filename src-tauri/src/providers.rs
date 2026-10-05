@@ -3780,7 +3780,9 @@ mod managed_provider_identity_tests {
                 )
                 .unwrap();
 
-                let crush = root.join("LocalAppData").join("crush").join("crush.json");
+                // 用产品自己的路径函数：Windows 是 %LOCALAPPDATA%\crush，其余平台是 ~/.config/crush。
+                // 以前写死 LocalAppData，Mac/Linux 上 apply_crush 写的是另一个文件，这条用例在非 Windows 上恒红。
+                let crush = crush_config_path();
                 std::fs::create_dir_all(crush.parent().unwrap()).unwrap();
                 std::fs::write(
                     &crush,
@@ -7067,6 +7069,7 @@ mod tool_discovery_source_tests {
 
     /// ③ 排序契约：同一个工具在 machine 和 portable 两处都被发现时，两条都保留，
     /// 且 `machine` 排在前——本机装的优先，不让盘上的遮蔽本机的。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn same_tool_found_in_both_sources_keeps_both_and_sorts_machine_first() {
         let machine_dir = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
@@ -7095,6 +7098,7 @@ mod tool_discovery_source_tests {
     /// `discover_tools_from` 用 `cmd`（"openclaw"）去搜索、但仍然用 `name`（"clawx"）
     /// 报告和回查 `active`，防止「改回按 name 搜索」这种退化重演（`clawx` 会从
     /// 「设备发现」里永久消失，即使 openclaw 明明装在这台机器上）。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn config_target_is_discovered_via_its_real_executable_name() {
         let machine_dir = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
@@ -7228,7 +7232,8 @@ fn discover_tools_from(
 /// 用户的 Claude 是否是「自己的」配置（非 U-King 虾盘云）。
 ///
 /// 判据（任一成立即为真；拿不准一律当「是自己的」—— 宁可不推虾盘云，也绝不抢用户 Key）：
-///  ① `~/.claude/.credentials.json` 存在且非空 → 官方 OAuth 登录（用户自己的 Claude 账号）
+///  ① `~/.claude/.credentials.json` 存在且非空，**或** `~/.claude.json` 有非空 `oauthAccount`
+///     → 官方 OAuth 登录（用户自己的 Claude 账号；macOS 只有后者，凭据在钥匙串里）
 ///  ② settings.json 的 env 有非空 `ANTHROPIC_AUTH_TOKEN`，且 base 不含 `u-claw.org`
 ///     → 自备 Key / 自己的中转（DeepSeek / GLM / 自建代理都算）
 fn claude_owns_config() -> bool {
@@ -7236,6 +7241,23 @@ fn claude_owns_config() -> bool {
     let cred = config_home().join(".claude").join(".credentials.json");
     if std::fs::metadata(&cred).map(|m| m.len() > 8).unwrap_or(false) {
         return true;
+    }
+    // ①' 官方 OAuth 登录的另一份证据：`~/.claude.json` 里非空的 `oauthAccount`。
+    //
+    // 🔴 **macOS 上 Claude Code 把凭据存在钥匙串，不写 `.credentials.json`**。只认那个文件，
+    // Mac 上新登录的客户会被判成「不是自己的」→ `delegation_env` 给 claude 子进程注入虾盘云
+    // 端点 + 设备 Key → env 优先级高于官方登录，**他的官方登录被我们盖掉**，余额为 0 时还报「去充值」。
+    // 2026-10-04 用 1.3.8 真二进制 + UKING_TEST_HOME 沙箱复现：只有 oauthAccount → claude_own_key=false。
+    // `oauthAccount` 是登录时三平台都写的账号信息（邮箱/组织，不含任何凭据），读它不碰钥匙串。
+    // `.claude.json` 在重度用户机器上可能有几 MB（项目历史），先做子串预筛，大多数机器不用解析。
+    if let Ok(s) = std::fs::read_to_string(config_home().join(".claude.json")) {
+        if s.contains("\"oauthAccount\"") {
+            if let Ok(v) = serde_json::from_str::<Value>(&s) {
+                if v.get("oauthAccount").and_then(|a| a.as_object()).map(|o| !o.is_empty()).unwrap_or(false) {
+                    return true;
+                }
+            }
+        }
     }
     // ② 自备 Key，且端点不是我们的虾盘云
     if let Ok(s) = std::fs::read_to_string(claude_settings_path()) {
@@ -9032,52 +9054,6 @@ pub fn query_balance(api_key: &str) -> Result<Balance, String> {
 // 用量明细（花在哪了）
 // ============================================================
 
-#[derive(Debug, Clone, Serialize)]
-pub struct UsageBreakdownItem {
-    pub model: String,
-    pub cny: f64,
-    pub count: i64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct UsageBreakdown {
-    pub days: i64,
-    pub items: Vec<UsageBreakdownItem>,
-}
-
-/// 查「钱花在哪了」——按模型分组的消耗明细。这是虾盘云自建的端点（不是 OpenAI 兼容 API
-/// 的一部分，`/v1/dashboard/billing/breakdown`），服务端一条按 token_id 索引的聚合查询，
-/// 客户端只在打开 AI 设置页时按需查一次，不轮询、不加服务器负担。
-pub fn query_usage_breakdown(api_key: &str, days: i64) -> Result<UsageBreakdown, String> {
-    let auth = format!("Authorization: Bearer {api_key}");
-    let resp = curl(&[
-        "-sS",
-        "-m",
-        "8",
-        "--connect-timeout",
-        "5",
-        "-H",
-        &auth,
-        &format!("https://api.u-claw.org.cn/v1/dashboard/billing/breakdown?days={days}"),
-    ])?;
-    let v: Value = serde_json::from_str(&resp).map_err(|_| format!("用量明细响应异常：{}", snippet(&resp, 200)))?;
-    let items = v
-        .get("items")
-        .and_then(|x| x.as_array())
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|it| {
-            Some(UsageBreakdownItem {
-                model: it.get("model")?.as_str()?.to_string(),
-                cny: it.get("cny")?.as_f64()?,
-                count: it.get("count").and_then(|c| c.as_i64()).unwrap_or(0),
-            })
-        })
-        .collect();
-    Ok(UsageBreakdown { days, items })
-}
-
 // 沙箱互斥锁曾经定义在这儿（`pub(crate) SANDBOX_LOCK`），注释也写明了「凡是要改
 // UKING_TEST_HOME 的测试模块一律锁这一把」—— 但后来的模块复制 `with_sandbox` 时
 // 连注释一起抄走、各自新起了一把本地锁，等于没锁。现已下沉到 `crate::testsandbox`，
@@ -9661,6 +9637,7 @@ mod hermes_home_tests {
 
     /// 客户机自愈：旧落点里我们写的那份好配置，要能搬到 Hermes 真会读的 home。
     /// 光把落点改对是不够的 —— 客户升级后若不再点一次「一键配好」，真 home 里的坏配置还在。
+    #[cfg(windows)] // 测的是 Windows 语义（GBK / .cmd 壳 / 盘符 / %LOCALAPPDATA%），别的平台上不成立
     #[test]
     fn migrates_our_config_out_of_the_legacy_dir() {
         with_sandbox("migrate", |root| {
@@ -10945,6 +10922,37 @@ mod delegation_env_tests {
             // 免配置直连我们（这不是「抢」，是他本来就没有别的可用配置）。
             assert!(keys.contains(&"OPENAI_API_KEY"), "不该殃及 Codex 那半边：{keys:?}");
             assert!(keys.contains(&"OPENAI_BASE_URL"), "不该殃及 Codex 那半边：{keys:?}");
+        });
+    }
+
+    /// macOS 的官方登录形态：凭据在钥匙串里、**没有** `.credentials.json`，只有 `~/.claude.json`
+    /// 的 `oauthAccount`。只认文件的旧判据会把这台 Mac 判成「不是自己的」并注入虾盘云盖掉登录。
+    #[test]
+    fn keychain_only_official_login_on_mac_is_left_alone() {
+        with_sandbox("oauth-keychain", || {
+            let cred = config_home().join(".claude").join(".credentials.json");
+            assert!(!cred.exists(), "前提：这个形态下没有凭据文件");
+            std::fs::write(
+                config_home().join(".claude.json"),
+                r#"{"numStartups":3,"oauthAccount":{"accountUuid":"demo","emailAddress":"demo@example.test"}}"#,
+            )
+            .unwrap();
+            let keys: Vec<String> = delegation_env("sk-我们的").into_iter().map(|(k, _)| k).collect();
+            assert!(
+                !keys.iter().any(|k| k.starts_with("ANTHROPIC_")),
+                "Mac 上只在钥匙串里的官方登录被我们抢了：{keys:?}"
+            );
+        });
+    }
+
+    /// 反向：`.claude.json` 存在但**没登录过**（没有 / 空的 oauthAccount）→ 不能误判成自己的，
+    /// 否则没配过任何东西的新机器会失去「免配置直接用虾盘云」。
+    #[test]
+    fn claude_json_without_oauth_account_still_gets_delegated() {
+        with_sandbox("oauth-none", || {
+            std::fs::write(config_home().join(".claude.json"), r#"{"numStartups":1,"oauthAccount":{}}"#).unwrap();
+            let keys: Vec<String> = delegation_env("sk-我们的").into_iter().map(|(k, _)| k).collect();
+            assert!(keys.iter().any(|k| k == "ANTHROPIC_AUTH_TOKEN"), "没登录的机器应照旧免配置走虾盘云：{keys:?}");
         });
     }
 

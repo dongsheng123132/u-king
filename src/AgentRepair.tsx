@@ -113,7 +113,7 @@ export function AgentRepair({
         rows.push({
           level: "bad",
           title: t("起得来，但多行提问会失败"),
-          detail: t("命令被解析成了批处理壳（{p}）——Windows 不允许给批处理传带换行的参数，于是「多行提问」和所有「AI 专家」都会报「启动失败」。", { p: probe.resolved }),
+          detail: t("命令被解析成了批处理壳（{p}）——Windows 不允许给批处理传带换行的参数，于是所有多行提问都会报「启动失败」。", { p: probe.resolved }),
           fix: t("升级到 0.9.83 以上即可（本版已修）；若仍出现，多半是 PATH 上另有一份旧的壳在抢"),
         });
       } else if (!probe.multiline_ok) {
