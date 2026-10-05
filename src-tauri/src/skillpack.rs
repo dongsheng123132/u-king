@@ -33,6 +33,7 @@ const AIGC: Pack = Pack {
         ("scripts/gen-stitch.mjs", include_str!("../skills/aigc/scripts/gen-stitch.mjs")),
         ("scripts/gen-tts.mjs", include_str!("../skills/aigc/scripts/gen-tts.mjs")),
         ("scripts/gen-bgm.mjs", include_str!("../skills/aigc/scripts/gen-bgm.mjs")),
+        ("scripts/gen-music.mjs", include_str!("../skills/aigc/scripts/gen-music.mjs")),
         ("scripts/gen-asr.mjs", include_str!("../skills/aigc/scripts/gen-asr.mjs")),
         ("scripts/list-models.mjs", include_str!("../skills/aigc/scripts/list-models.mjs")),
     ],
@@ -50,6 +51,7 @@ const AIGC_GENERATORS: &[&str] = &[
     "scripts/gen-stitch.mjs",
     "scripts/gen-tts.mjs",
     "scripts/gen-bgm.mjs",
+    "scripts/gen-music.mjs",
     "scripts/gen-asr.mjs",
 ];
 
