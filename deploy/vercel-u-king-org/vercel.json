@@ -1,0 +1,6 @@
+{
+  "redirects": [
+    { "source": "/", "destination": "https://u-claw.org.cn/uking/", "permanent": true },
+    { "source": "/:path*", "destination": "https://u-claw.org.cn/uking/:path*", "permanent": true }
+  ]
+}
