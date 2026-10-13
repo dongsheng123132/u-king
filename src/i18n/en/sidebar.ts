@@ -98,6 +98,9 @@ export const sidebar: Record<string, string> = {
   "白天": "Day",
   "打开官网": "Open website",
   "官网": "Website",
+  "查看 GitHub 源码": "View source on GitHub",
+  "提交 PR": "Create PR",
+  "提交 Pull Request，参与代码贡献": "Create a pull request to contribute code",
 
   // 语言切换
   "语言": "Language",

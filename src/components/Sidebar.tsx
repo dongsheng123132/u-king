@@ -9,7 +9,7 @@ import { useState } from "react";
 // 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱，页面 2026-10-04 已删）/ SquareTerminal（终端工作台）/
 // Sparkles（装机 · 体检）/ Wallet（虾盘云 · 充值）/ Gauge（Token 水电表）随入口撤下一并去掉，
 // 恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
-import { ArrowUpCircle, ChevronDown, Cpu, FlaskConical, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, CodeXml, Cpu, FlaskConical, GitPullRequest, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -255,6 +255,8 @@ export function Sidebar({
   onShowChangelog,
   platform,
   onOpenSite,
+  onOpenGithub,
+  onOpenPullRequest,
   theme = "light",
   onToggleTheme,
   hasUpdate,
@@ -282,8 +284,11 @@ export function Sidebar({
   platform?: string;
   theme?: "light" | "dark";
   onToggleTheme?: () => void;
-  /** 点底部「官网」打开官网（方便联系/找下载/充值）。极简：只放官网这一个入口。 */
+  /** 点底部「官网」打开官网（方便联系/找下载/充值）。 */
   onOpenSite?: () => void;
+  /** 打开公开源码仓库和 PR 创建页。 */
+  onOpenGithub?: () => void;
+  onOpenPullRequest?: () => void;
   /** 有新版可升级——侧栏常驻升级入口。因为升级横幅只在「管家页」的 StatusLine 露出，
    *  用户长期待在 U-Workspace / 终端 / TUI 页时永远看不到升级（客户实锤）。侧栏在所有页
    *  都在，把升级入口放这里保证「随时点得到」。 */
@@ -315,6 +320,10 @@ export function Sidebar({
   showTerminal?: boolean;
 }) {
   const { t, lang, setLang } = useI18n();
+  const contributionLinks = [
+    { id: "github", label: "GitHub", title: t("查看 GitHub 源码"), icon: CodeXml, onOpen: onOpenGithub },
+    { id: "pull-request", label: t("提交 PR"), title: t("提交 Pull Request，参与代码贡献"), icon: GitPullRequest, onOpen: onOpenPullRequest },
+  ].filter((link) => link.onOpen);
   /** 高亮用的 tab：没有自己侧栏项的 tab 映射到所属项（见 NAV_ALIAS）。 */
   const navActive: TabId = NAV_ALIAS[active] ?? active;
   /** 矮屏（1366×768 笔记本客户区 ≈ 696px）：这一栏装不下自己。见下方 `short &&` 各处。 */
@@ -498,6 +507,18 @@ export function Sidebar({
           >
             <LifeBuoy size={18} />
           </button>
+          {contributionLinks.map(({ id, label, title, icon: Icon, onOpen }) => (
+            <button
+              key={id}
+              data-ui-id={`sidebar-${id}`}
+              onClick={onOpen}
+              title={title}
+              aria-label={label}
+              className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
+            >
+              <Icon size={18} />
+            </button>
+          ))}
           <button
             onClick={() => setLang(lang === "en" ? "zh" : "en")}
             title={`${t("语言")}: ${lang === "en" ? "English" : "中文"}`}
@@ -778,26 +799,43 @@ export function Sidebar({
         )}
       </div>
 
-      {/* 版本 + 官网（极简，只放官网一个入口，方便联系/找下载/充值） */}
-      <div className={cn("px-4 border-t border-white/[0.06] flex items-center justify-between gap-2 bg-white/[0.01]", short ? "py-1.5" : "py-3")}>
-        {/* 不挂 data-action-id：打开更新日志面板是**界面动作**，按宪法不进动作核心
-            （切标签/弹面板那一类）。挂了反而会让绑定核对指向一个不存在的动作。 */}
-        {/* 加个图标 —— 光一串 10px 的灰色版本号，没人看得出它是可点的。 */}
-        <button
-          onClick={() => onShowChangelog?.()}
-          className="flex items-center gap-1 text-[10px] text-ink-3 hover:text-accent transition-colors"
-          title={t("查看更新日志")}
-        >
-          <History size={11} />
-          <span className="font-mono">v{version}</span>
-        </button>
-        <button
-          onClick={() => onOpenSite?.()}
-          className="flex items-center gap-1 text-[10px] text-ink-4 hover:text-accent transition-colors"
-          title={t("打开官网")}
-        >
-          <Globe size={11} /> {t("官网")}
-        </button>
+      {/* 版本与官网一行，开源贡献入口一行；各页常驻，窄侧栏保留图标。 */}
+      <div className={cn("px-4 border-t border-white/[0.06] bg-white/[0.01]", short ? "py-1.5" : "py-3")}>
+        <div className="flex items-center justify-between gap-2">
+          {/* 不挂 data-action-id：打开更新日志面板是**界面动作**，按宪法不进动作核心
+              （切标签/弹面板那一类）。挂了反而会让绑定核对指向一个不存在的动作。 */}
+          {/* 加个图标 —— 光一串 10px 的灰色版本号，没人看得出它是可点的。 */}
+          <button
+            onClick={() => onShowChangelog?.()}
+            className="flex items-center gap-1 text-[10px] text-ink-3 hover:text-accent transition-colors"
+            title={t("查看更新日志")}
+          >
+            <History size={11} />
+            <span className="font-mono">v{version}</span>
+          </button>
+          <button
+            onClick={() => onOpenSite?.()}
+            className="flex items-center gap-1 text-[10px] text-ink-4 hover:text-accent transition-colors"
+            title={t("打开官网")}
+          >
+            <Globe size={11} /> {t("官网")}
+          </button>
+        </div>
+        <div className="mt-1.5 flex items-center gap-2">
+          {contributionLinks.map(({ id, label, title, icon: Icon, onOpen }) => (
+            <button
+              key={id}
+              data-ui-id={`sidebar-${id}`}
+              onClick={onOpen}
+              title={title}
+              aria-label={label}
+              className="min-h-[28px] min-w-0 flex-1 flex items-center justify-center gap-1 rounded-card text-[11px] text-ink-3 hover:bg-white/[0.04] hover:text-accent transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
+            >
+              <Icon size={12} className="shrink-0" />
+              <span className="whitespace-nowrap">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </aside>
   );

@@ -56,6 +56,7 @@ import { ensureDefaultDriver } from "./lib/ensureDriver";
 // 「能不能启动、该怎么启动」只在 Rust `tools::plan()` 判一次——GUI 只消费它的结果
 // （Manager 挂载点 / launchTool / ToolAppView::handleStart 三条前端路径共用这一个 client）。
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
+const GITHUB_REPO_URL = "https://github.com/dongsheng123132/u-king";
 
 // 懒加载「条件渲染、非首屏」的页面 —— 首屏只解析外壳 + 当前页，其余按需拉各自 chunk。
 // 治「打开慢」（原本一次性 eager import 全部页面塞进 1.6MB 主包），并缩小首屏解析面（降低
@@ -1051,6 +1052,8 @@ export function App() {
                         openUrl(u).catch(() => {});
                       })();
                     }}
+          onOpenGithub={() => void openUrl(GITHUB_REPO_URL).catch(() => flash(tr("打开链接失败")))}
+          onOpenPullRequest={() => void openUrl(`${GITHUB_REPO_URL}/compare`).catch(() => flash(tr("打开链接失败")))}
           // 侧栏常驻升级入口：升级横幅只在管家页 StatusLine 露出，长期待在 U-Workspace 的用户
           // 看不到升级（客户实锤）。侧栏在所有页都在，保证随时点得到。不受 updateDismissed 影响
           //（那只收起大横幅；这个小入口有新版就一直在）。
