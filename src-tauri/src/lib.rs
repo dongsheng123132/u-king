@@ -8395,6 +8395,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("启动 U-King 失败")
         .run(|_app, event| {
+            // macOS：主窗口被 CloseRequested 拦下 hide 进托盘后，点 Dock 图标要能唤回。
+            // 2026-10-15 Mac Mini 实测：hide 后点 Dock 无反应（此前没有 Reopen 处理），
+            // 用户只能重启进程。Reopen 是 macOS 点击 Dock 图标的系统标准事件。
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_main_window(_app);
+                return;
+            }
             if let tauri::RunEvent::Exit = event {
                 // 主进程退出前清掉所有 PTY 会话，不留孤儿 pwsh（见 term.rs cleanup_all）
                 term::cleanup_all();

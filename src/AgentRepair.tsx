@@ -35,7 +35,12 @@ type Probe = {
   error: string | null;
 };
 
-type Driver = { claude_base?: string | null; codex_provider?: string | null };
+type Driver = {
+  claude_base?: string | null;
+  codex_provider?: string | null;
+  /** 各工具当前接管的驱动（provider id；"official" = 官方直连）—— 与 AI 设置页状态卡同口径 */
+  active?: Record<string, string> | null;
+};
 type Stack = Record<string, { found?: boolean; version?: string | null } | undefined>;
 
 const TOOLS: { id: string; name: string; blurb: string }[] = [
@@ -135,14 +140,24 @@ export function AgentRepair({
       }
     }
 
-    // ③ 驱动配没配（配不对的表现是「能起来但一问就报错」，客户最容易误判成「AI 坏了」）
-    const configured = toolId === "claude" ? !!driver.claude_base : !!driver.codex_provider;
+    // ③ 驱动配没配（配不对的表现是「能起来但一问就报错」，客户最容易误判成「AI 坏了」）。
+    // 🔴 2026-10-15 修口径矛盾：切到「官方直连」时 claude_base 是空的，老判定会报
+    // 「还没配驱动」，而同页状态卡显示「已接管 · 官方直连」—— 官方直连是有效配置之一
+    // （用官方登录 / 订阅，不经中转），不是没配。两处统一按 `active` 表判（含 official）。
+    const actId = driver.active?.[toolId];
+    const configured = toolId === "claude" ? !!(driver.claude_base || actId) : !!(driver.codex_provider || actId);
+    const detail =
+      actId === "official"
+        ? t("官方直连（用官方登录 / 订阅，不经中转）")
+        : toolId === "claude"
+          ? String(driver.claude_base ?? actId ?? "")
+          : String(driver.codex_provider ?? actId ?? "");
     rows.push(
       configured
         ? {
             level: "ok",
             title: t("驱动已配"),
-            detail: toolId === "claude" ? String(driver.claude_base) : String(driver.codex_provider),
+            detail,
           }
         : {
             level: "warn",

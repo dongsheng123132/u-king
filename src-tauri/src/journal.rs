@@ -107,6 +107,17 @@ fn day_file(secs: i64) -> PathBuf {
 /// （那不是给人手改的文件，界面上有开关）。
 static ENABLED_CACHE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
+/// 写路径的进程内互斥锁。
+///
+/// 为什么要有它（2026-10-15 macOS 实测）：`record` 会被 GUI 动作线程、AI 工具调用线程、
+/// 定时任务并发打到同一个 `day_file`。`OpenOptions::append(true)` 只保证**单次**底层写是
+/// 原子追加，但 `writeln!` 的 `write_all` 在 Rust std 里可能被拆成多次 `write` 调用
+/// （部分写入 / 被抢占时），两条 JSON 就会字节交错粘在一起 —— 实测 `2026-10-13.jsonl`
+/// 4 行、`2026-10-14.jsonl` 6 行坏行（指数 [10,11,14-17] 与 [6,7,11,12]，两条记录重叠）。
+/// 锁只包「开文件 + 写 + 当天首条清理」，不碰开关读取；`record` 仍不 panic
+/// （poison 用 `into_inner` 恢复，同模块「永不 panic」约定）。
+static RECORD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 本地记录开着吗。**默认开** —— 它是本地的、不上传的，而且是夜班/交班报告的唯一数据源，
 /// 关着等于产品没有记忆。但必须能真关掉，且界面要明说在记什么（见 `NightShift.tsx`）。
 pub fn enabled() -> bool {
@@ -241,6 +252,9 @@ pub fn record(ev: Value) {
         return;
     }
     let p = day_file(now / 1000);
+    // 并发保护：开文件、写、当天首条清理必须是一段**不可交错**的临界区，
+    // 否则并发 `writeln!` 的两条 JSON 会字节交错粘成坏行（见 RECORD_LOCK 注释）。
+    let _guard = RECORD_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // 触顶：停写，但留一条说明。静默丢会让时间轴从某一刻起变成骗人的。
     if let Ok(m) = std::fs::metadata(&p) {
         if m.len() > MAX_DAY_BYTES {
@@ -528,6 +542,49 @@ mod tests {
         assert_eq!(actor_for("scheduler"), "ai");
         assert_eq!(actor_for("night"), "ai");
         assert_eq!(actor_for("没见过的面"), "system");
+    }
+
+    /// 并发写不产生坏行（2026-10-15 macOS 实测修掉的回归）：
+    /// 多线程同时 record 到同一天的文件，之后逐行 JSON 必须全部合法、条数一条不丢。
+    /// 修之前：append 模式的 write_all 会被拆成多次底层写，两条 JSON 字节交错粘成坏行。
+    #[test]
+    fn concurrent_writes_never_produce_corrupt_lines() {
+        crate::testsandbox::with_sandbox("journal-concurrent", &[], |_| {
+            invalidate_cache();
+            let _ = clear();
+            set_enabled(true).expect("写开关");
+            let mut handles = Vec::new();
+            for t in 0..8 {
+                handles.push(std::thread::spawn(move || {
+                    for i in 0..50 {
+                        record(json!({
+                            "actor": "ai", "kind": "tool", "name": "write_file",
+                            "target": format!("<工作区>/t{t}/f{i}"), "ok": true, "ms": 1,
+                        }));
+                    }
+                }));
+            }
+            for h in handles {
+                h.join().unwrap();
+            }
+            let mut total = 0usize;
+            for e in std::fs::read_dir(journal_dir()).unwrap().flatten() {
+                let p = e.path();
+                if p.extension().and_then(|x| x.to_str()) == Some("jsonl") {
+                    let text = std::fs::read_to_string(&p).unwrap();
+                    for line in text.lines() {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        serde_json::from_str::<Value>(line)
+                            .unwrap_or_else(|e| panic!("坏行: {e} ← {line:?}"));
+                        total += 1;
+                    }
+                }
+            }
+            assert_eq!(total, 8 * 50, "并发 400 条应一条不丢，实际 {total}");
+            invalidate_cache();
+        });
     }
 
     /// 真跑一遍落盘 —— 开关、写、读、清空。
