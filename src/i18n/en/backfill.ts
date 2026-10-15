@@ -65,6 +65,7 @@ export const backfill: Record<string, string> = {
   "驱动已配": "Provider configured",
   "还没配驱动": "Provider not configured",
   "能启动，但一提问就会报鉴权错误——它还不知道该连哪。": "Launches, but prompts trigger auth errors — it doesn't know which endpoint to connect to yet.",
+  "官方直连（用官方登录 / 订阅，不经中转）": "Official direct connection (uses official login / subscription, no relay)",
   "去「AI 设置」一键配好": "Configure in one click via “AI Settings”",
   "AI 工具专项修复": "AI Tool Specific Fix",
   "专治「装着却用不了」——装没装、起不起得来、配没配对，分三行说清楚": "Fixes “installed but unusable” — clearly shows installation status, launch capability, and provider config in three lines.",
