@@ -196,16 +196,16 @@ MiMo 一次性 DB 迁移（FTS 索引）需要在 `TEMP` 里建临时文件。`T
 | --- | --- | --- |
 | U-King `src-tauri/resources/usb-genie/launch-agent.cmd` | 写探针失败回退 `%LOCALAPPDATA%\Temp`，测试钉死 | `ac037317b` |
 | U-Claw `portable/Windows-Start.bat` | 同款写探针回退 | u-claw 仓 `8434fbf` |
+| U-Claw `portable/Mac-Start.command` | 钉 TMPDIR + 写探针回退（对齐 Windows） | u-claw 仓 `350c6e5` |
+| U-Model `启动.command` / `启动.sh` / `启动.bat` / `portable.py` | 三平台 + Python 侧写探针回退 | u-model 仓 `c9fc0a0` |
 | U-King mimo CLI 守卫 | 本就有 `if not exist "%TEMP%" exit /b 1` | — |
 
-**残留（未做）**：
+**残留**：
 
-- Mac 启动器 `TMPDIR` 同款问题未修（`Mac-Start.command` / `启动.command`），需真机验证
 - 用户自开外部终端不走启动器 → 系统 TEMP 仍可能被优化软件迁到已拔掉的 U 盘/F 盘
 - 根治在上游：MiMo SQLite 迁移不应假设 TEMP 可写（见 L2）
 
-**验收**：`cargo test --lib` 631 绿（含 `launcher_is_ascii_and_uses_stable_current_path`
-新断言）；`--gate-catch-test` 假二进制仍被拦。
+**验收**：U-King `cargo test --lib` 631 绿；U-Model 53 tests passed；`--gate-catch-test` 假二进制仍被拦。
 
 ## 边界
 
