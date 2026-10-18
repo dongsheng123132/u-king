@@ -78,7 +78,55 @@ src-tauri/target/debug/u-king-mini.exe --install-gate-test mimo-code
 cd src-tauri && cargo test --lib installer::tests
 ```
 
+## 遗留项
+
+### L1 · OpenCode 装出 Bun 壳（上游 `opencode-ai` 包）— 未解决，暂搁置
+
+**现象**：`npm install -g opencode-ai` 装完后，`opencode` 实际是 Bun 运行时壳，不是 OpenCode。
+
+| 命令 | 坏现场 | 健康现场 |
+| --- | --- | --- |
+| `opencode --version` | `1.3.14`（Bun 版本）退出 0 | `1.19.3`（OpenCode 版本） |
+| `opencode --help` | `Bun is a fast JavaScript runtime…` | OpenCode 帮助（含 `opencode` 字样） |
+
+**复现步骤**（Windows x64，2026-10-18 本机实测）：
+
+1. `npm install -g opencode-ai`（或走 U-King 装机 OpenCode）
+2. `opencode --version` → 若打出 `1.3.14` 而非 `1.19.3`，即是坏壳
+3. `opencode --help` → 若是 Bun 帮助（`Bun is a fast JavaScript runtime`），确认
+4. 看包内入口：`node_modules/opencode-ai/bin/opencode.exe`（坏壳约 180MB，实为 Bun 编译产物）
+
+**根因（上游包结构）**：
+
+- 真正的平台二进制在 optionalDependency 里（`opencode-windows-x64` / `opencode-windows-x64-baseline` 等）
+- `postinstall.mjs` 负责把平台二进制拷到 `bin/opencode.exe`；optional 依赖被镜像跳过或 postinstall 失败时，留下的就是 Bun 壳
+- `postinstall` 自己的 `verifyBinary()` **也只看退出码**，Bun 壳 `--version` 退出 0 → 它也误判成功
+- 尝试用 `opencode-windows-x64-baseline` 替换时，该包同样可能缺失/损坏 → 报「主入口启动异常，且没有通过验证的同版本 baseline 兼容包」
+
+**U-King 侧已做（只能到这）**：
+
+- `npm_install` 带 `with_optional: true`，尽量拉齐平台二进制
+- 输出门禁钉死 `bun is a fast`，坏壳不再报「安装成功」
+- `ensure_opencode_windows_compatibility` 尝试用同版本 baseline 替换坏入口
+
+**阻塞原因**（为什么搁置）：
+
+- 坏壳由上游 `opencode-ai` 的打包/postinstall 逻辑决定，U-King 改不了 npm 包本身
+- npmmirror 对 optionalDependency 的同步策略不受我们控制，`--include=optional` 不能保证一定拉到
+- baseline 替换依赖 `opencode-windows-x64-baseline` 同版本可用，该包缺失时无解
+- 需要上游修 postinstall 验收（不能只看退出码）或改包结构，才能根治
+
+**暂定处置**：门禁拒绝假通过 → 用户看到明确失败并引导重试/换网络；不追上游。
+
+### L2 · MiMo 默认 TEMP/TMP 下 SQLite 初始化失败 — 根因未定
+
+**现象**：同一程序、同一数据库，默认 `TEMP/TMP` 报 SQLite 错误；换成新临时目录可启动。
+
+**U-King 侧已做**：`tool_process_env` 给 mimo 子进程换干净 TEMP（`~/.uking/tmp/mimo`）绕过；冒烟 `mimo db "SELECT 1"` 验证绕过后可用。
+
+**阻塞原因**：触发机制未确定（怀疑与 Windows 默认 TEMP 权限/路径长度/杀软有关），只能绕过不能根治。冒烟验证的是「绕过后能用」，不是「默认 TEMP 不会挂」。
+
 ## 边界
 
-- OpenCode 的 Bun 壳是上游 `opencode-ai` 包装问题；U-King 只能拒绝假通过、引导 repair/人工，修不了上游包
-- MiMo 的 TEMP/TMP 触发机制未确定；`tool_process_env` 会给子进程换干净 TEMP，冒烟验证的是「绕过后能用」，不是「默认 TEMP 不会挂」
+- 上述遗留项完成前，OpenCode 在部分客户机上可能装失败（失败是正确行为，好过假成功）
+- MiMo 在 U-King 终端内可用（TEMP 已绕过），用户自开外部终端若走默认 TEMP 仍可能踩 L2
