@@ -78,6 +78,37 @@ src-tauri/target/debug/u-king-mini.exe --install-gate-test mimo-code
 cd src-tauri && cargo test --lib installer::tests
 ```
 
+## Gate 审计：还有谁只看退出码（2026-10-18）
+
+扫了 skill 清单全部 20 个工具的 `verify_cmd`，现状：
+
+| 状态 | 工具 | 说明 |
+| --- | --- | --- |
+| **已有门禁** | OpenCode、MiMo Code | 本次加的 expect/reject/smoke |
+| 仅退出码 | claude-code / codex / openclaw / hermes / qwen / crush / dsh / pi / kimi / grok / muse / agy / codebuddy / qoder-cn / harness-doctor / agent-browser / codex-app / claude-app | `xxx --version` 退出 0 即过 |
+
+**判断**：其余 18 个目前**没有已知假通过现场**，不必为对称性加门禁（YAGNI）。已知同类风险点：
+
+| 风险 | 现状防护 | 是否够 |
+| --- | --- | --- |
+| `claude.exe` 500 字节占位壳（npm 拦 postinstall） | repair 步补跑 `install.cjs`；壳跑起来报「与 Windows 不兼容」退出码非 0 | 够（退出码能拦） |
+| `probe_health`（macOS 面板探活）只看退出码 | 注释已写明「宁可漏报」；只用于 shadow 警告不决定安装成败 | 够（不挡装机） |
+| 便携启动器把 TEMP 钉 U 盘 | **本次修**：写探针失败回退 `%LOCALAPPDATA%\Temp` | 见下 |
+
+## 便携启动器 TEMP 回退（本次修复）
+
+**问题**：U 盘启动器把 `TEMP` 钉到 U 盘目录（有意，不污染宿主机），U 盘拔掉/只读时
+`TEMP` 不可写 → 依赖临时文件的进程炸（MiMo SQLite 迁移实锤）。
+
+**修法**：`set TEMP` 后做写探针（`echo.>"%TEMP%\.xxx-write-test"`），失败就回退系统 TEMP。
+
+| 文件 | 状态 |
+| --- | --- |
+| `src-tauri/resources/usb-genie/launch-agent.cmd` | ✅ 已修 + 测试钉死（`launcher_is_ascii_and_uses_stable_current_path`） |
+| `u-claw/v1-开源/u-claw-v3-wt/portable/Windows-Start.bat` | ✅ 已修（同款写探针回退） |
+| U-King mimo CLI 守卫 | 本就有回退（`if not exist "%TEMP%" exit /b 1`） |
+| Mac 启动器 | 未改（`TMPDIR` 场景待真机验证） |
+
 ## 遗留项
 
 ### L1 · OpenCode 装出 Bun 壳（上游 `opencode-ai` 包）— 未解决，暂搁置

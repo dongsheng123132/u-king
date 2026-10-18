@@ -1331,6 +1331,14 @@ mod tests {
         ] {
             assert!(s.contains(wanted));
         }
+        // TEMP 钉在 U 盘上是故意的（不污染宿主机），但 U 盘拔掉/只读时必须能写探针
+        // 失败回退——否则依赖可写 TEMP 的进程（MiMo SQLite 迁移）会炸在「unable to
+        // open database file」（2026-10-18 A/B 实测）。这里把回退钉进判据，防回退成
+        // 无条件 set TEMP。
+        assert!(
+            s.contains(".uking-write-test") && s.contains("%LOCALAPPDATA%\\Temp"),
+            "launch-agent.cmd 必须做 TEMP 写探针并在失败时回退到系统 TEMP"
+        );
     }
     #[test]
     fn state_changes_when_credential_is_removed() {

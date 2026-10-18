@@ -9,6 +9,17 @@ set "PICOCLAW_BUILTIN_SKILLS=%PICOCLAW_HOME%\workspace\skills"
 set "PICOCLAW_LOG_FILE=%PICOCLAW_HOME%\logs\picoclaw.log"
 set "TEMP=%PICOCLAW_HOME%\tmp"
 set "TMP=%PICOCLAW_HOME%\tmp"
+REM TEMP lives on the USB drive (do not pollute the host). Fall back when the
+REM drive is gone or read-only: SQLite migrations die with "unable to open
+REM database file" if TEMP is not writable.
+if not exist "%TEMP%" mkdir "%TEMP%" >nul 2>&1
+echo.>"%TEMP%\.uking-write-test" 2>nul
+if not exist "%TEMP%\.uking-write-test" (
+  set "TEMP=%LOCALAPPDATA%\Temp"
+  set "TMP=%TEMP%"
+) else (
+  del "%TEMP%\.uking-write-test" >nul 2>&1
+)
 echo.
 echo U-King USB AI Genie
 echo Runtime: %PICOCLAW_BINARY%
@@ -22,7 +33,7 @@ echo Exit AI Genie before removing this USB drive.
 echo.
 if not exist "%PICOCLAW_HOME%\workspace" mkdir "%PICOCLAW_HOME%\workspace"
 if not exist "%PICOCLAW_HOME%\logs" mkdir "%PICOCLAW_HOME%\logs"
-if not exist "%PICOCLAW_HOME%\tmp" mkdir "%PICOCLAW_HOME%\tmp"
+if not exist "%TEMP%" mkdir "%TEMP%"
 if not exist "%PICOCLAW_BINARY%" (
   echo [ERROR] picoclaw.exe not found.
   pause
