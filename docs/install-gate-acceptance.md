@@ -93,21 +93,7 @@ cd src-tauri && cargo test --lib installer::tests
 | --- | --- | --- |
 | `claude.exe` 500 字节占位壳（npm 拦 postinstall） | repair 步补跑 `install.cjs`；壳跑起来报「与 Windows 不兼容」退出码非 0 | 够（退出码能拦） |
 | `probe_health`（macOS 面板探活）只看退出码 | 注释已写明「宁可漏报」；只用于 shadow 警告不决定安装成败 | 够（不挡装机） |
-| 便携启动器把 TEMP 钉 U 盘 | **本次修**：写探针失败回退 `%LOCALAPPDATA%\Temp` | 见下 |
-
-## 便携启动器 TEMP 回退（本次修复）
-
-**问题**：U 盘启动器把 `TEMP` 钉到 U 盘目录（有意，不污染宿主机），U 盘拔掉/只读时
-`TEMP` 不可写 → 依赖临时文件的进程炸（MiMo SQLite 迁移实锤）。
-
-**修法**：`set TEMP` 后做写探针（`echo.>"%TEMP%\.xxx-write-test"`），失败就回退系统 TEMP。
-
-| 文件 | 状态 |
-| --- | --- |
-| `src-tauri/resources/usb-genie/launch-agent.cmd` | ✅ 已修 + 测试钉死（`launcher_is_ascii_and_uses_stable_current_path`） |
-| `u-claw/v1-开源/u-claw-v3-wt/portable/Windows-Start.bat` | ✅ 已修（同款写探针回退） |
-| U-King mimo CLI 守卫 | 本就有回退（`if not exist "%TEMP%" exit /b 1`） |
-| Mac 启动器 | 未改（`TMPDIR` 场景待真机验证） |
+| 便携启动器把 TEMP 钉 U 盘 | 写探针失败回退系统 TEMP（Win/Mac/Linux 已修，见 L3） | — |
 
 ## 遗留项
 
@@ -185,25 +171,16 @@ MiMo 一次性 DB 迁移（FTS 索引）需要在 `TEMP` 里建临时文件。`T
 - **根治要上游**：MiMo 迁移不应假设 TEMP 可写（或失败时退到 DB 同目录）；我们只能保证自己拉起的进程 TEMP 正确
 - 用户自开外部终端走系统 TEMP 时仍可能踩雷；U-King 终端/装机链路已覆盖
 
-### L3 · 便携启动器把 TEMP 钉在 U 盘 — Windows 已修，残留 Mac / 上游
+### L3 · 便携启动器 TEMP 钉 U 盘 — 启动器侧已修，两条解不了
 
-**现象**：U 盘启动器 `set TEMP=<U盘路径>`（有意，不污染宿主机），U 盘拔掉/只读时
-`TEMP` 不可写，依赖临时文件的进程直接炸（L2 的触发面之一）。
+**修法（已落地）**：`set TEMP|TMPDIR` 到 U 盘后做写探针，失败回退系统临时目录。
+覆盖 U-King `launch-agent.cmd`、U-Claw `Windows-Start.bat` / `Mac-Start.command`、
+U-Model `启动.*` + `portable.py`、U-King mimo CLI 守卫。
 
-**已修（2026-10-18）**：
+**残留（解不了）**：
 
-| 文件 | 修法 | 提交 |
-| --- | --- | --- |
-| U-King `src-tauri/resources/usb-genie/launch-agent.cmd` | 写探针失败回退 `%LOCALAPPDATA%\Temp`，测试钉死 | `ac037317b` |
-| U-Claw `portable/Windows-Start.bat` | 同款写探针回退 | u-claw 仓 `8434fbf` |
-| U-Claw `portable/Mac-Start.command` | 钉 TMPDIR + 写探针回退（对齐 Windows） | u-claw 仓 `350c6e5` |
-| U-Model `启动.command` / `启动.sh` / `启动.bat` / `portable.py` | 三平台 + Python 侧写探针回退 | u-model 仓 `c9fc0a0` |
-| U-King mimo CLI 守卫 | 本就有 `if not exist "%TEMP%" exit /b 1` | — |
-
-**残留**：
-
-- 用户自开外部终端不走启动器 → 系统 TEMP 仍可能被优化软件迁到已拔掉的 U 盘/F 盘
-- 根治在上游：MiMo SQLite 迁移不应假设 TEMP 可写（见 L2）
+1. **用户自开外部终端不走启动器** — 系统 TEMP 仍可能被优化软件迁到已拔掉的 U 盘/F 盘
+2. **根治在上游** — MiMo SQLite 迁移不应假设 TEMP 可写（见 L2）
 
 **验收**：U-King `cargo test --lib` 631 绿；U-Model 53 tests passed；`--gate-catch-test` 假二进制仍被拦。
 
