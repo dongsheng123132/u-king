@@ -123,6 +123,12 @@ function normTool(tool: string): string {
   if (t === "pi") return "pi";
   if (t === "opencode" || t === "open-code") return "opencode";
   if (t === "uu-remote" || t === "uuremote" || t.includes("uu远程")) return "uu-remote";
+  // 桌面 GUI 三件：精确匹配钉住 id，别让上面的 includes 规则将来误吃。
+  // 🔴 "doubao-desktop"（豆包消费桌面版）与 "doubao"（豆包工作）是两个产品，各归各的。
+  if (t === "magpie") return "magpie";
+  if (t === "workbuddy") return "workbuddy";
+  if (t === "doubao-desktop") return "doubao-desktop";
+  if (t === "doubao") return "doubao";
   return t;
 }
 

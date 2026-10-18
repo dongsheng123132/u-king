@@ -46,6 +46,7 @@ export const TOOL_LABELS: Record<string, string> = {
   dsh: "DeepSeek Harness",
   pi: "pi",
   opencode: "OpenCode",
+  workbuddy: "WorkBuddy",
 };
 
 /** 试连 / 拉模型清单结果（Manager 也在用，单一定义搬到这里，Manager 改 import）。 */

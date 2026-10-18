@@ -164,4 +164,11 @@ export const tools: Record<string, string> = {
     "The official desktop app is a separate program, not embedded in the U-King window. Configure which model it uses on the right; click the button below to open it (it will be installed first if missing).",
   "已装会直接打开；没装会先自动安装，进度会显示在这里":
     "Opens directly if already installed; otherwise it installs first, with progress shown here",
+
+  // ── WorkBuddy 桌面应用（2026-10-19 补翻）────────────────────────
+  // 后端 ApplyResult.workbuddy 原样回传这两句中文，前端经 t() 译；key 与
+  // providers.rs 的字面量逐字一致，改一边必须改另一边。
+  "已添加到模型列表，请在WorkBuddy选择": "Added to the model list — pick it in WorkBuddy",
+  "已移除 WorkBuddy 的 U-King 托管模型，请在 WorkBuddy 选择模型":
+    "Removed the U-King managed model from WorkBuddy — pick a model in WorkBuddy",
 };

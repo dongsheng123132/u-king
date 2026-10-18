@@ -1,6 +1,6 @@
 {
-  "pairs": 40,
-  "why": "自动收紧（解开了耦合）",
+  "pairs": 42,
+  "why": "providers→desktop_app：WorkBuddy 模型目录须跟随 desktop_app 选中的国内/国际 exe；tools→catalog_desktop：同工作树并行的工具目录登记（另一线）。自动收紧曾覆盖理由，此处补记",
   "list": [
     "agent → device",
     "agent → journal",
@@ -29,6 +29,7 @@
     "feedback → report",
     "guard → device",
     "install → guard",
+    "providers → desktop_app",
     "providers → dshdesk",
     "providers → tools",
     "providers → usage",
@@ -37,6 +38,7 @@
     "report → feedback",
     "report → metrics",
     "toolprobe → tools",
+    "tools → catalog_desktop",
     "tools → dshdesk",
     "tools → providers",
     "tools → term",

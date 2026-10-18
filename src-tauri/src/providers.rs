@@ -1230,6 +1230,8 @@ pub struct ApplyResult {
     pub opencode: Option<String>,
     /// pi（2026-08-03 上架）。四条门槛实测全过，见 apply_pi 注释。
     pub pi: Option<String>,
+    /// WorkBuddy：添加到模型列表，不代表当前任务已经选择了它。
+    pub workbuddy: Option<String>,
 }
 
 // ============================================================
@@ -1342,6 +1344,7 @@ pub fn apply_provider(
         crush: None,
         opencode: None,
         pi: None,
+        workbuddy: None,
     };
 
     for t in targets {
@@ -1477,6 +1480,17 @@ pub fn apply_provider(
                     r.opencode = Some(format!("已把 OpenCode 切到 {}（{}）", p.name, model));
                     record_active_driver("opencode", provider_id);
                 }
+            }
+            "workbuddy" => {
+                if p.id == "official" {
+                    reset_workbuddy()?;
+                    r.workbuddy = Some("已移除 WorkBuddy 的 U-King 托管模型，请在 WorkBuddy 选择模型".into());
+                } else {
+                    let model = effective_model(&p, model_override);
+                    apply_workbuddy(&p, api_key, &model)?;
+                    r.workbuddy = Some("已添加到模型列表，请在WorkBuddy选择".into());
+                }
+                // WorkBuddy 按任务选模型；不能把添加到列表记成当前会话的 active driver。
             }
             other => return Err(format!("未知目标 {other}")),
         }
@@ -1665,6 +1679,21 @@ pub fn apply_xiapan_everywhere(
                     r.skipped.push(format!("{label}（{e}）"));
                     r.skipped_ids.push(tool.into());
                 }
+            }
+        }
+    }
+    // 桌面 WorkBuddy 复用单目标 apply/reset，不把「加入列表」记成会话已切换。
+    if want("workbuddy") && workbuddy_installed() {
+        let model = effective_model(&p, model_override);
+        match apply_workbuddy(&p, api_key, &model) {
+            Ok(()) => {
+                r.configured.push("WorkBuddy（已添加到模型列表，请在WorkBuddy选择）".into());
+                r.configured_ids.push("workbuddy".into());
+                // 不记 active：WorkBuddy 按任务选模型，这里只代表列表里多了托管条目。
+            }
+            Err(e) => {
+                r.skipped.push(format!("WorkBuddy（{e}）"));
+                r.skipped_ids.push("workbuddy".into());
             }
         }
     }
@@ -5028,6 +5057,154 @@ fn local_app_data() -> PathBuf {
         .unwrap_or_else(|| config_home().join("AppData").join("Local"))
 }
 
+// WorkBuddy schema reference (schema only; implementation written here):
+// https://raw.githubusercontent.com/yetone/magpie/main/internal/agent/workbuddy.go
+// Official model-list documentation:
+// https://www.workbuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/Model
+// WorkBuddy sends model=id; vendor is our ownership marker, never an id prefix.
+fn workbuddy_path_from(home: &Path, config_dir: Option<&str>, exe: Option<&Path>) -> PathBuf {
+    if let Some(dir) = config_dir.map(str::trim).filter(|s| !s.is_empty()) {
+        return PathBuf::from(dir).join("models.json");
+    }
+    let international = exe.and_then(Path::file_name).and_then(|s| s.to_str())
+        .map(|s| s.eq_ignore_ascii_case("WorkBuddyAI.exe")).unwrap_or(false);
+    home.join(if international { ".workbuddy-ai" } else { ".workbuddy" }).join("models.json")
+}
+
+fn workbuddy_models_path() -> PathBuf {
+    let home = config_home();
+    // 沙箱绝不读取宿主的覆盖变量，也不探注册表/真实安装。
+    if std::env::var("UKING_TEST_HOME").map(|v| !v.is_empty()).unwrap_or(false) {
+        return workbuddy_path_from(&home, None, None);
+    }
+    let config_dir = std::env::var("WORKBUDDY_CONFIG_DIR").ok();
+    let app = crate::desktop_app::find("workbuddy");
+    workbuddy_path_from(&home, config_dir.as_deref(), app.as_ref().map(|a| a.exe.as_path()))
+}
+
+fn workbuddy_installed() -> bool {
+    if std::env::var("UKING_TEST_HOME").map(|v| !v.is_empty()).unwrap_or(false) {
+        return workbuddy_models_path().parent().map(|p| p.exists()).unwrap_or(false);
+    }
+    crate::desktop_app::installed("workbuddy")
+}
+
+/// 只接受数组或带 models 数组的对象。坏 JSON / 非 UTF-8 / 字段类型错误一律拒写，
+/// 读取失败不能当空配置。保留原对象与条目中的所有未知字段。
+fn read_workbuddy_doc(path: &PathBuf) -> Result<Value, String> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(serde_json::json!([])),
+        Err(_) => return Err("无法读取 WorkBuddy models.json（需 UTF-8），未改动配置".into()),
+    };
+    let doc: Value = serde_json::from_str(&text)
+        .map_err(|_| "WorkBuddy models.json 不是有效 JSON，未改动配置".to_string())?;
+    match &doc {
+        Value::Array(_) => {}
+        Value::Object(obj) => {
+            if obj.get("models").map(|m| !m.is_array()).unwrap_or(false) {
+                return Err("WorkBuddy models.json 的 models 必须是数组，未改动配置".into());
+            }
+            if let Some(available) = obj.get("availableModels") {
+                if !available.as_array().map(|a| a.iter().all(Value::is_string)).unwrap_or(false) {
+                    return Err("WorkBuddy availableModels 必须是字符串数组，未改动配置".into());
+                }
+            }
+        }
+        _ => return Err("WorkBuddy models.json 顶层必须是数组或对象，未改动配置".into()),
+    }
+    Ok(doc)
+}
+
+fn workbuddy_models(doc: &Value) -> &[Value] {
+    doc.as_array()
+        .or_else(|| doc.get("models").and_then(Value::as_array))
+        .map(|v| v.as_slice())
+        .unwrap_or(&[])
+}
+
+fn workbuddy_managed(entry: &Value) -> bool {
+    entry.get("vendor").and_then(Value::as_str) == Some("u-king")
+}
+
+fn write_workbuddy_doc(path: &PathBuf, doc: &Value, models: Vec<Value>) -> Result<(), String> {
+    let mut out = doc.clone();
+    if out.is_array() {
+        out = Value::Array(models);
+    } else {
+        out["models"] = Value::Array(models);
+    }
+    let data = serde_json::to_vec_pretty(&out).map_err(|_| "序列化 WorkBuddy 配置失败".to_string())?;
+    backup_once(path);
+    atomic_write(path, &data)?;
+    // 除原子写的字节校验外，读回全部字段（包含用户字段和凭据）再比对；不把内容写进错误。
+    if read_workbuddy_doc(path)? != out {
+        return Err("WorkBuddy 配置写入后字段回读不一致，请关闭 WorkBuddy 后重试".into());
+    }
+    Ok(())
+}
+
+fn apply_workbuddy(p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
+    apply_workbuddy_at(&workbuddy_models_path(), p, key, model)
+}
+
+fn apply_workbuddy_at(path: &PathBuf, p: &ProviderPreset, key: &str, model: &str) -> Result<(), String> {
+    // 唯一凭据来源是调用者选择的供应商，不回退设备钱包或别家环境变量。
+    let key = if key.trim().is_empty() { p.api_key.trim() } else { key.trim() };
+    if key.is_empty() { return Err(format!("{} 还没填 API Key", p.name)); }
+    let model = model.trim();
+    if model.is_empty() { return Err("WorkBuddy 模型 ID 不能为空".into()); }
+    let base = p.openai_base.trim().trim_end_matches('/');
+    if !(base.starts_with("https://") || base.starts_with("http://"))
+        || base.contains('?') || base.contains('#')
+    {
+        return Err(format!("{} 需要有效的 OpenAI 兼容端点才能配置 WorkBuddy", p.name));
+    }
+    let url = if base.ends_with("/chat/completions") { base.to_string() }
+        else { format!("{base}/chat/completions") };
+    let mut doc = read_workbuddy_doc(path)?;
+    let mut models = workbuddy_models(&doc).to_vec();
+    let matching: Vec<usize> = models.iter().enumerate()
+        .filter(|(_, e)| e.get("id").and_then(Value::as_str) == Some(model))
+        .map(|(i, _)| i).collect();
+    if matching.iter().any(|i| !workbuddy_managed(&models[*i])) || matching.len() > 1 {
+        return Err("WorkBuddy 已存在相同 ID 的非托管模型或重复 ID，未覆盖；请先在 WorkBuddy 处理冲突".into());
+    }
+    // 更新已有托管模型时，仅更新连接字段；disabled、reasoning、能力选项、未知键原样保留。
+    let mut entry = matching.first().map(|i| models[*i].clone()).unwrap_or_else(|| serde_json::json!({
+        "id": model, "name": format!("{} · {}", p.name, model),
+        "vendor": "u-king", "supportsToolCall": true,
+    }));
+    entry["url"] = Value::String(url);
+    entry["apiKey"] = Value::String(key.into());
+    if let Some(i) = matching.first() { models[*i] = entry; } else { models.push(entry); }
+    // 非空白名单才需要补入新 ID；空列表保留 WorkBuddy「不限制候选」的语义。
+    if let Some(available) = doc.get_mut("availableModels").and_then(Value::as_array_mut) {
+        if !available.is_empty() && !available.iter().any(|id| id.as_str() == Some(model)) {
+            available.push(Value::String(model.into()));
+        }
+    }
+    write_workbuddy_doc(path, &doc, models)
+}
+
+fn reset_workbuddy() -> Result<(), String> {
+    reset_workbuddy_at(&workbuddy_models_path())
+}
+
+fn reset_workbuddy_at(path: &PathBuf) -> Result<(), String> {
+    let mut doc = read_workbuddy_doc(path)?;
+    let old = workbuddy_models(&doc);
+    let removed: Vec<String> = old.iter().filter(|e| workbuddy_managed(e))
+        .filter_map(|e| e.get("id").and_then(Value::as_str).map(str::to_string)).collect();
+    let models: Vec<Value> = old.iter().filter(|e| !workbuddy_managed(e)).cloned().collect();
+    if models.len() == old.len() { return Ok(()); }
+    if let Some(available) = doc.get_mut("availableModels").and_then(Value::as_array_mut) {
+        available.retain(|id| !removed.iter().any(|r| id.as_str() == Some(r.as_str()))
+            || models.iter().any(|e| e.get("id") == Some(id)));
+    }
+    write_workbuddy_doc(path, &doc, models)
+}
+
 /// U-King 管理的 provider 使用独占命名空间，但后半段必须如实反映真实上游。
 ///
 /// 旧实现把所有供应商都塞进 `uking-xiapan`：请求虽然会按 base URL 发到 OpenRouter，
@@ -6474,9 +6651,45 @@ pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode"];
 /// 测试环境里 `pi` 本来就没装，`tool_installed` 判假就静默跳过——少配一个工具和「这个工具在这台
 /// 机器上没装」长得一模一样。这个用例只能挡「常量清单互相漂移」，挡不住「常量写对了、
 /// 循环体没跟着写」。缺一条断言分派表本身确实遍历了 `APPLY_ALL_TARGETS` 每一项（已记进需求榜）。
-pub const APPLY_ALL_TARGETS: &[&str] = &[
-    "claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode", "qwen", "crush",
-];
+// 保持 const slice 契约（lib.rs 的 JSON schema 直接引用它）：从 `tools::TOOL_SPECS`
+// 派生 `LIST_TOOLS` 那一段，再接 `EXTRA_APPLY_TOOLS`（qwen/crush 还没有自己的
+// ToolSpec）。tools.rs 加一条 `in_list_tools: true + config_target` 的 spec
+// （WorkBuddy 正是这么上架的），这里自动跟着进契约 enum，不用再手抄一遍。
+const fn list_tool_target_count() -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while i < crate::tools::TOOL_SPECS.len() {
+        let spec = &crate::tools::TOOL_SPECS[i];
+        if spec.in_list_tools && spec.config_target.is_some() { n += 1; }
+        i += 1;
+    }
+    n
+}
+
+const APPLY_ALL_LEN: usize = list_tool_target_count() + EXTRA_APPLY_TOOLS.len();
+
+const fn apply_all_targets_from_specs() -> [&'static str; APPLY_ALL_LEN] {
+    let mut out = [""; APPLY_ALL_LEN];
+    let mut n = 0;
+    let mut i = 0;
+    while i < crate::tools::TOOL_SPECS.len() {
+        let spec = &crate::tools::TOOL_SPECS[i];
+        if spec.in_list_tools && spec.config_target.is_some() {
+            out[n] = spec.config_target.unwrap();
+            n += 1;
+        }
+        i += 1;
+    }
+    let mut j = 0;
+    while j < EXTRA_APPLY_TOOLS.len() {
+        out[n] = EXTRA_APPLY_TOOLS[j];
+        n += 1;
+        j += 1;
+    }
+    out
+}
+
+pub const APPLY_ALL_TARGETS: &[&str] = &apply_all_targets_from_specs();
 
 /// 「我们写的配置，那个工具真的会照着跑吗」—— **回读工具自己的配置文件**，解析出它启动时
 /// 实际会用的 provider / model / 端点。
@@ -6682,7 +6895,23 @@ pub fn effective_config(target: &str) -> EffectiveConfig {
                     .and_then(|x| x.as_str())
                     .map(str::to_string);
             }
-        }        // clawx：apply_clawx 全量接管 + driver_status 单独回显，这里没有独立回读。
+        }
+        "workbuddy" => {
+            // WorkBuddy **按任务选模型**：models.json 里有托管条目 ≠ 当前会话已切换。
+            // `readable=false` 的语义正好是「不知道会话在用哪个」；这里只报告列表里
+            // 有没有我们的托管条目（provider_key=u-king），前端据此显示
+            // 「已添加到模型列表，请在WorkBuddy选择」，绝不冒称当前会话已切过去。
+            let Ok(doc) = read_workbuddy_doc(&workbuddy_models_path()) else {
+                return EffectiveConfig::unknown(target);
+            };
+            if let Some(e) = workbuddy_models(&doc).iter().rev().find(|e| workbuddy_managed(e)) {
+                r.provider_key = Some("u-king".into());
+                r.model = e.get("id").and_then(Value::as_str).map(str::to_string);
+                r.base_url = e.get("url").and_then(Value::as_str).map(str::to_string);
+            }
+            r.readable = false;
+        }
+        // clawx：apply_clawx 全量接管 + driver_status 单独回显，这里没有独立回读。
         _ => return EffectiveConfig::unknown(target),
     }
     r
@@ -6897,6 +7126,10 @@ pub fn driver_status() -> DriverStatus {
             st.active.insert((*tool).to_string(), v);
         }
     }
+    // WorkBuddy：桌面应用（WorkBuddy.exe 国内 / WorkBuddyAI.exe 国际），装没装走
+    // desktop_app（沙箱看沙箱目录），不走 PATH 上的 CLI 探测；也不写 active ——
+    // 模型是用户在 WorkBuddy 里按任务选的，我们只往列表里加托管条目。
+    st.extra_installed.insert("workbuddy".to_string(), workbuddy_installed());
 
     // 「用户在用自己的 Key」判据 —— 铁律：探测到就绝不推虾盘云、绝不抢。
     st.claude_own_key = claude_owns_config();
@@ -7500,20 +7733,37 @@ pub fn test_provider(
 /// 试连是 `test_provider`，它要 `preset(provider_id)` —— 也就是**先保存才能测**。
 /// 于是填错的人只能盲存，然后在列表深处、甚至切换驱动失败时才见到第一条报错，
 /// 到那会儿报错已经离「你填错的那一格」隔了三层。存前能测，错误就死在弹窗里。
+/// 保留 3 参形态给尚未迁走的调用方；当前树里实际入口是 4 参的 [`probe_provider_endpoint`]。
+#[allow(dead_code)]
 pub fn probe_openai_endpoint(base: &str, api_key: &str, model: &str) -> TestResult {
+    probe_provider_endpoint(base, api_key, model, "openai-chat")
+}
+
+/// [`probe_openai_endpoint`] 的协议可选版（lib.rs `probe_endpoint` 命令的真身：
+/// 弹窗里选了 Anthropic 协议就走 `anthropic`，别再拿 OpenAI 协议去打原生端点）。
+///
+/// ⚠️ 2026-10-19 补记（修 main 编译）：`c99fc95f1` 引入 lib.rs 的 `probe_endpoint`
+/// 命令时，这个配对函数只落在开发机的未提交工作区、漏了进仓——干净检出从那天起
+/// `E0425: cannot find function probe_provider_endpoint`（CI 红了两次实锤）。
+/// 这里按主检出工作区的同款实现补回；并行会话若随后提交同名函数，按同文本合并即可。
+pub fn probe_provider_endpoint(base: &str, api_key: &str, model: &str, api: &str) -> TestResult {
     let base = base.trim().trim_end_matches('/');
     if base.is_empty() {
-        return test_err("openai", 0, "接口地址还没填".into());
+        return test_err(api, 0, "接口地址还没填".into());
     }
     if model.trim().is_empty() {
-        return test_err("openai", 0, "先填一个模型 id（或点「拉取」从清单里选）".into());
+        return test_err(api, 0, "先填一个模型 id（或点「拉取」从清单里选）".into());
     }
     let t0 = Instant::now();
-    let r = openai_chat(base, api_key, model.trim(), "请用一句中文确认你已就绪。");
+    let r = match api {
+        "anthropic" => anthropic_chat(base, api_key, model.trim(), "请用一句中文确认你已就绪。"),
+        "openai" | "openai-chat" => openai_chat(base, api_key, model.trim(), "请用一句中文确认你已就绪。"),
+        _ => return test_err(api, 0, format!("不支持的测试协议：{api}")),
+    };
     let ms = t0.elapsed().as_millis() as u64;
     match r {
-        Ok(reply) => TestResult { ok: true, api: "openai".into(), latency_ms: ms, reply: Some(reply), error: None },
-        Err(e) => test_err("openai", ms, e),
+        Ok(reply) => TestResult { ok: true, api: api.into(), latency_ms: ms, reply: Some(reply), error: None },
+        Err(e) => test_err(api, ms, e),
     }
 }
 
@@ -11270,6 +11520,202 @@ mod draw_route_tests {
             assert!(!v.builtin);
             let json = serde_json::to_string(&v).unwrap();
             assert!(!json.contains("sk-secret-abc"), "回显把 Key 带出去了：{json}");
+        });
+    }
+}
+
+/// WorkBuddy `models.json` 的夹具测试。全部走 `UKING_TEST_HOME` 沙箱（全进程同一把锁，
+/// 写测试串行），绝不碰开发机真实的 `~/.workbuddy*`，也不读宿主的 `WORKBUDDY_CONFIG_DIR`。
+#[cfg(test)]
+mod workbuddy_config_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn with_sandbox(tag: &str, f: impl FnOnce(&Path)) {
+        crate::testsandbox::with_sandbox(&format!("workbuddy-{tag}"), &[".workbuddy"], |root| f(root));
+    }
+
+    fn models_path(root: &Path) -> PathBuf {
+        root.join(".workbuddy").join("models.json")
+    }
+
+    /// 一眼假的夹具供应商（公开仓纪律）。
+    fn demo_provider() -> ProviderPreset {
+        ProviderPreset {
+            id: "demo".into(),
+            name: "Demo 中转".into(),
+            summary: String::new(),
+            openai_base: "https://relay.example.com/v1".into(),
+            anthropic_base: None,
+            model: "demo-model".into(),
+            small_model: "demo-model".into(),
+            codex_model: String::new(),
+            codex_wire_api: WIRE_API.into(),
+            key_url: String::new(),
+            key_hint: String::new(),
+            builtin_recharge: false,
+            recommended: false,
+            builtin: false,
+            api_key: "sk-abc123".into(),
+        }
+    }
+
+    #[test]
+    fn bare_array_adds_managed_real_model_id_and_keeps_user_entries() {
+        with_sandbox("bare-array", |root| {
+            let path = models_path(root);
+            let user = json!({"id":"user-model","name":"用户的","vendor":"Custom","apiKey":"sk-user",
+                "url":"https://user.example.com/v1/chat/completions","supportsImages":true});
+            std::fs::write(&path, serde_json::to_vec(&json!([user.clone()])).unwrap()).unwrap();
+            let p = demo_provider();
+            apply_workbuddy_at(&path, &p, "sk-abc123", "deepseek-chat").unwrap();
+
+            let doc = read_workbuddy_doc(&path).unwrap();
+            let models = doc.as_array().expect("裸数组形状要保持裸数组");
+            assert_eq!(models.len(), 2);
+            assert_eq!(models[0], user, "用户条目一个字节都不能动");
+            let ours = &models[1];
+            // WorkBuddy 请求的 model=id，所以 id 必须是真实模型 id，不是 uking-* 别名。
+            assert_eq!(ours["id"], "deepseek-chat");
+            assert_eq!(ours["vendor"], "u-king");
+            assert_eq!(ours["apiKey"], "sk-abc123");
+            assert_eq!(ours["url"], "https://relay.example.com/v1/chat/completions");
+        });
+    }
+
+    #[test]
+    fn object_shape_keeps_unknown_keys_and_available_models() {
+        with_sandbox("object-shape", |root| {
+            let path = models_path(root);
+            let doc = json!({
+                "models": [{"id":"user-model","vendor":"Custom","apiKey":"sk-user",
+                    "url":"https://user.example.com/v1/chat/completions"}],
+                "availableModels": ["user-model"],
+                "theme": {"unknown": true},
+            });
+            std::fs::write(&path, serde_json::to_vec(&doc).unwrap()).unwrap();
+            let p = demo_provider();
+            apply_workbuddy_at(&path, &p, "", "kimi-k3").unwrap(); // key 留空 → 用选中供应商的 key
+
+            let doc = read_workbuddy_doc(&path).unwrap();
+            assert_eq!(doc["theme"], json!({"unknown": true}), "未知顶层键必须保留");
+            assert_eq!(doc["availableModels"], json!(["user-model", "kimi-k3"]));
+            let models = doc["models"].as_array().unwrap();
+            assert_eq!(models.len(), 2);
+            assert_eq!(models[1]["id"], "kimi-k3");
+            assert_eq!(models[1]["apiKey"], "sk-abc123");
+        });
+    }
+
+    #[test]
+    fn update_managed_keeps_disabled_reasoning_and_unknown_fields() {
+        with_sandbox("update-preserve", |root| {
+            let path = models_path(root);
+            let ours = json!({"id":"demo-model","name":"旧名","vendor":"u-king","apiKey":"sk-old",
+                "url":"https://old.example.com/v1/chat/completions","disabled":true,
+                "reasoning":{"defaultEffort":"high","supportedEfforts":["high"]},
+                "local":false,"extraKey":"keep-me"});
+            std::fs::write(&path, serde_json::to_vec(&json!([ours])).unwrap()).unwrap();
+            let p = demo_provider();
+            apply_workbuddy_at(&path, &p, "sk-new", "demo-model").unwrap();
+
+            let models = read_workbuddy_doc(&path).unwrap();
+            let e = &models.as_array().unwrap()[0];
+            assert_eq!(e["apiKey"], "sk-new");
+            assert_eq!(e["url"], "https://relay.example.com/v1/chat/completions");
+            assert_eq!(e["disabled"], true, "禁用状态不许被翻回来");
+            assert_eq!(e["reasoning"], json!({"defaultEffort":"high","supportedEfforts":["high"]}));
+            assert_eq!(e["local"], false);
+            assert_eq!(e["extraKey"], "keep-me");
+            assert_eq!(e["name"], "旧名");
+        });
+    }
+
+    #[test]
+    fn rejects_malformed_non_utf8_and_bad_models_type_without_writing() {
+        with_sandbox("reject", |root| {
+            let path = models_path(root);
+            let p = demo_provider();
+            let cases: [(&str, &[u8]); 4] = [
+                ("坏 JSON", b"{not json"),
+                ("models 类型错", br#"{"models":"oops"}"#),
+                ("availableModels 类型错", br#"{"models":[],"availableModels":[1]}"#),
+                ("顶层类型错", b"123"),
+            ];
+            for (label, bytes) in cases {
+                std::fs::write(&path, bytes).unwrap();
+                let err = apply_workbuddy_at(&path, &p, "sk-abc123", "demo-model").unwrap_err();
+                assert!(err.contains("未改动配置"), "{label} 应整体拒写：{err}");
+                assert_eq!(std::fs::read(&path).unwrap(), bytes, "{label} 后文件被改动了");
+            }
+            // 非 UTF-8：读取失败也在 backup_once/写盘之前被拦下（同 Hermes/.env 那条承诺）。
+            let bad = [0xffu8, 0xfe, 0x00, 0x41];
+            std::fs::write(&path, bad).unwrap();
+            let err = apply_workbuddy_at(&path, &p, "sk-abc123", "demo-model").unwrap_err();
+            assert!(err.contains("未改动配置"), "非 UTF-8 应整体拒写：{err}");
+            assert_eq!(std::fs::read(&path).unwrap(), bad, "非 UTF-8 后文件被改动了");
+        });
+    }
+
+    #[test]
+    fn refuses_to_overwrite_same_id_owned_by_the_user() {
+        with_sandbox("id-conflict", |root| {
+            let path = models_path(root);
+            let user = json!({"id":"deepseek-chat","vendor":"Custom","apiKey":"sk-user",
+                "url":"https://user.example.com/v1/chat/completions"});
+            std::fs::write(&path, serde_json::to_vec(&json!([user.clone()])).unwrap()).unwrap();
+            let p = demo_provider();
+            let err = apply_workbuddy_at(&path, &p, "sk-abc123", "deepseek-chat").unwrap_err();
+            assert!(err.contains("冲突"), "同 ID 非托管条目必须拒写并报告冲突：{err}");
+            let models = read_workbuddy_doc(&path).unwrap();
+            assert_eq!(models.as_array().unwrap().len(), 1);
+            assert_eq!(models.as_array().unwrap()[0], user);
+        });
+    }
+
+    #[test]
+    fn domestic_and_international_paths_follow_selected_exe_and_env_override() {
+        let home = PathBuf::from("C:/Users/demo/home");
+        let domestic = workbuddy_path_from(&home, None, Some(Path::new("C:/Program Files/WorkBuddy/WorkBuddy.exe")));
+        assert_eq!(domestic, home.join(".workbuddy").join("models.json"), "国内版 WorkBuddy.exe");
+        let intl = workbuddy_path_from(&home, None, Some(Path::new("C:/Program Files/WorkBuddyAI/WorkBuddyAI.exe")));
+        assert_eq!(intl, home.join(".workbuddy-ai").join("models.json"), "国际版 WorkBuddyAI.exe");
+        // 环境变量覆盖优先于 exe 判定。
+        let over = workbuddy_path_from(&home, Some("D:/custom"), Some(Path::new("C:/Program Files/WorkBuddyAI/WorkBuddyAI.exe")));
+        assert_eq!(over, PathBuf::from("D:/custom").join("models.json"));
+    }
+
+    #[test]
+    fn sandbox_path_ignores_real_env_and_never_touches_other_build_dirs() {
+        with_sandbox("path", |root| {
+            // 沙箱下即使宿主设了 WORKBUDDY_CONFIG_DIR / 装了国际版，也只写沙箱国内目录一份。
+            assert_eq!(workbuddy_models_path(), models_path(root));
+            assert!(workbuddy_installed(), "沙箱里建了 .workbuddy 目录就该认作可写");
+        });
+    }
+
+    #[test]
+    fn reset_removes_only_managed_entries() {
+        with_sandbox("reset", |root| {
+            let path = models_path(root);
+            let user = json!({"id":"user-model","vendor":"Custom","apiKey":"sk-user",
+                "url":"https://user.example.com/v1/chat/completions","disabled":true});
+            let doc = json!({
+                "models": [
+                    user.clone(),
+                    {"id":"demo-model","vendor":"u-king","apiKey":"sk-abc123",
+                     "url":"https://relay.example.com/v1/chat/completions"}
+                ],
+                "availableModels": ["user-model", "demo-model"],
+                "keep": "unknown-top-level",
+            });
+            std::fs::write(&path, serde_json::to_vec(&doc).unwrap()).unwrap();
+            reset_workbuddy_at(&path).unwrap();
+
+            let doc = read_workbuddy_doc(&path).unwrap();
+            assert_eq!(doc["keep"], "unknown-top-level");
+            assert_eq!(doc["models"], json!([user]), "只许移除 vendor=u-king 的托管项");
+            assert_eq!(doc["availableModels"], json!(["user-model"]));
         });
     }
 }

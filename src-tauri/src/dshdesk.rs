@@ -219,22 +219,151 @@ fn sha512_base64(path: &Path) -> Result<String, String> {
     Ok(b64_encode(&hasher.finalize()))
 }
 
+/// 版本对应规则：去掉首个 v/V 前缀；核心三段与预发布标识必须完整相同。
+/// 忽略 + 后的构建元数据，或实际版本在完整 feed 版本后多出的点分十进制构建号。
+/// 不把 rc.2 当 rc.20，也不把 0.2.1.0 当作 0.2.1-rc.2（文件数字版本丢失 rc 时无法确认）。
+#[cfg(any(windows, test))]
+fn version_matches_release(actual: &str, expected: &str) -> bool {
+    fn normalized(v: &str) -> Option<&str> {
+        let v = v.trim();
+        let v = v.strip_prefix('v').or_else(|| v.strip_prefix('V')).unwrap_or(v);
+        let (v, metadata) = v.split_once('+').map_or((v, None), |(v, m)| (v, Some(m)));
+        let identifiers = |s: &str| {
+            s.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+        };
+        if metadata.is_some_and(|m| !identifiers(m)) {
+            return None;
+        }
+        let (core, pre) = v.split_once('-').map_or((v, None), |(c, p)| (c, Some(p)));
+        let numbers: Vec<_> = core.split('.').collect();
+        if numbers.len() < 3 || numbers.iter().any(|n| n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()))
+            || pre.is_some_and(|p| !identifiers(p)) {
+            return None;
+        }
+        Some(v)
+    }
+    let (Some(actual), Some(expected)) = (normalized(actual), normalized(expected)) else { return false };
+    actual == expected || actual.strip_prefix(expected).and_then(|s| s.strip_prefix('.')).is_some_and(|build| {
+        !build.is_empty() && build.split('.').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+/// 沙箱守卫也放在模块入口，覆盖 install_dsh_desktop 这条不经 installer 的调用路径。
+#[cfg(any(windows, test))]
+fn install_policy(sandbox: bool, force: bool, present: bool) -> Result<bool, String> {
+    if sandbox {
+        return Err("沙箱禁止安装系统桌面应用；请在隔离测试机验证。".into());
+    }
+    Ok(!force && present)
+}
+
+/// 小输出的只读 PowerShell 探测，隐窗、编码传参、限时；失败向上传递，不能视为未运行/已确认。
+#[cfg(windows)]
+fn probe_powershell(script: &str) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut child = Command::new(crate::installer::system_tool("powershell"))
+        .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &b64_encode(&bytes)])
+        .creation_flags(0x0800_0000)
+        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|e| format!("DSH 状态探测启动失败: {e}"))?;
+    let start = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) if start.elapsed() < std::time::Duration::from_secs(10) => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            state => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("DSH 状态探测超时或失败: {state:?}"));
+            }
+        }
+    };
+    // 进程已退出，直接读管道；不再 wait_with_output 二次收割状态。
+    use std::io::Read as _;
+    let mut out = String::new();
+    let mut err = String::new();
+    if let Some(mut s) = child.stdout.take() { let _ = s.read_to_string(&mut out); }
+    if let Some(mut s) = child.stderr.take() { let _ = s.read_to_string(&mut err); }
+    if !status.success() {
+        return Err(format!("DSH 状态探测失败（退出码 {:?}）: {}", status.code(), err.trim()));
+    }
+    Ok(out.trim().to_string())
+}
+
+#[cfg(windows)]
+fn ensure_not_running() -> Result<(), String> {
+    let state = probe_powershell("$ErrorActionPreference='Stop'; if(Get-Process | Where-Object { $_.ProcessName -eq 'DeepSeek Harness' }) { 'RUNNING' } else { 'CLEAR' }")?;
+    match state.as_str() {
+        "CLEAR" => Ok(()),
+        "RUNNING" => Err("DeepSeek Harness 正在运行，请先退出 DeepSeek Harness（包括托盘）后再更新/修复。".into()),
+        _ => Err("无法确认 DeepSeek Harness 是否已退出，请退出后重试。".into()),
+    }
+}
+
+/// 注册表版本优先；缺失/不匹配时读 exe 的 ProductVersion/FileVersion。
+/// 每个候选都必须保留 feed 的完整核心及预发布版本，不能仅凭旧 exe 存在或数字核心相同确认。
+#[cfg(windows)]
+fn confirmed_version(expected: &str) -> Result<String, String> {
+    let exe = find_exe().ok_or("未确认安装：找不到 DeepSeek Harness 主程序".to_string())?;
+    let display = display_version();
+    if let Some(v) = display.as_deref().filter(|v| version_matches_release(v, expected)) {
+        return Ok(v.to_string());
+    }
+    let path = exe.to_string_lossy().replace('\'', "''");
+    let versions = probe_powershell(&format!(
+        "$ErrorActionPreference='Stop'; $v=[Diagnostics.FileVersionInfo]::GetVersionInfo('{path}'); $v.ProductVersion; $v.FileVersion"
+    ))?;
+    for v in versions.lines() {
+        if version_matches_release(v, expected) {
+            return Ok(v.trim().to_string());
+        }
+    }
+    Err(format!("未确认安装：目标版本 {expected}，DisplayVersion={}，文件版本={}。请退出 DSH 后重试或手动确认。",
+        display.as_deref().unwrap_or("未读取到"), versions.replace(['\r', '\n'], " ")))
+}
+
 /// 下载并**静默安装** DeepSeek Harness 桌面版（NSIS `/S /currentuser`，免管理员，约 280MB）。
 /// 装完不碰任何模型配置——那是 `providers.rs::apply_dsh` 的活，由调用方（`installer.rs`）
 /// 在「用户主动配置虾盘云」时另外触发，跟「装没装」分开。
 ///
-/// 流程：幂等检查 → 磁盘预检 → 拉取版本信息 → 下载到临时目录 → 校验 size + sha512 →
-/// `/S /currentuser` 静默装（最多等 30 分钟，期间每 30 秒报一次进度）→ 轮询确认装上了 →
-/// 静默失败（被拦/取消/杀软）则回退拉起可视安装界面。
+/// 同一次安装确认得到的事实，避免调用方再次读注册表时拿到另一份（可能陈旧的）版本。
+pub struct InstallOutcome {
+    pub message: String,
+    pub version: Option<String>,
+}
+
+/// 普通安装幂等；升级/修复跳过幂等检查，其余共用同一安装实现。
 #[cfg(windows)]
-pub fn install(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, String> {
+pub fn install(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<InstallOutcome, String> {
+    install_inner(false, on_progress)
+}
+
+#[cfg(windows)]
+pub fn upgrade(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<InstallOutcome, String> {
+    install_inner(true, on_progress)
+}
+
+#[cfg(windows)]
+fn install_inner(force: bool, on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<InstallOutcome, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    if installed() {
+    // 防同进程的向导/升级重复发起安装。守卫先于任何真实检测、下载或安装。
+    let sandbox = std::env::var("UKING_TEST_HOME").map(|v| !v.is_empty()).unwrap_or(false);
+    install_policy(sandbox, force, false)?;
+    static INSTALL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = INSTALL_LOCK.try_lock().map_err(|_| "DeepSeek Harness 安装/升级仍在进行，请等待后重试。".to_string())?;
+    if install_policy(false, force, installed())? {
         on_progress("检测到 DeepSeek Harness 已安装，跳过重复安装。");
-        return Ok("DeepSeek Harness 已安装（跳过重复安装）。".into());
+        return Ok(InstallOutcome {
+            message: "DeepSeek Harness 已安装（跳过重复安装）。".into(),
+            version: display_version(),
+        });
     }
+    ensure_not_running()?;
 
     // 磁盘预检：安装包本身约 280MB，解出约 1.1 万个文件后实际占用远超安装包体积。
     // 2000MB 是留足余量的保守线，不是精确算出来的下限——探测失败（None）不阻塞安装。
@@ -306,14 +435,25 @@ pub fn install(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, Str
         );
     }
 
+    // 下载期间用户可能重新打开了 DSH；再次确认，绝不让安装器替我们强杀用户进程。
+    if let Err(e) = ensure_not_running() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
     on_progress("校验通过，正在安装 DeepSeek Harness（首次安装文件较多，可能需要十几分钟）…");
 
-    let visible_fallback = |reason: String| -> String {
-        on_progress("静默安装未成，已打开安装界面，按提示点「下一步」即可…");
-        let _ = std::process::Command::new(&tmp)
+    let visible_fallback = |reason: String| -> Result<InstallOutcome, String> {
+        if force {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("DeepSeek Harness 升级/修复未确认：{reason}。请退出 DSH 后重试，或到官网手动安装。"));
+        }
+        // 普通安装仍可打开手动安装界面，但此时只能报未确认，不能把旧 exe 算作安装成功。
+        ensure_not_running()?;
+        std::process::Command::new(&tmp)
             .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
-        format!("已打开 DeepSeek Harness 安装程序（{reason}），按提示装完即可。")
+            .spawn().map_err(|e| format!("静默安装失败（{reason}），打开安装界面也失败: {e}"))?;
+        on_progress("已打开安装界面，请按提示完成安装；当前尚未确认安装成功。");
+        Err(format!("DeepSeek Harness 安装未确认（{reason}），已打开安装界面，请完成后重新检测。"))
     };
 
     let spawned = std::process::Command::new(&tmp)
@@ -322,7 +462,7 @@ pub fn install(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, Str
         .spawn();
     let mut child = match spawned {
         Ok(c) => c,
-        Err(e) => return Ok(visible_fallback(e.to_string())),
+        Err(e) => return visible_fallback(e.to_string()),
     };
 
     // 静默装等待时序：轮询 `try_wait`（不用阻塞的 `.status()`）才能在等待期间插空报进度。
@@ -336,12 +476,13 @@ pub fn install(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, Str
             Ok(Some(s)) => break Some(s),
             Ok(None) => {}
             Err(e) => {
-                crate::ulog::write("dshdesk", &format!("等待安装进程失败: {e}"));
-                break None;
+                // 状态未知时不能另起一个安装器，更不能拿旧 exe 报成功。
+                return Err(format!("DeepSeek Harness 安装进程状态未知，未确认完成: {e}。请检查安装程序后重试。"));
             }
         }
         if start.elapsed() > max_wait {
             let _ = child.kill();
+            let _ = child.wait();
             let _ = std::fs::remove_file(&tmp);
             return Err(
                 "DeepSeek Harness 安装超过 30 分钟未完成，已放弃（可能是杀软拦截或磁盘很慢）。\
@@ -361,27 +502,21 @@ pub fn install(on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, Str
 
     match exit_status {
         Some(s) if s.success() => {
-            // 装完轮询确认，最多约 10 秒（跟 uuswitch.rs 的口径一致）。
-            for _ in 0..20 {
-                if installed() {
-                    let _ = std::fs::remove_file(&tmp);
-                    return Ok(format!("DeepSeek Harness {} 已安装完成。", release.version));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
+            // 只在静默安装器成功退出后读回实际版本；旧版 exe 的存在不构成成功证据。
+            let result = confirmed_version(&release.version);
             let _ = std::fs::remove_file(&tmp);
-            Ok(format!(
-                "DeepSeek Harness {} 安装已完成（若列表未刷新，稍等片刻）。",
-                release.version
-            ))
+            result.map(|actual| InstallOutcome {
+                message: format!("DeepSeek Harness {} 已安装完成（已核对实际版本 {actual}）。", release.version),
+                version: Some(actual),
+            })
         }
-        Some(s) => Ok(visible_fallback(format!("安装码 {}", s.code().unwrap_or(-1)))),
-        None => Ok(visible_fallback("安装进程状态未知".to_string())),
+        Some(s) => visible_fallback(format!("安装码 {}", s.code().unwrap_or(-1))),
+        None => Err("DeepSeek Harness 安装进程状态未知，未确认完成。".into()),
     }
 }
 
 #[cfg(not(windows))]
-pub fn install(_on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<String, String> {
+pub fn install(_on_progress: &(dyn Fn(&str) + Send + Sync)) -> Result<InstallOutcome, String> {
     Err("DeepSeek Harness 桌面版目前只提供 Windows 安装包，请使用命令行版".into())
 }
 
@@ -406,6 +541,31 @@ pub fn launch() -> Result<(), String> {
 #[cfg(test)]
 mod feed_tests {
     use super::*;
+
+    #[test]
+    fn release_version_requires_exact_core_and_prerelease() {
+        for actual in ["0.2.1-rc.2", " v0.2.1-rc.2 ", "V0.2.1-rc.2+build.42", "0.2.1-rc.2.42"] {
+            assert!(version_matches_release(actual, "0.2.1-rc.2"), "{actual}");
+        }
+        for actual in ["0.2.0-rc.2", "0.2.1-rc.20", "0.2.1-rc.3", "0.2.1", "0.2.1.0", "0.2.10-rc.2", "0.2.1-rc.2garbage", "0.2.1-rc.2.", "", "0.2.1-rc.2+"] {
+            assert!(!version_matches_release(actual, "0.2.1-rc.2"), "{actual}");
+        }
+        assert!(version_matches_release("1.2.3.45", "v1.2.3+feed.7"));
+        assert!(!version_matches_release("unreadable", "unreadable"));
+    }
+
+    #[test]
+    fn install_is_idempotent_but_repair_is_not_and_sandbox_always_blocks() {
+        assert_eq!(install_policy(false, false, true), Ok(true));
+        assert_eq!(install_policy(false, false, false), Ok(false));
+        assert_eq!(install_policy(false, true, true), Ok(false));
+        assert_eq!(install_policy(false, true, false), Ok(false));
+        for force in [false, true] {
+            for present in [false, true] {
+                assert!(install_policy(true, force, present).is_err());
+            }
+        }
+    }
 
     // 🔴 别用反斜杠续行来「缩进对齐」这段字面量——Rust 的 `\` + 换行会把下一行开头的空白
     // 一并吃掉，YAML 的缩进语义（`>-` 折叠标量靠缩进定界）会被悄悄抹平，解析当场报错。

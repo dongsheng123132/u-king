@@ -612,6 +612,27 @@ export function App() {
       .catch(() => flash(tr("ClawX 已安装，请从开始菜单 / 桌面图标打开")));
   };
 
+  // 升级/修复有独立意图，不能复用「已装就打开」的安装入口。
+  const repairingTools = useRef(new Set<string>());
+  const repairTool = async (t: ToolInfo) => {
+    if (repairingTools.current.has(t.id)) return;
+    repairingTools.current.add(t.id);
+    let un: (() => void) | undefined;
+    try {
+      un = await listen<{ tool: string; phase: string; line: string }>("uking:upgrade", (e) => {
+        if (e.payload.tool === t.id) flash(e.payload.line);
+      });
+      const result = await invoke<{ ok: boolean; version: string | null; error: string | null }>("upgrade_cli_tool", { toolId: t.id });
+      flash(result.ok ? `${t.name} · ${result.version ?? tr("已完成")}` : result.error ?? tr("失败"));
+    } catch (e) {
+      flash(String(e));
+    } finally {
+      un?.();
+      repairingTools.current.delete(t.id);
+      await refresh().catch(() => null);
+    }
+  };
+
   const openTool = async (t: ToolInfo) => {
     if (t.id === "clawx") {
       // ① 先「检测一次」：点击时拿一份最新探测结果，已装就直接打开 app —— 绝不因 state 旧了
@@ -1326,6 +1347,7 @@ export function App() {
                 deviceKey={deviceKey}
                 onLaunch={launchTool}
                 onOpen={openTool}
+                onRepair={repairTool}
                 onInstallSelection={(ids) => {
                   setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: ids }));
                   setTab("setup");

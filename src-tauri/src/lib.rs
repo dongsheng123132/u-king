@@ -43,9 +43,17 @@ mod advice;
 mod actions;
 /// 浏览器子窗口导航的无头取证（需求榜 P0 #5 的硬那半边）。只在 `--browser-nav-test` 下用。
 mod browser_nav_probe;
+// 工具目录三款 GUI 的内建安装/检测入口：Magpie 便携下载核验 + WorkBuddy 官方包核验后
+// 打开交互安装界面 + 豆包消费桌面版（官网指引，不代装）。真正的分派在 installer.rs 的
+// install_tool_with_intent 特判里（同 dshdesk 的形状）。
+mod catalog_desktop;
 // DeepSeek Harness 官方桌面版（Windows）：装/检测/启动。非 Windows 下各函数直接返回
 // 「不支持」的 Err/false，不需要额外 cfg 隔离整个模块（同 `webview2` 的做法）。
 mod dshdesk;
+// Hermes 官方安装器（install.ps1 + tag 锁定）的封装：发布解析、下载核验、安装执行、
+// launcher 阴影排查（where_report）。安装/升级经 installer.rs 的 install_tool_with_intent
+// 特判进（同 dshdesk / catalog_desktop 的形状）；SHA-256 复用 installer 的公共层。
+mod hermesdist;
 mod installer;
 mod journal;
 mod macopt;
@@ -274,7 +282,7 @@ async fn install_dsh_desktop(app: AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         dshdesk::install(&move |msg: &str| {
             let _ = app2.emit("uking:dshdesk_progress", msg.to_string());
-        })
+        }).map(|outcome| outcome.message)
     })
     .await
     .map_err(|e| format!("安装 DeepSeek Harness 异常: {e}"))?
@@ -5918,18 +5926,19 @@ async fn upgrade_cli_tool(
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let skill = installer::load_skill();
-        // 未安装的先拦下：**没装谈不上升级**，让一键升级逐个跳过而不是白跑一遍流水线。
-        // 注意判「装没装」要用 spec.bin（claude-code 的 bin 是 claude），不是 skill id。
-        if let Some(spec) = skill.tools.get(&tool_id) {
-            if !installer::tool_installed(&spec.bin) {
-                return Err(format!("{} 未安装 —— 先去装机向导安装，装了才谈得上升级", spec.name));
-            }
+        // 目录已有桌面版/CLI 的平台检测规则；Windows DSH 没有 CLI，不能用 spec.bin 拒绝 GUI。
+        // 清单独有的工具继续按原 bin 判据检测，未知 id 留给共享核心返回清单错误。
+        let present = tools::list_tools().into_iter().find(|t| t.id == tool_id).map(|t| t.installed)
+            .or_else(|| skill.tools.get(&tool_id).map(|spec| installer::tool_installed(&spec.bin)));
+        if present == Some(false) {
+            let name = skill.tools.get(&tool_id).map(|s| s.name.as_str()).unwrap_or(&tool_id);
+            return Err(format!("{name} 未安装 —— 先去装机向导安装，装了才谈得上升级"));
         }
         let tid = tool_id.clone();
         // 与 install_ai_tool_shared 共用同一套：首个错误快照、预检拦截不上报、detail 不被 repair 洪水淹没
         let log_tail = report::InstallLogTail::new();
         installer::install_log_header(&format!("upgrade-{tool_id}"));
-        let r = installer::install_tool(&skill, &tool_id, &|phase: &str, line: &str| {
+        let r = installer::upgrade_tool(&skill, &tool_id, &|phase: &str, line: &str| {
             let _ = app2.emit(
                 "uking:upgrade",
                 serde_json::json!({ "tool": tid, "phase": phase, "line": line }),
@@ -7226,7 +7235,13 @@ pub fn run() {
                 None => eprintln!("[fix] 无需迁移"),
             }
         }
-        let r = providers::hermes_where();
+        let mut r = providers::hermes_where();
+        // launcher 阴影并进同一份报告（组合根接线，providers 不新增模块边）：官方
+        // install.ps1 装出来的是 %LOCALAPPDATA%\hermes\bin\hermes.exe，旧 pip 那份还可能
+        // 躺在便携 Python Scripts 里抢 PATH —— 「配置写对了、跑的却是旧 hermes」和当年
+        // 「配置写对了、Hermes 却不读那个目录」是同一类故障，一个入口把两种落点都看清。
+        // 口径同上：非隐私（路径/版本/来源，Key 不出）。
+        r["launcher"] = hermesdist::where_report();
         println!("{}", serde_json::to_string_pretty(&r).unwrap_or_else(|_| "{}".into()));
         std::process::exit(if r["mismatch"].as_bool().unwrap_or(false) { 1 } else { 0 });
     }

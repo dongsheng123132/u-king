@@ -16,6 +16,7 @@
 //! - 豆包工作：子键 `DoubaoWork`，`DisplayIcon` 是带引号的 `...\Application\icon.ico`（**是 .ico 不是 exe**），
 //!   没有 `InstallLocation`；主程序在同目录 `DoubaoWork.exe`。消费版「豆包」是另一个子键 `Doubao` /
 //!   `Doubao.exe`，DisplayName 只有「豆包」两个字——所以绝不能对「豆包」做前缀匹配（会把两个产品混成一个）。
+//!   2026-10-19 起消费版有独立规则 id `doubao-desktop`（精确匹配「豆包」），老 `doubao` 仍指豆包工作。
 //! - 千问办公：子键是 **GUID**（只能靠 DisplayName 认），`DisplayIcon` 是 `...\QwenWorkCN\uninstallerIcon.ico`
 //!   （同样是 .ico）；主程序是根目录的 `Launcher.exe`（开始菜单快捷方式指向它，真正的 `QwenWorkCN.exe`
 //!   在 `1.2.0-xxxx\` 这类带版本号的子目录里，随自动更新换目录）。**`DisplayVersion` 是装机时的版本，
@@ -84,6 +85,18 @@ pub const RULES: &[AppRule] = &[
         display_prefixes: &[],
         exe_names: &["DoubaoWork.exe"],
         fallback_exes: &["%LOCALAPPDATA%\\DoubaoWork\\Application\\DoubaoWork.exe"],
+    },
+    AppRule {
+        // 豆包**消费桌面版**（2026-10-19 正式接入，id 用 doubao-desktop 区分）：
+        // 老 "doubao" 指「豆包工作」，两个是不同产品、不同卸载表/主程序，规则绝不互通。
+        // DisplayName 只有「豆包」两个字——精确匹配，不做前缀（前缀会把「豆包工作」吃进来）。
+        id: "doubao-desktop",
+        label: "豆包",
+        key_names: &["Doubao"],
+        display_names: &["豆包"],
+        display_prefixes: &[],
+        exe_names: &["Doubao.exe"],
+        fallback_exes: &["%LOCALAPPDATA%\\Doubao\\Application\\Doubao.exe"],
     },
     AppRule {
         id: "qwenwork",
@@ -509,15 +522,33 @@ pub fn find(id: &str) -> Option<FoundApp> {
     }
     #[cfg(target_os = "macos")]
     {
+        // bundle / 内层二进制名：WorkBuddy.app / Doubao.app 的 bundle 名按已定方案收录，
+        // **内层二进制名未证实不猜** —— 先按存在性探测命中约定名，命中不了退回
+        // 「.app 目录在就算装了」（launch 走 `open -a`，不依赖二进制名；合成的 exe 路径
+        // 只用来定位 bundle）。Magpie 的 bundle 探测在 catalog_desktop（U-King 自落盘的
+        // 便携程序，状态归安装核心），不在这张表。
         let (bundle, binary) = match id {
             "claude-app" => ("Claude.app", "Claude"),
             "obsidian" => ("Obsidian.app", "Obsidian"),
             "uu-remote" => ("UURemote.app", "UURemote"),
+            "workbuddy" => ("WorkBuddy.app", "WorkBuddy"),
+            "doubao-desktop" => ("Doubao.app", "Doubao"),
             _ => return None,
         };
         let roots = [PathBuf::from("/Applications"), crate::installer::user_home_dir().join("Applications")];
-        roots.into_iter().map(|root| root.join(bundle).join("Contents/MacOS").join(binary))
-            .find(|exe| exe.is_file()).map(|exe| FoundApp { exe, version: None })
+        let bundle_only = id == "workbuddy" || id == "doubao-desktop";
+        roots.into_iter()
+            .find_map(|root| {
+                let app = root.join(bundle);
+                let exe = app.join("Contents/MacOS").join(binary);
+                if exe.is_file() {
+                    Some(FoundApp { exe, version: None })
+                } else if bundle_only && app.is_dir() {
+                    Some(FoundApp { exe, version: None })
+                } else {
+                    None
+                }
+            })
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -764,6 +795,10 @@ HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Som
         };
         // 「豆包」（消费版）不能被「豆包工作」的规则认走，反过来也一样
         assert_eq!(hits("doubao"), ["豆包工作"]);
+        assert_eq!(hits("doubao-desktop"), ["豆包"]);
+        // 老 id "doubao" 仍指豆包工作——绝不能因新增 doubao-desktop 而串味
+        assert_eq!(rule("doubao").label, "豆包工作");
+        assert_eq!(rule("doubao-desktop").label, "豆包");
         // 千问办公是 GUID 键，只能靠 DisplayName
         assert_eq!(hits("qwenwork"), ["千问办公"]);
         // WorkBuddy 国内版与海外版（带 AI）都认
@@ -788,6 +823,14 @@ HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Som
         let on = [r"C:\Users\demo\AppData\Local\DoubaoWork\Application\DoubaoWork.exe"];
         let found = find_in(rule("doubao"), &es, &no_expand, &disk(&on)).unwrap();
         assert_eq!(found, (on[0].to_string(), Some("2.31.10".to_string())));
+
+        // 消费版豆包（doubao-desktop）：同款 .ico 形状，落点是 Doubao\Application\Doubao.exe；
+        // 豆包工作那份 exe 在盘上也不能把它认走
+        let consumer = [r"C:\Users\demo\AppData\Local\Doubao\Application\Doubao.exe"];
+        let found = find_in(rule("doubao-desktop"), &es, &no_expand, &disk(&consumer)).unwrap();
+        assert_eq!(found, (consumer[0].to_string(), Some("1.77.8".to_string())));
+        assert!(find_in(rule("doubao-desktop"), &es, &no_expand, &disk(&on)).is_none(),
+            "豆包工作主程序不能充当豆包消费版");
 
         // 千问办公：.ico 在根目录，主程序是同目录的 Launcher.exe（排在 QwenWorkCN.exe 前面）
         let qw = [r"C:\Users\demo\AppData\Local\Programs\QwenWorkCN\Launcher.exe", r"C:\Users\demo\AppData\Local\Programs\QwenWorkCN\QwenWorkCN.exe"];

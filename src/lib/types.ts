@@ -86,6 +86,10 @@ export type EffectiveConfig = {
   model: string | null;
   /** 有别的文件压着我们写的那份 → 写入成功但不生效。值是那个文件的路径。 */
   overridden_by: string | null;
+  /** 可选补充说明（兼容字段）：像 WorkBuddy 这种「读得到配置、但模型由它按任务选」的目标，
+   *  `readable=false` 表示不知道会话在用哪个，`note` 用来解释（如「已添加到模型列表，请在
+   *  WorkBuddy选择」）。老后端不返回它就没有。 */
+  note?: string | null;
 };
 
 /** `DriverStatus.discovered` 的一条记录（对应后端 `providers.rs::ToolDiscovery`）。 */

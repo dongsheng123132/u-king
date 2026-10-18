@@ -580,6 +580,45 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
+    // 🔴 三个桌面 GUI 追加在表尾，别插进 pi/opencode 前面：`providers::list_tools_targets()`
+    // 按本表顺序派生 LIST_TOOLS，尾插不改变历史前缀顺序（见上面 pi/opencode 注释）。
+    ToolSpec {
+        // Magpie（yetone/magpie）：AI 供应商配置管理工具，自带供应商管理界面。
+        // 配置写入暂不接管（config_target=None / in_list_tools=false）——在它的界面里
+        // 添加供应商是可用入口；本轮不编一个还不存在的可写 target。
+        id: "magpie",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
+    },
+    ToolSpec {
+        // WorkBuddy 腾讯国内版桌面智能体。模型由它按任务选择，不是固定单模型；
+        // config_target=Some("workbuddy") 是另一线 providers 实现的占位，接上才可写配置。
+        id: "workbuddy",
+        cmd: "",
+        config_target: Some("workbuddy"),
+        in_list_tools: true,
+        in_checkup: None,
+        probe_args: None,
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
+    },
+    ToolSpec {
+        // 豆包消费桌面版（不是「豆包工作」——那个 id 仍叫 "doubao"，见 desktop_app::RULES）。
+        // 两个产品卸载表/主程序都不同，绝不混检混启。
+        id: "doubao-desktop",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
+    },
 ];
 
 #[cfg(test)]
@@ -1012,7 +1051,16 @@ pub fn list_tools() -> Vec<ToolInfo> {
 
 // Build catalog metadata before probing: a launch must never inspect unrelated apps.
 fn list_tools_matching(only: Option<&str>) -> Vec<ToolInfo> {
-    catalog_with_probes(only, tool_is_installed, crate::installer::managed_desktop_version)
+    catalog_with_probes(only, tool_is_installed, catalog_tool_version)
+}
+
+/// 已装版本：Magpie 是 U-King 自己落盘的便携程序，版本来自安装时写下的收据；
+/// 其余桌面应用走卸载表 / bundle 的 `managed_desktop_version`。
+fn catalog_tool_version(id: &str) -> Option<String> {
+    if id == "magpie" && cfg!(windows) {
+        return crate::catalog_desktop::magpie_version();
+    }
+    crate::installer::managed_desktop_version(id)
 }
 
 fn catalog_with_probes(
@@ -1195,13 +1243,13 @@ fn catalog_with_probes(
             name: if cfg!(windows) {
                 "DeepSeek Harness（官方桌面版）"
             } else {
-                "DeepSeek Harness（官方预览版）"
+                "DeepSeek Harness（官方CLI）"
             }
             .into(),
             summary: if cfg!(windows) {
                 "DeepSeek 官方桌面版智能体框架。U-King 一键安装并帮你配好模型（用本机虾盘云 Key，无需申请 DeepSeek API Key），版本随官方自动更新。"
             } else {
-                "DeepSeek 官方智能体框架。U-King 一键安装并打开本地 Web 工作台；也支持 headless 一次性任务，当前锁定已验证的 0.1.7-rc.2。"
+                "DeepSeek 官方智能体框架（官方CLI）。U-King 一键安装并打开本地 Web 工作台；也支持 headless 一次性任务。"
             }
             .into(),
             kind: "deep".into(),
@@ -1264,6 +1312,41 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
     );
+    // 三个桌面 GUI：检测/启动（GuiApp）+ 正确名称 + 安装入口。配置接线不在本表说了算，
+    // 见 TOOL_SPECS 同 id 注释（magpie 暂不接管配置；workbuddy 的 target 另一线实现）。
+    #[cfg(any(windows, target_os = "macos"))]
+    v.push(ToolInfo {
+        id: "magpie".into(),
+        name: "Magpie".into(),
+        summary: "AI 供应商配置管理工具（yetone/magpie）。Windows 一键装官方 GitHub Releases 单文件 GUI；打开后请在 Magpie 自己的供应商界面中添加/管理供应商（U-King 暂不代写它的配置）。".into(),
+        kind: "standalone".into(), installed: false,
+        action: if cfg!(windows) { "install" } else { "url" }.into(),
+        target: if cfg!(windows) { "".into() } else { "https://github.com/yetone/magpie/releases/latest".into() },
+        launch_cmd: "".into(), launch_app: "magpie".into(),
+        hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+    });
+    #[cfg(any(windows, target_os = "macos"))]
+    v.push(ToolInfo {
+        id: "workbuddy".into(),
+        name: "WorkBuddy".into(),
+        summary: "腾讯 WorkBuddy 国内版桌面智能体。模型由它按任务自行选择（不是固定单模型、也谈不上自动选中某个模型），登录腾讯账号使用；Windows 点安装会打开腾讯官方安装界面，按提示完成后即可打开。".into(),
+        kind: "standalone".into(), installed: false,
+        action: if cfg!(windows) { "install" } else { "url" }.into(),
+        target: if cfg!(windows) { "".into() } else { "https://www.workbuddy.cn/".into() },
+        launch_cmd: "".into(), launch_app: "workbuddy".into(),
+        hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+    });
+    #[cfg(any(windows, target_os = "macos"))]
+    v.push(ToolInfo {
+        id: "doubao-desktop".into(),
+        name: "豆包".into(),
+        summary: "豆包桌面版（消费版）。与「豆包工作」是两个不同产品（各自独立安装与主程序），别混用；下载直链尚未核实，先走豆包官网下载安装，检测到已装后可一键打开。".into(),
+        kind: "standalone".into(), installed: false,
+        action: "url".into(),
+        target: "https://www.doubao.com/download/desktop".into(),
+        launch_cmd: "".into(), launch_app: "doubao-desktop".into(),
+        hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+    });
     // `config_target` 的唯一来源：按 id 从 TOOL_SPECS 取（见字段文档）。TOOL_SPECS 里查不到的
     // id（理论上不会有，`tool_specs_ids_match_list_tools_ids` 单测守着）保持 None，
     // 也就是「不接驱动切换」，宁可少露一个换模型入口，也不编一个 target。
@@ -1308,6 +1391,12 @@ fn probe_tool(id: &str) -> Option<bool> {
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
         "claude-app" => crate::installer::managed_desktop_installed("claude-app"),
         "codex-app" => crate::installer::codex_app_installed(),
+        // Magpie：U-King 自落盘的便携程序（Windows PE / macOS magpie.app bundle），
+        // 检测、版本、启动都归安装核心 catalog_desktop（状态只有一份，不在 desktop_app）。
+        "magpie" => crate::catalog_desktop::magpie_installed(),
+        "workbuddy" => crate::installer::managed_desktop_installed("workbuddy"),
+        // 豆包**消费桌面版**（desktop_app 规则 id "doubao-desktop"）；老 "doubao" 仍是豆包工作。
+        "doubao-desktop" => crate::installer::managed_desktop_installed("doubao-desktop"),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
         _ => return None,
     })
@@ -1638,6 +1727,9 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
         // `plan.tool_id`，不是 `launch_app` 字段）——`config_target`/`in_list_tools`/表内
         // 顺序有测试锁住不能改 id，只能这里两个键都接，别漏掉任何一条调用路径。
         "dsh-desktop" | "dsh" => crate::dshdesk::launch(),
+        // Magpie 便携 GUI：直接起落盘 exe / bundle（Windows 尊重 UKING_TEST_HOME）。
+        // workbuddy / doubao-desktop 由上面 launch_managed_desktop 按 desktop_app 规则拉起。
+        "magpie" => crate::catalog_desktop::launch_magpie(),
         // openclaw 网页版不在这里启动（要 AppHandle 开内嵌网页窗）；前端按 id 拦截切到 openclaw 页。
         // 万一漏拦走到这里，给条清楚指引而不是「未知应用」。
         "openclaw-webui" => Err("请在「我的 AI」点 OpenClaw 网页版打开".into()),

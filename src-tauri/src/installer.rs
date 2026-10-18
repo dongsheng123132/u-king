@@ -2436,33 +2436,148 @@ pub fn install_tool(
     tool_id: &str,
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> InstallToolResult {
-    if tool_id == "claude-app" && sandboxed() {
+    install_tool_with_intent(skill, tool_id, InstallIntent::Install, on_log)
+}
+
+/// 显式升级/修复：与普通安装共用流水线，但不让桌面应用的幂等检查吞掉升级请求。
+pub fn upgrade_tool(
+    skill: &Skill,
+    tool_id: &str,
+    on_log: &(dyn Fn(&str, &str) + Send + Sync),
+) -> InstallToolResult {
+    install_tool_with_intent(skill, tool_id, InstallIntent::Upgrade, on_log)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallIntent {
+    Install,
+    Upgrade,
+}
+
+// 纯分派：非 Windows 的 DSH 继续走原清单；其余工具不改变原安装/修复规则。
+fn dsh_desktop_intent(tool_id: &str, windows: bool, intent: InstallIntent) -> Option<InstallIntent> {
+    (windows && tool_id == "dsh").then_some(intent)
+}
+
+// 纯分派：Windows 的 Hermes 改走官方源码安装器（钉 GitHub release commit，见 `hermesdist.rs`）。
+// 非 Windows（macOS）**不进**这条分支 —— 落到下面的通用清单（pip 路径，仍停在 PyPI 的 0.19.0）：
+// install.sh 的落点口径没在 Mac 上验过，没验过的分支不许开。
+#[cfg(windows)]
+fn hermes_official_intent(tool_id: &str, intent: InstallIntent) -> Option<InstallIntent> {
+    (tool_id == "hermes").then_some(intent)
+}
+
+// 纯分派：工具目录三款桌面 GUI（magpie / workbuddy / doubao-desktop）走内建安装核心
+// `catalog_desktop.rs`——便携下载核验 / 打开官方安装界面 / 官网指路，边界见那个模块的头注释。
+// 跨平台：非 Windows 由 catalog_desktop 的同名 stub 返回指路 Err，分派照走、不分叉。
+fn catalog_gui_tool(tool_id: &str) -> bool {
+    matches!(tool_id, "magpie" | "workbuddy" | "doubao-desktop")
+}
+
+fn install_tool_with_intent(
+    skill: &Skill,
+    tool_id: &str,
+    intent: InstallIntent,
+    on_log: &(dyn Fn(&str, &str) + Send + Sync),
+) -> InstallToolResult {
+    let desktop_intent = dsh_desktop_intent(tool_id, cfg!(windows), intent);
+    let catalog_gui = catalog_gui_tool(tool_id);
+    if (tool_id == "claude-app" || desktop_intent.is_some() || catalog_gui) && sandboxed() {
         return fail(tool_id, 0, "沙箱禁止安装系统桌面应用；请在隔离测试机验证。".into());
     }
-    // DeepSeek Harness（Windows）：不再用 npm 全局包，走官方桌面版静默安装（见 `dshdesk.rs`
-    // 模块头注释）。这样向导 / `action run` / MCP 全都走同一条实现，不在前端再写一份安装逻辑。
-    // Mac/Linux 未改，落到下面的 `install_tool_inner`（仍是 npm 清单那条路）。
     #[cfg(windows)]
-    if tool_id == "dsh" {
-        on_log("step", "DeepSeek Harness（Windows）：改走官方桌面版安装，不再用 npm 全局包…");
-        return match crate::dshdesk::install(&|msg: &str| on_log("out", msg)) {
-            // 🔴 `Ok` 不等于「装上了」——静默安装被拦/取消时 `dshdesk::install` 会回退拉起
-            // 可视安装界面，此时也是 `Ok("已打开安装程序…")`（人话提示，不是失败），但那一刻
-            // 桌面版其实还没落地。不能拿这个 `Ok` 直接报 `ok:true`，否则向导/`action run`
-            // 会当场把「还没装完」误报成「装好了」。以 `dshdesk::installed()` 现查为准。
-            Ok(msg) => {
-                if crate::dshdesk::installed() {
-                    let version = crate::dshdesk::display_version();
-                    on_log("done", &msg);
-                    InstallToolResult { ok: true, tool: tool_id.into(), version, attempts: 1, error: None, precheck_blocked: false }
-                } else {
-                    on_log("out", &msg);
-                    fail(tool_id, 1, msg)
-                }
+    if let Some(intent) = desktop_intent {
+        on_log("step", "DeepSeek Harness（Windows）：使用官方桌面版安装流水线…");
+        let progress = |msg: &str| on_log("out", msg);
+        let result = match intent {
+            InstallIntent::Install => crate::dshdesk::install(&progress),
+            InstallIntent::Upgrade => crate::dshdesk::upgrade(&progress),
+        };
+        // dshdesk 只有在幂等安装命中，或静默进程成功退出且实际版本匹配 feed 时才返回 Ok。
+        // 不再以旧 exe 仍存在，把未完成/失败的升级或安装向导误报为成功。
+        return match result {
+            Ok(outcome) => {
+                on_log("done", &outcome.message);
+                InstallToolResult { ok: true, tool: tool_id.into(), version: outcome.version, attempts: 1, error: None, precheck_blocked: false }
             }
             Err(e) => {
                 on_log("error", &e);
                 fail(tool_id, 1, e)
+            }
+        };
+    }
+
+    // Hermes（Windows）：官方源码安装器 `install.ps1` 钉 release commit（`hermesdist.rs`）。
+    // 不走清单的 pip 步 —— v0.22.2 核心依赖要求 Python 3.14，现有便携 Python 3.12 上
+    // pip 能解析成功但一个依赖都不装，`--version` 直接 ModuleNotFoundError（假成功）。
+    // 沙箱里由 hermesdist 第一时间拦（带 BLOCKED_MARK → 下面按 precheck_blocked 上报，
+    // 上层不建 issue）；Hermes 正在跑也是同一条：只提示「请先退出」，绝不强杀。
+    #[cfg(windows)]
+    if hermes_official_intent(tool_id, intent).is_some() {
+        on_log("step", "Hermes（Windows）：官方源码安装器（钉 GitHub release commit）…");
+        let progress = |msg: &str| on_log("out", msg);
+        let result = match intent {
+            InstallIntent::Install => crate::hermesdist::install(&progress),
+            InstallIntent::Upgrade => crate::hermesdist::upgrade(&progress),
+        };
+        return match result {
+            Ok(outcome) => {
+                on_log("done", &outcome.message);
+                // 装后的三件照旧：utils 兼容补丁、虾盘云配置写盘（读回验证在 providers）、
+                // CLI 转发器守卫（此处官方 bin 已落地，shims/hermes.cmd 会指向它）。
+                post_install(tool_id, on_log);
+                InstallToolResult { ok: true, tool: tool_id.into(), version: outcome.version, attempts: 1, error: None, precheck_blocked: false }
+            }
+            Err(e) => {
+                on_log("error", &e);
+                if crate::hermesdist::is_precheck_block(&e) {
+                    blocked(tool_id, e)
+                } else {
+                    fail(tool_id, 1, e)
+                }
+            }
+        };
+    }
+
+    // 工具目录三款桌面 GUI：分派到内建安装核心 `catalog_desktop.rs`。
+    // magpie 真装（官方 GitHub GUI 单文件，大小+sha256+PE 核验后原子替换；装/升同一实现，
+    // 每次拉最新，不存在「旧 exe 还在就报成功」）；workbuddy 静默参数未实测，只打开核验过的
+    // 腾讯官方安装界面，**恒「待用户操作」绝不报已装**；doubao-desktop 下载直链未核实，
+    // 不代装，给官网指引（检测/启动照旧可用）。
+    if catalog_gui {
+        on_log("step", "工具目录桌面应用：使用 U-King 内建安装入口…");
+        let result = match tool_id {
+            "magpie" => match intent {
+                InstallIntent::Install => crate::catalog_desktop::install_magpie(on_log),
+                InstallIntent::Upgrade => crate::catalog_desktop::upgrade_magpie(on_log),
+            },
+            "workbuddy" => match intent {
+                InstallIntent::Install => crate::catalog_desktop::install_workbuddy(on_log),
+                InstallIntent::Upgrade => crate::catalog_desktop::upgrade_workbuddy(on_log),
+            },
+            // doubao-desktop 没有代装/升级能力（upgrade 与 install 同一实现=官网指路），
+            // 但两个意图都要走到自己的入口，别留一个没人调的死函数。
+            "doubao-desktop" => match intent {
+                InstallIntent::Install => crate::catalog_desktop::install_doubao_desktop(on_log),
+                InstallIntent::Upgrade => crate::catalog_desktop::upgrade_doubao_desktop(on_log),
+            },
+            // catalog_gui 已把入口限定在这三个 id；万一走到也只报错不 panic（release 是 panic=abort）
+            other => Err(format!("未预期的工具目录桌面应用：{other}")),
+        };
+        return match result {
+            Ok(version) => {
+                on_log("done", &format!("{tool_id} 安装完成 · {version}"));
+                InstallToolResult { ok: true, tool: tool_id.into(), version: Some(version), attempts: 1, error: None, precheck_blocked: false }
+            }
+            Err(e) => {
+                on_log("error", &e);
+                // 设计内结局（沙箱拦截 / 平台指路 / 待用户在官方界面操作）每次点都会走到，
+                // 报 blocked 不建 issue；真故障（下载/核验失败）照旧 fail 建 issue。
+                if crate::catalog_desktop::is_design_outcome(&e) {
+                    blocked(tool_id, e)
+                } else {
+                    fail(tool_id, 1, e)
+                }
             }
         };
     }
@@ -3778,6 +3893,25 @@ fn verify(tool_id: &str, spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + 
         return crate::desktop_app::find("claude-app")
             .map(|app| app.version.unwrap_or_else(|| "已找到 Claude 主程序".into()))
             .ok_or_else(|| "安装程序已退出，但没有找到 Claude 桌面版的主程序".into());
+    }
+    // Hermes（Windows）：装后验证走 hermesdist 的门禁——`--version` 输出里
+    // ModuleNotFoundError / ImportError / unknown 全算失败（pip 假成功的经典症状），
+    // 并核对 launcher 落点；比清单 verify_cmd 多一层「跑的确实是官方 bin 里那份」。
+    // 非 Windows 不进这条：Mac 仍走清单 pip 路径的通用验证。
+    #[cfg(windows)]
+    if tool_id == "hermes" {
+        let progress = |msg: &str| on_log("out", msg);
+        return crate::hermesdist::verify(&progress).map(|o| o.version.unwrap_or(o.message));
+    }
+    // 工具目录三款桌面 GUI：验证只证明「本机有可启动的主程序」，**不证明本次安装完成**——
+    // workbuddy / 豆包可能是旧版或用户手装，安装完成与否只由 install_* 的返回表达
+    // （workbuddy 恒「待用户操作」、豆包恒官网指路）。与 claude-app 同形状，不走清单 verify_cmd。
+    if catalog_gui_tool(tool_id) {
+        return match tool_id {
+            "magpie" => crate::catalog_desktop::verify_magpie(),
+            "workbuddy" => crate::catalog_desktop::verify_workbuddy(),
+            _ => crate::catalog_desktop::verify_doubao_desktop(),
+        };
     }
     let cmdline = verify_cmdline(spec);
     on_log("verify", &format!("验证：{cmdline}"));
@@ -5391,13 +5525,19 @@ pub fn inspect_cli_command_guard() -> CommandGuardInspection {
         let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".into());
         let user_bin = Path::new(&home).join("bin");
         let user_local_bin = Path::new(&home).join(".local").join("bin");
-        let mut sources = Vec::new();
+        let mut rest = Vec::new();
         if let Some(node) = portable_node_dir() {
-            sources.push(node);
+            rest.push(node);
         }
         if let Ok(appdata) = std::env::var("APPDATA") {
-            sources.push(Path::new(&appdata).join("npm"));
+            rest.push(Path::new(&appdata).join("npm"));
         }
+        // 体检口径必须与 `ensure_cli_command_guard` 的建入口径一致：官方 Hermes bin 排第一
+        // （阴影问题 —— 体检说的「认可的那一个」得是转发器真正会指向的那个）。
+        let sources = hermes_official_bin_leading(
+            crate::hermesdist::official_bin_dir().filter(|p| p.is_dir()),
+            rest,
+        );
         // 不调用 where.exe：客户机 PATH 中可能有断开的网络盘，where 会逐目录访问并把
         // 体检卡到分钟级。Action Core 只扫描已在内存的 PATH 字符串和确定文件路径。
         let path_dirs = std::env::var("PATH")
@@ -6088,11 +6228,24 @@ const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "
 #[cfg(windows)]
 /// Build an ACP-safe `.cmd` body. Never interpolate a Unicode absolute path: Rust writes UTF-8
 /// while cmd.exe reads batch files in the system ANSI code page.
-fn cli_command_guard_script(target: &Path, home: &Path, appdata: Option<&Path>) -> Option<String> {
+///
+/// `localappdata` 是第三个可能的根：官方 Hermes launcher 在 `%LOCALAPPDATA%\hermes\bin`，
+/// 而企业域 / 漫游配置下 `LOCALAPPDATA` 常常**不在** `USERPROFILE` 底下（那时按
+/// USERPROFILE 拼出来的 `%USERPROFILE%\...` 根本不是那个文件）。匹配顺序
+/// USERPROFILE → LOCALAPPDATA → APPDATA：谁真的是前缀谁上，都不是就不生成
+/// （宁可不建，也绝不内插任意绝对路径）。
+fn cli_command_guard_script(
+    target: &Path,
+    home: &Path,
+    appdata: Option<&Path>,
+    localappdata: Option<&Path>,
+) -> Option<String> {
     let (root_var, suffix) = if let Ok(suffix) = target.strip_prefix(home) {
         ("USERPROFILE", suffix)
-    } else if let Some(appdata) = appdata {
-        ("APPDATA", target.strip_prefix(appdata).ok()?)
+    } else if let Some(suffix) = localappdata.and_then(|l| target.strip_prefix(l).ok()) {
+        ("LOCALAPPDATA", suffix)
+    } else if let Some(suffix) = appdata.and_then(|a| target.strip_prefix(a).ok()) {
+        ("APPDATA", suffix)
     } else {
         return None;
     };
@@ -6185,7 +6338,8 @@ pub fn migrate_legacy_cli_command_guards() -> usize {
         };
         if !target.is_file() { continue; }
         let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
-        if let Some(content) = cli_command_guard_script(&target, &home, appdata.as_deref()) {
+        let localappdata = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        if let Some(content) = cli_command_guard_script(&target, &home, appdata.as_deref(), localappdata.as_deref()) {
             if write_cli_command_guard(&shim, &content).is_ok() { migrated += 1; }
         }
     }
@@ -6206,16 +6360,24 @@ pub fn ensure_cli_command_guard(on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> 
     let home_path = PathBuf::from(&home);
     let appdata = std::env::var("APPDATA").ok();
     let appdata_path = appdata.as_deref().map(Path::new);
-    let mut sources = Vec::new();
+    let localappdata = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let localappdata_path = localappdata.as_deref();
+    let mut rest = Vec::new();
     if let Some(node) = portable_node_dir() {
-        sources.push(node);
+        rest.push(node);
     }
     if let Some(appdata) = appdata_path {
-        sources.push(appdata.join("npm"));
+        rest.push(appdata.join("npm"));
     }
     // 仅作为最后一层候选：这里会选择 .cmd/.exe，绝不会把无扩展名的 Bash 转发脚本再包装进去。
-    sources.push(Path::new(&home).join("bin"));
-    sources.push(Path::new(&home).join(".local").join("bin"));
+    rest.push(Path::new(&home).join("bin"));
+    rest.push(Path::new(&home).join(".local").join("bin"));
+    // 官方 Hermes bin 排第一：否则 `shims/hermes.cmd` 会继续指向旧 pip 的 0.19（阴影问题）。
+    // 只收存在的目录：没装官方版就不占位，名单与行为同改动前。
+    let sources = hermes_official_bin_leading(
+        crate::hermesdist::official_bin_dir().filter(|p| p.is_dir()),
+        rest,
+    );
 
     let mut targets = Vec::new();
     for name in GUARDED_CLIS.iter().copied() {
@@ -6239,7 +6401,7 @@ pub fn ensure_cli_command_guard(on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> 
     let mut guarded = Vec::new();
     for (name, target) in targets {
         let shim = shims.join(format!("{name}.cmd"));
-        let Some(content) = cli_command_guard_script(&target, &home_path, appdata_path) else {
+        let Some(content) = cli_command_guard_script(&target, &home_path, appdata_path, localappdata_path) else {
             on_log("out", &format!("CLI 命令优先级守卫：跳过 {}（避免写入 Unicode 批处理路径）", target.display()));
             continue;
         };
@@ -6668,6 +6830,27 @@ pub fn system_tool(name: &str) -> String {
     name.to_string()
 }
 
+/// Hermes 阴影问题的**顺序**：官方源码安装器的 bin（`%LOCALAPPDATA%\hermes\bin`）必须
+/// 排在一切旧落点之前 ——
+/// - `search_paths`：排在便携 Python Scripts（旧 pip 的 `hermes.exe` 0.19.0）之前；
+/// - CLI 转发器 sources：排在第一，否则 `~/.uking/shims/hermes.cmd` 会一直转发到 0.19。
+/// 内部命中 0.19、外部命中 0.22 的分裂就是这么来的。
+///
+/// 拆成纯函数是为了能用纯夹具断言顺序：本机上「官方 bin」和「旧 pip Scripts」不一定
+/// 同时存在，直接测 `search_paths` 只能撞运气；判据要能确定性变红。
+#[cfg(windows)]
+fn hermes_official_bin_leading(
+    official_bin: Option<PathBuf>,
+    following: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Some(b) = official_bin {
+        v.push(b);
+    }
+    v.extend(following);
+    v
+}
+
 /// 探测/安装时额外注入 PATH 的目录。
 ///
 /// 双击启动时（Explorer / Finder）给的 PATH 经常不含工具目录（npm 全局目录、
@@ -6678,7 +6861,19 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
     if let Some(d) = extra {
         v.push(d.to_path_buf());
     }
-    // 便携 Python 的脚本目录（hermes 等 pip 装的工具）+ python 本体目录
+    // 便携 Python 的脚本目录（hermes 等 pip 装的工具）+ python 本体目录。
+    // Windows 上官方 Hermes bin 必须先于 Scripts（阴影问题，见 `hermes_official_bin_leading`）；
+    // 只收真实存在的目录 —— 没装官方版就一行都不加，search_paths 返回的必须都是存在的。
+    #[cfg(windows)]
+    {
+        for d in hermes_official_bin_leading(
+            crate::hermesdist::official_bin_dir().filter(|p| p.is_dir()),
+            portable_python_scripts_dir().into_iter().collect(),
+        ) {
+            v.push(d);
+        }
+    }
+    #[cfg(not(windows))]
     if let Some(s) = portable_python_scripts_dir() {
         v.push(s);
     }
@@ -7599,6 +7794,107 @@ mod tests {
     use super::*;
 
     #[test]
+    fn dsh_upgrade_dispatch_preserves_platform_and_intent() {
+        assert_eq!(dsh_desktop_intent("dsh", true, InstallIntent::Install), Some(InstallIntent::Install));
+        assert_eq!(dsh_desktop_intent("dsh", true, InstallIntent::Upgrade), Some(InstallIntent::Upgrade));
+        assert_eq!(dsh_desktop_intent("dsh", false, InstallIntent::Upgrade), None);
+        assert_eq!(dsh_desktop_intent("claude-code", true, InstallIntent::Upgrade), None);
+    }
+
+    /// Hermes 的 Windows 特判只吃 `hermes` 一个工具：别的工具、别的意图一律落回通用清单。
+    /// 纯分派判据（不碰网络、不装东西）。
+    #[cfg(windows)]
+    #[test]
+    fn hermes_official_dispatch_only_catches_hermes() {
+        assert_eq!(hermes_official_intent("hermes", InstallIntent::Install), Some(InstallIntent::Install));
+        assert_eq!(hermes_official_intent("hermes", InstallIntent::Upgrade), Some(InstallIntent::Upgrade));
+        assert_eq!(hermes_official_intent("claude-code", InstallIntent::Upgrade), None);
+        assert_eq!(hermes_official_intent("openclaw", InstallIntent::Install), None);
+        // dsh 有自己的分派（dsh_desktop_intent），不许被 Hermes 分支吃掉
+        assert_eq!(hermes_official_intent("dsh", InstallIntent::Upgrade), None);
+    }
+
+    /// 工具目录三款桌面 GUI 的纯分派判据：只吃这三个 id——尤其「豆包工作」
+    /// （id "doubao"）不许被豆包消费桌面版（"doubao-desktop"）的分支吃掉。
+    #[test]
+    fn catalog_gui_dispatch_covers_only_three_ids() {
+        assert!(catalog_gui_tool("magpie"));
+        assert!(catalog_gui_tool("workbuddy"));
+        assert!(catalog_gui_tool("doubao-desktop"));
+        assert!(!catalog_gui_tool("doubao"));
+        assert!(!catalog_gui_tool("hermes"));
+        assert!(!catalog_gui_tool("claude-code"));
+    }
+
+    /// 阴影问题的顺序判据（纯夹具）：官方 Hermes bin 必须是第一来源；
+    /// 没装官方版时其余来源的**内容与顺序一字不改**——这次改动不许动到老机器的行为。
+    #[cfg(windows)]
+    #[test]
+    fn hermes_official_bin_leads_path_and_guard_sources() {
+        let official = PathBuf::from(r"C:\Users\demo\AppData\Local\hermes\bin");
+        let scripts = PathBuf::from(r"C:\Users\demo\.uking\python\Scripts");
+        let npm = PathBuf::from(r"C:\Users\demo\AppData\Roaming\npm");
+
+        let ordered = hermes_official_bin_leading(
+            Some(official.clone()),
+            vec![scripts.clone(), npm.clone()],
+        );
+        assert_eq!(
+            ordered,
+            vec![official, scripts.clone(), npm.clone()],
+            "官方 bin 必须排在便携 Python Scripts（旧 pip hermes.exe）之前"
+        );
+
+        let rest = vec![scripts, npm];
+        assert_eq!(
+            hermes_official_bin_leading(None, rest.clone()),
+            rest,
+            "没装官方版时名单与顺序不许有任何变化"
+        );
+        assert!(hermes_official_bin_leading(None, Vec::new()).is_empty());
+    }
+
+    /// 官方 Hermes launcher 在 `%LOCALAPPDATA%\hermes\bin` 下，而企业域 / 漫游配置里
+    /// `LOCALAPPDATA` 常常不在 `USERPROFILE` 底下 —— 那时转发器必须改用 `%LOCALAPPDATA%`
+    /// 根（按 USERPROFILE 拼出来的路径根本不是那个文件）。正文始终纯 ASCII。
+    #[cfg(windows)]
+    #[test]
+    fn cli_guard_script_supports_localappdata_root_for_official_hermes() {
+        let home = Path::new(r"C:\Users\demo");
+        // 域环境：LOCALAPPDATA 被重定向，不在 home 之下
+        let local = Path::new(r"D:\profile\AppData\Local");
+        let target = local.join(r"hermes\bin\hermes.exe");
+        let s = cli_command_guard_script(&target, home, None, Some(local))
+            .expect("官方 hermes.exe 目标必须生成转发器");
+        assert_eq!(
+            s,
+            "@echo off\r\nrem U-King CLI command guard\r\n\"%LOCALAPPDATA%\\hermes\\bin\\hermes.exe\" %*\r\n"
+        );
+        assert!(s.is_ascii(), "cmd 正文不许出现非 ASCII 路径：{s:?}");
+
+        // .cmd 目标要 call
+        let cmd_target = local.join(r"hermes\bin\hermes.cmd");
+        let s = cli_command_guard_script(&cmd_target, home, None, Some(local))
+            .expect("官方 hermes.cmd 目标必须生成转发器");
+        assert!(s.contains(r#"call "%LOCALAPPDATA%\hermes\bin\hermes.cmd" %*"#), "{s:?}");
+
+        // 默认布局（LOCALAPPDATA 在 home 之下）：仍走 USERPROFILE 根，正文与改动前一致
+        let default_local = Path::new(r"C:\Users\demo\AppData\Local");
+        let t = default_local.join(r"hermes\bin\hermes.exe");
+        let s = cli_command_guard_script(&t, home, None, Some(default_local))
+            .expect("默认布局目标必须生成转发器");
+        assert!(
+            s.contains(r#""%USERPROFILE%\AppData\Local\hermes\bin\hermes.exe" %*"#),
+            "{s:?}"
+        );
+
+        // 谁都不是前缀 → 不生成（宁可不建，也绝不内插任意绝对路径）
+        assert!(cli_command_guard_script(Path::new(r"E:\elsewhere\hermes.exe"), home, None, Some(local)).is_none());
+        // Unicode 后缀照旧拒（cmd.exe 按 ANSI 代码页读批处理）
+        assert!(cli_command_guard_script(&local.join("hermes").join("工具.exe"), home, None, Some(local)).is_none());
+    }
+
+    #[test]
     fn update_picker_uses_highest_version_from_out_of_order_responses() {
         let responses = vec![
             (VERSION_URLS[2].to_string(), r#"{"version":"1.1.0"}"#.to_string()),
@@ -8269,7 +8565,7 @@ mod tests {
     fn cli_guard_uses_only_ascii_and_recognizes_the_legacy_unicode_shim() {
         let home = Path::new(r"C:\Users\demo（无密码）");
         let target = home.join(r".uking\runtime\node\codex.cmd");
-        let script = cli_command_guard_script(&target, home, None).expect("portable target");
+        let script = cli_command_guard_script(&target, home, None, None).expect("portable target");
         assert!(script.is_ascii(), "cmd body must not contain a Unicode path: {script:?}");
         assert!(script.contains(r#"call "%USERPROFILE%\.uking\runtime\node\codex.cmd" %*"#));
         let old = format!("@echo off\r\n\"{}\" %*\r\n", target.display());
@@ -8306,7 +8602,7 @@ mod tests {
         assert!(!is_legacy_uking_command_guard(&manifest_expanded, "codex"));
 
         // 带标记的新格式：三行，不满足「恰好两行」→ false（由 marker 分支处理）
-        let fresh = cli_command_guard_script(&target, home, None).expect("portable target");
+        let fresh = cli_command_guard_script(&target, home, None, None).expect("portable target");
         assert!(fresh.contains("U-King CLI command guard"));
         assert!(!is_legacy_uking_command_guard(&fresh, "claude"));
 
@@ -8327,25 +8623,25 @@ mod tests {
         let home = Path::new(r"C:\Users\demo");
         let appdata = Path::new(r"D:\Roaming\demo");
         let cmd_target = appdata.join(r"npm\claude.cmd");
-        let s = cli_command_guard_script(&cmd_target, home, Some(appdata)).expect("appdata target");
+        let s = cli_command_guard_script(&cmd_target, home, Some(appdata), None).expect("appdata target");
         assert_eq!(s, "@echo off\r\nrem U-King CLI command guard\r\ncall \"%APPDATA%\\npm\\claude.cmd\" %*\r\n");
         assert!(s.is_ascii());
 
         let exe_target = appdata.join(r"npm\claude.exe");
-        let s = cli_command_guard_script(&exe_target, home, Some(appdata)).expect("exe target");
+        let s = cli_command_guard_script(&exe_target, home, Some(appdata), None).expect("exe target");
         assert_eq!(s, "@echo off\r\nrem U-King CLI command guard\r\n\"%APPDATA%\\npm\\claude.exe\" %*\r\n");
         assert!(!s.contains("call"), ".exe 目标不该带 call：{s:?}");
 
         // 默认布局：appdata 在 home 之下，函数优先用 USERPROFILE 根（同一个文件，只是文本不同）
         let default_appdata = Path::new(r"C:\Users\demo\AppData\Roaming");
         let t = default_appdata.join(r"npm\codex.cmd");
-        let s = cli_command_guard_script(&t, home, Some(default_appdata)).expect("default layout");
+        let s = cli_command_guard_script(&t, home, Some(default_appdata), None).expect("default layout");
         assert!(s.contains("call \"%USERPROFILE%\\AppData\\Roaming\\npm\\codex.cmd\" %*"), "{s:?}");
 
         // home / appdata 都不是它的前缀 → 不生成（宁可不建，也不内插任意绝对路径）
-        assert!(cli_command_guard_script(Path::new(r"E:\elsewhere\claude.cmd"), home, Some(appdata)).is_none());
+        assert!(cli_command_guard_script(Path::new(r"E:\elsewhere\claude.cmd"), home, Some(appdata), None).is_none());
         // 带 Unicode 的后缀 → 不生成（cmd.exe 按 ANSI 代码页读批处理，UTF-8 路径会乱码）
-        assert!(cli_command_guard_script(&appdata.join("npm").join("工具.cmd"), home, Some(appdata)).is_none());
+        assert!(cli_command_guard_script(&appdata.join("npm").join("工具.cmd"), home, Some(appdata), None).is_none());
     }
 
     /// `GUARDED_CLIS`（Rust 守卫）与装机清单 shim 步里的 `foreach($t in @(...))` 名单必须一致。
@@ -8762,7 +9058,7 @@ mod tests {
     #[test]
     fn mimo_guard_sets_local_temp_and_keeps_the_invocation() {
         let home = Path::new(r"C:\Users\demo（中文）");
-        let script = cli_command_guard_script(&home.join(r".uking\runtime\node\mimo.cmd"), home, None).unwrap();
+        let script = cli_command_guard_script(&home.join(r".uking\runtime\node\mimo.cmd"), home, None, None).unwrap();
         assert!(script.is_ascii());
         assert!(script.contains("setlocal\r\n"));
         assert!(script.contains(r#"set "TEMP=%USERPROFILE%\.uking\tmp\mimo""#));

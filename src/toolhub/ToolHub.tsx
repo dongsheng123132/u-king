@@ -190,6 +190,7 @@ export function ToolHub({
   onOpen,
   onInstallSelection,
   onUninstall,
+  onRepair,
   onGoManage,
   onManageProviders,
   onRecharge,
@@ -218,6 +219,10 @@ export function ToolHub({
    *  确认，那套破坏性弹窗逻辑一个字没动，本组件只负责在能卸载的工具详情条里露出这个入口，
    *  能不能卸载看 `canUninstallTool`，跟侧栏「装机 · 体检」`MyAI` 共用同一份名单）。 */
   onUninstall: (t: ToolInfo) => void;
+  /** 已装工具详情条「升级 / 修复」的独立回调（=App.tsx 接线的修复通路，例如走
+   *  `upgrade_tool` / 专属安装流水线）。传了就优先用它；没传沿用 `onOpen(t)` 重走安装。
+   *  本组件不新增业务实现，只把「修复」从「安装」里拆出一个可插拔的口子。 */
+  onRepair?: (t: ToolInfo) => void;
   onGoManage: () => void;
   onManageProviders: (editId?: string, tool?: string) => void;
   onRecharge: () => void;
@@ -887,13 +892,14 @@ export function ToolHub({
           </button>
           {/* 「升级 / 修复」重装口（2026-10-03 收敛 2b 从 MyAI 搬来，条件与文案跟那边一致）。
               已装判错时它是唯一出路（线上 issue #237：卸载了还显示已装、点了只能打开）——
-              原来只在 myai 子页里有，而默认落地页是本页，大多数人找不到。调用同一个 `onOpen(t)`，
-              只是重新走一遍安装；装机清单里除 DSH 外都不锁版本，所以同时就是升级到最新版。 */}
+              原来只在 myai 子页里有，而默认落地页是本页，大多数人找不到。优先走 `onRepair(t)`
+              （App.tsx 可给已装工具接专属修复/升级通路）；没接就沿用同一个 `onOpen(t)` 重走安装。
+              装机清单里除 DSH 外都不锁版本，所以这一下同时就是升级到最新版。 */}
           {t.action === "install" && (
             <button
               data-testid="toolhub-reinstall"
               data-tool-id={t.id}
-              onClick={() => onOpen(t)}
+              onClick={() => (onRepair ? onRepair(t) : onOpen(t))}
               title={tr("重新走一遍安装。装机清单里除 DSH 外都不锁版本，所以这一下同时就是**升级到最新版**；用不了、装坏了、或明明卸载了却还显示「已安装」时也点这里")}
               className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11.5px] text-ink-3 hover:text-accent-400 hover:bg-white/[0.04]"
             >

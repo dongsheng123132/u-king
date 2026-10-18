@@ -144,6 +144,11 @@ export const TOOL_NAMES: Record<string, string> = {
   "codex-app": "Codex 桌面版",
   openclaw: "OpenClaw CLI（原版）",
   opencode: "OpenCode",
+  // 桌面 GUI 三件（2026-10-19）：id 与 tools.rs::TOOL_SPECS 一致。
+  // 🔴 "doubao-desktop" 是豆包消费桌面版；老 "doubao" 指豆包工作，别混。
+  magpie: "Magpie",
+  workbuddy: "WorkBuddy",
+  "doubao-desktop": "豆包",
 };
 
 /** 写驱动配置的目标（apply_provider 的 targets）展示名。
@@ -155,6 +160,8 @@ const TARGET_LABELS: Record<string, string> = {
   clawx: "ClawX",
   hermes: "Hermes",
   dsh: "DeepSeek Harness",
+  // WorkBuddy 按任务选模型，这里只说「写配置」，不承诺代选模型。
+  workbuddy: "WorkBuddy",
 };
 
 /** 环境地基的展示名（id 对应 toolbox.rs 里的 CapabilityTool）。 */

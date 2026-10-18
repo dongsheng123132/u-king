@@ -159,6 +159,7 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
   // 全部』里的隐藏项」：客户既看不见也配不准（用户 2026-08-24 点名要）。cc-switch 和
   // EchoBird 都把 opencode 当一等公民列着，我们不列纯粹是自己藏自己。
   { target: "opencode", label: "OpenCode", icon: "opencode" },
+  { target: "workbuddy", label: "WorkBuddy", icon: "workbuddy" },
 ];
 
 /** 配置目标 → 「我的 AI」里的工具 id，只为 `realInstalled()` 读安装态（渲染「未安装」徽章）。
@@ -172,7 +173,17 @@ const TARGET_TOOL_ID: Record<string, string> = {
   dsh: "dsh",
   pi: "pi",
   opencode: "opencode",
+  workbuddy: "workbuddy",
 };
+
+/**
+ * WorkBuddy 配置成功的固定文案（产品定案，一字不改）：模型是用户在 WorkBuddy 里
+ * **按任务选**的，我们只把托管模型加进它的列表，绝不声称「当前会话已切换」。
+ * 显示处一律包 `t()`：en 词典同 key 已补（`i18n/en/tools.ts`），后端
+ * `ApplyResult.workbuddy` 回传的同款中文也吃这本词典。常量传参是
+ * `check-i18n-missing` 的盲区，改文案时记得两处一起改（这里 + en 词典）。
+ */
+const WORKBUDDY_ADDED_NOTE = "已添加到模型列表，请在WorkBuddy选择";
 
 /**
  * 这个配置目标**真的**装了没。
@@ -210,6 +221,17 @@ function realInstalled(tools: { id: string; installed: boolean }[] | undefined, 
  */
 function EffectiveLine({ eff, t }: { eff?: EffectiveConfig; t: (s: string, v?: Record<string, string>) => string }) {
   if (!eff) return null;
+  // WorkBuddy：后端 `readable=false` 说的是「不知道当前任务选了哪个模型」（它按任务选），
+  // 不是没有回读通道。托管条目在（provider_key=u-king）就报「已添加到模型列表，请在
+  // WorkBuddy选择」—— 这不是「实际会跑什么」的断言，绝不走下面那条「实际：…」。
+  if (eff.target === "workbuddy") {
+    const added = eff.provider_key === "u-king";
+    return (
+      <div className="text-[10px] text-ink-5 truncate mt-0.5" title={eff.base_url ?? undefined}>
+        {added ? t(WORKBUDDY_ADDED_NOTE) + (eff.model ? `（${eff.model}）` : "") : t("未配置 · 点此设置")}
+      </div>
+    );
+  }
   if (!eff.readable) {
     return (
       <div className="text-[10px] text-ink-5 truncate mt-0.5" title={eff.overridden_by ?? undefined}>
@@ -357,6 +379,10 @@ function toolInstalledOf(driver: DriverStatus | null, target: string): boolean {
     // 那批照样填这张表（不填就会从「一键配好全部」弹窗里静默消失）。
     case "opencode":
       return !!driver.extra_installed?.opencode;
+    // WorkBuddy 桌面应用：装没装走后端 `extra_installed.workbuddy`（desktop_app 注册表探测，
+    // 沙箱看沙箱目录），不是 PATH 上的 CLI。
+    case "workbuddy":
+      return !!driver.extra_installed?.workbuddy;
     default:
       return false;
   }
@@ -908,13 +934,14 @@ export function Manager({
     try {
       const effModel = providerId === "official" ? null : model?.trim() || null;
       let restartHint = "";
+      let appliedNote: string | null = null;
       if (target === "clawx") {
         // ClawX 必须走托管命令（关进程→写配置→自动重启）——运行中的 ClawX 退出时会用
         // 内存副本覆写磁盘配置，裸 apply_provider 写完就被吞（「切了没反应」头号根因）。
         await invoke("apply_clawx_managed", { providerId, apiKey: key, model: effModel });
         restartHint = t("（已自动重启 ClawX 生效）");
       } else {
-        await invoke("apply_provider", {
+        const applied = await invoke<Record<string, string | null>>("apply_provider", {
           providerId,
           apiKey: key,
           // 模型对所有供应商生效（不再只限虾盘云）：override 走后端 effective_model；
@@ -922,6 +949,9 @@ export function Manager({
           model: effModel,
           targets: [target],
         });
+        // WorkBuddy 的成功文案归后端 ApplyResult（「已添加到模型列表，请在WorkBuddy选择」
+        // / 还原官方时的移除文案）——不在这儿另编一套。
+        if (target === "workbuddy") appliedNote = t(applied?.[target] ?? WORKBUDDY_ADDED_NOTE);
         // Codex + 虾盘云 + 没显式选海外模型 → 后端已自动开 DeepSeek 省钱路由（2026-07-20 默认）
         if (target === "codex" && providerId === "xiapan" && (!effModel || effModel.toLowerCase().startsWith("deepseek"))) {
           restartHint = t("（已走 DeepSeek 省钱路由）");
@@ -931,12 +961,13 @@ export function Manager({
       }
       const modelPart = model ? `（${model}）` : "";
       flash(
-        t("已把 {tool} 切到 {name}{model}{hint}", {
-          tool: TOOL_LABELS[target] ?? target,
-          name: p.name,
-          model: modelPart,
-          hint: restartHint,
-        }),
+        appliedNote ??
+          t("已把 {tool} 切到 {name}{model}{hint}", {
+            tool: TOOL_LABELS[target] ?? target,
+            name: p.name,
+            model: modelPart,
+            hint: restartHint,
+          }),
       );
       if (!wasActive) setSelected(null); // 首次启用后清选中；热换模型则保持面板展开
       await refresh();
@@ -1389,6 +1420,11 @@ export function Manager({
    * 只读后端 `active` 表（对齐 cc-switch is_current），未切过 = 未接管。
    */
   const toolSummary = (target: string): { managed: boolean; sub: string } => {
+    // WorkBuddy 不记 active（模型按任务选），接管态只认「托管条目进没进它的列表」。
+    if (target === "workbuddy") {
+      const added = effective[target]?.provider_key === "u-king";
+      return { managed: added, sub: added ? t(WORKBUDDY_ADDED_NOTE) : t("未配置 · 点此设置") };
+    }
     const actId = toolActiveOf(driver, target);
     const model = toolModelOf(driver, target);
     if (!actId) return { managed: false, sub: t("未配置 · 点此设置") };
