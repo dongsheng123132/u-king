@@ -7,7 +7,8 @@
 //!   实现「服务器控制下发安装逻辑」。离线 / 网站没上线 → 静默用内嵌版。
 //! - **步骤类型**：`ensure_node`（缺 Node 自动装便携版到 ~/.uking/runtime）、
 //!   `npm_install`（走 npmmirror 国内源）、`run`（任意命令）。
-//! - **循环验证**：steps 跑完 → verify_cmd 验证 → 失败自动跑 repair 步骤 → 再验证。
+//! - **循环验证**：steps 跑完 → verify_cmd 验证（退出码 + 输出门禁）→ 冒烟命令
+//!   （`smoke_cmd`，真触初始化路径）→ 失败自动跑 repair 步骤 → 再验证。
 //! - **流式日志**：每行输出经 `on_log(phase, line)` 回调（tauri 侧转成事件给前端聊天气泡）。
 //! - 纯 std + serde_json，HTTP 用系统自带 curl.exe（Win10+ 内置），不引重型 crate。
 
@@ -369,6 +370,32 @@ pub struct ToolSpec {
     /// Empty means no architecture restriction. Checked before downloading or retrying.
     #[serde(default)]
     pub windows_architectures: Vec<String>,
+    /// verify_cmd 输出必须包含的子串（不区分大小写）。`None` / 空 = 不检查。
+    ///
+    /// 为什么要有：退出码 0 ≠ 装的是本工具。实锤——`opencode-ai` 某些包装出来的
+    /// 二进制是 Bun 壳，`opencode --version` 打出 Bun 的 `1.3.14` 照样退出 0，
+    /// 于是「安装成功」点开却是 Bun 帮助（工单实测）。
+    #[serde(default)]
+    pub verify_expect: Option<String>,
+    /// verify_cmd 输出禁止包含的子串（不区分大小写）。`None` / 空 = 不检查。
+    ///
+    /// 与 `verify_expect` 互补：expect 是「必须像我」，reject 是「不许像别人」。
+    /// OpenCode 坏壳时 `--help` 满屏 Bun 文案，用 reject 钉死「Bun is a fast」。
+    #[serde(default)]
+    pub verify_reject: Option<String>,
+    /// 装后冒烟命令：退出码必须 0，可选再做输出门禁。`None` / 空 = 不冒烟。
+    ///
+    /// verify_cmd（通常 `--version`）只覆盖「命令能启动」，碰不到完整初始化路径。
+    /// 实锤：MiMo 在默认 TEMP/TMP 下 SQLite 初始化报错，`mimo --version` 却是绿的——
+    /// 真正触库的 `mimo db "SELECT 1"` 才会当场挂。冒烟就是补这层能力自检。
+    #[serde(default)]
+    pub smoke_cmd: Option<String>,
+    /// smoke_cmd 输出必须包含的子串（不区分大小写）。`None` / 空 = 不检查。
+    #[serde(default)]
+    pub smoke_expect: Option<String>,
+    /// smoke_cmd 输出禁止包含的子串（不区分大小写）。`None` / 空 = 不检查。
+    #[serde(default)]
+    pub smoke_reject: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -3446,6 +3473,10 @@ fn run_steps(
                 if !installed {
                     return Err(format!("npm 主源与备用源均安装失败：{}", errors.join("；")));
                 }
+                #[cfg(windows)]
+                if npm_bare_name(package) == "opencode-ai" {
+                    ensure_opencode_windows_compatibility(on_log)?;
+                }
             }
             Step::EnsurePython { .. } => ensure_python(skill, on_log)?,
             Step::PipInstall { package, force, .. } => {
@@ -3714,6 +3745,33 @@ fn warn_if_shadowed(_spec: &ToolSpec, _on_log: &(dyn Fn(&str, &str) + Send + Syn
 /// 验证遇到瞬时锁时每次重试前等多久（毫秒）：7 次重试、累计 29s。见 `verify` 里的窗口史。
 const VERIFY_LOCK_BACKOFF_MS: [u64; 7] = [1000, 2000, 3000, 4000, 5000, 6000, 8000];
 
+/// 输出门禁：退出码 0 还不够，输出还得长得像这个工具。
+///
+/// - `expect`：输出必须包含该子串（不区分大小写）。空 = 不检查。
+/// - `reject`：输出禁止包含该子串（不区分大小写）。空 = 不检查。
+///
+/// 两个都空时原样通过——老清单没有这组字段，行为必须跟以前逐字节一致。
+fn output_gate(out: &str, expect: Option<&str>, reject: Option<&str>) -> Result<(), String> {
+    let lower = out.to_lowercase();
+    if let Some(needle) = expect.map(str::trim).filter(|s| !s.is_empty()) {
+        if !lower.contains(&needle.to_lowercase()) {
+            return Err(format!(
+                "输出里找不到「{needle}」（退出码 0 但可能不是本工具）：{}",
+                tail(out, 200)
+            ));
+        }
+    }
+    if let Some(needle) = reject.map(str::trim).filter(|s| !s.is_empty()) {
+        if lower.contains(&needle.to_lowercase()) {
+            return Err(format!(
+                "输出里出现「{needle}」（疑似跑成了别的程序）：{}",
+                tail(out, 200)
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn verify(tool_id: &str, spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<String, String> {
     if tool_id == "claude-app" {
         crate::desktop_app::invalidate();
@@ -3733,9 +3791,19 @@ fn verify(tool_id: &str, spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + 
     for attempt in 0..=VERIFY_LOCK_BACKOFF_MS.len() {
         match run_capture(&cmdline, portable_node_dir().as_deref()) {
             Ok((0, out)) => {
+                // 退出码 0 只证明「命令跑了」，不证明「跑的是本工具」。输出门禁在这里卡。
+                // 语义失败不进瞬时锁重试——等杀软救不了「跑成了 Bun」。
+                if let Err(e) = output_gate(&out, spec.verify_expect.as_deref(), spec.verify_reject.as_deref()) {
+                    return Err(e);
+                }
                 let v = out.lines().next().unwrap_or("ok").trim().to_string();
-                on_log("verify", &format!("验证通过：{v}"));
                 warn_if_shadowed(spec, on_log);
+                // verify_cmd（通常 `--version`）过了还要冒烟：`--version` 碰不到 DB/完整初始化。
+                // 冒烟失败同样算验证失败（进 repair），但它是能力问题不是杀软锁，不进重试窗口。
+                if let Err(e) = run_smoke(spec, on_log) {
+                    return Err(e);
+                }
+                on_log("verify", &format!("验证通过：{v}"));
                 return Ok(v);
             }
             Ok((code, out)) => last_err = format!("退出码 {code}：{}", tail(&out, 200)),
@@ -3751,6 +3819,148 @@ fn verify(tool_id: &str, spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + 
         break;
     }
     Err(last_err)
+}
+
+/// 装后冒烟：跑 `smoke_cmd`，退出码必须 0，输出再过一遍门禁。
+/// 没配 `smoke_cmd` 时是 no-op（老清单行为不变）。
+fn run_smoke(spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<(), String> {
+    let Some(cmd) = spec.smoke_cmd.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    // 冒烟命令来自 skill 清单（可能热下发），跟 install 的 `run` 步一样过黑名单。
+    let lower = cmd.to_lowercase();
+    if let Some(bad) = FIX_BLACKLIST.iter().find(|b| lower.contains(*b)) {
+        return Err(format!("冒烟命令含危险片段（包含 `{bad}`），已拦截"));
+    }
+    on_log("verify", &format!("冒烟：{cmd}"));
+    let mut command = shell_command(cmd);
+    with_path(&mut command, portable_node_dir().as_deref());
+    command.envs(tool_process_env(cmd)?);
+    // SQLite 初始化会创建数据库和迁移文件。验安装时只碰本次创建的隔离目录，
+    // 不迁移用户已有会话，也不读其模型凭证。
+    let _sandbox = if spec.bin == "mimo" {
+        Some(CliSmokeSandbox::new(&mut command)?)
+    } else {
+        None
+    };
+    let result = output_with_timeout(command, 45)
+        .map(|out| {
+            let mut text = decode_console_by_line(&out.stdout);
+            text.push_str(&decode_console_by_line(&out.stderr));
+            (out.status.code().unwrap_or(-1), text)
+        })
+        .ok_or_else(|| "冒烟命令超时或无法启动（45 秒）".to_string());
+    match result {
+        Ok((0, out)) => {
+            output_gate(&out, spec.smoke_expect.as_deref(), spec.smoke_reject.as_deref())?;
+            on_log("verify", "冒烟通过");
+            Ok(())
+        }
+        Ok((code, out)) => Err(format!("冒烟未通过（退出码 {code}）：{}", tail(&out, 200))),
+        Err(e) => Err(format!("冒烟无法启动：{e}")),
+    }
+}
+
+struct CliSmokeSandbox(PathBuf);
+
+impl CliSmokeSandbox {
+    fn new(command: &mut std::process::Command) -> Result<Self, String> {
+        let root = user_home_dir().join(".uking").join("checks").join(format!(
+            "mimo-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+        ));
+        std::fs::create_dir_all(&root).map_err(|e| format!("创建 MiMo 验收沙箱失败：{e}"))?;
+        let sandbox = Self(root);
+        for (key, dir) in [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
+            ("XDG_CACHE_HOME", "cache"), ("XDG_STATE_HOME", "state")] {
+            let path = sandbox.0.join(dir);
+            std::fs::create_dir_all(&path).map_err(|e| format!("创建 MiMo 验收目录失败：{e}"))?;
+            command.env(key, path);
+        }
+        command.current_dir(&sandbox.0);
+        Ok(sandbox)
+    }
+}
+
+impl Drop for CliSmokeSandbox {
+    fn drop(&mut self) {
+        // 唯一来源是上面新建的带 pid/时间戳目录，不接受外部路径。
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// 只覆盖目标 CLI 子进程的临时目录；不修改用户环境或数据库位置。
+/// MiMo 的 Bun/SQLite 在部分 Windows TEMP 上初始化失败，专用目录可绕过。
+pub(crate) fn tool_process_env(command: &str) -> Result<Vec<(&'static str, String)>, String> {
+    #[cfg(windows)]
+    if command.split_whitespace().next() == Some("mimo") {
+        let temp = user_home_dir().join(".uking").join("tmp").join("mimo");
+        std::fs::create_dir_all(&temp).map_err(|e| format!("创建 MiMo 临时目录失败：{e}"))?;
+        let temp = temp.display().to_string();
+        return Ok(vec![("TEMP", temp.clone()), ("TMP", temp)]);
+    }
+    let _ = command;
+    Ok(Vec::new())
+}
+
+/// 请求正文和响应的专用临时目录，避开损坏/受限制的系统 TEMP。
+/// 仍尊重测试沙箱；这里只存请求期间的文件，调用方负责删除。
+pub(crate) fn http_temp_dir() -> Result<PathBuf, String> {
+    let path = user_home_dir().join(".uking").join("tmp").join("http");
+    std::fs::create_dir_all(&path).map_err(|e| format!("创建 HTTP 临时目录失败：{e}"))?;
+    Ok(path)
+}
+
+#[cfg(windows)]
+fn opencode_help_is_valid(out: &str) -> bool {
+    output_gate(out, Some("opencode"), Some("bun is a fast")).is_ok()
+}
+
+/// npm 可能把异常的普通 x64 Bun 壳复制成 OpenCode 主入口。只在入口验收失败、
+/// 同版本官方 baseline 通过帮助检查后替换；原入口留备份，临时文件原子覆盖。
+#[cfg(windows)]
+fn ensure_opencode_windows_compatibility(on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<(), String> {
+    if std::env::consts::ARCH != "x86_64" { return Ok(()); }
+    let prefix = portable_node_dir()
+        .or_else(|| std::env::var("APPDATA").ok().map(|p| Path::new(&p).join("npm")))
+        .ok_or("找不到 OpenCode 安装目录")?;
+    repair_opencode_binary(&prefix.join("node_modules").join("opencode-ai"), on_log)
+}
+
+#[cfg(windows)]
+fn repair_opencode_binary(root: &Path, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<(), String> {
+    let target = root.join("bin").join("opencode.exe");
+    let help = |path: &Path| -> bool {
+        let mut command = base_command(&path.display().to_string());
+        command.arg("--help");
+        output_with_timeout(command, 15).is_some_and(|out| {
+            out.status.success() && opencode_help_is_valid(&decode_console_by_line(&out.stdout))
+        })
+    };
+    if help(&target) { return Ok(()); }
+    let baseline_root = root.join("node_modules").join("opencode-windows-x64-baseline");
+    let version = |path: &Path| -> Option<String> {
+        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path.join("package.json")).ok()?).ok()?;
+        value.get("version")?.as_str().map(str::to_string)
+    };
+    let baseline = baseline_root.join("bin").join("opencode.exe");
+    if version(root).is_none() || version(root) != version(&baseline_root) || !help(&baseline) {
+        return Err("OpenCode 主入口启动异常，且没有通过验证的同版本 baseline 兼容包，请重试安装".into());
+    }
+    let suffix = format!("{}-{}", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let backup = target.with_extension(format!("exe.uking-backup-{suffix}"));
+    if target.is_file() {
+        std::fs::copy(&target, &backup).map_err(|e| format!("备份 OpenCode 旧入口失败：{e}"))?;
+    }
+    let staged = target.with_extension(format!("exe.uking-new-{suffix}"));
+    std::fs::copy(&baseline, &staged).map_err(|e| format!("准备 OpenCode 兼容入口失败：{e}"))?;
+    if let Err(e) = std::fs::rename(&staged, &target) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(format!("替换 OpenCode 兼容入口失败（旧入口已保留）：{e}"));
+    }
+    on_log("out", "OpenCode 普通入口验收失败，已切换到通过验证的同版本 baseline 兼容入口（旧入口已备份）");
+    Ok(())
 }
 
 // ============================================================
@@ -4786,6 +4996,9 @@ pub fn ensure_node_min(
     } else {
         on_log("out", "未检测到 Node.js，开始下载便携版（npmmirror 国内源）…");
     }
+    // 工具最低版本高于清单提供的运行时，重装同一个旧包不可能修好。
+    // 必须在下载/停止进程/替换目录之前失败，保留当前已装环境。
+    validate_node_runtime_min(&skill.node.version, min)?;
     let runtime = uking_home().join("runtime");
     std::fs::create_dir_all(&runtime).map_err(|e| format!("创建 runtime 目录失败: {e}"))?;
 
@@ -4913,6 +5126,15 @@ pub fn ensure_node_min(
         "out",
         &format!("便携 Node 已装好并通过自检：{}（已加入用户 PATH）", bin_dir.display()),
     );
+    Ok(())
+}
+
+fn validate_node_runtime_min(runtime: &str, min: Option<&str>) -> Result<(), String> {
+    if let Some(min) = min.filter(|m| !m.trim().is_empty()) {
+        if semver_gt(min.trim_start_matches('v'), runtime.trim_start_matches('v')) {
+            return Err(format!("本工具需要 Node.js v{}，安装清单提供的 {runtime} 过旧；请更新安装清单后重试", min.trim_start_matches('v')));
+        }
+    }
     Ok(())
 }
 
@@ -5882,6 +6104,11 @@ fn cli_command_guard_script(target: &Path, home: &Path, appdata: Option<&Path>) 
     } else {
         format!("\"%{root_var}%\\{suffix}\" %*")
     };
+    if target.file_stem().is_some_and(|s| s.eq_ignore_ascii_case("mimo")) {
+        return Some(format!(
+            "@echo off\r\nrem U-King CLI command guard\r\nsetlocal\r\nset \"TEMP=%USERPROFILE%\\.uking\\tmp\\mimo\"\r\nset \"TMP=%TEMP%\"\r\nif not exist \"%TEMP%\" mkdir \"%TEMP%\"\r\nif not exist \"%TEMP%\" exit /b 1\r\n{invoke}\r\nexit /b %errorlevel%\r\n"
+        ));
+    }
     Some(format!("@echo off\r\nrem U-King CLI command guard\r\n{invoke}\r\n"))
 }
 
@@ -5917,9 +6144,29 @@ fn is_legacy_uking_command_guard(old: &str, name: &str) -> bool {
         && lines[1].to_ascii_lowercase().ends_with(&expected_tail)
 }
 
-/// Upgrade only the exact two-line guards written by pre-marker U-King releases (the legacy Rust
-/// form and the install-manifest `call "…"` form). This startup migration does not create guards,
-/// alter PATH, or overwrite an unknown user script.
+#[cfg(windows)]
+fn write_cli_command_guard(path: &Path, content: &str) -> Result<(), String> {
+    let old = std::fs::read(path).ok();
+    if old.as_deref() == Some(content.as_bytes()) { return Ok(()); }
+    // 保留首次改写前的转发器；新正文先落同目录再原子替换，失败时旧文件继续可用。
+    if old.is_some() {
+        let backup = path.with_extension("cmd.uking-backup");
+        if !backup.exists() {
+            std::fs::copy(path, &backup).map_err(|e| format!("备份 {} 失败：{e}", path.display()))?;
+        }
+    }
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let temporary = path.with_extension(format!("cmd.uking-new-{}-{stamp}", std::process::id()));
+    std::fs::write(&temporary, content).map_err(|e| format!("准备 {} 失败：{e}", path.display()))?;
+    if let Err(e) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(format!("更新 {} 失败：{e}", path.display()));
+    }
+    Ok(())
+}
+
+/// Upgrade exact legacy guards and U-King's older MiMo guard missing its local TEMP workaround.
+/// This startup migration does not create guards, alter PATH, or overwrite an unknown user script.
 #[cfg(windows)]
 pub fn migrate_legacy_cli_command_guards() -> usize {
     let Ok(home) = std::env::var("USERPROFILE") else { return 0 };
@@ -5929,11 +6176,17 @@ pub fn migrate_legacy_cli_command_guards() -> usize {
     for name in GUARDED_CLIS.iter().copied() {
         let shim = shims.join(format!("{name}.cmd"));
         let old = std::fs::read_to_string(&shim).unwrap_or_default();
-        if !is_legacy_uking_command_guard(&old, name) { continue; }
-        let target = home.join(".uking").join("runtime").join("node").join(format!("{name}.cmd"));
+        let owned_mimo = name == "mimo" && old.contains("U-King CLI command guard") && !old.contains("tmp\\mimo");
+        if !is_legacy_uking_command_guard(&old, name) && !owned_mimo { continue; }
+        let portable = home.join(".uking").join("runtime").join("node").join(format!("{name}.cmd"));
+        let target = if portable.is_file() { portable } else {
+            let Some(appdata) = std::env::var_os("APPDATA") else { continue };
+            PathBuf::from(appdata).join("npm").join(format!("{name}.cmd"))
+        };
         if !target.is_file() { continue; }
-        if let Some(content) = cli_command_guard_script(&target, &home, None) {
-            if std::fs::write(&shim, content).is_ok() { migrated += 1; }
+        let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
+        if let Some(content) = cli_command_guard_script(&target, &home, appdata.as_deref()) {
+            if write_cli_command_guard(&shim, &content).is_ok() { migrated += 1; }
         }
     }
     migrated
@@ -5998,7 +6251,7 @@ pub fn ensure_cli_command_guard(on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> 
                 continue;
             }
         }
-        std::fs::write(&shim, content).map_err(|e| format!("写入 {} 失败：{e}", shim.display()))?;
+        write_cli_command_guard(&shim, &content)?;
         guarded.push(name);
     }
     if guarded.is_empty() {
@@ -6454,7 +6707,7 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
         }
         // 用户常把 CLI 手动放进 ~/bin、~/.local/bin（非标准但很常见）—— 不扫会漏判「未安装」
         if let Ok(home) = std::env::var("USERPROFILE") {
-            for sub in ["bin", ".local/bin", ".grok/bin", ".muse/bin"] {
+            for sub in ["bin", ".local/bin", ".kimi-code/bin", ".bun/bin", ".grok/bin", ".muse/bin"] {
                 let p = Path::new(&home).join(sub);
                 if p.exists() {
                     v.push(p);
@@ -6477,7 +6730,7 @@ pub fn search_paths(extra: Option<&Path>) -> Vec<PathBuf> {
             }
         }
         if let Ok(home) = std::env::var("HOME") {
-            for sub in [".npm-global/bin", ".local/bin", ".grok/bin", ".muse/bin"] {
+            for sub in [".npm-global/bin", ".local/bin", ".kimi-code/bin", ".bun/bin", ".grok/bin", ".muse/bin"] {
                 let p = Path::new(&home).join(sub);
                 if p.exists() {
                     v.push(p);
@@ -6902,7 +7155,26 @@ fn run_stream(
 fn run_capture(cmdline: &str, extra_path: Option<&Path>) -> Result<(i32, String), String> {
     let mut c = shell_command(cmdline);
     with_path(&mut c, extra_path);
+    c.envs(tool_process_env(cmdline)?);
     capture(c, cmdline)
+}
+
+/// 给无头门禁跑道用的探测入口：与 verify 同一条 `run_capture` 路（cmd /C + 便携 PATH），
+/// 保证探到的二进制就是装机 verify 会跑到的那一份。触库探测用隔离临时数据。
+pub fn run_capture_for_gate_probe(cmdline: &str) -> (i32, String) {
+    let run = || -> Result<(i32, String), String> {
+        let mut command = shell_command(cmdline);
+        with_path(&mut command, portable_node_dir().as_deref());
+        command.envs(tool_process_env(cmdline)?);
+        let _sandbox = if cmdline.split_whitespace().next() == Some("mimo") {
+            Some(CliSmokeSandbox::new(&mut command)?)
+        } else { None };
+        let output = output_with_timeout(command, 45).ok_or("探测启动失败或超过 45 秒")?;
+        let mut out = decode_console_by_line(&output.stdout);
+        out.push_str(&decode_console_by_line(&output.stderr));
+        Ok((output.status.code().unwrap_or(-1), out))
+    };
+    run().unwrap_or_else(|e| (-1, e))
 }
 
 /// 直接跑一个程序收输出（不经 shell）。系统工具走绝对路径、隐窗、注入 search_paths。
@@ -6962,7 +7234,9 @@ fn curl_via_dotnet(args: &[&str]) -> Option<String> {
     let mut url = String::new();
     let mut headers: Vec<(String, String)> = Vec::new();
     let mut body: Option<String> = None;
-    // 跟随 curl 的 -m 超时（作图/视频要几分钟）。无 -m 时保持 30s；夹到 [30,600] 防极端值。
+    let mut write_out = String::new();
+    let mut proxy: Option<String> = None;
+    // 跟随 curl 的 -m 超时（作图/视频要几分钟）。无 -m 时保持 30s。
     let mut timeout_s: u32 = 30;
 
     let mut i = 0;
@@ -6971,18 +7245,18 @@ fn curl_via_dotnet(args: &[&str]) -> Option<String> {
             "-m" | "--max-time" => {
                 if let Some(t) = args.get(i + 1) {
                     if let Ok(n) = t.parse::<u32>() {
-                        timeout_s = n.clamp(30, 600);
+                        timeout_s = n.clamp(1, 600);
                     }
                     i += 1;
                 }
             }
-            "-X" => {
+            "-X" | "--request" => {
                 if let Some(m) = args.get(i + 1) {
                     method = m.to_string();
                     i += 1;
                 }
             }
-            "-H" => {
+            "-H" | "--header" => {
                 if let Some(h) = args.get(i + 1) {
                     if let Some((k, v)) = h.split_once(':') {
                         headers.push((k.trim().to_string(), v.trim().to_string()));
@@ -6990,11 +7264,23 @@ fn curl_via_dotnet(args: &[&str]) -> Option<String> {
                     i += 1;
                 }
             }
-            "--data" | "-d" | "--data-binary" => {
+            "-w" | "--write-out" => {
+                write_out = (*args.get(i + 1)?).to_string();
+                i += 1;
+            }
+            "--proxy" | "-x" => {
+                proxy = Some((*args.get(i + 1)?).to_string());
+                i += 1;
+            }
+            "--noproxy" if args.get(i + 1) == Some(&"*") => {
+                proxy = Some(String::new());
+                i += 1;
+            }
+            "--data" | "-d" | "--data-binary" | "--data-raw" => {
                 if let Some(d) = args.get(i + 1) {
                     method = if method == "GET" { "POST".into() } else { method };
-                    body = Some(if let Some(path) = d.strip_prefix('@') {
-                        std::fs::read_to_string(path).unwrap_or_default()
+                    body = Some(if let Some(path) = d.strip_prefix('@').filter(|_| args[i] != "--data-raw") {
+                        std::fs::read_to_string(path).ok()?
                     } else {
                         d.to_string()
                     });
@@ -7010,57 +7296,94 @@ fn curl_via_dotnet(args: &[&str]) -> Option<String> {
         return None;
     }
 
+    // 无法准确复刻的 write-out 字段宁可回原错误，不返回伪造的状态。
+    if write_out.replace("%{http_code}", "").replace("%{response_code}", "").contains("%{") {
+        return None;
+    }
+    static NEXT_REQUEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let suffix = format!("{}-{}", std::process::id(), NEXT_REQUEST.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let temp_dir = http_temp_dir().ok()?;
+
     // body 落临时文件，用 -InFile 读，避免引号/中文/转义地狱
-    let body_file = body.as_ref().map(|b| {
-        let p = std::env::temp_dir().join(format!("uking-net-{}.json", std::process::id()));
-        let _ = std::fs::write(&p, b);
-        p
-    });
+    let body_file = if let Some(body) = body.as_ref() {
+        let path = temp_dir.join(format!("uking-net-{suffix}.json"));
+        std::fs::write(&path, body).ok()?;
+        Some(path)
+    } else { None };
 
     let mut hlines = String::new();
     for (k, v) in &headers {
         hlines.push_str(&format!("$h['{}']='{}';", ps_escape(k), ps_escape(v)));
     }
-    let body_arg = body_file
+    let body_setup = body_file
         .as_ref()
-        .map(|p| format!(" -InFile '{}' -ContentType 'application/json'", p.display()))
+        .map(|p| format!(
+            "$bytes=[IO.File]::ReadAllBytes('{}'); $req.ContentLength=$bytes.Length; \
+             if(-not $req.ContentType){{ $req.ContentType='application/json' }}; \
+             $stream=$req.GetRequestStream(); try {{ $stream.Write($bytes,0,$bytes.Length) }} finally {{ $stream.Dispose() }};",
+            ps_escape(&p.display().to_string())
+        ))
         .unwrap_or_default();
 
     // 响应**以原始字节写到临时文件**，再由 Rust 按 UTF-8 读 —— 关键修复中文乱码：
     // PowerShell 把 .Content 打到 stdout 会用系统代码页（中文机是 GBK）重编码，
     // Rust 当 UTF-8 读就花了。写字节流（RawContentStream / GetResponseStream）不经
     // 控制台编码，原样落盘，UTF-8 中文不丢。
-    let resp_file = std::env::temp_dir().join(format!("uking-resp-{}.bin", std::process::id()));
-    let resp_path = resp_file.display().to_string();
-    let resp_ps = resp_path.replace('\\', "\\\\");
+    let resp_file = temp_dir.join(format!("uking-resp-{suffix}.bin"));
+    let status_file = temp_dir.join(format!("uking-resp-{suffix}.status"));
+    let resp_ps = ps_escape(&resp_file.display().to_string());
+    let status_ps = ps_escape(&status_file.display().to_string());
+    let url = ps_escape(&url);
+    let proxy_setup = match proxy.as_deref() {
+        Some("") => "$req.Proxy=$null;".to_string(),
+        Some(proxy) => format!("$req.Proxy=New-Object Net.WebProxy('{}');", ps_escape(proxy)),
+        None => String::new(),
+    };
+    let method = ps_escape(&method);
 
     let script = format!(
-        "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13; \
+        "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; \
+         $req=[Net.HttpWebRequest]::Create('{url}'); $req.Method='{method}'; \
+         $req.Timeout={timeout_s}*1000; $req.ReadWriteTimeout={timeout_s}*1000; $req.ServicePoint.Expect100Continue=$false; {proxy_setup} \
          $h=@{{}}; {hlines} \
+         foreach($entry in $h.GetEnumerator()){{ switch($entry.Key.ToLowerInvariant()){{ \
+           'content-type' {{ $req.ContentType=$entry.Value }} \
+           'accept' {{ $req.Accept=$entry.Value }} \
+           'user-agent' {{ $req.UserAgent=$entry.Value }} \
+           'host' {{ $req.Host=$entry.Value }} \
+           default {{ $req.Headers[$entry.Key]=$entry.Value }} \
+         }} }}; {body_setup} \
+         try {{ $resp=$req.GetResponse() }} catch [Net.WebException] {{ \
+           if($_.Exception.Response){{ $resp=$_.Exception.Response }} else {{ exit 1 }} \
+         }}; \
          try {{ \
-           $resp = Invoke-WebRequest -Uri '{url}' -Method {method} -Headers $h{body_arg} -TimeoutSec {timeout_s} -UseBasicParsing; \
-           [IO.File]::WriteAllBytes('{resp_ps}', $resp.RawContentStream.ToArray()); \
-         }} catch {{ \
-           if($_.Exception.Response){{ \
-             $s=$_.Exception.Response.GetResponseStream(); $ms=New-Object IO.MemoryStream; $s.CopyTo($ms); \
-             [IO.File]::WriteAllBytes('{resp_ps}', $ms.ToArray()); \
-           }} \
-         }}"
+           $s=$resp.GetResponseStream(); $ms=New-Object IO.MemoryStream; $s.CopyTo($ms); \
+           [IO.File]::WriteAllBytes('{resp_ps}', $ms.ToArray()); \
+           [IO.File]::WriteAllText('{status_ps}',[string][int]$resp.StatusCode); \
+         }} finally {{ if($s){{ $s.Dispose() }}; if($ms){{ $ms.Dispose() }}; $resp.Close() }}"
     );
 
-    let r = run_capture_raw("powershell", &["-NoProfile", "-NonInteractive", "-Command", &script], None);
+    let mut command = base_command("powershell");
+    command.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+    with_path(&mut command, None);
+    let r = output_with_timeout(command, timeout_s as u64 + 10);
     if let Some(p) = body_file {
         let _ = std::fs::remove_file(p);
     }
     // 读响应字节文件（UTF-8），不经 PowerShell 的控制台编码
     let result = match r {
-        Ok((0, _)) => std::fs::read(&resp_file)
-            .ok()
-            .map(|b| String::from_utf8_lossy(&b).to_string())
-            .filter(|s| !s.trim().is_empty()),
+        Some(out) if out.status.success() => (|| {
+            let status = std::fs::read_to_string(&status_file).ok()?;
+            let bytes = std::fs::read(&resp_file).ok()?;
+            let mut body = String::from_utf8_lossy(&bytes).to_string();
+            body.push_str(&write_out.replace("%{http_code}", status.trim()).replace("%{response_code}", status.trim())
+                .replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t"));
+            Some(body)
+        })(),
         _ => None,
     };
     let _ = std::fs::remove_file(&resp_file);
+    let _ = std::fs::remove_file(&status_file);
     result
 }
 
@@ -8373,6 +8696,260 @@ mod tests {
             logs.lock().unwrap().iter().all(|m| !m.contains("疑似杀软瞬时锁")),
             "语义失败不该走重试：{:?}",
             logs.lock().unwrap()
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 输出门禁 + 装后冒烟（Bun 壳 / MiMo SQLite 假通过，工单实锤）
+    // ------------------------------------------------------------------
+
+    /// 退出码 0 还不够：输出里出现别人的指纹就必须判失败。
+    /// 这是纯函数判据，不 spawn——比真跑 `opencode` 快，也不依赖开发机装没装。
+    #[test]
+    fn output_gate_catches_foreign_tool_fingerprint() {
+        // 没配门禁 = 老行为，任何输出都放行
+        assert!(output_gate("1.3.14", None, None).is_ok());
+        assert!(output_gate("", None, None).is_ok());
+
+        // expect：缺了指定子串就失败（不区分大小写）
+        assert!(output_gate("1.19.3", Some("opencode"), None).is_err());
+        assert!(output_gate("OpenCode 1.19.3", Some("opencode"), None).is_ok());
+        assert!(output_gate("opencode 1.19.3", Some("OpenCode"), None).is_ok());
+
+        // reject：出现禁止子串就失败（不区分大小写）
+        assert!(output_gate("1.3.14", None, Some("bun is a fast")).is_ok());
+        assert!(output_gate("Bun is a fast JavaScript runtime", None, Some("bun is a fast")).is_err());
+
+        // 空白 expect/reject 视为未配置，不许误伤
+        assert!(output_gate("anything", Some("  "), Some("")).is_ok());
+    }
+
+    #[test]
+    fn node_runtime_manifest_must_satisfy_the_tool_minimum() {
+        assert!(validate_node_runtime_min("v22.20.0", Some("24.16.0")).is_err());
+        assert!(validate_node_runtime_min("v24.16.0", Some("24.16.0")).is_ok());
+        assert!(validate_node_runtime_min("v24.19.0", Some("v24.16.0")).is_ok());
+        assert!(validate_node_runtime_min("v22.20.0", None).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn mimo_temp_compatibility_is_child_only_and_smoke_data_is_isolated() {
+        crate::testsandbox::with_sandbox("mimo-temp-smoke", &[], |root| {
+            let original_temp = std::env::var_os("TEMP");
+            let env = tool_process_env("mimo --version").unwrap();
+            assert_eq!(env.len(), 2);
+            assert_eq!(env[0].0, "TEMP");
+            assert_eq!(env[1].0, "TMP");
+            assert_eq!(env[0].1, root.join(".uking").join("tmp").join("mimo").display().to_string());
+            assert_eq!(std::env::var_os("TEMP"), original_temp, "不能修改进程全局 TEMP");
+            assert!(tool_process_env("codex --version").unwrap().is_empty());
+            let mut command = base_command("cmd");
+            let sandbox = CliSmokeSandbox::new(&mut command).unwrap();
+            let sandbox_root = sandbox.0.clone();
+            for (key, value) in command.get_envs() {
+                if key.to_string_lossy().starts_with("XDG_") {
+                    assert!(Path::new(value.unwrap()).starts_with(&sandbox_root));
+                }
+            }
+            assert!(sandbox_root.starts_with(root.join(".uking/checks")));
+            drop(sandbox);
+            assert!(!sandbox_root.exists(), "只清理本次创建的冒烟沙箱");
+        });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn mimo_guard_sets_local_temp_and_keeps_the_invocation() {
+        let home = Path::new(r"C:\Users\demo（中文）");
+        let script = cli_command_guard_script(&home.join(r".uking\runtime\node\mimo.cmd"), home, None).unwrap();
+        assert!(script.is_ascii());
+        assert!(script.contains("setlocal\r\n"));
+        assert!(script.contains(r#"set "TEMP=%USERPROFILE%\.uking\tmp\mimo""#));
+        assert!(script.contains(r#"set "TMP=%TEMP%""#));
+        assert!(script.contains(r#"call "%USERPROFILE%\.uking\runtime\node\mimo.cmd" %*"#));
+        assert!(script.ends_with("exit /b %errorlevel%\r\n"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dotnet_curl_preserves_parallel_http_errors_writeout_and_explicit_proxy() {
+        use std::io::{Read, Write};
+        let _sandbox = crate::testsandbox::enter("dotnet-http-errors", &[]);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+            let mut served = 0;
+            while served < 5 && std::time::Instant::now() < deadline {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(connection) => connection,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        continue;
+                    }
+                    Err(e) => panic!("local fixture accept failed: {e}"),
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 4096];
+                loop {
+                    let n = stream.read(&mut buffer).unwrap();
+                    if n == 0 { break; }
+                    request.extend_from_slice(&buffer[..n]);
+                    if let Some(end) = request.windows(4).position(|s| s == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&request[..end]);
+                        let length = headers.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok()).flatten()
+                        }).unwrap_or(0);
+                        if request.len() >= end + 4 + length { break; }
+                    }
+                }
+                let request = String::from_utf8_lossy(&request);
+                let path = request.lines().next().unwrap().split_whitespace().nth(1).unwrap();
+                let body = format!(r#"{{"request":"{path}","message":"demo 拒绝"}}"#);
+                let response = format!("HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                stream.write_all(response.as_bytes()).unwrap();
+                served += 1;
+            }
+            served
+        });
+        let requests = (0..4).map(|i| std::thread::spawn(move || {
+            let url = format!("http://{address}/demo-{i}");
+            let mut args = vec!["--proxy", "", "-m", "10", "-w", "\\n%{http_code}", &url];
+            if i == 2 { args.extend(["-H", "Content-Type: application/json", "--data-binary", r#"{"demo":"payload"}"#]); }
+            let response = curl_via_dotnet(&args);
+            assert!(response.as_ref().is_some_and(|s| s.contains(&format!("/demo-{i}")) && s.contains("demo 拒绝") && s.ends_with("\n401")), "request {i}: {response:?}");
+        })).collect::<Vec<_>>();
+        for request in requests { request.join().unwrap(); }
+        let proxy = format!("http://{address}");
+        let response = curl_via_dotnet(&["--proxy", &proxy, "-m", "10", "-w", "\\n%{http_code}", "http://demo.invalid/proxy-check"]);
+        assert!(response.as_ref().is_some_and(|s| s.contains("http://demo.invalid/proxy-check") && s.ends_with("\n401")), "explicit proxy: {response:?}");
+        assert_eq!(server.join().unwrap(), 5);
+    }
+
+    /// OpenCode 坏壳假通过：`opencode --version` 打出 Bun 版本号、退出码 0，
+    /// 只看退出码的 verify 会判成功。门禁必须在退出码 0 之后把它拦下。
+    #[test]
+    fn verify_rejects_bun_shell_even_when_exit_code_is_zero() {
+        // 模拟 Bun 壳的 --version：只吐版本号，退出 0
+        let spec: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "OpenCode", "bin": "opencode",
+            "verify_cmd": "echo Bun is a fast JavaScript runtime",
+            "verify_reject": "bun is a fast",
+            "steps": [],
+        }))
+        .unwrap();
+        let r = verify("opencode", &spec, &|_, _| {});
+        assert!(r.is_err(), "Bun 指纹必须被拦下，实际：{r:?}");
+        assert!(
+            r.as_ref().unwrap_err().contains("bun is a fast"),
+            "错误信息要点名指纹，实际：{r:?}"
+        );
+    }
+
+    /// 冒烟：verify_cmd 过了还不够，smoke_cmd 挂了同样算验证失败。
+    #[test]
+    fn verify_runs_smoke_and_fails_when_smoke_fails() {
+        // verify_cmd 过、smoke 挂（非零退出）
+        let spec: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo",
+            "verify_cmd": "echo 1.0.0",
+            "smoke_cmd": "exit 7",
+            "steps": [],
+        }))
+        .unwrap();
+        let r = verify("demo", &spec, &|_, _| {});
+        assert!(r.as_ref().is_err_and(|e| e.contains("冒烟") && e.contains("退出码 7")), "{r:?}");
+
+        // smoke 过 → 整体过
+        let ok: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo",
+            "verify_cmd": "echo 1.0.0",
+            "smoke_cmd": "echo healthy",
+            "smoke_expect": "healthy",
+            "steps": [],
+        }))
+        .unwrap();
+        let r = verify("demo", &ok, &|_, _| {});
+        assert!(r.is_ok(), "smoke 通过时 verify 应成功，实际：{r:?}");
+
+        // smoke 退出 0 但输出指纹不对 → 同样失败
+        let fake: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo",
+            "verify_cmd": "echo 1.0.0",
+            "smoke_cmd": "echo SQLITE_CANTOPEN",
+            "smoke_reject": "sqlite",
+            "steps": [],
+        }))
+        .unwrap();
+        let r = verify("demo", &fake, &|_, _| {});
+        assert!(r.is_err(), "smoke 输出含禁止指纹必须失败，实际：{r:?}");
+    }
+
+    /// 冒烟命令来自热下发清单，必须跟 install 的 `run` 步一样过危险命令黑名单。
+    #[test]
+    fn smoke_command_hits_fix_blacklist() {
+        let spec: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo",
+            "verify_cmd": "echo 1.0.0",
+            "smoke_cmd": "echo hi & del /f /s /q c:\\",
+            "steps": [],
+        }))
+        .unwrap();
+        let r = verify("demo", &spec, &|_, _| {});
+        assert!(r.as_ref().is_err_and(|e| e.contains("已拦截")), "{r:?}");
+    }
+
+    /// 老清单（没有这组字段）必须照常解析且行为不变——热下发新清单给旧客户端是安全的，
+    /// 旧清单给新客户端也必须是安全的。
+    #[test]
+    fn tool_spec_without_gate_fields_still_parses() {
+        let spec: ToolSpec = serde_json::from_value(serde_json::json!({
+            "name": "demo", "bin": "demo", "verify_cmd": "demo --version",
+            "steps": [], "repair": [],
+        }))
+        .expect("无新字段的清单必须能解析");
+        assert!(spec.verify_expect.is_none());
+        assert!(spec.verify_reject.is_none());
+        assert!(spec.smoke_cmd.is_none());
+    }
+
+    /// 反向判据：内嵌清单里 OpenCode / MiMo 必须真的带上门禁和冒烟。
+    /// 只改代码不改清单 = 两层验收对这两个工具仍然是空转。
+    #[test]
+    fn embedded_manifest_gates_opencode_bun_shell_and_mimo_sqlite() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单应能解析");
+
+        let oc = skill.tools.get("opencode").expect("内嵌清单应含 opencode");
+        // Bun 壳的 `--version` 只吐 `1.3.14`，必须把 `--help` 拉进同一道门禁才拦得住。
+        assert!(
+            oc.verify_cmd.contains("--help"),
+            "OpenCode 的 verify_cmd 必须覆盖 --help，否则 Bun 壳假通过：{}",
+            oc.verify_cmd
+        );
+        assert_eq!(oc.verify_reject.as_deref(), Some("bun is a fast"), "OpenCode 必须钉死 Bun 指纹");
+        assert_eq!(oc.smoke_cmd.as_deref(), Some("opencode --help"));
+        assert_eq!(oc.smoke_expect.as_deref(), Some("opencode"));
+        assert_eq!(oc.smoke_reject.as_deref(), Some("bun is a fast"));
+        // 平台二进制是 optionalDependency，不拉会剩 Bun 壳（同 claude.exe 占位壳病根）。
+        for step in &oc.steps {
+            if let Step::NpmInstall { with_optional, .. } = step {
+                assert!(*with_optional, "opencode 的 npm_install 必须 with_optional");
+            }
+        }
+
+        let mimo = skill.tools.get("mimo-code").expect("内嵌清单应含 mimo-code");
+        assert_eq!(mimo.verify_cmd, "mimo --version");
+        assert_eq!(mimo.smoke_reject.as_deref(), Some("unable to open database file"));
+        assert!(output_gate("sqlite-migration:done\n1", mimo.smoke_expect.as_deref(), mimo.smoke_reject.as_deref()).is_ok());
+        assert!(
+            mimo.smoke_cmd.as_deref().unwrap_or("").contains("mimo db"),
+            "MiMo 冒烟必须真触库（db 子命令），实际：{:?}",
+            mimo.smoke_cmd
         );
     }
 

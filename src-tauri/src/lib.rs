@@ -5136,9 +5136,9 @@ async fn list_models_at_endpoint(base_url: String, api_key: String) -> Result<Ve
 /// 「添加供应商」弹窗的**存前**试连（理由见 `providers::probe_openai_endpoint` 的注释：
 /// 原来只能盲存，报错在三层之外才冒出来）。
 #[tauri::command]
-async fn probe_endpoint(base_url: String, api_key: String, model: String) -> providers::TestResult {
+async fn probe_endpoint(base_url: String, api_key: String, model: String, api: Option<String>) -> providers::TestResult {
     tauri::async_runtime::spawn_blocking(move || {
-        providers::probe_openai_endpoint(&base_url, &api_key, &model)
+        providers::probe_provider_endpoint(&base_url, &api_key, &model, api.as_deref().unwrap_or("openai-chat"))
     })
     .await
     .unwrap_or_else(|e| providers::TestResult {
@@ -6232,6 +6232,214 @@ fn detect_sandbox_leak(real_home: &str, sandbox: &str) -> Vec<String> {
 /// ③ verify 真过了（拿到版本号）。
 ///
 /// 跑完删沙箱。注意它会真下载真安装（Hermes ≈ 38MB 便携 Python + 依赖），不是 mock。
+fn run_install_gate_test(tools: &[String]) -> i32 {
+    // 每个工具的期望分两半：
+    //   · `broken` —— 装前探到的坏形状（Bun 壳 / SQLite 挂）；装后必须再探测。
+    //     修复后健康且安装成功 = repaired-pass；仍坏却报成功才是假通过漏检。
+    //   · 探不到坏形状 = 装机应当成功（或至少不该被门禁误杀）。
+    #[derive(Default)]
+    struct Case {
+        tool: String,
+        broken_fingerprint: Option<String>,
+        install_ok: bool,
+        error: Option<String>,
+    }
+
+    fn probe_broken_fingerprint(tool: &str) -> Option<String> {
+        let (cmd, needle): (&str, &str) = match tool {
+            "opencode" => ("opencode --help", "bun is a fast"),
+            "mimo-code" => ("mimo db \"SELECT 1\"", "unable to open database file"),
+            _ => return None,
+        };
+        // 用 installer 同款 run_capture（经 cmd /C、注入便携 PATH）——探到的必须是装机
+        // 那条路上会看到的同一份二进制，而不是 PowerShell 里另一条 PATH 的残影。
+        let (code, out) = installer::run_capture_for_gate_probe(cmd);
+        let lower = out.to_lowercase();
+        if lower.contains(needle) {
+            return Some(needle.to_string());
+        }
+        // MiMo 冒烟是触库：退出码非 0 或输出里带 SQLite 错误特征，都算坏。
+        if code != 0 {
+            return Some(format!("exit-{code}"));
+        }
+        if tool == "opencode" && !lower.contains("opencode") {
+            return Some("missing-opencode-help".into());
+        }
+        None
+    }
+
+    let mut cases = Vec::new();
+    let mut bad = 0;
+    for tool in tools {
+        let broken = probe_broken_fingerprint(tool);
+        eprintln!("[gate-test] {tool} 装前探伤: {:?}", broken);
+        let logs = std::sync::Mutex::new(Vec::<String>::new());
+        let skill = installer::load_skill();
+        let r = installer::install_tool(&skill, tool, &|phase: &str, line: &str| {
+            eprintln!("[{phase}] {line}");
+            if let Ok(mut g) = logs.lock() {
+                g.push(format!("[{phase}] {line}"));
+            }
+        });
+        let logs = logs.into_inner().unwrap_or_default();
+        let after_broken = probe_broken_fingerprint(tool);
+        let case = Case {
+            tool: tool.clone(),
+            broken_fingerprint: broken.clone(),
+            install_ok: r.ok,
+            error: r.error.clone(),
+        };
+        // 安装本身可以修复坏入口；成功判据以装后重测的真实健康为准。
+        let gate_hit = logs.iter().any(|l| {
+            l.contains("输出里出现")
+                || l.contains("输出里找不到")
+                || l.contains("冒烟")
+                || l.contains("bun is a fast")
+                || l.contains("sqlite")
+        });
+        let verdict = if r.ok && after_broken.is_some() {
+                eprintln!("[FAIL] {tool} 装后仍坏（{after_broken:?}），装机却报成功 —— 门禁漏检");
+                bad += 1;
+                "false-pass"
+        } else if r.ok {
+            if broken.is_some() {
+                eprintln!("[OK] {tool} 初始故障已修复，装后健康 · {:?}", r.version);
+                "repaired-pass"
+            } else {
+                eprintln!("[OK] {tool} 装机成功且装后健康 · {:?}", r.version);
+                "healthy-pass"
+            }
+        } else if let Some(fp) = &broken {
+            if gate_hit {
+                eprintln!("[OK] {tool} 坏形状（{fp}）被门禁拦下：{:?}", r.error);
+                "gate-caught"
+            } else {
+                eprintln!(
+                    "[FAIL] {tool} 装机失败了，但错误没点名门禁指纹（{fp}）—— 可能只是网络/杀软，门禁未证实：{:?}",
+                    r.error
+                );
+                bad += 1;
+                "fail-without-gate"
+            }
+        } else {
+            eprintln!("[info] {tool} 装机失败（未探到坏形状，可能是环境问题）：{:?}", r.error);
+            "healthy-fail"
+        };
+        cases.push(serde_json::json!({
+            "tool": case.tool,
+            "broken_fingerprint": case.broken_fingerprint,
+            "after_broken_fingerprint": after_broken,
+            "install_ok": case.install_ok,
+            "error": case.error,
+            "verdict": verdict,
+            "gate_hit": gate_hit,
+        }));
+        let _ = case;
+    }
+    let report = serde_json::json!({ "ok": bad == 0, "bad": bad, "cases": cases });
+    println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+    if bad == 0 {
+        eprintln!("[OK] 门禁在真实装机流里拦住了假通过");
+        0
+    } else {
+        eprintln!("[FAIL] 见上面 JSON：有假通过或门禁未点名指纹");
+        1
+    }
+}
+
+fn run_gate_catch_test() -> i32 {
+    let dir = std::env::temp_dir().join(format!("uking-gate-catch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建假 shim 目录");
+
+    // ① Bun 壳：`--version` 只吐 1.3.14、退出 0；`--help` 满屏 Bun —— 只看退出码必假通过。
+    std::fs::write(
+        dir.join("fake-oc.cmd"),
+        "@echo off\r\necho 1.3.14\r\necho Bun is a fast JavaScript runtime\r\n",
+    )
+    .unwrap();
+    // ② SQLite 挂：`--version` 是绿的，触库命令退出 1 且吐 SQLITE_ —— 老 verify 报「安装成功」。
+    std::fs::write(
+        dir.join("fake-mimo.cmd"),
+        "@echo off\r\nif \"%1\"==\"--version\" (echo 0.1.15 & exit /b 0)\r\necho SQLITE_CANTOPEN: unable to open database\r\nexit /b 1\r\n",
+    )
+    .unwrap();
+    let oc = dir.join("fake-oc.cmd").display().to_string();
+    let mi = dir.join("fake-mimo.cmd").display().to_string();
+    // cmd /C 对「带引号开头的命令行」有吃引号的坑（见 shell_command 注释）；临时目录无空格，
+    // 这里故意不加引号，模拟真实 verify_cmd 的裸命令形状。
+    let skill: installer::Skill = serde_json::from_value(serde_json::json!({
+        "skill": "gate-catch", "version": 1, "npm_registry": "https://registry.npmmirror.com",
+        "pip_index": "https://mirrors.aliyun.com/pypi/simple/",
+        "node": { "version": "v0.0.0", "url": "https://example.invalid/node.zip", "dir_name": "node",
+                  "sha256": "0", "url_mac_arm64": "https://example.invalid/node.zip",
+                  "dir_name_mac_arm64": "node", "sha256_mac_arm64": "0",
+                  "url_mac_x64": "https://example.invalid/node.zip",
+                  "dir_name_mac_x64": "node", "sha256_mac_x64": "0" },
+        "tools": {
+            "oc-bun": {
+                "name": "OpenCode", "bin": "opencode",
+                "verify_cmd": format!("{oc} --version & {oc} --help"),
+                "verify_expect": "opencode",
+                "verify_reject": "bun is a fast",
+                "smoke_cmd": format!("{oc} --help"),
+                "smoke_expect": "opencode",
+                "smoke_reject": "bun is a fast",
+                "steps": [], "repair": []
+            },
+            "mi-sqlite": {
+                "name": "MiMo Code", "bin": "mimo",
+                "verify_cmd": format!("{mi} --version"),
+                "smoke_cmd": format!("{mi} db SELECT 1"),
+                "smoke_reject": "sqlite",
+                "steps": [], "repair": []
+            }
+        }
+    }))
+    .expect("假清单应能解析");
+
+    let mut bad = 0;
+    let mut cases = Vec::new();
+    for (tool, expect_fp) in [("oc-bun", "bun is a fast"), ("mi-sqlite", "sqlite")] {
+        let logs = std::sync::Mutex::new(Vec::<String>::new());
+        let r = installer::install_tool(&skill, tool, &|phase, line| {
+            eprintln!("[{phase}] {line}");
+            if let Ok(mut g) = logs.lock() {
+                g.push(line.to_string());
+            }
+        });
+        let logs = logs.into_inner().unwrap_or_default();
+        let text = format!("{:?} {}", r.error, logs.join("\n")).to_lowercase();
+        let caught = !r.ok && text.contains(expect_fp);
+        eprintln!(
+            "[{}] {tool} install_ok={} caught={caught} err={:?}",
+            if caught { "OK" } else { "FAIL" },
+            r.ok,
+            r.error
+        );
+        if !caught {
+            bad += 1;
+        }
+        cases.push(serde_json::json!({
+            "tool": tool, "expect_fp": expect_fp,
+            "install_ok": r.ok, "caught": caught, "error": r.error,
+        }));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({ "ok": bad == 0, "bad": bad, "cases": cases }))
+            .unwrap_or_default()
+    );
+    if bad == 0 {
+        eprintln!("[OK] 坏二进制（Bun 壳 / SQLite 挂）都被门禁拦下，没有假通过");
+        0
+    } else {
+        eprintln!("[FAIL] 有假通过漏检，见 JSON");
+        1
+    }
+}
+
 fn run_install_test_cjk(tool: &str) -> i32 {
     let sandbox = std::env::temp_dir().join(format!("uking-中文回归-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&sandbox);
@@ -7112,6 +7320,33 @@ pub fn run() {
             .cloned()
             .unwrap_or_else(|| "hermes".into());
         std::process::exit(run_install_test_cjk(&tool));
+    }
+    // ★ 输出门禁 + 冒烟真实装机验证：U-King.exe --install-gate-test [tool_id...]
+    //
+    // 跑完整 `install_tool`（steps → verify 门禁 → smoke → repair），断言**假通过会被拦下**。
+    // 默认只跑 opencode / mimo-code —— 这两个是工单里实锤「退出码 0 但装坏了」的工具。
+    // 进度走 stderr、结果 JSON 走 stdout；门禁没拦住假通过 → 退出码 1。
+    if let Some(i) = args.iter().position(|a| a == "--install-gate-test") {
+        let tools: Vec<String> = args
+            .iter()
+            .skip(i + 1)
+            .filter(|s| !s.starts_with("--"))
+            .cloned()
+            .collect();
+        let tools = if tools.is_empty() {
+            vec!["opencode".into(), "mimo-code".into()]
+        } else {
+            tools
+        };
+        std::process::exit(run_install_gate_test(&tools));
+    }
+    // ★ 门禁反向实测：U-King.exe --gate-catch-test
+    //
+    // 「装机成功」不等于「门禁有效」——只有**故意塞坏二进制还能被拦下**才算数。
+    // 造两个假 shim（Bun 壳 / SQLite 挂），走真实 `install_tool` → verify → smoke 路径，
+    // 断言返回失败且错误里点名指纹。这是本机可重复的假通过狩猎，不依赖 npm 网络。
+    if args.iter().any(|a| a == "--gate-catch-test") {
+        std::process::exit(run_gate_catch_test());
     }
     // 便携 PS7 无头验证：U-King.exe --pwsh-test（强制走下载路径，验证 OSS 下载+SHA+解压+便携命中）
     #[cfg(windows)]
