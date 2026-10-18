@@ -118,15 +118,44 @@ cd src-tauri && cargo test --lib installer::tests
 
 **暂定处置**：门禁拒绝假通过 → 用户看到明确失败并引导重试/换网络；不追上游。
 
-### L2 · MiMo 默认 TEMP/TMP 下 SQLite 初始化失败 — 根因未定
+### L2 · MiMo 默认 TEMP/TMP 下 SQLite 初始化失败 — 根因已定位
 
-**现象**：同一程序、同一数据库，默认 `TEMP/TMP` 报 SQLite 错误；换成新临时目录可启动。
+**现象**：`mimo --version` / `--help` 是绿的，真正触库时报
+`SQLiteError: unable to open database file`（迁移语句 `DROP TABLE IF EXISTS memory_fts_idx`）。
 
-**U-King 侧已做**：`tool_process_env` 给 mimo 子进程换干净 TEMP（`~/.uking/tmp/mimo`）绕过；冒烟 `mimo db "SELECT 1"` 验证绕过后可用。
+**根因（2026-10-18 A/B 实测闭合）**：
 
-**阻塞原因**：触发机制未确定（怀疑与 Windows 默认 TEMP 权限/路径长度/杀软有关），只能绕过不能根治。冒烟验证的是「绕过后能用」，不是「默认 TEMP 不会挂」。
+MiMo 一次性 DB 迁移（FTS 索引）需要在 `TEMP` 里建临时文件。`TEMP` 指向**不可用路径**时迁移必挂；
+`--version`/`--help` 不触库，所以假通过。
+
+| TEMP 形态 | 全新 home 迁移 | 证据 |
+| --- | --- | --- |
+| 正常目录（默认 `C:\Users\...\Temp` 或干净目录） | ✅ 过 | A/B/F 组 |
+| **指向不存在的盘符**（`F:\temp`，F 盘不在） | ❌ `unable to open database file` | E 组，与工单同款报错 |
+| **是文件不是目录** | ❌ 同上 | C 组 |
+| 超长路径（140 字符） | ✅ 过 | D 组 |
+
+同款现场另见 `shots/cli-startup-20261018/same-home-*.json`：
+同一 DB home，只换 TEMP，`same-home-default-retry` 挂 / `same-home-clean-temp` 过。
+
+**谁把 TEMP 改到 F 盘**（U-King 自己不会，是便携启动器）：
+
+| 来源 | 写法 | F 盘怎么来的 |
+| --- | --- | --- |
+| U-Claw 便携启动器 `Windows-Start.bat` | `set "TEMP=%UCLAW_GATEWAY_TMP%"`（USB slot 目录） | U 盘挂 F: 时 TEMP=`F:\...` |
+| USB AI Genie `launch-agent.cmd` | `set "TEMP=%PICOCLAW_HOME%\tmp"`（U 盘上） | 同上 |
+| 用户/优化软件把系统 TEMP 迁到 F 盘 | 系统环境变量 | 省 C 盘空间的常见改法 |
+| U-King mimo CLI 守卫（我们的绕过） | `set "TEMP=%USERPROFILE%\.uking\tmp\mimo"` | 不会，固定在 C 盘用户目录 |
+
+**阻塞/处置**：
+
+- 便携启动器把 TEMP 钉在 U 盘是有意的（不污染宿主机），副作用是 U 盘拔掉/只读/FAT 异常时 MiMo 炸
+- U-King 侧绕过有效：`tool_process_env` + mimo CLI 守卫把 TEMP 钉到 `~/.uking/tmp/mimo`
+- **根治要上游**：MiMo 迁移不应假设 TEMP 可写（或失败时退到 DB 同目录）；我们只能保证自己拉起的进程 TEMP 正确
+- 用户自开外部终端走系统 TEMP 时仍可能踩雷；U-King 终端/装机链路已覆盖
 
 ## 边界
 
 - 上述遗留项完成前，OpenCode 在部分客户机上可能装失败（失败是正确行为，好过假成功）
-- MiMo 在 U-King 终端内可用（TEMP 已绕过），用户自开外部终端若走默认 TEMP 仍可能踩 L2
+- MiMo 在 U-King 终端/装机链路内 TEMP 已钉到 `~/.uking/tmp/mimo`；用户自开外部终端走系统 TEMP，
+  若系统 TEMP 被迁到已拔掉的 U 盘/F 盘仍会踩 L2
