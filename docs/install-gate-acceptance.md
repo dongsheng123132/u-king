@@ -52,6 +52,18 @@
 - `tool_spec_without_gate_fields_still_parses` — 老清单兼容
 - `embedded_manifest_gates_opencode_bun_shell_and_mimo_sqlite` — 内嵌清单必须带门禁
 
+### ④ 提交后复测（`c99fc95f1` 之后，2026-10-18）
+
+同机重跑 `--install-gate-test`，确认入库后门禁链路无回归：
+
+| 工具 | 结果 | 证据 |
+| --- | --- | --- |
+| MiMo Code | ✅ 装机成功 | `冒烟：mimo db "SELECT 1"` → `冒烟通过` → `验证通过：0.1.15` |
+| OpenCode | ✅ 失败但无假通过 | npm EEXIST 后 repair 重装仍报「主入口启动异常 + 无 baseline」，**不是**「安装成功」 |
+
+OpenCode 坏壳是上游 `opencode-ai` 包装问题（平台二进制 optionalDependency / baseline 不可用），
+U-King 侧只能拒绝假通过，暂不追上游。
+
 ## 跑法
 
 ```bash
