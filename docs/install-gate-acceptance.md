@@ -185,6 +185,28 @@ MiMo 一次性 DB 迁移（FTS 索引）需要在 `TEMP` 里建临时文件。`T
 - **根治要上游**：MiMo 迁移不应假设 TEMP 可写（或失败时退到 DB 同目录）；我们只能保证自己拉起的进程 TEMP 正确
 - 用户自开外部终端走系统 TEMP 时仍可能踩雷；U-King 终端/装机链路已覆盖
 
+### L3 · 便携启动器把 TEMP 钉在 U 盘 — Windows 已修，残留 Mac / 上游
+
+**现象**：U 盘启动器 `set TEMP=<U盘路径>`（有意，不污染宿主机），U 盘拔掉/只读时
+`TEMP` 不可写，依赖临时文件的进程直接炸（L2 的触发面之一）。
+
+**已修（2026-10-18）**：
+
+| 文件 | 修法 | 提交 |
+| --- | --- | --- |
+| U-King `src-tauri/resources/usb-genie/launch-agent.cmd` | 写探针失败回退 `%LOCALAPPDATA%\Temp`，测试钉死 | `ac037317b` |
+| U-Claw `portable/Windows-Start.bat` | 同款写探针回退 | u-claw 仓 `8434fbf` |
+| U-King mimo CLI 守卫 | 本就有 `if not exist "%TEMP%" exit /b 1` | — |
+
+**残留（未做）**：
+
+- Mac 启动器 `TMPDIR` 同款问题未修（`Mac-Start.command` / `启动.command`），需真机验证
+- 用户自开外部终端不走启动器 → 系统 TEMP 仍可能被优化软件迁到已拔掉的 U 盘/F 盘
+- 根治在上游：MiMo SQLite 迁移不应假设 TEMP 可写（见 L2）
+
+**验收**：`cargo test --lib` 631 绿（含 `launcher_is_ascii_and_uses_stable_current_path`
+新断言）；`--gate-catch-test` 假二进制仍被拦。
+
 ## 边界
 
 - 上述遗留项完成前，OpenCode 在部分客户机上可能装失败（失败是正确行为，好过假成功）
