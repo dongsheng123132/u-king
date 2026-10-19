@@ -19,12 +19,25 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// 单一真相源：resources/OpenCodex.exe = opencodex 仓库（../opencodex开源的codex工具/）release 构建产物。
 #[cfg(windows)]
 const OPENCODEX_EMBEDDED: &[u8] = include_bytes!("../resources/OpenCodex.exe");
+/// OpenCodex 使用 MIT License；随 exe 一并释放，满足再分发时保留许可文本的要求。
+#[cfg(windows)]
+const OPENCODEX_LICENSE: &[u8] = include_bytes!("../resources/OpenCodex-LICENSE.txt");
 
 /// 保证 OpenCodex.exe 可用（找不到就释放内嵌版本）：
 /// 1) OPENCODEX_PATH 显式指定（开发调试）→ 尊重
 /// 2) ~/.uking/opencodex/OpenCodex.exe 且大小与内嵌一致 → 用（不一致视为旧版/半包 → 重释放）
 /// 3) 当前 exe 同目录（U 盘旁挂）→ 尊重
 /// 4) 释放内嵌字节：写 .tmp 再 rename（原子防半包；被占用则报错不硬写）
+#[cfg(windows)]
+fn ensure_license(dir: &std::path::Path) -> Result<(), String> {
+    let license = dir.join("OpenCodex-LICENSE.txt");
+    if !license.exists() {
+        std::fs::write(&license, OPENCODEX_LICENSE)
+            .map_err(|e| format!("释放 OpenCodex 许可文本失败：{}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 pub fn ensure_opencodex() -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("OPENCODEX_PATH") {
@@ -40,6 +53,7 @@ pub fn ensure_opencodex() -> Result<PathBuf, String> {
         .map(|m| m.len() == OPENCODEX_EMBEDDED.len() as u64)
         .unwrap_or(false);
     if same_size {
+        ensure_license(&dir)?;
         return Ok(dst);
     }
     if let Ok(me) = std::env::current_exe() {
@@ -54,6 +68,7 @@ pub fn ensure_opencodex() -> Result<PathBuf, String> {
     let tmp = dir.join("OpenCodex.exe.tmp");
     std::fs::write(&tmp, OPENCODEX_EMBEDDED).map_err(|e| format!("释放 OpenCodex 失败：{}", e))?;
     std::fs::rename(&tmp, &dst).map_err(|e| format!("替换 OpenCodex 失败（可能被占用）：{}", e))?;
+    ensure_license(&dir)?;
     Ok(dst)
 }
 

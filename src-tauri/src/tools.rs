@@ -1411,7 +1411,7 @@ fn catalog_with_probes(
         ToolInfo {
             id: "opencodex".into(),
             name: "OpenCodex 工作台".into(),
-            summary: "随 U-King 打包的极简文件夹式 CLI 终端工作台（u-cli 的替代）。打开选个文件夹就能用，模型走本机虾盘云配置。".into(),
+            summary: "随 U-King 打包的极简文件夹式 CLI 终端工作台（u-cli 的替代）。打开选个文件夹，就能在应用内终端跑 Claude Code / Codex 等 CLI；自带模型设置（Base URL / Key 自填），不改全局配置。".into(),
             kind: "standalone".into(),
             installed: false,
             action: "".into(),
