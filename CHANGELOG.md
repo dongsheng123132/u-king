@@ -5,9 +5,13 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
-## 未发布
+## 1.4.0（2026-10-19）
 
-- 左侧栏底部新增「GitHub」源码仓库和「提交 PR」入口；收起侧栏时仍可通过图标访问，支持中英文与键盘操作。
+- 精简维护助手（分支 `feat/slim-maintenance-assistant`）：删「进阶 / App 版」与「U 盘工具盘」页及 `usb_genie.rs`/`usb_targets.rs`（13 个 USB 动作，parity 动作数 75→62；`DriveSlot`/`enumerate_drive_slots` 搬进 `installer.rs` 保装机发现外接盘能力）；常驻挂载换 `MaintenanceAssistant`，装机失败改「整理脱敏任务包 → 转轻助手 / 复制给外部 AI」，删 `aiRepair` 链；侧栏页脚唯一「一键充值」入口。
+- OpenCodex 0.5.0 随包：`resources/OpenCodex.exe` 经 `include_bytes!` 打进 u-king-mini.exe（新增 `opencodex_bundle.rs`，仿 `airuntime.rs::ensure_ukrt` 按需释放到 `~/.uking/opencodex/`），工具目录注册为可启动工作台（GuiApp），仅 Windows。
+- 工具注册与推荐收敛：magpie 上架（install-windows.json v65，只装 CLI，SHA-256 校验后落 ~/bin）；推荐名单补 pi（claude/codex/hermes/dsh/pi 五主推）；WorkBuddy 重新进目录（action=url，不主推）。
+- 左侧栏底部新增「GitHub」源码仓库和「提交 PR」入口；收起侧栏仍可通过图标访问，支持中英文与键盘操作。
+- 便携启动器 TEMP 写探针回退，U 盘拔出时不再让 SQLite 炸在不可写 TEMP；装机验收加输出门禁 + 冒烟，拦 Bun 壳 / MiMo SQLite 假通过。
 
 ## 1.3.8（2026-10-04）
 
