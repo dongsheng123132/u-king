@@ -1992,7 +1992,10 @@ export const LAB_TOOLS = new Set<string>();
  * 纯展示分组，后端 `tools.rs::TOOL_SPECS` 一个没动；只在「分类 = 全部」且非多选时生效，
  * 用户主动筛选 / 多选时一律平铺，什么都不藏。导出给 `toolhub/ToolHub.tsx`。
  */
-export const RECOMMENDED_TOOLS: readonly string[] = ["claude-code", "codex", "hermes", "dsh"];
+// 2026-10-19 产品负责人明令加入 magpie（本地网关 + 智能路由）和 workbuddy（腾讯桌面智能体）：
+// 这两条是**点名要求**，不是用量证据入选——证据表出来后按真实数据重排时，它们是否保留要重新评估。
+// 豆包桌面版（doubao-desktop）只给官网指引、不能一键装，不进推荐，留在「更多 AI 工具」。
+export const RECOMMENDED_TOOLS: readonly string[] = ["claude-code", "codex", "hermes", "dsh", "magpie", "workbuddy"];
 
 /**
  * 「日常软件」——不是 AI 编程工具，在「可安装」区单独折叠成一组（方案 §3.2 ③）。
