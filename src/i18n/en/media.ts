@@ -66,8 +66,10 @@ export const media: Record<string, string> = {
   "点击放大": "Click to enlarge",
   "改写：": "Rewritten: ",
   // 出图失败后的建议（Draw.tsx::failureHint，按「哪种失败 + 哪个模型」分支给）
-  "这张图出出来了，但存在境外图床、你的网络下载不回来。换成「GPT Image 2」重试——它直接返回图片，不走图床。":
-    "The image was generated, but it lives on an overseas CDN your network can't reach. Retry with “GPT Image 2” — it returns the image directly instead of via a CDN.",
+  "图已经生成好了，只是传回来时被网络中断。稍等一两分钟再点一次「重试」就能拿到——换模型没有用，不用换。":
+    "The image was generated, but the transfer was interrupted. Wait a minute or two and hit “Retry” — switching models won't help.",
+  "图已经生成好了，但传回来时网络中断（图片刚生成时服务器中转最忙，慢是暂时的）。请稍等一两分钟点「重试」，一般第二次就能拿到。":
+    "The image was generated, but the transfer was interrupted (the relay is busiest right after generation; it's temporary). Wait a minute or two and retry — it usually works the second time.",
   "这是「GPT Image 2」的海外上游被限速了，不是你点太快，等多久都一样。点上面的模型下拉换成「Seedream 4.0」或「通义千问图片」（国产直连）就能出图。":
     "“GPT Image 2”'s overseas upstream is being rate-limited — this is not you clicking too fast, and waiting won't help. Use the model dropdown above to switch to “Seedream 4.0” or “Qwen Image” (direct domestic providers).",
   "这个模型的上游这会儿被限速了。点上面的模型下拉换一个模型再试。":

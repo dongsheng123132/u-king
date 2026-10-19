@@ -9208,7 +9208,10 @@ fn ensure_b64(mut r: ImageResult) -> ImageResult {
         // 吊销服务器不可达）会触发 schannel CRYPT_E_REVOCATION_OFFLINE（curl 35）→下载失败。
         // 结果图是上游已授权产物，跳过吊销检查（--ssl-no-revoke）安全；-L 跟 CDN 跳转。
         // 实测：开发机裸 curl 下 volces.com 必 35，加 --ssl-no-revoke 后 200 拿到 290KB JPG。
-        if curl(&["-sS", "-m", "60", "-L", "--ssl-no-revoke", "-o", &path, &url]).is_ok() {
+        // 2026-10-19 超时 60→180s：出图 URL 已被网关改写成 /media/x/ 签名地址（media_url.go），
+        // 服务端回源 + 落 COS 正常时秒回，但上游（现 Adobe Firefly S3）慢时 400KB 图拉 60s
+        // 不够，客户端先掐断就会误报「境外CDN」。与出图等待 600s 对齐放宽到 180s。
+        if curl(&["-sS", "-m", "180", "-L", "--ssl-no-revoke", "-o", &path, &url]).is_ok() {
             if let Ok(bytes) = std::fs::read(&tmp) {
                 if !bytes.is_empty() {
                     r.b64 = Some(b64_encode(&bytes));

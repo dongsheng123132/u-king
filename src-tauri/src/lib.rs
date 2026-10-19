@@ -4518,14 +4518,16 @@ fn report_bug(kind: String, summary: String, detail: String) {
     report::report_bug(&kind, &summary, &detail);
 }
 
-/// 把「拿到结果但只有境外 CDN url、b64 下载失败」归一成清晰可操作的错误。
+/// 把「拿到结果但只有 url、b64 下载失败」归一成清晰可操作的错误。
 /// 背景（2026-06-22 Mac 裸网实测）：seedream/wanx 出图存字节 TOS / 阿里 OSS 的新加坡 CDN
 /// （`ark-...ap-southeast-1...volces.com`），国内裸网 TLS 直接 reset（curl 35）→ ensure_b64 下载空。
-/// 这种「成功但拿不到图」要直说，并指路默认的 gpt-image-2（回 b64、不走 CDN，国内稳）。
+/// 2026-10-19 事实已变：出图 URL 现在一律被网关改写成自家 /media/x/ 签名地址（media_url.go），
+/// 下载失败不再是「客户连不上境外图床」，而几乎总是「图刚生成、服务端中转还在慢慢回源」。
+/// 所以这里不再劝客户换模型（换了也一样），只说稍等重试——下载超时本身也已放宽到 180s。
 fn require_image_b64(r: Result<providers::ImageResult, String>) -> Result<providers::ImageResult, String> {
     match r {
         Ok(img) if img.b64.is_some() => Ok(img),
-        Ok(_) => Err("出图成功，但该模型把图片存在了境外 CDN、当前网络下载失败（国内常见）。请改用「GPT Image 2」模型重试（它直接返回图片、国内最稳）。".into()),
+        Ok(_) => Err("图已经生成好了，但传回来时网络中断（图片刚生成时服务器中转最忙，慢是暂时的）。请稍等一两分钟点「重试」，一般第二次就能拿到。".into()),
         Err(e) => Err(e),
     }
 }
