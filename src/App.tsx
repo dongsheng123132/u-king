@@ -22,7 +22,6 @@ import {
   Cpu,
   Download,
   FolderTree,
-  Gift,
   LifeBuoy,
   MoreHorizontal,
   PanelTopClose,
@@ -176,14 +175,13 @@ export function App() {
   const [wizard, setWizard] = useState<{ runId: number; preselect: string | string[] | null } | null>(null);
   // 左侧边栏：setup=装机向导 / myai=我的 AI（已装快捷启动）/ manage=AI 设置（切驱动+余额+用量）。
   const [tab, setTab] = useState<TabId>("setup");
-  // 「我的 AI」首页免费模型导流卡 → 跳「AI 设置」时要落到哪个分区（2026-09-06）。
-  // 默认 "tools"（原行为不变）；点导流卡时置成 "free" 再切 tab，Manager 只在挂载时读一次
+  // 深链跳「AI 设置」时要落到哪个分区（2026-09-06）。
+  // 默认 "tools"（原行为不变）；深链入口先置成目标分区再切 tab，Manager 只在挂载时读一次
   // （它外层有 key={tab} 边界，每次进页都是全新挂载）。
   // 2026-10-03 收敛 2c：类型换成 Manager 导出的 `SettingsTab`（多了 "account" = 账号 · 充值），
   // 「去充值」类深链用 `setManageInitialTab("account")` + `setTab("manage")`。
   const [manageInitialTab, setManageInitialTab] = useState<SettingsTab>("tools");
-  // 深链是**一次性**的：离开「AI 设置」就复位成默认分区。以前置成 "free" 之后一直不复位，之后从侧栏
-  // 点「AI 设置」仍会落在「免费算力」——「账号 · 充值」也走这条深链，不复位的话会变成每次进设置都落在充值页。
+  // 深链是**一次性**的：离开「AI 设置」就复位成默认分区。「账号 · 充值」走这条深链，不复位的话会变成每次进设置都落在充值页。
   // 切 tab 与置值在同一批里，进页那一帧 tab 已是 "manage"，不会被这条 effect 误清。
   useEffect(() => {
     if (tab !== "manage") setManageInitialTab("tools");
@@ -1051,12 +1049,9 @@ export function App() {
         <PanelBoundary name="sidebar" variant="chrome">
         <Sidebar
           active={tab}
-          // 2026-10-03 收敛方案 2a：侧栏只剩一个「工作台」入口（id=chat），termwb 是它的终端态。
-          // 已经在终端态（tab=termwb）时再点它**不切换**——一旦 setTab("chat")，下面 UWorkspace 的
-          // paneMode 会从 cli 变 chat，把所有会话从终端态收回对话态，等于点了一下就把用户的终端藏了。
-          // 想回对话态：点终端面板头的「展开对话列」，再点顶栏 [对话｜终端] 里的「对话」（页内操作，不动 tab）。
-          // 其余 tab 照常切换；从别的页点进来落对话态，ToolHub「在工作台开终端」仍直达 termwb。
-          onSelect={(next) => setTab((cur) => (cur === "termwb" && next === "chat" ? cur : next))}
+          // 2026-10-19：侧栏恢复「对话工作台」(chat) / 「终端工作台」(termwb) 两个入口，各自就是一个 tab，
+          // 直接切换即可（此前「termwb 下点 chat 不切换」的拦截是为单入口准备的，已删）。
+          onSelect={setTab}
           version={APP_VERSION}
           onShowChangelog={() => setChangelogOpen(true)}
           platform={env?.platform}
@@ -1257,7 +1252,7 @@ export function App() {
                 // 装 / 启动 / 卸载 2026-09-04 搬去了「我的 AI」页，本页不再传 onInstallTool/
                 // onLaunchTool（那两条唯一实现 openTool/launchTool 仍在下面 MyAI 那处调用）。
                 tools={tools}
-                // 「我的 AI」首页免费模型导流卡跳过来时指定打开「免费算力」分区，其余入口
+                // 深链指定打开的分区（如「账号 · 充值」），其余入口
                 // 仍走默认 "tools"（manageInitialTab 初值不变）。
                 initialSettingsTab={manageInitialTab}
                 // 2026-10-03 收敛 2c：钱包只认全局这一份（App 的 deviceKey）——在「账号 · 充值」里充值、
@@ -1399,10 +1394,6 @@ export function App() {
                 onGoInstall={() => setTab("setup")}
                 onInstallAll={startInstallAll}
                 onGoManage={() => setTab("manage")}
-                onGoManageFree={() => {
-                  setManageInitialTab("free");
-                  setTab("manage");
-                }}
                 onApplyXiapan={applyXiapan}
                 onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onSelfUpdate={doSelfUpdate}
@@ -2184,7 +2175,6 @@ function MyAI({
   onGoInstall,
   onInstallAll,
   onGoManage,
-  onGoManageFree,
   onApplyXiapan,
   onRecharge,
   onSelfUpdate,
@@ -2204,8 +2194,6 @@ function MyAI({
   onGoInstall: () => void;
   onInstallAll: () => void;
   onGoManage: () => void;
-  /** 免费模型导流卡专用：跳「AI 设置」并直接落在「免费算力」分区（见 App 里 manageInitialTab）。 */
-  onGoManageFree?: () => void;
   onApplyXiapan: () => void;
   onRecharge: () => void;
   /** 本体一键升级（App 的 doSelfUpdate，带进度/失败账本/重启流程）—— 传给顶部 DoctorCard。 */
@@ -2287,7 +2275,7 @@ function MyAI({
       />
       {/* 🔴 「AI 设置」常驻入口（2026-08-25 用户拍板：「AI 设置放到我的 AI，就不隐藏了」）。
           侧栏里它仍收在「更多」折叠组（0.9.83 的下沉决定不变），但装机主流程的页面上
-          必须有一张一眼看得见的卡 —— 换模型/余额/免费额度是配好能用的最后一公里，
+          必须有一张一眼看得见的卡 —— 换模型/余额是配好能用的最后一公里，
           藏两层（更多 → AI 设置）等于让小白迷路。点击走现成的 onGoManage 深链。 */}
       <button
         onClick={onGoManage}
@@ -2299,33 +2287,11 @@ function MyAI({
         <span className="flex-1 min-w-0">
           <span className="block text-[14px] font-semibold text-ink-0">{tr("AI 设置")}</span>
           <span className="block text-[11.5px] text-ink-3 truncate">
-            {tr("换模型 · 余额 · 免费额度 · 用自己的 Key")}
+            {tr("换模型 · 余额 · 用自己的 Key")}
           </span>
         </span>
         <ChevronRight size={16} className="text-ink-4 shrink-0" />
       </button>
-      {/* 免费模型导流卡（2026-09-06）—— 竞品主打免费入口（实测是 OpenRouter :free 聚合，
-          国内要梯子且 50 次/天），我们调研后决定主推国产直连免费。轻量一条，紧跟在「AI 设置」
-          常驻卡之后：不抢虾盘云充值引导（XiapanGuide，位置在本卡之前）的位置，只是给
-          「不想花钱先跑通」的用户多一条路。点击跳「AI 设置 → 免费算力」分区，同一套
-          onGoManage 深链机制（见 onGoManageFree），不新建跳转通道。 */}
-      {onGoManageFree && (
-        <button
-          onClick={onGoManageFree}
-          className="w-full flex items-center gap-3 rounded-card border border-success-500/25 bg-success-500/[0.06] px-4 py-3.5 text-left shadow-card hover:border-success-500/40 hover:bg-success-500/[0.09] transition-colors"
-        >
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-success-500/[0.14] shrink-0">
-            <Gift size={20} className="text-success-400" />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-[14px] font-semibold text-ink-0">{tr("免费模型 · 不花钱先跑通")}</span>
-            <span className="block text-[11.5px] text-ink-3 truncate">
-              {tr("国产直连免费额度，手机号注册就能领")}
-            </span>
-          </span>
-          <ChevronRight size={16} className="text-ink-4 shrink-0" />
-        </button>
-      )}
             {/* ★ 主推三件套（2026-08-03 定，替换掉原「ClawX 图形版 + Hermes 终端」双入口）。
           数据驱动渲染而不是三段复制粘贴的 JSX：加/减一个只改 CORE_TRIO 数组。 */}
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">

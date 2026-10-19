@@ -34,14 +34,6 @@ const SKILL_URLS: &[&str] = &[
     "https://u-king-org.vercel.app/skills/install-windows.json",
 ];
 
-/// 免费路线独立 Registry：只接受已人工核验的条目。自动巡检只能生成候选，不能越过
-/// `status=reviewed` 直接把新渠道送进客户页面。
-const FREE_REGISTRY_URLS: &[&str] = &[
-    "https://u-claw.org.cn/uking/free-registry.json",
-    "https://cloud.u-claw.org/uking/free-registry.json",
-    "https://www.u-king.org/free-registry.json",
-];
-
 // ============================================================
 // skill 清单模型
 // ============================================================
@@ -73,40 +65,6 @@ pub struct Skill {
     /// （同上面 `min_windows_build` 的先例；`Skill`/`ToolSpec` 全篇没有 `deny_unknown_fields`）。
     #[serde(default)]
     pub provider_templates: Vec<RemoteProviderTemplate>,
-    /// 「免费额度怎么领」教程（2026-08-24）——跟 `provider_templates` 同一条热下发通道。
-    /// 免费羊毛寿命以周计，某家下线/改条件只改线上 JSON，不发版；前端以内嵌的
-    /// `src/lib/freeGuide.ts` 兜底。同上，老客户端不认识这个字段，serde 忽略，下发安全。
-    #[serde(default)]
-    pub free_guide: Option<RemoteFreeGuide>,
-}
-
-/// 免费额度教程。**故意不带任何端点和 Key**：条目靠 `template` 按名字指向
-/// `provider_templates` 里已有的那条，端点只存在一份（宪法第 8 条：同一事实存几份就漂几份）。
-/// 我们也不替客户带 Key —— 没有 Key 是客户自己想办法的事，教程只负责说清去哪领。
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RemoteFreeGuide {
-    /// 单调递增；客户端拿它跟本地记过的比，大了就提示「免费清单有更新」
-    pub version: u32,
-    /// 内容最后核实的日期，直接显示给客户 —— 让他知道这份有多旧
-    #[serde(default)]
-    pub checked: String,
-    #[serde(default)]
-    pub entries: Vec<RemoteFreeGuideEntry>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RemoteFreeGuideEntry {
-    pub name: String,
-    /// 模板画廊里的 `name`，逐字相等才给「一键导入」按钮；对不上就只显示说明，不报错
-    #[serde(default)]
-    pub template: Option<String>,
-    #[serde(default)]
-    pub summary: String,
-    #[serde(default)]
-    pub key_url: Option<String>,
-    /// 客户会撞墙的条件（要不要卡 / 限不限量 / 有没有地域门槛）
-    #[serde(default)]
-    pub note: Option<String>,
 }
 
 /// 一条「添加供应商」模板。`openai_base` 是唯一必填项——空模板没有意义；
@@ -6265,22 +6223,6 @@ fn cli_command_guard_script(
     Some(format!("@echo off\r\nrem U-King CLI command guard\r\n{invoke}\r\n"))
 }
 
-/// 进入免费页时的轻量刷新。失败返回 None，由前端保留编进程序的最后可信清单；不把
-/// 网络错误伪装成空清单，也不缓存客户 Key（Registry 从设计上不允许有 Key 字段）。
-pub fn fetch_free_registry() -> Option<serde_json::Value> {
-    for url in FREE_REGISTRY_URLS {
-        let Ok(out) = curl(&["-sL", "-m", "6", url]) else { continue };
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&out) else { continue };
-        let reviewed = value.get("status").and_then(|v| v.as_str()) == Some("reviewed");
-        let version = value.get("version").and_then(|v| v.as_u64());
-        let entries = value.get("entries").and_then(|v| v.as_array());
-        if reviewed && version.is_some() && entries.is_some() {
-            return Some(value);
-        }
-    }
-    None
-}
-
 /// 认「带标记的新格式」之前 U-King 写过的两种两行转发器（都只转发到 `.uking\runtime\node\<name>.cmd`）：
 /// - 老 Rust 版：`"…\.uking\runtime\node\<name>.cmd" %*`（第二行以 `"` 开头）；
 /// - 装机清单到 v57 为止的 shim 步：`call "…\.uking\runtime\node\<name>.cmd" %*`（第二行以 `call ` 开头）。
@@ -7982,46 +7924,20 @@ mod tests {
         assert_eq!(skill.provider_templates[0].name, "示例");
     }
 
-    /// `free_guide` 的双向兼容判据（2026-08-24 加字段时补）。两个方向都要成立，缺一个就出事：
-    ///  - **新清单 → 老/新客户端**：带 `free_guide` 的清单能解析（下同上面那条的规则）；
-    ///  - **老清单 → 新客户端**：**线上那份现在还没有这个字段**，解析必须落成 `None`
-    ///    而不是报错 —— 忘了 `Option` + `default` 的话，新版一发出去就会把整份清单读失败，
-    ///    连带装机的 node/tools 一起没了。这个方向才是会真出人命的那个。
+    /// 免费教程功能线已摘除（`free_guide` 字段不再存在）。线上旧清单、老客户端缓存里
+    /// 可能还带着这个键：`Skill` 没有 `deny_unknown_fields`，必须照常解析，不能整份读失败。
     #[test]
-    fn free_guide_is_optional_in_both_directions() {
-        let base = serde_json::json!({
+    fn legacy_free_guide_key_is_ignored() {
+        let v = serde_json::json!({
             "skill": "uking-install-windows",
             "version": 1,
             "node": { "version": "v22.0.0", "url": "https://example.com/node.zip", "dir_name": "node-x" },
             "npm_registry": "https://registry.npmmirror.com",
             "tools": {},
+            "free_guide": { "version": 7, "checked": "2026-08-24", "entries": [ { "name": "示例" } ] },
         });
-
-        // 老清单（没有这个字段）——线上此刻就是这个形状
-        let old: Skill = serde_json::from_value(base.clone()).expect("没有 free_guide 的清单必须照常解析");
-        assert!(old.free_guide.is_none(), "缺字段 = 没有教程，不是解析失败");
-
-        // 新清单
-        let mut v = base;
-        v["free_guide"] = serde_json::json!({
-            "version": 7,
-            "checked": "2026-08-24",
-            "entries": [
-                { "name": "示例", "template": "OpenRouter", "summary": "有免费档",
-                  "unknown_nested_field": 1 }
-            ]
-        });
-        let new: Skill = serde_json::from_value(v).expect("带 free_guide 的清单必须能解析");
-        let g = new.free_guide.expect("free_guide 应当解析出来");
-        assert_eq!(g.version, 7);
-        assert_eq!(g.entries.len(), 1);
-        assert_eq!(g.entries[0].template.as_deref(), Some("OpenRouter"));
-        // 教程条目**不许**自带端点或 Key：端点只存在于 provider_templates 一份（宪法 8），
-        // Key 一律客户自己领（2026-08-24 用户拍板：没 Key 不是我们的问题）。
-        let fields = serde_json::to_value(&g.entries[0]).unwrap();
-        for banned in ["openai_base", "anthropic_base", "api_key", "key"] {
-            assert!(fields.get(banned).is_none(), "教程条目不该有 {banned} 字段");
-        }
+        let skill: Skill = serde_json::from_value(v).expect("带遗留 free_guide 键的清单必须能解析");
+        assert_eq!(skill.skill, "uking-install-windows");
     }
 
     /// 反向判据：真正跑在 exe 里的那份内嵌清单（`skills/install-windows.json`）

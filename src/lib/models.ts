@@ -9,7 +9,7 @@
  *     下拉里还挂着上游已下线的 gemini-3.5-flash）。`scripts/check-model-catalog-sync.mjs` 在 build 里卡着；
  *   · 线上热下发的更新版走 `useXiapanModels()`（读后端只读动作 `runtime.model_catalog.inspect`），
  *     版本比内嵌大才覆盖，失败就继续用这份内嵌的。
- * 选 import 而不是 build 时再读：vite 原生支持 JSON import，零脚本零生成物（同类先例 `lib/freeGuide.ts`）。
+ * 选 import 而不是 build 时再读：vite 原生支持 JSON import，零脚本零生成物。
  *
  * ## 改清单前先看这几条（从原先手写版里搬过来的教训，JSON 里放不了注释）
  *  · 改 id 前先真调一次 `/v1/chat/completions`，**别信 `/v1/models` 列表**。虾盘云 `/v1/models` 同时列

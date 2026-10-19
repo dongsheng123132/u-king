@@ -29,10 +29,12 @@ export const sidebar: Record<string, string> = {
   "技能市场 · 上手教程": "Skill market · Getting-started guide",
   "对话 + 终端 + 作图，一站干活": "Chat + terminal + image gen, all in one",
   "对话 · 终端 · 作图出片，一站干活": "Chat · Terminal · Create, all in one place",
-  // 2026-10-03 收敛方案 2a：「对话工作台」「终端工作台」合成一个「工作台」入口，
-  // 旧的四条英文随入口一起删（恢复入口时要连这几条一起加回，见 Sidebar.tsx CORE 注释）。
+  // 2026-10-19 恢复「对话工作台」「终端工作台」两个入口（见 Sidebar.tsx CORE 注释）。
+  "对话工作台": "Chat Workbench",
+  "终端工作台": "Terminal Workbench",
+  "U-Chat · 对话 · 作图 · 会话": "U-Chat · Chat · Image gen · Sessions",
+  "U-CLI · 同一批项目，只见终端": "U-CLI · Same projects, terminal only",
   "工作台": "Workbench",
-  "对话 · 终端 · 会话": "Chat · Terminal · Sessions",
   "U-Chat 对话 · U-CLI 终端 · 作图，一站干活": "U-Chat · U-CLI terminal · image gen, all in one",
   "Codex 工作站": "Codex Station",
   "安装 · 配置 · 模板": "Install · Configure · Templates",

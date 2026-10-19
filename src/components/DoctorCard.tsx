@@ -445,7 +445,7 @@ export function DoctorCard({
             ))}
             {idleTools.length > 0 && (
               <div className="text-[11px] text-ink-4 pt-0.5">
-                {t("标黄的还没接 AI —— 用上方「一键配好」或到「免费算力」页接入")}
+                {t("标黄的还没接 AI —— 用上方「一键配好」或到「AI 设置」页接入")}
               </div>
             )}
           </div>

@@ -243,9 +243,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
   // 🔴 智谱/硅基流动的免费档**不在这里新开模板** —— 它们跟已有的「智谱 GLM」/
   // 「SiliconFlow（硅基流动）」openai_base 逐字相同，而 CustomProviderModal 是按
   // `openai_base === value.openai_base.trim()` 回填 activeTpl 的：两个模板同一个
-  // base URL 会让弹窗匹配到错误的那个（标题/预填走错家）。免费档模型 id 改写进
-  // `website/free-registry.json` 对应条目的说明文案里，引导用户复用已有模板、
-  // 手动把模型换成免费档（见该文件与 Manager.tsx 免费额度组，2026-09-06 主会话裁决）。
+  // base URL 会让弹窗匹配到错误的那个（标题/预填走错家）。
+  // 用户复用已有模板、手动把模型换成免费档即可（2026-09-06 主会话裁决）。
   {
     // 个人永久免费，含 Qwen3-Coder-480B / Kimi-K2 / GLM-4.6 等旗舰模型，但并发数为 1。
     // model 故意留空：引导用「拉取模型」按钮按账户权限选择，而不是写死一个可能变动的 id。

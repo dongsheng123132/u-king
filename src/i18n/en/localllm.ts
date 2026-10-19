@@ -67,4 +67,14 @@ export const localllm: Record<string, string> = {
     "Smaller quantisations use less memory and answer more crudely. When unsure take a Q4 — it is the accepted sweet spot.",
   "模型来自魔搭（国内直连），下载走断点续传，断了再点一次接着下。":
     "Models come from ModelScope. Downloads resume, so a dropped connection just means clicking again.",
+  // 其他本地 AI 应用探测（localai_probe.rs，2026-10-19）
+  "其他本地 AI 应用": "Other local AI apps",
+  "LM Studio · Jan · GPT4All · KoboldCpp · LocalAI · Msty · Magpie 网关":
+    "LM Studio · Jan · GPT4All · KoboldCpp · LocalAI · Msty · Magpie gateway",
+  "没探到。这里只认它们的默认端口且服务已开启；没打开本地服务或改过端口都不会显示，不代表没装。":
+    "Nothing detected. Only default ports are checked and the app's local server must be running; a stopped server or a changed port will not show up here, which does not mean the app is not installed.",
+  "服务在线": "Server online",
+  "可用模型": "Models",
+  "等 {n} 个": "and {n} in total",
+  "服务在线，但还没有加载模型": "Server is online, but no model is loaded yet",
 };

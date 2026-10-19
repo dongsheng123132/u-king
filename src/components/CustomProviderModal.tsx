@@ -30,7 +30,6 @@ import { useI18n } from "../i18n";
 import { ToolIcon } from "./ToolIcon";
 import type { ProviderPreset } from "../Wizard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "../lib/providerTemplates";
-import type { FreeGuide } from "../lib/freeGuide";
 
 /** 自定义供应商表单的输入框统一样式（单一定义，宪法第 8 条；Manager 从这里 import）。
  *  🔴 定义放本文件而不是 Manager：Manager 已 import 本文件，若这两个常量留在 Manager
@@ -51,14 +50,6 @@ export const TOOL_LABELS: Record<string, string> = {
 
 /** 试连 / 拉模型清单结果（Manager 也在用，单一定义搬到这里，Manager 改 import）。 */
 export type TestResult = { ok: boolean; api: string; latency_ms: number; reply: string | null; error: string | null };
-
-/** 免费路线正在接入的上下文。Key 只在 `editing` 的本机表单状态里，绝不进官网或 Registry。 */
-export type FreeRouteContext = {
-  entry: FreeGuide["entries"][number];
-  target: string;
-  stage: "draft" | "added";
-  savedId?: string;
-};
 
 /** 表单字段包裹（标签 + 说明 + 输入区）。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -101,12 +92,6 @@ export function CustomProviderModal({
   addingTo,
   onAddBuiltin,
   onPurge,
-  variant = "modal",
-  freeRoute,
-  onFreeTargetChange,
-  onFreeRouteDirty,
-  onEnableFreeRoute,
-  enablingFreeRoute = false,
 }: {
   value: ProviderPreset;
   onChange: (p: ProviderPreset) => void;
@@ -122,24 +107,16 @@ export function CustomProviderModal({
   onAddBuiltin?: (p: ProviderPreset) => void;
   /** 彻底删除（全部 AI + 定义 + Key）。只在编辑既有自定义供应商时给。 */
   onPurge?: (p: ProviderPreset) => void;
-  variant?: "modal" | "drawer";
-  freeRoute?: FreeRouteContext | null;
-  onFreeTargetChange?: (target: string) => void;
-  /** 免费路线保存后又改了表单：旧 provider 不能再被直接启用，必须重新保存/试连。 */
-  onFreeRouteDirty?: () => void;
-  onEnableFreeRoute?: () => void;
-  enablingFreeRoute?: boolean;
 }) {
   const { t } = useI18n();
   const isEdit = !!value.id;
-  const isDrawer = variant === "drawer";
 
   /** 当前表单的 baseUrl 命中哪个模板；都不命中 = 自定义。 */
   const activeTpl = templates.find((tpl) => tpl.openai_base === value.openai_base.trim());
   /** 三种入口形态之一：模板路径（右栏「+」预填进来，命中模板且是新建）。 */
-  const isTemplatePath = !isEdit && !isDrawer && !!activeTpl;
+  const isTemplatePath = !isEdit && !!activeTpl;
   /** 自定义路径：空白新建、还没命中任何模板。 */
-  const isCustomNew = !isEdit && !isDrawer && !activeTpl;
+  const isCustomNew = !isEdit && !activeTpl;
 
   /**
    * 存前试连 + 存前拉模型（2026-08-22，用户亲历「无法准确添加新的供应商」后重做）。
@@ -177,7 +154,6 @@ export function CustomProviderModal({
   // 任何一格变了，上一次的试连结果就不再作数 —— 留着一个绿勾伴着改坏的表单，比没有更糟。
   const set = (patch: Partial<ProviderPreset>) => {
     setProbe(null);
-    if (freeRoute?.stage === "added") onFreeRouteDirty?.();
     onChange({ ...value, ...patch });
   };
 
@@ -281,13 +257,11 @@ export function CustomProviderModal({
   const noOpenaiBase = !value.openai_base.trim();
   const fieldsDisabled = verifying;
 
-  const title = isDrawer
-    ? t("正在接入：{name}", { name: freeRoute?.entry.name ?? value.name })
-    : isEdit
-      ? t("编辑供应商")
-      : isTemplatePath && activeTpl
-        ? t("添加 {name}", { name: activeTpl.name })
-        : t("添加供应商");
+  const title = isEdit
+    ? t("编辑供应商")
+    : isTemplatePath && activeTpl
+      ? t("添加 {name}", { name: activeTpl.name })
+      : t("添加供应商");
 
   const primaryLabel = verifying
     ? t("验证中…")
@@ -299,16 +273,11 @@ export function CustomProviderModal({
 
   return (
     <div
-      className={cn("fixed inset-0 z-[60]", isDrawer ? "pointer-events-none" : "grid place-items-center bg-black/60 backdrop-blur-sm p-4")}
-      onClick={isDrawer ? undefined : onClose}
+      className="fixed inset-0 z-[60] grid place-items-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={onClose}
     >
       <div
-        className={cn(
-          "border border-white/[0.10] bg-bg-1 shadow-card flex flex-col",
-          isDrawer
-            ? "pointer-events-auto absolute right-0 top-0 h-full w-full max-w-[480px] rounded-l-card"
-            : "w-full max-w-[560px] max-h-[calc(100vh-32px)] rounded-card",
-        )}
+        className="border border-white/[0.10] bg-bg-1 shadow-card flex flex-col w-full max-w-[560px] max-h-[calc(100vh-32px)] rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 h-13 py-3.5 border-b border-white/[0.08] bg-bg-1/60">
@@ -320,19 +289,6 @@ export function CustomProviderModal({
             <X size={15} />
           </button>
         </div>
-
-        {isDrawer && freeRoute && (
-          <div className="px-5 py-3 border-b border-white/[0.08] bg-accent/[0.045] text-[11px] leading-relaxed text-ink-3">
-            <div className="flex items-center gap-2 text-ink-1 font-medium">
-              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-500">{t("免费档")}</span>
-              <span>{freeRoute.entry.region ?? t("第三方")}</span>
-              <select value={freeRoute.target} onChange={(e) => onFreeTargetChange?.(e.target.value)} className="ml-auto rounded border border-white/[0.12] bg-bg-2 px-1.5 py-1 text-ink-1">
-                {(freeRoute.entry.targets ?? ["pi"]).map((target) => <option key={target} value={target}>{TOOL_LABELS[target] ?? target}</option>)}
-              </select>
-            </div>
-            <div className="mt-1">{freeRoute.stage === "added" ? t("已添加：Key 和供应商已保存到本机，尚未启用给任何 AI。") : t("默认：仅此第三方来源；不使用虾盘钱包，不扣费。")}</div>
-          </div>
-        )}
 
         <div className="px-5 py-5 space-y-4 flex-1 overflow-y-auto">
           {/* 「从模板选择」——只在自定义新建路径出现；选中即预填并自动切到模板路径形态
@@ -738,50 +694,31 @@ export function CustomProviderModal({
           </div>
         )}
         <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-white/[0.08]">
-          {!isDrawer && freeRoute?.stage !== "added" && (
-            <button
-              onClick={saveOnly}
-              disabled={!canSave || verifying}
-              className="mr-auto h-9 px-2 rounded-lg text-ink-2 text-[12px] font-medium hover:text-ink-0 hover:bg-white/[0.04] disabled:opacity-40 transition-colors"
-            >
-              {t("仅保存")}
-            </button>
-          )}
+          <button
+            onClick={saveOnly}
+            disabled={!canSave || verifying}
+            className="mr-auto h-9 px-2 rounded-lg text-ink-2 text-[12px] font-medium hover:text-ink-0 hover:bg-white/[0.04] disabled:opacity-40 transition-colors"
+          >
+            {t("仅保存")}
+          </button>
           <button
             onClick={onClose}
             className="h-9 px-4 rounded-lg border border-white/[0.10] text-ink-2 text-[12px] font-medium hover:bg-white/[0.04] transition-colors"
           >
             {t("取消")}
           </button>
-          {freeRoute?.stage === "added" ? (
-            <button onClick={onEnableFreeRoute} disabled={enablingFreeRoute} className="h-9 px-5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 disabled:opacity-40 shadow-sm transition-colors">
-              {enablingFreeRoute ? t("验证并启用中…") : t("启用到 {tool}", { tool: TOOL_LABELS[freeRoute.target] ?? freeRoute.target })}
-            </button>
-          ) : isDrawer ? (
-            <button
-              data-action-id="runtime.provider.save"
-              onClick={submit}
-              disabled={!canSave}
-              className="h-9 px-5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 disabled:opacity-40 shadow-sm transition-colors"
-            >
-              {t("保存 Key 和供应商")}
-            </button>
-          ) : (
-            <>
-              {noOpenaiBase && (
-                <span className="text-[10.5px] text-ink-4 mr-1">{t("当前不支持此协议测试")}</span>
-              )}
-              <button
-                data-action-id="runtime.provider.save"
-                onClick={verifyAndSave}
-                disabled={!canSave || verifying}
-                className="inline-flex items-center gap-1.5 h-9 px-5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 disabled:opacity-40 shadow-sm transition-colors"
-              >
-                {verifying ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-                {primaryLabel}
-              </button>
-            </>
+          {noOpenaiBase && (
+            <span className="text-[10.5px] text-ink-4 mr-1">{t("当前不支持此协议测试")}</span>
           )}
+          <button
+            data-action-id="runtime.provider.save"
+            onClick={verifyAndSave}
+            disabled={!canSave || verifying}
+            className="inline-flex items-center gap-1.5 h-9 px-5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-600 disabled:opacity-40 shadow-sm transition-colors"
+          >
+            {verifying ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+            {primaryLabel}
+          </button>
         </div>
       </div>
     </div>

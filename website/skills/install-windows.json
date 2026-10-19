@@ -13,53 +13,6 @@
     "sha256_mac_x64": "60c5271e7edc3c2ab47440b7abf4ed50fbc693880b474f74f05768f5b657045a"
   },
   "pip_index": "https://mirrors.aliyun.com/pypi/simple/",
-  "free_guide": {
-    "version": 2,
-    "checked": "2026-08-26",
-    "entries": [
-      {
-        "name": "OpenRouter",
-        "template": "OpenRouter",
-        "summary": "聚合网关，模型列表里长期有一批 :free 免费路由。",
-        "key_url": "https://openrouter.ai/keys",
-        "note": "免费模型会更换、限流或下线；在模型框重新拉取可用列表，不要把某个预览模型当长期承诺。"
-      },
-      {
-        "name": "OpenCode Zen",
-        "template": "OpenCode Zen",
-        "summary": "OpenCode 官方模型网关，模型列表里有一批 id 带 -free 后缀的免费档。",
-        "key_url": "https://opencode.ai/auth",
-        "note": "登录 opencode.ai 后在 Zen 页面复制 Key；免费模型与接口支持会变动。"
-      },
-      {
-        "name": "OpenCode Go",
-        "summary": "低价编程套餐；通过推荐链接订阅后，邀请人和新订阅者各得 $5 Go 使用额度。",
-        "key_url": "https://opencode.ai/go?ref=103VWZVZTF",
-        "note": "这是订阅返额活动，不是无条件免费 Key；是否发放以 OpenCode 结算页当时显示的活动规则为准。"
-      },
-      {
-        "name": "Google Gemini",
-        "template": "Google Gemini",
-        "summary": "AI Studio 直接发 Key，有免费额度档。",
-        "key_url": "https://aistudio.google.com/apikey",
-        "note": "免信用卡；只有 OpenAI 兼容层，没有原生 Anthropic 端点。"
-      },
-      {
-        "name": "Groq",
-        "template": "Groq",
-        "summary": "LPU 硬件，主打快，有免费额度。",
-        "key_url": "https://console.groq.com/keys",
-        "note": "免信用卡，Key 是 gsk_ 开头；没有原生 Anthropic 端点。"
-      },
-      {
-        "name": "Mistral",
-        "template": "Mistral",
-        "summary": "La Plateforme 控制台自助发 Key，有限量免费额度。",
-        "key_url": "https://console.mistral.ai",
-        "note": "额度有限，跑长任务会很快用完。"
-      }
-    ]
-  },
   "node": {
     "version": "v24.16.0",
     "url": "https://registry.npmmirror.com/-/binary/node/v24.16.0/node-v24.16.0-win-x64.zip",

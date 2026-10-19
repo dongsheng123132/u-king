@@ -39,6 +39,9 @@ mod identity;
 mod install;
 mod instance;
 mod localllm;
+// 其他本地 AI 应用（LM Studio / Jan / GPT4All …）按默认端口探 OpenAI 兼容服务；
+// 只读、独立可插拔，删它只动这里与 `runtime.localllm.inspect` 里的 other_services。
+mod localai_probe;
 mod advice;
 mod actions;
 /// 浏览器子窗口导航的无头取证（需求榜 P0 #5 的硬那半边）。只在 `--browser-nav-test` 下用。
@@ -1826,6 +1829,8 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             |_, _, _| {
                 Ok(serde_json::json!({
                     "engines": localllm::inspect_all(),
+                    // 别家本地 AI 应用（默认端口上真的在应答 /v1/models 的）。探不到是空数组，不是错误。
+                    "other_services": localai_probe::probe_all(),
                     "model_dirs": localllm::model_dirs()
                         .iter()
                         .map(|p| p.to_string_lossy().to_string())
@@ -4409,14 +4414,6 @@ async fn load_skill() -> Result<installer::Skill, String> {
         .map_err(|e| format!("加载 skill 失败: {e}"))
 }
 
-/// 读取人工核验过的免费路线清单；断网时返回 null，由前端明确显示内嵌的最后可信版本。
-#[tauri::command]
-async fn load_free_registry() -> Option<serde_json::Value> {
-    tauri::async_runtime::spawn_blocking(installer::fetch_free_registry)
-        .await
-        .ok()
-        .flatten()
-}
 
 /// 装一个 AI 工具的**共享核心**：GUI 的 `install_tool` 命令和影核动作
 /// `runtime.aitool.install` 都调这一个函数，业务逻辑只有一份（四铁律第 13 条）。
@@ -8502,7 +8499,6 @@ pub fn run() {
             link_identity,
             install_capability_tool,
             load_skill,
-            load_free_registry,
             install_tool,
             env_precheck,
             list_providers,

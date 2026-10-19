@@ -1,33 +1,13 @@
 /** 英文覆盖字典 · AI 设置 / 驱动 UI（Manager + components/*）。key = 中文原文，value = English。 */
 export const settings: Record<string, string> = {
-  // AI 设置的分区（2026-08-21：原来四段竖排，低频块挤着高频块；08-24 加「免费额度」第五个）
+  // AI 设置的分区（2026-08-21：原来四段竖排，低频块挤着高频块）
   "工具分配": "Tools",
   "哪个 AI 用哪家、用什么模型": "Which provider and model each AI uses",
   "供应商库": "Providers",
   "增删改各家 API，所有 AI 共用一份": "Add / edit / remove APIs — one shared list for every AI",
 
-  // ---- 免费额度教程页（内容本身热下发，这里只翻界面骨架）----
-  "免费额度": "Free tiers",
-  "哪几家现在能白嫖，Key 去哪领": "Who's giving away free quota right now, and where to get the key",
-  "免费额度怎么领": "How to get free quota",
-  "下面几家现在有免费档。Key 得你自己去它们官网领，领完回来「一键导入」，我们只帮你把地址和模型名填好。":
-    "These providers currently offer a free tier. You get the key yourself from their site — come back and hit \"Import\" and we'll prefill the endpoint and model name for you.",
-  "核实于": "Checked",
-  // 「已更新」本文件下面（约 281 行）已有一条，别再登记一遍 —— 同键两处 tsc 直接报 TS1117
-  "⚠️ 免费是各家自己的活动，随时可能收紧或下线，我们说了不算。重要的活还是走虾盘云。":
-    "⚠️ These free tiers are each provider's own promotion — they can tighten or pull them anytime, and that's not up to us. For work that matters, stick with Xiapan Cloud.",
-  "去领 Key": "Get a key",
-  "一键导入": "Import",
-  "没有你想要的那家？「供应商库」里有 20 家模板，或者自己手填地址也行。":
-    "Don't see the one you want? There are 20 templates under Providers, or just type the endpoint in yourself.",
-
-  // ---- 免费额度导流（2026-09-06：右栏快速添加置顶组 + 我的 AI 首页导流卡）----
-  "国内直连，手机号注册就能领": "Direct in mainland China — just sign up with a phone number",
   "免费": "Free",
-  "免费模型 · 不花钱先跑通": "Free models — get running without spending a cent",
-  "国产直连免费额度，手机号注册就能领": "Free quota from domestic providers with direct access — sign up with a phone number",
   "需科学上网": "Needs a VPN",
-  "更多免费路线（智谱/硅基流动等）→ 免费算力": "More free routes (Zhipu / SiliconFlow, etc.) → Free compute",
 
   // ---- 一键配好（ToolFixButton，从 ToolCheckup 收拢，2026-09-06）----
   "已自行配置": "Self-managed",
@@ -296,7 +276,7 @@ export const settings: Record<string, string> = {
     "Codex desktop install · provider takeover · computer use guide",
   "进入 →": "Enter →",
   // 「我的 AI」页顶部那张「AI 设置」入口卡（2026-08-25）
-  "换模型 · 余额 · 免费额度 · 用自己的 Key": "Switch model · balance · free tiers · bring your own key",
+  "换模型 · 余额 · 用自己的 Key": "Switch model · balance · bring your own key",
 
   // ToolProviderList
   "还没安装 —— 先在这里选好驱动，再点下面的「装好并启动」，装完即按这套配置生效。":
@@ -452,26 +432,6 @@ export const settings: Record<string, string> = {
   "测速完成 —— 绿色 <200ms、黄色 <500ms、红色更慢或不通":
     "Done — green <200ms, amber <500ms, red is slower or unreachable",
 
-  // ── 免费路线接入抽屉 ──
-  "验证失败，尚未启用到任何 AI；不会扣虾盘余额": "Verification failed; no AI was changed and no Xiapan wallet credit was used",
-  "已启用到 {tool}；真实请求验证成功，不使用虾盘钱包": "Enabled for {tool}; a real request succeeded and no Xiapan wallet is used",
-  "免费算力": "Free compute",
-  "国内稳定额度 + 海外/第三方免费路线": "Domestic stable credit + overseas/third-party free routes",
-  "国内稳定额度": "Domestic stable credit",
-  "虾盘云设备钱包：余额、充值和售后由 U-King 管；适合重要任务，不与下方第三方免费额度混算。": "Xiapan device wallet: U-King manages balance, top-ups and support. It is for important work and is separate from third-party free tiers.",
-  "去配置": "Configure",
-  "海外 / 第三方免费算力": "Overseas / third-party free compute",
-  "下面是第三方当前公开的免费档或试用入口。U-King 不收 Key；你在官网领取后回到这里继续接入。": "These are currently public third-party free-tier or trial routes. U-King never collects keys; get one from the provider, then return here to connect it.",
-  "⚠️ 我们不承诺长期免费，也不自动上线新渠道。断网时只展示最后可信清单，可能已过期，不建议直接启用。": "⚠️ We do not promise long-term free access or automatically list new routes. Offline, only the last trusted list is shown; it may be stale and is not recommended for one-click enabling.",
-  "我已有 Key，继续": "I already have a key",
-  "正在接入：{name}": "Connecting: {name}",
-  "免费档": "Free tier",
-  "第三方": "Third party",
-  "已添加：Key 和供应商已保存到本机，尚未启用给任何 AI。": "Added: the key and provider are saved locally, but not enabled for any AI yet.",
-  "默认：仅此第三方来源；不使用虾盘钱包，不扣费。": "Default: this third-party source only; no Xiapan wallet and no U-King charge.",
-  "验证并启用中…": "Verifying and enabling…",
-  "启用到 {tool}": "Enable for {tool}",
-  "保存 Key 和供应商": "Save key and provider",
 
   // ── 一键体检 / 一键升级（DoctorCard，2026-08-31）──
   "AI 一键体检": "One-click AI checkup",
@@ -503,8 +463,8 @@ export const settings: Record<string, string> = {
   "已配好": "Ready",
   "未接 AI": "Not connected",
   // 「已自行配置」28 行已有（Self-managed），这里不再重复 —— 同一中文映射同一英文
-  "标黄的还没接 AI —— 用上方「一键配好」或到「免费算力」页接入":
-    "Amber items are not connected yet — use “One-click setup” above or the Free compute tab",
+  "标黄的还没接 AI —— 用上方「一键配好」或到「AI 设置」页接入":
+    "Amber items are not connected yet — use “One-click setup” above or the AI Settings page",
   // 升级跳过（未安装）提示 —— 后端返回中文原句，前端按「未安装」关键词分流
   "未安装 —— 先去装机向导安装，装了才谈得上升级":
     "Not installed — install it first from the setup wizard; there is nothing to update yet",
@@ -565,7 +525,6 @@ export const settings: Record<string, string> = {
   "编辑：{name}": "Edit: {name}",
   "添加：{name}，预填地址/模型，进弹窗只需补 Key": "Add: {name} — endpoint/model prefilled, just fill in your key in the dialog",
   "申请 Key：{name}": "Apply for key: {name}",
-  "免费算力 →": "Free compute →",
   "模型厂商 {n}": "Vendors {n}",
   "模型平台 {n}": "Platforms {n}",
   "供应商来源分组": "Provider source group",

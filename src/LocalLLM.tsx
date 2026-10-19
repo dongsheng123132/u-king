@@ -60,8 +60,19 @@ type Engine = {
 
 type RunSettings = { port: number; ctx: number; gpu_layers: number; threads: number };
 
+/** 默认端口上探到的、别家本地 AI 应用的 OpenAI 兼容服务（后端 localai_probe.rs）。 */
+type OtherService = {
+  id: string;
+  label: string;
+  port: number;
+  endpoint: string;
+  models: string[];
+  note: string;
+};
+
 type Inspect = {
   engines?: Engine[];
+  other_services?: OtherService[];
   model_dirs?: string[];
   download_dir?: string;
   local_models?: LocalModel[];
@@ -483,6 +494,42 @@ export function LocalLLM({ onToast }: { onToast?: (msg: string) => void }) {
         </p>
 
         {/* 模型目录：扫这些地方找模型（下载落点在右边那块单独设） */}
+        {/* ── 其他本地 AI 应用：LM Studio / Jan / GPT4All / KoboldCpp / LocalAI / Msty / Magpie 网关 ──
+            按默认端口探 `/v1/models`（后端 localai_probe.rs）。只回答「此刻哪个端口上有 OpenAI 兼容服务在响应」，
+            不碰它们的配置、不替它们起停；探不到 ≠ 没装（可能没开服务或改了端口），所以空态只说“没探到”。 */}
+        <section className="rounded-card border border-white/[0.06] bg-bg-2/70 px-5 py-3.5 space-y-2" data-testid="other-local-ai">
+          <div className="flex items-center gap-2">
+            <Cpu size={14} className="text-ink-4" />
+            <h3 className="text-[13px] font-semibold text-ink-1">{t("其他本地 AI 应用")}</h3>
+            <span className="text-[11px] text-ink-4">{t("LM Studio · Jan · GPT4All · KoboldCpp · LocalAI · Msty · Magpie 网关")}</span>
+          </div>
+          {(data.other_services || []).length === 0 ? (
+            <div className="text-[11.5px] text-ink-4">
+              {t("没探到。这里只认它们的默认端口且服务已开启；没打开本地服务或改过端口都不会显示，不代表没装。")}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {(data.other_services || []).map((s) => (
+                <div key={s.id} className="rounded-lg border border-white/[0.06] px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12.5px] font-medium text-ink-1">{s.label}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-success-500/15 px-2 py-0.5 text-[10.5px] text-success-400">
+                      <CheckCircle2 size={11} /> {t("服务在线")}
+                    </span>
+                    <span className="ml-auto font-mono text-[11px] text-ink-4">{s.endpoint}</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-ink-3">
+                    {s.models.length > 0
+                      ? `${t("可用模型")}：${s.models.slice(0, 4).join("、")}${s.models.length > 4 ? ` ${t("等 {n} 个", { n: s.models.length })}` : ""}`
+                      : t("服务在线，但还没有加载模型")}
+                  </div>
+                  <div className="mt-0.5 text-[10.5px] text-ink-4">{s.note}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="rounded-card border border-white/[0.06] bg-bg-2/70 px-5 py-3.5 space-y-2">
           <div className="flex items-center gap-2">
             <FolderPlus size={14} className="text-ink-4" />

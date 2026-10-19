@@ -1318,7 +1318,7 @@ fn catalog_with_probes(
     v.push(ToolInfo {
         id: "magpie".into(),
         name: "Magpie".into(),
-        summary: "AI 供应商配置管理工具（yetone/magpie）。Windows 一键装官方 GitHub Releases 单文件 GUI；打开后请在 Magpie 自己的供应商界面中添加/管理供应商（U-King 暂不代写它的配置）。".into(),
+        summary: "本地模型网关 + 智能路由（yetone/magpie）：把多家供应商/订阅的模型编成路由组（按到期优先、轮换、按用量等策略自动切换，额度用完自动换号）。Windows 一键装官方 GitHub Releases 单文件 GUI；打开后请在 Magpie 自己的界面里添加供应商、建路由组（U-King 暂不代写它的配置）。".into(),
         kind: "standalone".into(), installed: false,
         action: if cfg!(windows) { "install" } else { "url" }.into(),
         target: if cfg!(windows) { "".into() } else { "https://github.com/yetone/magpie/releases/latest".into() },

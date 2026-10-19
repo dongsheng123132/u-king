@@ -23,7 +23,6 @@ import {
   ChevronUp,
   Cpu,
   ExternalLink,
-  Gift,
   Image as ImageIcon,
   KeyRound,
   Loader2,
@@ -45,13 +44,12 @@ import { cn } from "./lib/cn";
 import { ToolIcon } from "./components/ToolIcon";
 import { ProviderLogo } from "./components/ProviderLogo";
 import { resolveProviderPresentation } from "./lib/providerPresentation";
-import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult, type FreeRouteContext } from "./components/CustomProviderModal";
+import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult } from "./components/CustomProviderModal";
 import type { ProviderPreset } from "./Wizard";
 import { type ModelGroup, priceyModelHint, codexProtocolHint } from "./lib/models";
 import { useXiapanModels } from "./lib/useXiapanModels";
 import { ShareButton } from "./components/ShareCard";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./lib/providerTemplates";
-import { FREE_GUIDE, type FreeGuide } from "./lib/freeGuide";
 import { askConfirm } from "./lib/confirm";
 import { buildProviderRepairPrompt } from "./lib/providerRepairPrompt";
 import { useI18n } from "./i18n";
@@ -62,7 +60,7 @@ const callAction = createTauriActionClient(invoke, { surface: "gui" });
 
 /** 「AI 设置」页内分区 id。导出给 App.tsx（`manageInitialTab` 深链 + `renderAccount` 的跳转回调）共用一份。
  *  2026-10-03 收敛 2c 新增 `account`（账号 · 充值）。 */
-export type SettingsTab = "tools" | "providers" | "free" | "account" | "usage" | "advanced";
+export type SettingsTab = "tools" | "providers" | "account" | "usage" | "advanced";
 
 // `EffectiveConfig`（回验结论：`readable === false` 是「不知道」不是「没配置」）的定义搬到了
 // `lib/types.ts`——「我的 AI」(toolhub/ToolHub.tsx) 也要读它，同一份类型只留一处（宪法第 8 条）。
@@ -456,7 +454,7 @@ export function Manager({
   tools?: { id: string; installed: boolean }[];
   /** 将已脱敏的供应商故障交给 U-Chat；页面本身不读取或转交 API Key。 */
   onAskAI?: (prompt: string) => void;
-  /** 从「我的 AI」首页的免费模型导流卡深链进来时指定要打开的分区（如 "free"）；
+  /** 从外部深链进来时指定要打开的分区（如 "providers"）；
    *  不传就照旧默认 "tools"。本组件外层有 `key={tab}` 边界，每次进页都是全新挂载，
    *  用 useState 初值接这个 prop 足够，不需要额外的 effect 同步。 */
   initialSettingsTab?: SettingsTab;
@@ -511,8 +509,6 @@ export function Manager({
    * 它挡住页面的原因（宪法第 9 条：网络必须异步 + 超时，不能拿它卡 UI）。
    */
   const [remoteTemplates, setRemoteTemplates] = useState<ProviderTemplate[] | null>(null);
-  /** 官网同源、已人工核验的免费 Registry；断网时仍保留本地最后可信清单。 */
-  const [remoteGuide, setRemoteGuide] = useState<FreeGuide | null>(null);
   useEffect(() => {
     let alive = true;
     invoke<{ provider_templates?: ProviderTemplate[] }>("load_skill")
@@ -526,7 +522,6 @@ export function Manager({
     };
   }, []);
   const templates = remoteTemplates ?? PROVIDER_TEMPLATES;
-  const freeGuide = remoteGuide ?? FREE_GUIDE;
   const [driver, setDriver] = useState<DriverStatus | null>(() => initialSnapshot?.driver ?? null);
   const [deviceKey, setDeviceKey] = useState<DeviceKey | null>(null);
   /** A2：区分「还没查到」和「查过但失败」——不知道就不许显示成 0 或空白，两种状态要长得不一样。 */
@@ -572,8 +567,6 @@ export function Manager({
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   /** 从引用选择器新建的供应商，保存后要立即引用回打开它的当前工具。 */
   const [addNewToActiveTool, setAddNewToActiveTool] = useState(false);
-  const [freeRouteContext, setFreeRouteContext] = useState<FreeRouteContext | null>(null);
-  const [freeEnabling, setFreeEnabling] = useState(false);
   // 动态拉取到的模型清单缓存（按 provider id；同一供应商的清单与工具无关）
   const [remoteModels, setRemoteModels] = useState<Record<string, string[]>>({});
   // 正在拉模型清单的 provider id
@@ -731,16 +724,6 @@ export function Manager({
     setHidden(snapshot.hidden);
     setAddable(snapshot.addable);
   }, []);
-  useEffect(() => {
-    if (settingsTab !== "free") return;
-    let alive = true;
-    invoke<FreeGuide | null>("load_free_registry")
-      .then((registry) => {
-        if (alive && registry && registry.version >= FREE_GUIDE.version) setRemoteGuide(registry);
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [settingsTab]);
 
   // 切到另一个 AI = 换一份列表，重拉（含它自己的「已移除 / 可添加」）
   useEffect(() => {
@@ -1310,7 +1293,6 @@ export function Manager({
   }
 
   function openNewCustomProvider(addToCurrentTool = false) {
-    setFreeRouteContext(null);
     setAddNewToActiveTool(addToCurrentTool);
     setEditing({
       id: "",
@@ -1336,7 +1318,6 @@ export function Manager({
    * 只预填地址/模型/Key 提示，`api_key` 留空、`id` 留空（新增，后端生成 id）。
    */
   function openAddTemplate(tpl: ProviderTemplate) {
-    setFreeRouteContext(null);
     setAddNewToActiveTool(false);
     setEditing({
       id: "",
@@ -1353,43 +1334,6 @@ export function Manager({
       builtin: false,
       api_key: "",
     });
-  }
-
-  /** 免费路线入口只设置上下文，不切 tab、不遮住左侧清单。 */
-  function openFreeRoute(entry: FreeGuide["entries"][number], tpl: ProviderTemplate) {
-    setAddNewToActiveTool(false);
-    setEditing({
-      id: "", name: tpl.name, summary: "", openai_base: tpl.openai_base,
-      anthropic_base: tpl.anthropic_base ?? null, model: tpl.model ?? "",
-      small_model: tpl.small_model ?? tpl.model ?? "", key_url: tpl.key_url ?? "",
-      key_hint: tpl.key_hint ?? "API Key", builtin_recharge: false, recommended: false,
-      builtin: false, api_key: "",
-    });
-    setFreeRouteContext({ entry, target: entry.targets?.[0] ?? "pi", stage: "draft" });
-  }
-
-  async function saveFreeRoute(p: ProviderPreset) {
-    const saved = await saveCustom(p);
-    if (!saved) return;
-    setEditing(saved);
-    setFreeRouteContext((ctx) => ctx ? { ...ctx, stage: "added", savedId: saved.id } : ctx);
-  }
-
-  async function enableFreeRoute() {
-    const ctx = freeRouteContext;
-    const p = editing;
-    if (!ctx || !p || !ctx.savedId) return;
-    // 先让供应商真实回话；失败时还没有写任何 AI 配置，自然无需回滚，也绝不会借用虾盘钱包。
-    setFreeEnabling(true);
-    try {
-      const r = await invoke<TestResult>("test_provider", { providerId: ctx.savedId, apiKey: p.api_key ?? "", model: p.model || null, api: "openai" });
-      if (!r.ok) { flash(t("验证失败，尚未启用到任何 AI；不会扣虾盘余额"), "error"); return; }
-      const applied = await switchOneTool(ctx.target, ctx.savedId, p.model || null, false, p);
-      if (!applied) return;
-      flash(t("已启用到 {tool}；真实请求验证成功，不使用虾盘钱包", { tool: TOOL_LABELS[ctx.target] ?? ctx.target }));
-    } finally {
-      setFreeEnabling(false);
-    }
   }
 
   /**
@@ -1566,13 +1510,12 @@ export function Manager({
           用量（想起来才看）→ 高级（基本不看）。
           2026-08-25 用户：「这几个栏目有点低调，怕有人不好找，其实里边都比较重量级」——
           每个分区配图标 + 加高一档（h-9→h-10），选中态加重，让它们像五个正经入口而不是一行小字。 */}
-      {/* 2026-10-03 收敛 2c：新增「账号 · 充值」（原侧栏「虾盘云 · 充值」页并进来），放在「免费算力」
-          之后、「用量账单」之前——都是跟钱有关的，按「配 → 充 → 看」排。`flex-wrap`：加到六个后窄窗口不再撑破。 */}
+      {/* 2026-10-03 收敛 2c：新增「账号 · 充值」（原侧栏「虾盘云 · 充值」页并进来），放在「供应商库」
+          之后、「用量账单」之前——都是跟钱有关的，按「配 → 充 → 看」排。`flex-wrap`：窄窗口不再撑破。 */}
       <div className="inline-flex flex-wrap max-w-full p-1 gap-0.5 rounded-xl border border-white/[0.08] bg-bg-1/60">
         {([
           ["tools", t("工具分配"), t("哪个 AI 用哪家、用什么模型"), Plug],
           ["providers", t("供应商库"), t("增删改各家 API，所有 AI 共用一份"), KeyRound],
-          ["free", t("免费算力"), t("国内稳定额度 + 海外/第三方免费路线"), Gift],
           ["account", t("账号 · 充值"), t("余额 · 充值 · 内置 Key · 一键配好"), Wallet],
           ["usage", t("用量账单"), t("钱花在哪了"), BarChart3],
           ["advanced", t("高级"), t("桌面 App / Codex 专区"), Settings],
@@ -1594,104 +1537,6 @@ export function Manager({
           </button>
         ))}
       </div>
-
-      {/* 免费算力是人工核验的第三方路线清单，不是内置供应商、也不属于上面的模板画廊。
-          条目仅按 template 名称引用端点；「我已有 Key，继续」进入保留路线上下文的右侧抽屉。
-          官网只跳官方领 Key，Key 始终由用户在本机填写；Registry 下线只停止展示/推荐，绝不删除
-          已保存的本机供应商或 Key。 */}
-      {settingsTab === "free" && (
-        <>
-          {/* （Free Router 一键装跑卡 2026-10-04 随 freerouter.rs 删除，零用量证据；本页其余内容不变。）
-              两类供给不能混账：虾盘云是 U-King 可负责的设备钱包余额；免费路线是客户
-              自己在第三方领取的 Key。把两者放在同一入口，既让小白有一条稳定主路，
-              又不把「注册送/试用/限流」说成 U-King 的免费 Token。 */}
-          <section className="mb-3 rounded-card border border-accent/25 bg-accent/[0.055] shadow-card overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-ink-1">{t("国内稳定额度")}</div>
-                <div className="text-[11px] text-ink-3 mt-0.5">
-                  {t("虾盘云设备钱包：余额、充值和售后由 U-King 管；适合重要任务，不与下方第三方免费额度混算。")}
-                </div>
-              </div>
-              <button
-                onClick={() => setSettingsTab("providers")}
-                className="shrink-0 inline-flex items-center gap-1 px-2.5 h-7 rounded-md border border-accent/35 text-accent text-[11px] font-medium hover:bg-accent/[0.10]"
-              >
-                {t("去配置")}
-                <ChevronRight size={12} />
-              </button>
-            </div>
-          </section>
-          <section className="rounded-card border border-white/[0.08] bg-bg-1/70 shadow-card overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
-            <Gift size={14} className="text-emerald-400 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-ink-1">{t("海外 / 第三方免费算力")}</div>
-              <div className="text-[11px] text-ink-3">
-                {t("下面是第三方当前公开的免费档或试用入口。U-King 不收 Key；你在官网领取后回到这里继续接入。")}
-              </div>
-            </div>
-            <span className="text-[10.5px] text-ink-4 shrink-0">
-              {t("核实于")} {freeGuide.checked}
-              {remoteGuide ? ` · ${t("已更新")}` : ""}
-            </span>
-          </div>
-
-          {/* 🔴 这一句不许删：免费条件会烂，而客户看到的是我们的界面。
-              让他知道这份清单有可能过期，比让他按着过期教程走到一半撞墙强。 */}
-          <div className="px-4 py-2 text-[11px] text-warning-700 dark:text-warning-400 bg-warning-500/[0.08] border-b border-white/[0.06]">
-            {t("⚠️ 我们不承诺长期免费，也不自动上线新渠道。断网时只展示最后可信清单，可能已过期，不建议直接启用。")}
-          </div>
-
-          <div className="divide-y divide-white/[0.05]">
-            {freeGuide.entries.map((e) => {
-              // 逐字匹配模板名；对不上就只显示说明、不给按钮 —— 点了没反应比没按钮更坏
-              const tpl = e.template ? templates.find((x) => x.name === e.template) : undefined;
-              return (
-                <div key={e.name} className="px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium text-ink-1">{e.name}</div>
-                      <div className="text-[11.5px] text-ink-3 mt-0.5">{e.summary}</div>
-                      <div className="mt-1 text-[10.5px] text-ink-4">
-                        {[e.region, ...(e.targets ?? []).map((target) => TOOL_LABELS[target] ?? target)].filter(Boolean).join(" · ")}
-                      </div>
-                      {e.note && (
-                        <div className="text-[11px] text-ink-4 mt-1 leading-relaxed">{e.note}</div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1.5 shrink-0">
-                      {e.key_url && (
-                        <button
-                          onClick={() => openUrl(e.key_url!)}
-                          className="inline-flex items-center gap-1 px-2.5 h-7 rounded-md border border-white/[0.1] text-ink-2 text-[11px] hover:bg-white/[0.04]"
-                        >
-                          {t("去领 Key")}
-                          <ExternalLink size={11} />
-                        </button>
-                      )}
-                      {tpl && (
-                        <button
-                          onClick={() => openFreeRoute(e, tpl)}
-                          className="inline-flex items-center gap-1 px-2.5 h-7 rounded-md border border-accent/30 text-accent text-[11px] font-medium hover:bg-accent/[0.08]"
-                        >
-                          <Plus size={11} />
-                          {t("我已有 Key，继续")}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="px-4 py-2.5 text-[11px] text-ink-4 border-t border-white/[0.06]">
-            {t("没有你想要的那家？「供应商库」里有 20 家模板，或者自己手填地址也行。")}
-          </div>
-          </section>
-        </>
-      )}
 
       {/* 账号 · 充值（2026-10-03 收敛 2c）：原侧栏「虾盘云 · 充值」页（`Guide`：钱包 / 充值 / 自动配好 /
           各平台接入示例）并进来，内容由 App 经 `renderAccount` 注入。钱包卡只此一份——页顶那块折叠的
@@ -2363,13 +2208,6 @@ export function Manager({
             <div className="space-y-3">
               <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-2 gap-y-0.5">
                 <div className="text-[13px] font-semibold text-ink-1">{t("快速添加")}</div>
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("free")}
-                  className="shrink-0 text-[12px] text-ink-3 hover:text-accent hover:underline"
-                >
-                  {t("免费算力 →")}
-                </button>
                 <div className="col-span-2 text-[11px] text-ink-4">{t("选一家，自动填好地址")}</div>
               </div>
 
@@ -2717,14 +2555,14 @@ export function Manager({
         <CustomProviderModal
           value={editing}
           onChange={setEditing}
-          onSave={freeRouteContext ? saveFreeRoute : async (p) => {
+          onSave={async (p) => {
             const saved = await saveCustom(p);
             if (!saved) return;
             if (addNewToActiveTool) await restoreProvider(saved.id, saved.name);
             setAddNewToActiveTool(false);
             setEditing(null);
           }}
-          onClose={() => { setEditing(null); setFreeRouteContext(null); setAddNewToActiveTool(false); }}
+          onClose={() => { setEditing(null); setAddNewToActiveTool(false); }}
           addable={addable}
           templates={templates}
           addingTo={TOOL_LABELS[activeTab] ?? activeTab}
@@ -2733,12 +2571,6 @@ export function Manager({
             await restoreProvider(p.id, p.name);
           }}
           onPurge={purgeProvider}
-          variant={freeRouteContext ? "drawer" : "modal"}
-          freeRoute={freeRouteContext}
-          onFreeTargetChange={(target) => setFreeRouteContext((ctx) => ctx ? { ...ctx, target } : ctx)}
-          onFreeRouteDirty={() => setFreeRouteContext((ctx) => ctx?.stage === "added" ? { ...ctx, stage: "draft", savedId: undefined } : ctx)}
-          onEnableFreeRoute={enableFreeRoute}
-          enablingFreeRoute={freeEnabling}
         />
       )}
 
