@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { cn } from "./lib/cn";
 import { ACTION, createTauriActionClient } from "./generated/action-client";
+import { buildMaintenanceTask } from "./lib/maintenanceTask";
+import { copyToClipboard } from "./lib/clipboard";
 import type { DeviceKey } from "./lib/types";
 
 /** 收尾自检走影核动作 —— 和 CLI / MCP 同一条路，不另写一份判据。 */
@@ -91,8 +93,6 @@ type TestResult = {
 
 type Balance = { tokens: number; cny?: number; text: string };
 
-type Diagnosis = { diagnosis: string; commands: string[] };
-
 const short = (k: string) => (k.length > 16 ? `${k.slice(0, 10)}…${k.slice(-4)}` : k);
 
 /** 把原始错误串按关键词归因成一句人话（返回值是中文，经调用方 t() 翻译，跟其它文案同口径）。
@@ -135,6 +135,12 @@ export const TOOL_NAMES: Record<string, string> = {
   "qoder-cn": "Qoder CN CLI",
   "claude-app": "Claude 桌面版",
   "kimi-code": "Kimi Code",
+  "qwen-code": "Qwen Code",
+  crush: "Crush",
+  "gemini-cli": "Gemini CLI",
+  "grok-build": "Grok Build",
+  "harness-doctor": "Harness Doctor",
+  cline: "Cline CLI",
 
   "claude-code": "Claude Code CLI",
   pi: "pi",
@@ -185,14 +191,17 @@ const CODEX_APP_LINKS = {
 export function Wizard({
   preselect,
   onFinished,
-  onGoWorkspace,
+  onHandoffToAssistant,
+  onGoToolhub,
 }: {
   /** 从工具市场点进来时预选的工具 id */
   preselect?: string | string[] | null;
   onFinished?: () => void;
-  /** 装完把人送进 U-Workspace（0.9.85 起的落点：装完不再指向 ClawX）。
-   *  没传就只显示文字引导，不给点了没反应的按钮。 */
-  onGoWorkspace?: () => void;
+  /** 装机失败 →「交给轻助手」：把脱敏后的统一任务包填进维护助手草稿框（用户自己按发送）。
+   *  2026-10-19 起替代原 onGoWorkspace/UWorkspace 落点。 */
+  onHandoffToAssistant?: (prompt: string) => void;
+  /** 装完落点：去「我的 AI」启动工具（不再指向已撤的 U-Workspace）。 */
+  onGoToolhub?: () => void;
 }) {
   const { t } = useI18n();
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -787,13 +796,16 @@ export function Wizard({
             opts.push({ label: t("看手动安装教程 ⭐"), value: "manual-guide", tone: "gold" });
           }
           if (aiRounds < 3) {
+            // 2026-10-19：「AI 智能修复」改为**整理故障任务后转交**（不再让模型指挥每个下载步骤）。
+            // 诚实说明它干什么：把失败现状压成脱敏任务包，交给维护助手继续排查。
             opts.push({
-              label: aiRounds === 0 ? t("AI 智能修复") : t("AI 再修一轮（{n}/3）", { n: aiRounds + 1 }),
+              label: aiRounds === 0 ? t("交给轻助手（整理故障任务）") : t("再整理一轮转交（{n}/3）", { n: aiRounds + 1 }),
               value: "ai",
               tone: tool === "codex-app" ? undefined : "gold",
             });
           }
           opts.push(
+            { label: t("复制任务（脱敏后给外部 AI）"), value: "copytask" },
             { label: t("修复环境并重试"), value: "envfix" },
             { label: t("直接重试"), value: "retry" },
             { label: t("跳过它，继续后面的"), value: "skip", tone: "plain" },
@@ -801,6 +813,24 @@ export function Wizard({
           const v = await ask(opts);
           if (v === "skip") {
             pushUser(t("跳过"));
+            break;
+          }
+          if (v === "copytask") {
+            pushUser(t("复制任务"));
+            const pkg = buildMaintenanceTask({
+              target: `${t(TOOL_NAMES[tool] ?? tool)} 装机失败`,
+              failure: installErr,
+              steps: ctx.current.lastLog.slice(-20),
+              verify: t("重装后工具能正常启动即算修好。"),
+              rollback: t("涉及配置改动的先备份原文件；不确定就先只诊断不动手。"),
+            });
+            const ok = await copyToClipboard(pkg);
+            push({
+              role: "uking",
+              text: ok
+                ? t("已复制脱敏后的维护任务包（不含 Key），可粘给任意外部 AI 协助排查。")
+                : t("复制失败，请手动选中上方报错文本复制。"),
+            });
             break;
           }
           if (v === "manual") {
@@ -884,10 +914,23 @@ export function Wizard({
             }
             // 落回 while 顶部自动重装验证
           } else if (v === "ai") {
-            pushUser(t("AI 智能修复"));
+            // 2026-10-19：不再调用 ai_diagnose/run_fix 让模型指挥修复命令 —— 改为整理脱敏
+            // 任务包并转交维护助手（草稿，用户自己按发送）。UI 文案与此一致，不夸大。
+            pushUser(t("交给轻助手"));
             aiRounds += 1;
-            await aiRepair(tool);
-            // 修复后回到 while 顶部自动重装验证
+            const pkg = buildMaintenanceTask({
+              target: `${t(TOOL_NAMES[tool] ?? tool)} 装机失败`,
+              failure: installErr,
+              steps: ctx.current.lastLog.slice(-20),
+              verify: t("重装后工具能正常启动即算修好。"),
+              rollback: t("涉及配置改动的先备份原文件；不确定就先只诊断不动手。"),
+            });
+            push({
+              role: "uking",
+              text: t("已整理脱敏故障任务包（不含 Key），正在打开维护助手——确认内容后自己按发送即可。"),
+            });
+            onHandoffToAssistant?.(pkg);
+            break;
           } else {
             pushUser(t("重试"));
           }
@@ -1009,143 +1052,28 @@ export function Wizard({
     });
   }
 
-  /** 装完的落点（0.9.85）：把人送进 U-Workspace，并把「怎么用终端」说成三步。
-   *
-   *  以前这里是「打开 ClawX 直接用」——等于把刚装好的客户推去另一个应用，U-King 自己反而
-   *  成了装机器。现在主推顺序是：① 最好 → 工作台里开终端跑 `claude`（能力最全）；
-   *  ② 兜底 → 就在 U-Chat 对话框里干活（不碰终端，同一个 Claude Code + 同一个 Key）。
-   *  两条路的模型和计费完全一样，区别只是「敢不敢看见黑框」。 */
+  /** 装完的落点：去「我的 AI」启动工具（2026-10-19 起不再指向已撤的 U-Workspace）。
+   *  文案如实：装好后在工具中心一键启动，故障排查走维护助手。 */
   async function offerWorkspace(): Promise<void> {
     push({
       role: "uking",
-      text: t(
-        "接下来去哪干活？推荐 U-Workspace（U-King 自带的工作台，对话 + 终端 + 作图都在一个界面里）：\n" +
-          "· 想要最全的能力 → 工作台右上角点「终端」，输入 claude 回车，就是完整的 Claude Code；\n" +
-          "· 不想碰黑乎乎的终端 → 直接在对话框里说人话就行，底下跑的是同一个 Claude Code、同一个 Key。",
-      ),
+      text: t("装好了！接下来去「我的 AI」一键启动工具。遇到装机/故障问题可以去「维护助手」描述现象（写操作每步确认）。"),
     });
-    if (!onGoWorkspace) return;
+    if (!onGoToolhub) return;
     const v = await ask([
-      { label: t("进 U-Workspace 开始干活"), value: "go", tone: "gold" },
+      { label: t("去「我的 AI」启动工具"), value: "go", tone: "gold" },
       { label: t("先不用，我自己逛逛"), value: "stay", tone: "plain" },
     ]);
     if (v === "stay") {
       pushUser(t("先这样"));
       return;
     }
-    pushUser(t("进 U-Workspace"));
-    onGoWorkspace();
+    pushUser(t("去我的 AI"));
+    onGoToolhub();
   }
 
-  /* ---------- AI 修复（虾盘云 API 直连大脑，不依赖已装工具） ---------- */
-
-  /** AI 修复要烧 token：优先用户已填的 Key，否则用设备内置 Key（没充值就引导充值）。 */
-  async function resolveRepairKey(): Promise<string | null> {
-    if (ctx.current.apiKey) return ctx.current.apiKey;
-    setBusy(true);
-    const dk = await invoke<DeviceKey>("get_device_key").catch(() => null);
-    setBusy(false);
-    if (!dk) {
-      push({ role: "uking", text: t("拿不到设备内置 Key，先跳过 AI 修复（可以选「直接重试」）。") });
-      return null;
-    }
-    ctx.current.deviceKey = dk;
-    if (dk.charged) return dk.key;
-
-    push({
-      role: "uking",
-      text: t("AI 修复需要烧一点 token。U-King 已为这台电脑生成专属虾盘云 Key：{key}（硬件指纹，恒定不变），目前余额为 0 —— 充值即开通，¥20 起充，¥1 = 50 万 token，修一次只要几千 token。", { key: short(dk.key) }),
-    });
-    while (true) {
-      const v = await ask([
-        { label: t("去充值（打开充值页）"), value: "open", tone: "gold" },
-        { label: t("我已充值，查余额"), value: "check" },
-        { label: t("跳过 AI 修复"), value: "skip", tone: "plain" },
-      ]);
-      if (v === "skip") {
-        pushUser(t("跳过 AI 修复"));
-        return null;
-      }
-      if (v === "open") {
-        pushUser(t("去充值"));
-        await openRecharge(dk.recharge_url);
-        continue;
-      }
-      pushUser(t("查余额"));
-      setBusy(true);
-      const dk2 = await invoke<DeviceKey>("get_device_key").catch(() => null);
-      setBusy(false);
-      if (dk2?.charged) {
-        push({ role: "uking", text: t("到账了！余额 {bal}。", { bal: dk2.balance?.text ?? "" }) });
-        ctx.current.deviceKey = dk2;
-        return dk2.key;
-      }
-      push({ role: "uking", text: t("还没查到余额（到账一般几秒到几分钟），稍后再点「查余额」。") });
-    }
-  }
-
-  async function aiRepair(tool: string): Promise<void> {
-    const key = await resolveRepairKey();
-    if (!key) return;
-
-    push({ role: "uking", text: t("🩺 AI 诊断中（虾盘云直连，即使 Claude 没装好也能修）…") });
-    setBusy(true);
-    const context =
-      `失败工具: ${TOOL_NAMES[tool]}\n` +
-      `环境体检: ${JSON.stringify(ctx.current.detect)}\n` +
-      `安装日志尾部:\n${ctx.current.lastLog.slice(-60).join("\n")}`;
-    const d = await invoke<Diagnosis>("ai_diagnose", { apiKey: key, context }).catch((e) => {
-      push({ role: "uking", text: t("AI 诊断失败：{err}", { err: String(e) }) });
-      return null;
-    });
-    setBusy(false);
-    if (!d) return;
-
-    push({
-      role: "uking",
-      text:
-        t("AI 诊断：{diag}", { diag: d.diagnosis }) +
-        (d.commands.length
-          ? t("\n\n建议执行 {n} 条修复命令（执行前请过目）：\n", { n: d.commands.length }) +
-            d.commands.map((c, i) => `${i + 1}. ${c}`).join("\n")
-          : t("\n\n（没有可自动执行的修复命令，请按上面说明手动处理后再重试）")),
-    });
-    if (!d.commands.length) return;
-
-    const v = await ask([
-      { label: t("执行这 {n} 条修复命令", { n: d.commands.length }), value: "go", tone: "gold" },
-      { label: t("不执行"), value: "no", tone: "plain" },
-    ]);
-    if (v !== "go") {
-      pushUser(t("不执行"));
-      return;
-    }
-    pushUser(t("执行修复"));
-
-    const logId = push({ role: "uking", log: [], logDone: false });
-    ctx.current.logMsgId = logId;
-    setBusy(true);
-    let allOk = true;
-    for (const cmd of d.commands) {
-      const ran = await invoke("run_fix", { toolId: tool, cmd })
-        .then(() => true)
-        .catch((e) => {
-          patch(logId, (m) => ({ ...m, log: [...(m.log ?? []), `✗ ${e}`] }));
-          return false;
-        });
-      if (!ran) {
-        allOk = false;
-        break;
-      }
-    }
-    setBusy(false);
-    ctx.current.logMsgId = null;
-    patch(logId, (m) => ({ ...m, logDone: true, logOk: allOk }));
-    push({
-      role: "uking",
-      text: allOk ? t("修复命令执行完毕，自动重装验证…") : t("有修复命令执行失败（已停止），仍会重装验证一次…"),
-    });
-  }
+  /* ---------- AI 修复已改为「整理故障任务 → 转交轻助手/复制任务」（2026-10-19） ----------
+   * 原 ai_diagnose + run_fix 链路（让模型指挥修复命令）已撤：UI 文案与实际行为保持一致。 */
 
   async function pickDriver(): Promise<void> {
     const ps = await invoke<ProviderPreset[]>("list_providers").catch(() => [] as ProviderPreset[]);

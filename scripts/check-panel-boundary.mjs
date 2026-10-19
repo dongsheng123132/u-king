@@ -202,7 +202,7 @@ console.log(`\n[静态] 面板入口是否都包上了…`);
   const app = readFileSync("src/App.tsx", "utf8");
   const split = readFileSync("src/opencodex/SplitArea.tsx", "utf8");
   const want = [
-    ["src/App.tsx", app, "UWorkspace", 1],
+    ["src/App.tsx", app, "MaintenanceAssistant", 1],
     ["src/App.tsx", app, "TerminalPage", 1],
     ["src/App.tsx", app, "ToolAppView", 1],
     ["src/opencodex/SplitArea.tsx", split, "ChatPanel", 1],
@@ -219,7 +219,9 @@ console.log(`\n[静态] 面板入口是否都包上了…`);
       fails.push(`[静态] ${file} 的 <${comp}> 没包在 PanelBoundary 里 —— 它崩了会带走整个界面`);
   }
   const n = (app.match(/<PanelBoundary/g) || []).length;
-  if (n < 8) fails.push(`[静态] App.tsx 只有 ${n} 处 PanelBoundary，少于已知的 8 个挂载点`);
+  // 2026-10-19：UWorkspace 常驻挂载点撤掉（换 MaintenanceAssistant），App.tsx 现有 7 处
+  // （titlebar / sidebar / maintenance / tui / terminal / statusline / key={tab} 页边界）。
+  if (n < 7) fails.push(`[静态] App.tsx 只有 ${n} 处 PanelBoundary，少于已知的 7 个挂载点`);
   if (!fails.some((f) => f.startsWith("[静态]"))) console.log(`     ✓ App.tsx ${n} 处 + SplitArea.tsx 四个面板，入口都包上了`);
 }
 

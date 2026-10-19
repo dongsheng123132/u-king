@@ -1,5 +1,5 @@
 import { ShieldAlert, Sparkles, Trash2 } from "lucide-react";
-import { SafeUninstall } from "./Advanced";
+import { SafeUninstall } from "./SafeUninstall";
 
 /**
  * 独立绿色版的唯一页面。

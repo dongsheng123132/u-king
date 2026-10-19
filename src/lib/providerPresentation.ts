@@ -25,7 +25,7 @@ export type ProviderPresentationInput = {
   anthropic_base?: string | null;
 };
 
-/** 明确枚举：24 个模板对应的 24 个键，外加 `unknown` 兜底。 */
+/** 品牌键；同一品牌的不同计费模板共用一个键，外加 `unknown` 兜底。 */
 export type ProviderLogoKey =
   | "openai"
   | "deepseek"
@@ -68,16 +68,15 @@ type HostRule = {
 };
 
 /**
- * 24 条模板 → 主机名规则。行号参照 `providerTemplates.ts`（2026-09-06 版本）。
- * `token-plan-cn.xiaomimimo.com` 是小米 MiMo 当前模板用的域；`api.xiaomimimo.com` 是
- * key_hint 里提到的按量付费替换域，提前收进白名单，免得用户手改地址后图标掉回兜底。
+ * 按解析出的完整主机名匹配，不能把域名子串或用户可改的品牌名称当作官方来源。
+ * MiMo 的按量地址和套餐 cn / sgp / ams 区域均来自官方工具接入文档。
  */
 const HOST_RULES: HostRule[] = [
   { hosts: ["api.openai.com"], logo: "openai", group: "vendor" },
   { hosts: ["api.deepseek.com"], logo: "deepseek", group: "vendor" },
   { hosts: ["open.bigmodel.cn"], logo: "zhipu", group: "vendor" },
   { hosts: ["api.moonshot.cn"], logo: "kimi", group: "vendor" },
-  { hosts: ["token-plan-cn.xiaomimimo.com", "api.xiaomimimo.com"], logo: "xiaomi-mimo", group: "vendor" },
+  { hosts: ["api.xiaomimimo.com", "token-plan-cn.xiaomimimo.com", "token-plan-sgp.xiaomimimo.com", "token-plan-ams.xiaomimimo.com"], logo: "xiaomi-mimo", group: "vendor" },
   { hosts: ["dashscope.aliyuncs.com"], logo: "bailian", group: "vendor" },
   { hosts: ["ark.cn-beijing.volces.com"], logo: "volcengine", group: "vendor" },
   { hosts: ["api.siliconflow.cn"], logo: "siliconflow", group: "platform" },
@@ -102,7 +101,9 @@ const HOST_RULES: HostRule[] = [
 function extractHost(url?: string | null): string | null {
   if (!url) return null;
   try {
-    return new URL(url).host.toLowerCase();
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.host.toLowerCase();
   } catch {
     return null;
   }

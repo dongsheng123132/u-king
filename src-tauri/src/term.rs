@@ -743,7 +743,7 @@ fn sh_single_quote(path: &str) -> String {
 /// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
 /// 附近注释，实现时不要漏掉这一条。
 pub fn validate_cmd(cmd: &str) -> bool {
-    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "claude", "codex", "openclaw", "hermes", "dsh", "opencode", "pi", "node", "npm", "git", "ollama"];
+    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "claude", "codex", "openclaw", "hermes", "dsh", "opencode", "qwen", "crush", "gemini", "grok", "cline", "harness-doctor", "pi", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;
     if cmd.len() > MAX_LEN {
         return false;
@@ -773,9 +773,13 @@ fn codebuddy_default_env(cmd: Option<&str>, configured: Option<&std::ffi::OsStr>
     }
 }
 
-fn tool_launch_env(cmd: Option<&str>) -> Vec<(&'static str, &'static str)> {
+fn tool_launch_env(cmd: Option<&str>) -> Result<Vec<(&'static str, String)>, String> {
     let configured = std::env::var_os("CODEBUDDY_INTERNET_ENVIRONMENT");
-    codebuddy_default_env(cmd, configured.as_deref()).into_iter().collect()
+    let mut env = crate::installer::tool_process_env(cmd.unwrap_or(""))?;
+    if let Some((key, value)) = codebuddy_default_env(cmd, configured.as_deref()) {
+        env.push((key, value.to_string()));
+    }
+    Ok(env)
 }
 
 /// 构造交互式 shell 命令。Windows 优先 PowerShell 7（pwsh），回落 Windows PowerShell 5.1；
@@ -831,7 +835,7 @@ pub fn headless_run(cmd: &str, timeout_ms: u64) -> Result<String, String> {
     let mut builder = shell_builder();
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
-    for (name, value) in tool_launch_env(Some(cmd)) { builder.env(name, value); }
+    for (name, value) in tool_launch_env(Some(cmd))? { builder.env(name, value); }
     enable_interactive_color(&mut builder);
     inject_openclaw_env(&mut builder);
     inject_pip_mirror(&mut builder);
@@ -1133,7 +1137,7 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
         std::process::Command::new(crate::installer::system_tool("cmd"))
             .args(["/D", "/V:OFF", "/C"])
             .arg(&bat_file)
-            .envs(tool_launch_env(cmd.as_deref()))
+            .envs(tool_launch_env(cmd.as_deref())?)
             .creation_flags(0x0000_0010) // CREATE_NEW_CONSOLE（用户明确选择系统终端）
             .spawn()
             .map_err(|e| {
@@ -1170,8 +1174,8 @@ pub fn term_open_external(cmd: Option<String>, cwd: Option<String>) -> Result<()
             None => format!("exec \"{shell}\" -il\n"),
         };
 
-        let tool_env = tool_launch_env(cmd.as_deref()).into_iter()
-            .map(|(name, value)| format!("export {name}={}\n", sh_single_quote(value)))
+        let tool_env = tool_launch_env(cmd.as_deref())?.into_iter()
+            .map(|(name, value)| format!("export {name}={}\n", sh_single_quote(&value)))
             .collect::<String>();
         let script = format!(
             "#!/bin/zsh\n\
@@ -1261,7 +1265,7 @@ pub async fn term_open_pty(
     let mut builder = launch_shell_builder(initial_cmd.as_deref());
     builder.env("PATH", build_path());
     builder.env("TERM", "xterm-256color");
-    for (name, value) in tool_launch_env(initial_cmd.as_deref()) { builder.env(name, value); }
+    for (name, value) in tool_launch_env(initial_cmd.as_deref())? { builder.env(name, value); }
     enable_interactive_color(&mut builder);
     inject_openclaw_env(&mut builder);
     inject_pip_mirror(&mut builder);
@@ -1924,10 +1928,10 @@ mod tests {
         assert!(!validate_cmd("git ../escape")); // 路径穿越
         assert!(!validate_cmd("claude ..\\x")); // Windows 风格路径穿越
         assert!(!validate_cmd("powershell -c whoami")); // 程序名不在白名单
-        // 已下架的工具命令不再放行（2026-10-04 零用量删除）
-        assert!(!validate_cmd("harness-doctor --target all --no-ports"));
-        assert!(!validate_cmd("grok"));
-        assert!(!validate_cmd("crush"));
+        // 识别到的已有工具也必须能通过启动入口，参数仍过同一个字符白名单。
+        for cmd in ["qwen", "crush", "gemini", "gemini --version", "qwen --model demo", "grok", "cline", "harness-doctor --target all --no-ports"] {
+            assert!(validate_cmd(cmd), "{cmd}");
+        }
     }
 
     /// 非 ASCII 放行：中文提示词能通过，但 ASCII 层面的 shell 元字符依旧全部被挡。

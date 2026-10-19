@@ -50,6 +50,9 @@ const ALLOWED_SPEC_WITHOUT_TUI_APP = new Set([
   "uu-remote",
   "codex-app",
   "claude-app", // Native GUI app; has no TUI route.
+  "harness-doctor", // One-shot diagnostics uses an external terminal, not a persistent TUI.
+  "magpie", // 配置委托 CLI：不是编码 agent，没有 apps.ts 的启动提示词/configTargets 入口；
+            // 打开内嵌终端跑裸 `magpie` 即可，维护助手按需调用，不进 Dock 终端应用表。
 ]);
 
 /** 从 `start` 位置的 `[` 开始，返回与之配对的 `]` 的下标（简单方括号计数）。 */

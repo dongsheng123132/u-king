@@ -1,6 +1,6 @@
 {
   "pairs": 40,
-  "why": "自动收紧（解开了耦合）",
+  "why": "tools → opencodex_bundle：工具目录探测/启动随包内嵌的 OpenCodex 桌面工作台，与 tools→dshdesk 同构（GUI 应用的 installed/launch）",
   "list": [
     "agent → device",
     "agent → journal",
@@ -38,9 +38,9 @@
     "report → metrics",
     "toolprobe → tools",
     "tools → dshdesk",
+    "tools → opencodex_bundle",
     "tools → providers",
     "tools → term",
-    "tools → toolprobe",
-    "usb_targets → usb_genie"
+    "tools → toolprobe"
   ]
 }

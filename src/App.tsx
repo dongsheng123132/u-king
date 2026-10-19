@@ -35,7 +35,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { Wizard } from "./Wizard";
-import { UWorkspace } from "./opencodex/UWorkspace";
+import { MaintenanceAssistant } from "./MaintenanceAssistant";
 import { Sidebar, type TabId } from "./components/Sidebar";
 import { SkillPackList } from "./components/SkillPackList";
 import { ToolIcon } from "./components/ToolIcon";
@@ -60,25 +60,21 @@ const GITHUB_REPO_URL = "https://github.com/dongsheng123132/u-king";
 
 // 懒加载「条件渲染、非首屏」的页面 —— 首屏只解析外壳 + 当前页，其余按需拉各自 chunk。
 // 治「打开慢」（原本一次性 eager import 全部页面塞进 1.6MB 主包），并缩小首屏解析面（降低
-// Mac 内存压力/黑屏面）。命名导出映射成 default 给 React.lazy。首屏 myai（内联）/setup（Wizard）
-// 与常驻保活的 UWorkspace 保持 eager，避免首屏 Suspense 闪烁。
+// Mac 内存压力/黑屏面）。命名导出映射成 default 给 React.lazy。首屏 myai（内联）/setup（Wizard）/
+// MaintenanceAssistant（新主对话入口，无 PTY 不需保活）保持 eager，避免首屏 Suspense 闪烁。
+// 2026-10-19 轻量维护助手批次：Create/Draw/QrMerge/Video（创作产品）与 Advanced/UsbToolDisk
+// 两条产品线入口已摘、页面已删 —— 不再 lazy import。
 const Manager = lazy(() => import("./Manager").then((m) => ({ default: m.Manager })));
 const CodexZone = lazy(() => import("./CodexZone").then((m) => ({ default: m.CodexZone })));
-const Create = lazy(() => import("./Create").then((m) => ({ default: m.Create })));
-const Draw = lazy(() => import("./Draw").then((m) => ({ default: m.Draw })));
-const QrMerge = lazy(() => import("./QrMerge").then((m) => ({ default: m.QrMerge })));
-const Video = lazy(() => import("./Video").then((m) => ({ default: m.Video })));
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
 const AiRuntime = lazy(() => import("./AiRuntime").then((m) => ({ default: m.AiRuntime })));
 const LocalLLM = lazy(() => import("./LocalLLM").then((m) => ({ default: m.LocalLLM })));
-const Advanced = lazy(() => import("./Advanced").then((m) => ({ default: m.Advanced })));
 const DemoUninstaller = lazy(() => import("./DemoUninstaller").then((m) => ({ default: m.DemoUninstaller })));
 const Feedback = lazy(() => import("./Feedback").then((m) => ({ default: m.Feedback })));
 const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
-const UsbToolDisk = lazy(() => import("./UsbToolDisk").then((m) => ({ default: m.UsbToolDisk })));
 const ToolHub = lazy(() => import("./toolhub/ToolHub").then((m) => ({ default: m.ToolHub })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
@@ -176,6 +172,23 @@ export function App() {
   const [wizard, setWizard] = useState<{ runId: number; preselect: string | string[] | null } | null>(null);
   // 左侧边栏：setup=装机向导 / myai=我的 AI（已装快捷启动）/ manage=AI 设置（切驱动+余额+用量）。
   const [tab, setTab] = useState<TabId>("setup");
+  // 旧 tab id 安全回退（2026-10-19 轻量维护助手批次）：Advanced/UsbToolDisk/Create/Draw/
+  // QrMerge/Video 页面已删，chat/termwb 由「维护助手」接替。外部 route_tab、书签、
+  // 残留深链再喂这些 id 时统一落到仍存在的页，绝不挂载已删页面。
+  useEffect(() => {
+    const LEGACY_TAB_FALLBACK: Partial<Record<string, TabId>> = {
+      chat: "maintenance",
+      termwb: "maintenance",
+      create: "maintenance",
+      draw: "maintenance",
+      qrmerge: "maintenance",
+      video: "maintenance",
+      advanced: "toolhub",
+      usbgenie: "toolhub",
+    };
+    const next = LEGACY_TAB_FALLBACK[tab];
+    if (next) setTab(next);
+  }, [tab]);
   // 「我的 AI」首页免费模型导流卡 → 跳「AI 设置」时要落到哪个分区（2026-09-06）。
   // 默认 "tools"（原行为不变）；点导流卡时置成 "free" 再切 tab，Manager 只在挂载时读一次
   // （它外层有 key={tab} 边界，每次进页都是全新挂载）。
@@ -198,10 +211,12 @@ export function App() {
    *
    * 解法不是去调那个 7rem 魔法数（调了也只在这一种窗口尺寸下对），而是把高度链接通：
    * 这些页所在的 main 不滚、不留 py-6，页面本体改 `h-full` 从父级拿确定高度。
+   * （2026-10-19：创作三页已删；维护助手同样是自管高度的三段式，沿用这条通道。）
    */
-  const selfHeightTab = tab === "create" || tab === "draw" || tab === "video" || tab === "qrmerge";
+  const selfHeightTab = tab === "maintenance";
   // 小程序浮层：首页图标条和小程序页都往这里塞，容器只有一个
-  // 「发一句话」handoff：页面里「让 AI 帮你…」→ 存这里 + 切到 chat → UWorkspace 开会话把它发给 AI
+  // 「发一句话」handoff：页面里「让 AI 帮你…」→ 存这里 + 切到维护助手 → MaintenanceAssistant
+  // 只把提示词填进草稿框（用户自己按发送，不加载页面就发消息/付费）。
   const [pendingChatPrompt, setPendingChatPrompt] = useState<{ prompt: string; engine?: Engine; passportId?: string } | null>(null);
   // 访问过的 TUI 应用（懒挂载，挂载后常驻 display 切换保活，不卸载 → PTY 续跑）
   const [mountedTui, setMountedTui] = useState<Set<string>>(new Set());
@@ -712,16 +727,6 @@ export function App() {
     }
   };
 
-  // U-Workspace「没装 Claude Code 就装」：默认对话大脑是 Claude Code，客户没装时走和工具中心
-  // 完全一致的一键安装（进装机向导预选 claude-code）。装完 agent/claude.rs 注入 delegation_env
-  // 自动接虾盘云（deepseek-v4-flash·同计费·免配置），无需再单独配驱动 —— 装完即用。
-  const installClaude = () => {
-    const t = tools.find((x) => x.id === "claude-code");
-    if (t) return openTool(t);
-    setTab("setup");
-    setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: "claude-code" }));
-  };
-
   // 真正拉起 GUI 应用。启动失败（多半是「还没装 / 没装好」）→ 不留死胡同，引导去安装。
   const doLaunchApp = (t: ToolInfo) => {
     invoke("launch_app", { app: t.launch_app })
@@ -1030,12 +1035,9 @@ export function App() {
         <PanelBoundary name="sidebar" variant="chrome">
         <Sidebar
           active={tab}
-          // 2026-10-03 收敛方案 2a：侧栏只剩一个「工作台」入口（id=chat），termwb 是它的终端态。
-          // 已经在终端态（tab=termwb）时再点它**不切换**——一旦 setTab("chat")，下面 UWorkspace 的
-          // paneMode 会从 cli 变 chat，把所有会话从终端态收回对话态，等于点了一下就把用户的终端藏了。
-          // 想回对话态：点终端面板头的「展开对话列」，再点顶栏 [对话｜终端] 里的「对话」（页内操作，不动 tab）。
-          // 其余 tab 照常切换；从别的页点进来落对话态，ToolHub「在工作台开终端」仍直达 termwb。
-          onSelect={(next) => setTab((cur) => (cur === "termwb" && next === "chat" ? cur : next))}
+          onSelect={(next) => setTab(next)}
+          // 「一键充值」唯一入口（2026-10-19）：打开充值页 + 静默轮询余额（openRechargeAndWatch）。
+          onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
           version={APP_VERSION}
           onShowChangelog={() => setChangelogOpen(true)}
           platform={env?.platform}
@@ -1077,19 +1079,20 @@ export function App() {
         />
         </PanelBoundary>
 
-        {/* U-Workspace（AI 工作台，opencodex 模块）：常驻渲染（display 切换保活，多会话/PTY/预览切走不丢）。
-            侧栏「工作台」的对话态（chat）和终端态（termwb）是**同一个 UWorkspace 实例**——
-            同一批会话，唯一区别是 paneMode 决定每个会话默认停在对话态还是终端态（见 UWorkspace.tsx）。
-            **绝不能渲染第二个 UWorkspace**：scripts/check-panel-boundary.mjs 要求它在本文件里只出现一次。 */}
+        {/* 维护助手（2026-10-19）：UChat/UCLI 收敛后的唯一内置对话入口。不再默认常驻挂载
+            完整 UWorkspace（终端/预览/作图面板整包）；本页只做装机/故障维护对话。
+            **绝不能渲染第二个**：scripts/check-panel-boundary.mjs 要求它在本文件里只出现一次。 */}
         <main
           className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}
-          style={{ display: tab === "chat" || tab === "termwb" ? undefined : "none" }}
+          style={{ display: tab === "maintenance" ? undefined : "none" }}
         >
-          {/* U-Workspace 是唯一 eager 挂载的页（保活），也是崩得最多的页 ——
-              工作台里面 U-Chat / U-CLI / 文件 / 浏览器各有自己的边界，
-              这一层兜的是工作台外壳自身（store / SessionList / 顶栏）。 */}
-          <PanelBoundary name="U-Workspace">
-            <UWorkspace onToast={flash} pendingChatPrompt={pendingChatPrompt} onConsumedChat={() => setPendingChatPrompt(null)} onInstallClaude={installClaude} paneMode={tab === "termwb" ? "cli" : "chat"} />
+          <PanelBoundary name="maintenance">
+            <MaintenanceAssistant
+              onToast={flash}
+              onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
+              pendingPrompt={pendingChatPrompt}
+              onConsumedPrompt={() => setPendingChatPrompt(null)}
+            />
           </PanelBoundary>
         </main>
 
@@ -1151,7 +1154,7 @@ export function App() {
         )}
 
         {/* 非 TUI 页面（manage/codex/myai/setup）：条件渲染，无 PTY 不需保活 */}
-        {tab !== "terminal" && tab !== "chat" && tab !== "termwb" && !isTuiAppId(tab) && (
+        {tab !== "terminal" && tab !== "maintenance" && !isTuiAppId(tab) && (
         <main className={cn(
           "flex-1 min-w-0",
           selfHeightTab ? "min-h-0 flex flex-col" : "overflow-y-auto",
@@ -1174,7 +1177,7 @@ export function App() {
               // 例外：「该充值了」是开始使用前的最后一步 —— 一键安装完即落 myai，必须在这里也提醒，
               //（否则装完落地页吞掉充值入口，客户反馈「提醒不够」）。
               setupState={
-                tab === "localllm" || tab === "advanced" || tab === "feedback" || tab === "xiapan" || tab === "skills" || tab === "create"
+                tab === "localllm" || tab === "feedback" || tab === "xiapan" || tab === "skills"
                   ? null
                   : tab === "myai"
                     ? setupState?.next_step === "recharge" || setupState?.clawx_needs_xiapan
@@ -1206,7 +1209,7 @@ export function App() {
               aigcNudge={
                 setupState?.next_step === "done" &&
                 !aigcDismissed &&
-                !["skillpack", "create", "draw", "qrmerge", "video", "advanced"].includes(tab)
+                !["skillpack"].includes(tab)
               }
               onGoAigc={() => {
                 localStorage.setItem("uking.aigcNudgeDone", "1");
@@ -1227,11 +1230,10 @@ export function App() {
             {tab === "manage" ? (
               <Manager
                 onGoCodex={() => setTab("codex")}
-                onGoAdvanced={() => setTab("advanced")}
                 onGoPage={(tb) => setTab(tb as TabId)}
                 onDeviceKeyChange={setDeviceKey}
                 onRecharge={(url) => openRechargeAndWatch(url)}
-                onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "ai-settings-repair" }); setTab("chat"); }}
+                onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "ai-settings-repair" }); setTab("maintenance"); }}
                 // tools 只为读真实安装态（Manager::realInstalled，渲染「未安装」徽章）。
                 // 装 / 启动 / 卸载 2026-09-04 搬去了「我的 AI」页，本页不再传 onInstallTool/
                 // onLaunchTool（那两条唯一实现 openTool/launchTool 仍在下面 MyAI 那处调用）。
@@ -1260,14 +1262,6 @@ export function App() {
                   </Suspense>
                 )}
               />
-            ) : tab === "create" ? (
-              <Create deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
-            ) : tab === "draw" ? (
-              <Draw deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
-            ) : tab === "qrmerge" ? (
-              <QrMerge deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
-            ) : tab === "video" ? (
-              <Video deviceKey={deviceKey} onToast={flash} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} onGoSkillPack={() => setTab("skillpack")} />
             ) : tab === "skillpack" ? (
               // 技能包页：一键装自带能力(作图/视频/协同) + 自带技能包逐包装/删清单 + 图文上手教程。
               //
@@ -1283,16 +1277,9 @@ export function App() {
                 <Tutorial onGoMyAI={() => setTab("toolhub")} />
               </div>
             ) : tab === "airuntime" ? (
-              <AiRuntime onToast={flash} onGoSetup={() => setTab("setup")} onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "airuntime-doctor" }); setTab("chat"); }} />
+              <AiRuntime onToast={flash} onGoSetup={() => setTab("setup")} onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "airuntime-doctor" }); setTab("maintenance"); }} />
             ) : tab === "localllm" ? (
               <LocalLLM onToast={flash} />
-            ) : tab === "advanced" ? (
-              <Advanced
-                deviceKey={deviceKey}
-                onToast={flash}
-                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
-                onDeviceKeyChange={setDeviceKey}
-              />
             ) : tab === "feedback" ? (
               <Feedback version={APP_VERSION} onToast={flash} />
             ) : tab === "xiapan" ? (
@@ -1338,12 +1325,12 @@ export function App() {
                 onToast={flash}
                 onAskAiToFix={(prompt) => {
                   setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair" });
-                  setTab("chat");
+                  setTab("maintenance");
                 }}
                 onGoSetup={startInstallAll}
                 onGoDoctor={() => setTab("myai")}
-                onGoChat={() => setTab("chat")}
-                onGoTermWb={() => setTab("termwb")}
+                onGoChat={() => setTab("maintenance")}
+                onGoTermWb={() => setTab("maintenance")}
                 // 终端快照「一键重开」条 2026-10-03（收敛 2b）从 myai 搬到这里：toolhub 是默认落地页，
                 // 放在 myai 等于大多数人看不到。回调原样沿用，MyAI 那份已去掉（同一个条只在一处出现）。
                 termSnapshot={termSnapshot}
@@ -1389,8 +1376,6 @@ export function App() {
                 // 2026-10-03 收敛 2b：本页降为「我的 AI」的子页「体检 · 升级」，顶部给一条回去的路。
                 onBackToHub={() => setTab("toolhub")}
               />
-            ) : tab === "usbgenie" ? (
-              <UsbToolDisk onToast={flash} />
             ) : (
               <>
                 <DriverBar driver={driver} deviceKey={deviceKey} onStart={startWizard} onInstallAll={startInstallAll} onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)} />
@@ -1399,7 +1384,11 @@ export function App() {
                     key={wizard.runId}
                     preselect={wizard.preselect}
                     onFinished={refresh}
-                    onGoWorkspace={() => setTab("chat")}
+                    onHandoffToAssistant={(prompt) => {
+                      setPendingChatPrompt({ prompt, engine: "uking", passportId: "wizard-handoff" });
+                      setTab("maintenance");
+                    }}
+                    onGoToolhub={() => setTab("toolhub")}
                   />
                 )}
                 <ToolMarket tools={tools} onOpen={openTool} onLaunch={launchTool} />
@@ -1979,7 +1968,7 @@ export const LAB_TOOLS = new Set<string>();
  * 纯展示分组，后端 `tools.rs::TOOL_SPECS` 一个没动；只在「分类 = 全部」且非多选时生效，
  * 用户主动筛选 / 多选时一律平铺，什么都不藏。导出给 `toolhub/ToolHub.tsx`。
  */
-export const RECOMMENDED_TOOLS: readonly string[] = ["claude-code", "codex", "hermes", "dsh"];
+export const RECOMMENDED_TOOLS: readonly string[] = ["claude-code", "codex", "hermes", "dsh", "pi"];
 
 /**
  * 「日常软件」——不是 AI 编程工具，在「可安装」区单独折叠成一组（方案 §3.2 ③）。

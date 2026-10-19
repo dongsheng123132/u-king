@@ -199,7 +199,9 @@ export function ToolHub({
   onGoSetup,
   onGoDoctor,
   onGoChat,
-  onGoTermWb,
+  // onGoTermWb —— 2026-10-19 起不再渲染「在工作台开终端」按钮（U-CLI 工作台已撤）。
+  // prop 签名保留兼容旧调用方；解构时故意不用，避免 noUnusedLocals 报错。
+  onGoTermWb: _onGoTermWb,
   termSnapshot,
   recoveringTermSnapshot,
   failedTermRestoreCount = 0,
@@ -245,10 +247,11 @@ export function ToolHub({
   /** 页头次要链接「体检 · 升级 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
    *  （体检 + 一键升级 + 装机漏斗；2026-10-03 起是本页的子页，不再有侧栏入口）。 */
   onGoDoctor: () => void;
-  /** 详情条「想在 U-King 里用？」→「在工作台对话」→ App.tsx 的 `setTab("chat")`。 */
+  /** 详情条「交给维护助手」→ App.tsx 的 `setTab("maintenance")`（2026-10-19 起，
+   *  UChat/UCLI 工作台入口已收敛为维护助手；不再提供假的「在工作台开终端」按钮）。 */
   onGoChat: () => void;
-  /** 同上，→「在工作台开终端」→ App.tsx 的 `setTab("termwb")`（同一个工作台，落终端态）。 */
-  onGoTermWb: () => void;
+  /** @deprecated 2026-10-19：U-CLI 工作台入口已撤。保留 prop 签名兼容旧调用方，不再渲染按钮。 */
+  onGoTermWb?: () => void;
   /** 上次自升级时留下的终端快照（后端 `term_snapshot_pending`）。有就在页顶显示「一键重开」条。
    *  2026-10-03 收敛 2b 从 `MyAI` 搬来——本页是默认落地页，放在 myai 等于大多数人看不到。
    *  五个 props 都由 App.tsx 传入、沿用原来 MyAI 那组回调，本组件不碰快照的读写。 */
@@ -923,14 +926,12 @@ export function ToolHub({
         </div>
 
         <div className="text-[11px] text-ink-3">
-          {tr("想在 U-King 里用？")}{" "}
+          {tr("遇到装机/故障问题？")}{" "}
           <button data-testid="toolhub-go-chat" onClick={onGoChat} className="text-accent-400 hover:underline">
-            {tr("在工作台对话")}
+            {tr("交给维护助手")}
           </button>
           {" · "}
-          <button data-testid="toolhub-go-termwb" onClick={onGoTermWb} className="text-accent-400 hover:underline">
-            {tr("在工作台开终端")}
-          </button>
+          <span className="text-ink-4">{tr("独立编程工作台（OpenCodex）可在「我的 AI」安装——实际尚未注册到工具目录")}</span>
         </div>
       </>
     );

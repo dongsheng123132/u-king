@@ -23,6 +23,7 @@ import { localllm } from "./en/localllm";
 import { deviceWallet } from "./en/device-wallet";
 import { englishUi } from "./en/english-ui";
 import { toolhub } from "./en/toolhub";
+import { maintenance } from "./en/maintenance";
 
 export const EN: Record<string, string> = {
   // 🔴 backfill 必须**第一个** spread：它是机器批量补的历史欠账，
@@ -44,6 +45,7 @@ export const EN: Record<string, string> = {
   ...feedback,
   ...deviceWallet,
   ...toolhub,
+  ...maintenance,
 
   // Dynamic data-table strings and compact English copy intentionally win last.
   ...englishUi,

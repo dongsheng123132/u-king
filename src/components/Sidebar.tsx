@@ -9,7 +9,7 @@ import { useState } from "react";
 // 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱，页面 2026-10-04 已删）/ SquareTerminal（终端工作台）/
 // Sparkles（装机 · 体检）/ Wallet（虾盘云 · 充值）/ Gauge（Token 水电表）随入口撤下一并去掉，
 // 恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
-import { ArrowUpCircle, ChevronDown, CodeXml, Cpu, FlaskConical, GitPullRequest, Globe, HardDrive, History, LayoutGrid, Languages, Layers, LifeBuoy, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, CodeXml, Cpu, FlaskConical, GitPullRequest, Globe, History, LayoutGrid, Languages, LifeBuoy, MessageSquare, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -17,29 +17,34 @@ import { useI18n } from "../i18n";
 
 import type { TuiAppId } from "../opencodex/apps";
 
-// TUI 应用（claude/codex-cli/openclaw/hermes）+ 工作台 + 终端页 + 管家页面 + AI 作图
+// TUI 应用（claude/codex-cli/openclaw/hermes）+ 维护助手 + 终端页 + 管家页面
+// 2026-10-19 轻量维护助手批次：chat/termwb 由 maintenance 接替；create/draw/qrmerge/video/
+// advanced/usbgenie 产品线入口已摘。这些旧 id **仍留在联合类型里**，好让残留深链/route_tab
+// 能编译通过并在 App.tsx 的 LEGACY_TAB_FALLBACK 里安全回退 —— 不再挂载已删页面。
 export type TabId =
   | TuiAppId
   | "toolhub"
   | "terminal"
   | "setup"
-  | "chat"
-  | "termwb"
-  | "create"
+  | "maintenance"
   | "myai"
   | "xiapan"
   | "skills"
   | "codex"
   | "manage"
-  | "draw"
-  | "qrmerge"
-  | "video"
   | "skillpack"
-  | "advanced"
   | "feedback"
   | "guide"
   | "airuntime"
   | "localllm"
+  // ── 旧 id（只作安全回退，无导航项、无渲染分支）──
+  | "chat"
+  | "termwb"
+  | "create"
+  | "draw"
+  | "qrmerge"
+  | "video"
+  | "advanced"
   | "usbgenie";
 
 type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
@@ -52,8 +57,17 @@ type NavItem = { id: TabId; label: string; sub: string; icon: typeof Wand2 };
  * 2026-10-03 收敛方案 §5 第 2 步按子步骤逐条加入，恢复某个入口时把对应行删掉即可。
  */
 const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
-  // 2a：终端态的工作台仍是「工作台」这一项
-  termwb: "chat",
+  // 2026-10-19：chat/termwb/create/draw/qrmerge/video 全部落「维护助手」高亮；
+  // advanced/usbgenie 落「我的 AI」。App.tsx 的 LEGACY_TAB_FALLBACK 会先把旧 id 换成
+  // 新 id，这里再兜一层（Sidebar 可能被传入未归一的 active）。
+  termwb: "maintenance",
+  chat: "maintenance",
+  create: "maintenance",
+  draw: "maintenance",
+  qrmerge: "maintenance",
+  video: "maintenance",
+  advanced: "toolhub",
+  usbgenie: "toolhub",
   // 2b：「装机 · 体检」(myai) 降为「我的 AI」的子页「体检 · 升级」，装机向导 (setup) 本来就是
   // 「我的 AI」点安装后进的流程页——它们激活时都高亮「我的 AI」(toolhub)。
   myai: "toolhub",
@@ -101,45 +115,10 @@ const CORE: NavItem[] = [
   // 装机向导是点安装后进的流程页。两者激活时侧栏照样高亮本项（见 NAV_ALIAS）。
   // 页面渲染分支一个没删，两页数据源仍是同一份 tools/driver，互不重实现。
   { id: "toolhub", label: "我的 AI", sub: "已装工具 · 换模型 · 一键启动", icon: LayoutGrid },
-  // U-Workspace（AI 工作台）= 主交互面：对话 + 终端 + 作图预览，全都在 U-King 内，交互尽量不外跳。
-  //
-  // 🔴 **命名约定（2026-08-16 定，别再混着叫）**：
-  //   · **U-Workspace** = 这个「工作台」整体（左栏会话 + 中间 + 右侧面板）。**只指这一层**，
-  //     不要拿它称呼里面的对话框或终端 —— 以前 bug 单里「U-Workspace 排版糟糕」到底指哪块，
-  //     得回头翻截图才知道（issue #379）。
-  //   · **U-Chat** = 工作台里那个 GUI 对话框（`opencodex/Chat.tsx` + `panels/ChatPanel.tsx`）。
-  //   · **U-CLI**  = 工作台里那个终端界面（`panels/TermPanel.tsx` + `term/useTermGroup.ts`）。
-  // 面向客户的文案保留「对话 / 终端」这类人话，代号只用来**指认是哪一块**。
-  //
-  // 🔴 2026-10-03 收敛方案 §5 第 2a 步：「对话工作台」「终端工作台」**合成一个「工作台」入口**。
-  // 两个入口本来就是同一个 UWorkspace 实例（App.tsx 里 chat / termwb 共用一个 <main>），页内顶栏
-  // 早有 [对话｜终端] 分段控件——侧栏再摆两条等于同一件事两个入口（§3.3）。
-  // 只动入口：`termwb` 这个 tab id 和 `paneMode` 逻辑原样保留（「我的 AI」详情条的
-  // 「在工作台开终端」仍 `setTab("termwb")` 直达终端态），`src/opencodex/` 一行没改——
-  // 终端 PTY 只在 TermPanel 卸载时才杀，入口合并碰不到它。激活 `termwb` 时本项照样高亮
-  // （见下方 NAV_ALIAS）；在 termwb 下再点本项**不切换**（App.tsx 的 onSelect 拦截），
-  // 否则 paneMode 会被推回 chat，把用户正在看的终端态会话全收回对话态。
-  { id: "chat", label: "工作台", sub: "对话 · 终端 · 会话", icon: MessageSquare },
-  // 「终端工作台」（2026-09-06 拆分自 U-Workspace）：跟「对话工作台」是**同一批会话**，
-  // 同一份 SessionList/store —— 唯一区别是每个会话默认停在终端态（相当于自动收起
-  // U-Chat 对话列，只见 U-CLI 终端）。不建第二套会话列表，见 UWorkspace.tsx 的 paneMode。
-  // 2026-10-03 撤入口（见上）。恢复：解除下面这行注释，并把 `SquareTerminal` 加回顶部 lucide import，
-  // 同时把上面 chat 项改回「对话工作台」、把 NAV_ALIAS 里的 termwb 一行去掉。
-  // { id: "termwb", label: "终端工作台", sub: "U-CLI · 同一批项目，只见终端", icon: SquareTerminal },
-  // 「AI 创作」2026-08-23 **回到核心位**（用户拍板：「客户希望留」）。
-  //
-  // 它 08-21 被 `6bb9409` 摘掉，理由写的是「它和 U-Chat 是同一件事的两个入口，收进
-  // U-Workspace 右侧的『创作』面板」。🔴 **那个论证成立的是「实现该合并」，推不出「入口该消失」**
-  // —— CLAUDE.md 自己写着「能力和入口是两个开关，别一起拉」，08-21 那刀是反向拉错了：
-  // 合了能力，顺手把入口也拔了。客户看到的就是「作图功能没了」。
-  //
-  // 本次同时**摘掉了工作台右侧那个「创作」面板**（`opencodex/Chat.tsx`），不是两边都留 ——
-  // 同一份 `Create.tsx` 挂两处会有两份互不相通的历史和保活状态，客户在这边生成的图
-  // 在那边看不到，这种不一致比少一个入口更难解释。**一个能力一个入口。**
-  //
-  // 放 CORE 不放 MORE：本组排序注释（下面）原本就写着「② AI 创作 —— 第二高频」；
-  // 且 MORE 里清一色是配置/维护向，把一个「客户天天用来产出东西」的功能放进去等于再藏一次。
-  { id: "create", label: "AI 创作", sub: "作图 · 视频 · 海报二维码", icon: Palette },
+  // 维护助手（2026-10-19 轻量维护助手批次）：UChat/UCLI 收敛后的唯一内置对话入口。
+  // 只做装机/故障维护（虾盘云 DeepSeek Flash），不再默认常驻挂载完整 UWorkspace。
+  // 旧 chat/termwb/create 等 tab id 由 App.tsx LEGACY_TAB_FALLBACK 落到这里（见 NAV_ALIAS）。
+  { id: "maintenance", label: "维护助手", sub: "装机/故障排查 · 写操作每步确认", icon: MessageSquare },
   // 「首页 · 我的 AI」→「我的 AI」（用户 2026-08-25：它就在侧栏上，「首页」两个字多余）。
   // 🔴 2026-09-29 再改名「装机 · 体检」——「我的 AI」这个名字挪给了上面的 toolhub
   // （现在是天天用的落地页），这页还是原来那套装机漏斗（装/体检/卸载），
@@ -168,7 +147,8 @@ const MORE: NavItem[] = [
   // 其它页的「去装机向导」跳转全都照常能打开它，只是它激活时侧栏没有高亮项。
   // 恢复：解除下面这行注释，并把 `Hammer` 加回顶部 lucide import。
   // { id: "setup", label: "装机向导", sub: "装 AI 工具 · 配驱动 · 修安装", icon: Hammer },
-  { id: "usbgenie", label: "U盘工具盘", sub: "随身 AI · 检查 · 启动", icon: HardDrive },
+  // 「U盘工具盘」(usbgenie) 2026-10-19 轻量维护助手批次删除：页面 UsbToolDisk.tsx 已删，
+  // 旧 tab id 由 LEGACY_TAB_FALLBACK 落「我的 AI」。后端 usb_genie 模块迁移是后续 Rust 任务。
   // 创作内的左侧功能栏已收纳「一键成片/任务中心」：同一能力不再在全局 More 重复入口。
   // 「AI 设置」2026-08-31 升回核心第 4 位（用户拍板）—— 从 MORE 摘除，见 CORE 里那条。
   // 「说明书」（identity 页：身份 + 密钥设置 + 指针开关）2026-10-04 整页删除，只保留启动时生成
@@ -207,9 +187,12 @@ const MORE: NavItem[] = [
   // （「配一次就不再进」）依然成立，但用户判断它是卖点级功能，藏一层等于没有。
   // 放「更多」末尾：不挤核心三件，但一展开就看得见。
   { id: "localllm", label: "本地大模型", sub: "Ollama · llama.cpp · 离线免费跑 AI", icon: Cpu },
-  { id: "advanced", label: "进阶 / App 版", sub: "Hermes/ClawX 桌面版 · 手动配", icon: Layers },
+  // 「进阶 / App 版」(advanced) 2026-10-19 轻量维护助手批次删除：页面 Advanced.tsx 已删
+  // （SafeUninstall 已拆到独立模块给 DemoUninstaller 用）。旧 tab id 由 LEGACY_TAB_FALLBACK
+  // 落「我的 AI」。ClawX/Hermes 桌面版配置仍在「AI 设置」子 tab。
   // 「AI 作图 / 海报二维码 / AI 视频」2026-07-19 合并进核心项「AI 创作」（Create.tsx 壳页），
   // 原独立路由（draw/qrmerge/video）保留可达（AI 专家页深链仍用），只是不再单独占导航位。
+  // 2026-10-19：创作产品入口整体摘除，这些路由只剩 LEGACY_TAB_FALLBACK 兜底。
 ];
 
 /**
@@ -274,6 +257,7 @@ export function Sidebar({
   onReinstall,
   onHideToTray,
   showTerminal,
+  onRecharge,
 }: {
   active: TabId;
   onSelect: (t: TabId) => void;
@@ -318,6 +302,9 @@ export function Sidebar({
    *  已经挂了会话（termMounted）时才露出，让用户能切回去，不留「进得去出不来」的幽灵页。
    *  2026-09-06 修：工具启动改走独立窗口后，唯一还会落进内嵌终端页的是快照恢复。 */
   showTerminal?: boolean;
+  /** 「一键充值」——醒目且全站唯一语义一致的充值入口（复用 App 的 openRechargeAndWatch，
+   *  打开充值页 + 静默轮询余额）。放侧栏页脚是因为它在每一页常驻，跟升级入口同级。 */
+  onRecharge?: () => void;
 }) {
   const { t, lang, setLang } = useI18n();
   const contributionLinks = [
@@ -798,6 +785,18 @@ export function Sidebar({
           </button>
         )}
       </div>
+
+      {/* 「一键充值」——醒目唯一入口（2026-10-19）。全站语义一致：都是 openRechargeAndWatch。 */}
+      {onRecharge && !railed && (
+        <div className={cn("px-4 border-t border-white/[0.06]", short ? "py-1.5" : "py-2")}>
+          <button
+            onClick={onRecharge}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-card bg-accent px-3 h-9 text-[12.5px] font-semibold text-white hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
+          >
+            <Wallet size={14} /> {t("一键充值")}
+          </button>
+        </div>
+      )}
 
       {/* 版本与官网一行，开源贡献入口一行；各页常驻，窄侧栏保留图标。 */}
       <div className={cn("px-4 border-t border-white/[0.06] bg-white/[0.01]", short ? "py-1.5" : "py-3")}>

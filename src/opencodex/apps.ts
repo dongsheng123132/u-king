@@ -6,7 +6,7 @@
  */
 
 // 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突
-export type TuiAppId = "mimo" | "codebuddy" | "qodercn" | "kimi" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "opencode" | "pi";
+export type TuiAppId = "mimo" | "codebuddy" | "qodercn" | "kimi" | "qwen" | "crush" | "gemini" | "grok" | "cline" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "opencode" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -31,13 +31,23 @@ export type TuiApp = {
 
 export const TUI_APPS: TuiApp[] = [
   { id: "mimo", toolId: "mimo-code", name: "MiMo Code", tool: "mimo",
-    prompts: [{ label: "启动", cmd: "mimo" }], configTargets: [], group: "cli", hidden: true },
+    prompts: [{ label: "启动", cmd: "mimo" }], configTargets: [], group: "cli" },
   { id: "codebuddy", toolId: "codebuddy-code", name: "CodeBuddy Code", tool: "codebuddy",
-    prompts: [{ label: "启动", cmd: "codebuddy" }], configTargets: [], group: "cli", hidden: true },
+    prompts: [{ label: "启动", cmd: "codebuddy" }], configTargets: [], group: "cli" },
   { id: "qodercn", toolId: "qoder-cn", name: "Qoder CN CLI", tool: "qodercn",
-    prompts: [{ label: "启动", cmd: "qodercn" }], configTargets: [], group: "cli", hidden: true },
+    prompts: [{ label: "启动", cmd: "qodercn" }], configTargets: [], group: "cli" },
   { id: "kimi", toolId: "kimi-code", name: "Kimi Code", tool: "kimi",
-    prompts: [{ label: "启动", cmd: "kimi" }], configTargets: [], group: "cli", hidden: true },
+    prompts: [{ label: "启动", cmd: "kimi" }], configTargets: [], group: "cli" },
+  { id: "qwen", toolId: "qwen-code", name: "Qwen Code", tool: "qwen",
+    prompts: [{ label: "启动", cmd: "qwen" }], configTargets: ["qwen"], group: "cli" },
+  { id: "crush", toolId: "crush", name: "Crush", tool: "crush",
+    prompts: [{ label: "启动", cmd: "crush" }], configTargets: ["crush"], group: "cli" },
+  { id: "gemini", toolId: "gemini-cli", name: "Gemini CLI", tool: "gemini",
+    prompts: [{ label: "启动", cmd: "gemini" }], configTargets: [], group: "cli" },
+  { id: "grok", toolId: "grok-build", name: "Grok Build", tool: "grok",
+    prompts: [{ label: "启动", cmd: "grok" }], configTargets: [], group: "cli" },
+  { id: "cline", toolId: "cline", name: "Cline CLI", tool: "cline",
+    prompts: [{ label: "启动", cmd: "cline" }], configTargets: [], group: "cli" },
   {
     id: "claude",
     toolId: "claude-code",
@@ -190,7 +200,7 @@ export const TUI_APPS: TuiApp[] = [
   },
 ];
 
-/** 可见 TUI 应用（Dock + 路由用这个，过滤掉 hidden 的 codex-cli）。 */
+/** 兼容旧入口的可见应用列表；生产启动入口由后端工具目录决定。 */
 export const VISIBLE_TUI_APPS = TUI_APPS.filter((a) => !a.hidden);
 
 export const TUI_APP_IDS: TuiAppId[] = TUI_APPS.map((a) => a.id);

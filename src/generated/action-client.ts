@@ -119,16 +119,6 @@ export const ACTION = {
   RUNTIME_TOOLBOX_INSPECT: "runtime.toolbox.inspect",
   /** Aggregate local AI session logs by model, including your own keys (BYOK). Covers Claude Code, Codex CLI, OpenClaw/ClawX, Hermes and pi — whichever of them have logs on this machine. Reads metadata only, never prompt text, never uploads. */
   RUNTIME_USAGE_LOCAL_INSPECT: "runtime.usage_local.inspect",
-  /** Remove only this target's PicoClaw credential file. This cannot revoke a copied or lost key; rotate it with the provider. */
-  RUNTIME_USB_GENIE_CREDENTIAL_REMOVE: "runtime.usb_genie.credential_remove",
-  /** Install U-King's pinned PicoClaw runtime into the selected target. It only writes the U-King/AI-Genie subtree and never formats or scans unrelated files. API keys are referenced, never accepted as input or returned. */
-  RUNTIME_USB_GENIE_DEPLOY: "runtime.usb_genie.deploy",
-  /** List removable drives and only stat the U-King/AI-Genie paths; it never recursively scans a drive. */
-  RUNTIME_USB_GENIE_INSPECT: "runtime.usb_genie.inspect",
-  /** Open only this target's ASCII launcher in a new interactive console. */
-  RUNTIME_USB_GENIE_LAUNCH: "runtime.usb_genie.launch",
-  /** Verify only the pinned runtime, launcher and generated configuration. No model request is made. */
-  RUNTIME_USB_GENIE_VERIFY: "runtime.usb_genie.verify",
   /** Read whether NetEase UU Remote is installed so the author can see this screen. Reads only. */
   RUNTIME_UU_REMOTE_INSPECT: "runtime.uu_remote.inspect",
   /** Download and install NetEase UU Remote (~86 MB installer; the vendor ships no portable build). Tries a silent NSIS install and falls back to the visible installer. Connecting is still done by the user inside UU Remote — this never touches their account. */
@@ -139,22 +129,6 @@ export const ACTION = {
   RUNTIME_WORKBENCH_INSTALL: "runtime.workbench.install",
   /** Count files by extension, biggest subfolders, how much changed in the last 30 days, and how deep it nests — the evidence for shaping a workbench around what this person actually does. Only stats files; never opens one, because it does not yet know which are private. Never reads this machine's AI usage records either: the only inputs are the folder the customer pointed at and what he says. Caps out at 20000 files and reports `truncated` when it does — not seeing something is not the same as it not being there. */
   RUNTIME_WORKBENCH_SCAN: "runtime.workbench.scan",
-  /** Reserved for the next phase: read one target's configuration through its manifest-declared transport. Currently refuses with unsupported_target. */
-  TARGET_CONFIG_GET: "target.config.get",
-  /** Reserved for the next phase: write one target's configuration through its manifest-declared transport (http-api for openclaw; the shell never writes openclaw.json directly). Currently refuses with unsupported_target. */
-  TARGET_CONFIG_SET: "target.config.set",
-  /** Snapshot removable disks and report which built-in target manifests are detected or installed on each. Reads only. */
-  TARGET_DETECT: "target.detect",
-  /** List every removable-disk portable AI target (disk × built-in manifest), including installed state and per-target capabilities. Reads only; never recursively scans a drive. */
-  TARGET_LIST: "target.list",
-  /** Read the built-in target manifest table shipped inside U-King (id, kind, capabilities, config transport). Never reads disks; U-disk files are never trusted as manifests. */
-  TARGET_MANIFEST_LIST: "target.manifest.list",
-  /** Launch one installed portable AI target in its own console. Verifies the target immediately before launch and refuses a same-name executable elsewhere; duplicate launch is detected and reported instead of stacking processes. */
-  TARGET_START: "target.start",
-  /** Verify one installed target on its disk: runtime files, pinned version, config shape and credential consistency. No model request is made. */
-  TARGET_STATUS: "target.status",
-  /** Reserved for the next phase: stop one running portable AI target. Currently refuses with unsupported_target because no built-in manifest declares a stop capability yet. */
-  TARGET_STOP: "target.stop",
 } as const;
 
 export type ActionId = (typeof ACTION)[keyof typeof ACTION];
@@ -162,7 +136,7 @@ export type ActionId = (typeof ACTION)[keyof typeof ACTION];
 export type ActionInputMap = {
   "media.image.describe": { expected_state_version?: string; image: string; mode?: "describe" | "ocr"; question?: string; request_id: string; };
   "runtime.ai_process.inspect": Record<string, never>;
-  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-app" | "claude-code" | "codebuddy-code" | "codex" | "codex-app" | "crush" | "dsh" | "grok-build" | "harness-doctor" | "hermes" | "kimi-code" | "mimo-code" | "muse-code" | "openclaw" | "opencode" | "pi" | "qoder-cn" | "qwen-code"; };
+  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-app" | "claude-code" | "codebuddy-code" | "codex" | "codex-app" | "crush" | "dsh" | "grok-build" | "harness-doctor" | "hermes" | "kimi-code" | "magpie" | "mimo-code" | "muse-code" | "openclaw" | "opencode" | "pi" | "qoder-cn" | "qwen-code"; };
   "runtime.aitool.uninstall": { expected_state_version?: string; tool_id: string; };
   "runtime.browser.install": { expected_state_version?: string; };
   "runtime.chat.inspect": Record<string, never>;
@@ -204,9 +178,9 @@ export type ActionInputMap = {
   "runtime.optimizer.inspect": Record<string, never>;
   "runtime.origin.inspect": { compiled?: boolean; task_id?: string; };
   "runtime.origin.save": { expected_state_version?: string; expected_version?: number; state: Record<string, unknown>; };
-  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
-  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
-  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush"; };
+  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush"; };
+  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush"; };
   "runtime.provider.save": { expected_state_version?: string; provider: Record<string, unknown>; };
   "runtime.readiness.inspect": Record<string, never>;
   "runtime.skillpack.inspect": Record<string, never>;
@@ -217,24 +191,11 @@ export type ActionInputMap = {
   "runtime.tool.launch": { expected_state_version?: string; tool_id: string; };
   "runtime.toolbox.inspect": Record<string, never>;
   "runtime.usage_local.inspect": { days?: number; };
-  "runtime.usb_genie.credential_remove": { expected_state_version?: string; target_id: string; target_root: string; };
-  "runtime.usb_genie.deploy": { credential_ref: "none" | "official_device"; expected_state_version?: string; target_id: string; target_root: string; zip_path?: string; };
-  "runtime.usb_genie.inspect": Record<string, never>;
-  "runtime.usb_genie.launch": { expected_state_version?: string; target_id: string; target_root: string; };
-  "runtime.usb_genie.verify": { target_id: string; target_root: string; };
   "runtime.uu_remote.inspect": Record<string, never>;
   "runtime.uu_remote.install": { expected_state_version?: string; };
   "runtime.workbench.inspect": { manifest?: Record<string, unknown>; overwrite_doc?: boolean; path?: string; template?: string; };
   "runtime.workbench.install": { expected_state_version?: string; manifest?: Record<string, unknown>; overwrite_doc?: boolean; path: string; template?: string; };
   "runtime.workbench.scan": { path: string; };
-  "target.config.get": { id: string; target_id: string; target_root: string; };
-  "target.config.set": { expected_state_version?: string; id: string; patch: Record<string, unknown>; target_id: string; target_root: string; };
-  "target.detect": { disk?: string; };
-  "target.list": Record<string, never>;
-  "target.manifest.list": Record<string, never>;
-  "target.start": { expected_state_version?: string; id: string; target_id: string; target_root: string; };
-  "target.status": { id: string; target_id: string; target_root: string; };
-  "target.stop": { expected_state_version?: string; id: string; target_id: string; target_root: string; };
 };
 
 export type ActionOutputMap = {
@@ -295,24 +256,11 @@ export type ActionOutputMap = {
   "runtime.tool.launch": Record<string, unknown>;
   "runtime.toolbox.inspect": Record<string, unknown>;
   "runtime.usage_local.inspect": Record<string, unknown>;
-  "runtime.usb_genie.credential_remove": Record<string, unknown>;
-  "runtime.usb_genie.deploy": Record<string, unknown>;
-  "runtime.usb_genie.inspect": Record<string, unknown>;
-  "runtime.usb_genie.launch": Record<string, unknown>;
-  "runtime.usb_genie.verify": Record<string, unknown>;
   "runtime.uu_remote.inspect": Record<string, unknown>;
   "runtime.uu_remote.install": Record<string, unknown>;
   "runtime.workbench.inspect": Record<string, unknown>;
   "runtime.workbench.install": Record<string, unknown>;
   "runtime.workbench.scan": Record<string, unknown>;
-  "target.config.get": Record<string, unknown>;
-  "target.config.set": Record<string, unknown>;
-  "target.detect": Record<string, unknown>;
-  "target.list": Record<string, unknown>;
-  "target.manifest.list": Record<string, unknown>;
-  "target.start": Record<string, unknown>;
-  "target.status": Record<string, unknown>;
-  "target.stop": Record<string, unknown>;
 };
 
 export type ActionRequest<A extends ActionId = ActionId> = {

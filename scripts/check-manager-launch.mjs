@@ -12,6 +12,12 @@ const tools = [
   { id: 'mimo-code', name: 'MiMo Code', installed: false, launch_cmd: 'mimo', launch_app: '', config_target: null, kind: 'standalone', target: 'https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code' },
   { id: 'codebuddy-code', name: 'CodeBuddy Code', installed: false, launch_cmd: 'codebuddy', launch_app: '', config_target: null, kind: 'standalone' },
   { id: 'qoder-cn', name: 'Qoder CN CLI', installed: false, launch_cmd: 'qodercn', launch_app: '', config_target: null, kind: 'standalone' },
+  { id: 'qwen-code', name: 'Qwen Code', installed: true, launch_cmd: 'qwen', launch_app: '', config_target: 'qwen', kind: 'standalone' },
+  { id: 'crush', name: 'Crush', installed: true, launch_cmd: 'crush', launch_app: '', config_target: 'crush', kind: 'standalone' },
+  { id: 'gemini-cli', name: 'Gemini CLI', installed: true, launch_cmd: 'gemini', launch_app: '', config_target: null, kind: 'standalone' },
+  { id: 'grok-build', name: 'Grok Build', installed: true, launch_cmd: 'grok', launch_app: '', config_target: null, kind: 'standalone' },
+  { id: 'harness-doctor', name: 'Harness Doctor', installed: true, launch_cmd: 'harness-doctor --target all --no-ports', launch_app: '', config_target: null, kind: 'utility' },
+  { id: 'cline', name: 'Cline CLI', installed: true, launch_cmd: 'cline', launch_app: '', config_target: null, kind: 'standalone' },
   ...['clawx'].map(id => ({ id, name: id, installed: false, launch_cmd: '', launch_app: id, config_target: null, kind: 'standalone' })),
 ].map(t => ({ action: 'install', target: '', ...t, launch_mode: t.launch_app ? 'gui_app' : 'embedded_pty', hidden: false, summary: t.name }));
 const browser = await chromium.launch();
@@ -27,8 +33,9 @@ try {
     localStorage.setItem('uking.launchIn', 'ucli');
     localStorage.setItem('uking.launchFolders', JSON.stringify({ v: 1, items: [{ path: folder, usedAt: Date.now() }], lastByTool: { hermes: folder } }));
     window.testCalls = [];
+    window.testTools = tools;
     const probe = { found: true, version: '1.2.3' };
-    const driver = { active: { claude: 'official', hermes: 'xiapan' }, claude_own_key: true, claude_model: null, codex_model: null, hermes_model: 'demo-model', discovered: [], clawx_installed: false };
+    const driver = { active: { claude: 'official', hermes: 'xiapan' }, claude_own_key: true, claude_model: null, codex_model: null, hermes_model: 'demo-model', discovered: [], clawx_installed: false, extra_installed: { qwen: true, crush: true } };
     const invoke = async (cmd, args) => {
       window.testCalls.push({ cmd, args });
       switch (cmd) {
@@ -73,6 +80,9 @@ try {
   await page.locator('h1', { hasText: '我的 AI' }).waitFor();
   assert.equal(await page.evaluate(() => window.testCalls.filter(c => c.args?.request?.action_id === 'runtime.tool.inspect').length), 0, 'Rendering launch buttons must not trigger a full health inspection');
   const tile = id => page.locator(`[data-testid="toolhub-tile"][data-tool-id="${id}"]`);
+  for (const id of ['qwen-code', 'crush', 'gemini-cli', 'grok-build', 'harness-doctor', 'cline']) {
+    await tile(id).waitFor({ state: 'visible' });
+  }
   // 收敛第 1 步（bd6d84231）起「可安装」区分成 推荐 / 更多 AI 工具 / 日常软件，后两组默认折叠：
   // 先展开，下面才点得到那些瓷砖（进多选后会平铺，但图标检查在多选之前）。
   for (const group of ['toolhub-group-more', 'toolhub-group-daily']) {
@@ -112,6 +122,7 @@ try {
   const calls = await page.evaluate(() => window.testCalls);
   assert.deepEqual(calls.filter(c => c.cmd === 'install_tool').map(c => c.args.toolId), ['mimo-code', 'codebuddy-code', 'qoder-cn']);
   assert.equal(calls.filter(c => c.cmd === 'apply_provider').length, 0, 'Batch install must preserve existing providers');
+  assert.ok(await page.evaluate(() => window.testTools.find(tool => tool.id === 'mimo-code')?.installed), 'MiMo must be detected after installation');
   mkdirSync('shots/manager-check', { recursive: true });
   await page.screenshot({ path: 'shots/manager-check/install-result.png' });
   await page.goto(url + '?pane=terminal&cwd=' + encodeURIComponent(folder) + '&cmd=hermes', { waitUntil: 'domcontentloaded' });
@@ -119,7 +130,7 @@ try {
   const pty = await page.evaluate(() => window.testCalls.filter(c => c.cmd === 'term_open'));
   assert.ok(pty.some(c => c.args.cwd === folder && c.args.initialCmd === 'hermes'), 'Terminal window must pass cwd and initial command to native PTY');
   assert.equal(errors.length, 0, errors.join('\n'));
-  console.log('PASS: official sign-in label, Hermes folder launch, desktop launch, ordered batch install, preserved config, terminal cwd and initial command');
+  console.log('PASS: restored installed agents visible, MiMo detected after install, official sign-in label, Hermes folder launch, desktop launch, ordered batch install, preserved config, terminal cwd and initial command');
 } catch (error) {
   console.error('UI errors:', errors);
   console.error((await page?.textContent('body').catch(() => '') || '').slice(0, 1400));

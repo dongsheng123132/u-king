@@ -46,6 +46,8 @@ export const TOOL_LABELS: Record<string, string> = {
   dsh: "DeepSeek Harness",
   pi: "pi",
   opencode: "OpenCode",
+  qwen: "Qwen Code",
+  crush: "Crush",
 };
 
 /** 试连 / 拉模型清单结果（Manager 也在用，单一定义搬到这里，Manager 改 import）。 */
@@ -245,6 +247,7 @@ export function CustomProviderModal({
     // 客户机上就是 `custom--`）。判据只留后端一份（宪法第 8 条）。
     onSave({
       ...value,
+      api_key: value.api_key?.trim() ?? "",
       id: value.id,
       builtin: false,
       builtin_recharge: false,
@@ -258,19 +261,16 @@ export function CustomProviderModal({
   /** 「仅保存」（B4）：现有保存路径原样，不测速。 */
   const saveOnly = () => submit();
 
-  /** 「验证并保存」（B4）：先探测 openai 端点，成功再保存；纯 Anthropic 配置无法测，直接保存。 */
+  /** Validate the configured protocol before saving, including Anthropic-only providers. */
   const verifyAndSave = async () => {
     if (!canSave || verifying) return;
-    if (noOpenaiBase) {
-      submit();
-      return;
-    }
     setVerifying(true);
     setProbe(null);
     const r = await invoke<TestResult>("probe_endpoint", {
-      baseUrl: value.openai_base.trim(),
-      apiKey: value.api_key ?? "",
+      baseUrl: noOpenaiBase ? value.anthropic_base?.trim() : value.openai_base.trim(),
+      apiKey: value.api_key?.trim() ?? "",
       model: value.model.trim(),
+      api: noOpenaiBase ? "anthropic" : "openai-chat",
     }).catch((e) => ({ ok: false, api: "openai", latency_ms: 0, reply: null, error: String(e) }) as TestResult);
     setProbe(r);
     setVerifying(false);
@@ -290,9 +290,7 @@ export function CustomProviderModal({
 
   const primaryLabel = verifying
     ? t("验证中…")
-    : noOpenaiBase
-      ? t("保存")
-      : isEdit
+    : isEdit
         ? t("验证并保存修改")
         : t("验证并保存");
 

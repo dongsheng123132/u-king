@@ -72,16 +72,23 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     website: "https://platform.moonshot.cn",
   },
   {
-    // pc-*** 客户手填的就是这家 —— 他填对了，说明有需求；模板库却没有，说明我们欠一项。
-    // ⚠️ 小米的 Key 分两种，base 必须跟 Key 配对：Token Plan 套餐（tp- 开头）走 token-plan-cn；
-    // 按量付费（sk- 开头）要把地址改成 https://api.xiaomimimo.com/v1。key_hint 里说清，别让人拿
-    // tp- 的 Key 打按量的域名 —— 那个 401 和「Key 错了」长得一模一样。
+    // 按量与 Token Plan 的凭据和端点独立；分开列出，避免正确 Key 被发到另一种计费地址。
+    // https://mimo.mi.com/docs/zh-CN/tokenplan/integration/tools-overview
     name: "小米 MiMo",
+    openai_base: "https://api.xiaomimimo.com/v1",
+    anthropic_base: "https://api.xiaomimimo.com/anthropic",
+    model: "mimo-v2.6-flash",
+    key_url: "https://platform.xiaomimimo.com",
+    key_hint: "按量付费 API Key（sk- 开头）；套餐 tp- / ttp- 请选「小米 MiMo（Token Plan）」",
+    website: "https://mimo.mi.com",
+  },
+  {
+    name: "小米 MiMo（Token Plan）",
     openai_base: "https://token-plan-cn.xiaomimimo.com/v1",
     anthropic_base: "https://token-plan-cn.xiaomimimo.com/anthropic",
-    model: "mimo-v2.5",
-    key_url: "https://mimo.mi.com",
-    key_hint: "Token Plan 套餐 tp- 开头；按量付费 sk- 开头需把地址换成 api.xiaomimimo.com/v1",
+    model: "mimo-v2.6-flash",
+    key_url: "https://platform.xiaomimimo.com",
+    key_hint: "Token Plan 套餐专用 Key（个人 tp- / 团队 ttp-）；按量 sk- 请选「小米 MiMo」；区域地址以控制台为准",
     website: "https://mimo.mi.com",
   },
   {

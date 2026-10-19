@@ -103,11 +103,7 @@ pub enum LaunchMode {
     /// 独立 GUI 应用（如 ClawX 桌面版）：Rust 直接 `launch_app` 拉起。
     GuiApp,
     /// 一次性/诊断类 CLI，没有专属内嵌终端 tab：Rust 走 `term_open_external` 开系统终端窗口。
-    ///
-    /// 2026-10-04 起 `TOOL_SPECS` 里没有工具落这一档了（唯一的用户 harness-doctor 随工具目录
-    /// 删减下架），保留这个变体是因为 `runtime.tool.*` 动作的 `mode` 取值、前端 `launch_mode`
-    /// 联合类型与 `lib.rs` 的启动分派都认它——协议面不跟着删，等有新的一次性诊断类工具再用。
-    #[allow(dead_code)]
+    /// Harness Doctor 使用这条路径运行只读检查。
     ExternalTerm,
     /// 普通 CLI，有专属内嵌终端 tab：前端拿 `launch_cmd` 自己去内嵌 xterm 跑。
     EmbeddedPty,
@@ -132,8 +128,7 @@ pub enum LaunchStatus {
     /// 终端里会跑到的那份可执行文件在，但跑 `--version` 就失败（平台二进制没装上、
     /// shebang 指向的 node 不在了……）。不由 `plan()` 判，由 [`apply_health`] 在 `Ready`
     /// 之上追加——`plan()` 保持纯函数，健康探测要真 spawn 进程，放在生产路径 `plan_for` 里。
-    /// 生产路径的健康探测只在 macOS 上跑（见 `plan_for`），非 macOS 平台这个变体只在单元测试里
-    /// 直接构造，不算死代码。
+    /// macOS 在启动计划里探测，Windows 对恢复识别的旧 Cline 安装按单项请求探测。
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Broken,
     RejectedCmd,
@@ -240,7 +235,18 @@ pub fn plan(
 /// 单个工具版本，`plan_all` 遍历 `TOOL_SPECS` 复用它。
 pub fn plan_for(tool_id: &str) -> Result<LaunchPlan, String> {
     let info = list_tools_matching(Some(tool_id));
-    plan_with_info(tool_id, info.first(), &crate::term::terminal_path_snapshot())
+    #[allow(unused_mut)]
+    let mut p = plan_with_info(tool_id, info.first(), &crate::term::terminal_path_snapshot())?;
+    // Existing Cline installs can contain only an npm shim with no native binary.
+    // Check this restored legacy entry only when explicitly inspected/launched;
+    // the catalog and full inspection must not spawn every installed CLI.
+    #[cfg(windows)]
+    if tool_id == "cline" && p.status == LaunchStatus::Ready {
+        if let Some(path) = p.resolved_path.clone() {
+            apply_health(&mut p, probe_health(&path), || None);
+        }
+    }
+    Ok(p)
 }
 
 fn plan_with_info(tool_id: &str, info: Option<&ToolInfo>, terminal_path: &str) -> Result<LaunchPlan, String> {
@@ -375,7 +381,7 @@ fn healthy_alternative(prog: &str, broken: &str) -> Option<String> {
 
 /// 纯函数：把健康探测结果叠到一个已判 `Ready` 的计划上。`alternative` 只在确实坏了时才调用
 /// （它要再 spawn 进程）。生产路径 `plan_for` 只在 macOS 上调用它；非 macOS 平台仅单元测试
-/// 直接调用，不算死代码。
+/// 直接调用；Windows 的旧 Cline 也在单项启动计划中使用。
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn apply_health(
     p: &mut LaunchPlan,
@@ -556,6 +562,45 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         route_tab: None,
     },
     ToolSpec {
+        id: "qwen-code", cmd: "qwen", config_target: Some("qwen"),
+        in_list_tools: true, in_checkup: Some("Qwen Code"),
+        probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "crush", cmd: "crush", config_target: Some("crush"),
+        in_list_tools: true, in_checkup: Some("Crush"),
+        probe_args: Some(&["run", crate::toolprobe::PROMPT]),
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "gemini-cli", cmd: "gemini", config_target: None,
+        in_list_tools: false, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "grok-build", cmd: "grok", config_target: None,
+        in_list_tools: false, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        id: "harness-doctor", cmd: "harness-doctor", config_target: None,
+        in_list_tools: false, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::ExternalTerm, route_tab: None,
+    },
+    ToolSpec {
+        id: "cline", cmd: "cline", config_target: None,
+        in_list_tools: false, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
+        // magpie：配置委托 CLI，有内嵌终端（magpie ls / magpie <agent> <model> …）。
+        // config_target=None、in_list_tools=false —— 不进「AI 设置」页（providers.rs 不写它）。
+        id: "magpie", cmd: "magpie", config_target: None,
+        in_list_tools: false, in_checkup: None, probe_args: None,
+        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+    },
+    ToolSpec {
         id: "uu-remote",
         cmd: "",
         config_target: None,
@@ -564,6 +609,18 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         probe_args: None,
         // list_tools() 里 launch_cmd=""、launch_app="uu-remote"（`launch_app` 先交给
         // `installer::launch_managed_desktop` 拉起），未装时 action=url 跳官网下载页。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
+    },
+    ToolSpec {
+        // WorkBuddy：闭源桌面应用，装没装走 desktop_app 注册表规则，不是 cmd 探测；
+        // action=url 跳官网下载页，launch_app="workbuddy" 交给 launch_managed_desktop 拉起。
+        id: "workbuddy",
+        cmd: "",
+        config_target: None,
+        in_list_tools: false,
+        in_checkup: None,
+        probe_args: None,
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
@@ -577,6 +634,20 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: None,
         probe_args: None,
         // list_tools() 里 launch_app="codex-app"（GUI，doLaunchApp 直接 invoke launch_app）。
+        launch_mode: LaunchMode::GuiApp,
+        route_tab: None,
+    },
+    #[cfg(windows)]
+    ToolSpec {
+        // OpenCodex 桌面工作台（独立 Tauri 产品）：随包内嵌的 u-cli 替代。
+        // include_bytes! 打进 u-king-mini.exe，首启 opencodex_bundle::ensure_opencodex() 释放到
+        // ~/.uking/opencodex/。仅 Windows 随包（Mac 是 .app 目录，不能单文件内嵌，暂不随包）。
+        id: "opencodex",
+        cmd: "",
+        config_target: None,
+        in_list_tools: true,
+        in_checkup: None,
+        probe_args: None,
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
@@ -1046,6 +1117,59 @@ fn catalog_with_probes(
             hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
+            id: "qwen-code".into(), name: "Qwen Code".into(), summary: "阿里通义开源的终端编程助手。支持使用自己的模型配置。".into(),
+            kind: "standalone".into(), installed: false, action: "install".into(),
+            target: "".into(), launch_cmd: "qwen".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
+            id: "crush".into(), name: "Crush".into(), summary: "Charm 出品的终端 AI 编程助手。支持使用自己的模型配置。".into(),
+            kind: "standalone".into(), installed: false, action: "install".into(),
+            target: "".into(), launch_cmd: "crush".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
+            id: "gemini-cli".into(), name: "Gemini CLI".into(), summary: "Google 的终端 AI 编程助手。登录和模型配置由工具自身管理。".into(),
+            kind: "standalone".into(), installed: false, action: "url".into(),
+            target: "https://github.com/google-gemini/gemini-cli".into(), launch_cmd: "gemini".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
+            id: "grok-build".into(), name: "Grok Build".into(), summary: "xAI 官方命令行编程助手，使用工具自身的账号登录和模型配置。".into(),
+            kind: "standalone".into(), installed: false, action: "install".into(),
+            target: "".into(), launch_cmd: "grok".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
+            id: "harness-doctor".into(), name: "Harness Doctor".into(), summary: "只读检查 AI 工具的版本、运行环境和配置。".into(),
+            kind: "utility".into(), installed: false, action: "install".into(),
+            target: "".into(), launch_cmd: "harness-doctor --target all --no-ports".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
+            id: "cline".into(), name: "Cline CLI".into(), summary: "识别现有 Cline CLI 安装；登录和配置由工具自身管理。".into(),
+            kind: "standalone".into(), installed: false, action: "url".into(),
+            target: "https://docs.cline.bot/cline-cli/overview".into(), launch_cmd: "cline".into(), launch_app: "".into(),
+            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
+            // magpie（yetone/magpie，MIT，Go 单二进制）：配置委托层——把 AI 工具的
+            // provider/模型配置交给 magpie 维护，U-King 只做下载/校验/落地/回滚与钱包计费。
+            // 只装 CLI（机器可调面），桌面版会跟 U-King 抢工作台、不上。config_target=None：
+            // magpie 不是 U-King 的驱动配置目标（providers.rs 不认识它，也不写它的配置）。
+            id: "magpie".into(),
+            name: "magpie".into(),
+            summary: "一个命令接管所有 AI 工具的模型与供应商配置。把易变的配置格式交给 magpie 维护，U-King 只负责装好它；维护助手遇到配置类难题可复制提示词给它。".into(),
+            kind: "utility".into(),
+            installed: false,
+            action: "install".into(),
+            target: "".into(),
+            launch_cmd: "magpie".into(),
+            launch_app: "".into(),
+            hidden: false,
+            config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+        ToolInfo {
             id: "claude-code".into(),
             name: "Claude Code CLI".into(),
             summary: "Anthropic 官方命令行编程助手。一键安装 + 国内驱动直连。".into(),
@@ -1229,6 +1353,22 @@ fn catalog_with_probes(
             hidden: false,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
+        ToolInfo {
+            // WorkBuddy（腾讯云职场 AI 助手）：闭源桌面应用，U-King 只检测 + 启动，
+            // 不装不配（用自家模型）。2026-10-04 零用量删减下架，本轮按用户要求
+            // 重新进目录，但**不进推荐名单**（主推仍是 claude/codex/hermes/pi/dsh）。
+            id: "workbuddy".into(),
+            name: "WorkBuddy".into(),
+            summary: "腾讯云职场 AI 助手，订阅制付费。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
+            kind: "standalone".into(),
+            installed: false,
+            action: "url".into(),
+            target: "https://www.codebuddy.cn/work/".into(),
+            launch_cmd: "".into(),
+            launch_app: "workbuddy".into(),
+            hidden: false,
+            config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
         // 核心工具：Claude Code CLI / Hermes CLI（命令行）
         // + Codex 桌面版 / ClawX 桌面版（图形）。Codex CLI、OpenClaw 官方 CLI 已标
         // hidden=true（上面），后端检测/切驱动/装机能力全保留，仅不在市场露出。
@@ -1264,6 +1404,24 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
     );
+    // OpenCodex 桌面工作台：随包内嵌（首启释放），仅 Windows。点「打开应用」直接拉起。
+    #[cfg(windows)]
+    v.insert(
+        3,
+        ToolInfo {
+            id: "opencodex".into(),
+            name: "OpenCodex 工作台".into(),
+            summary: "随 U-King 打包的极简文件夹式 CLI 终端工作台（u-cli 的替代）。打开选个文件夹就能用，模型走本机虾盘云配置。".into(),
+            kind: "standalone".into(),
+            installed: false,
+            action: "".into(),
+            target: "".into(),
+            launch_cmd: "".into(),
+            launch_app: "opencodex".into(),
+            hidden: false,
+            config_target: None, version: None, launch_mode: LaunchMode::None,
+        },
+    );
     // `config_target` 的唯一来源：按 id 从 TOOL_SPECS 取（见字段文档）。TOOL_SPECS 里查不到的
     // id（理论上不会有，`tool_specs_ids_match_list_tools_ids` 单测守着）保持 None，
     // 也就是「不接驱动切换」，宁可少露一个换模型入口，也不编一个 target。
@@ -1271,6 +1429,9 @@ fn catalog_with_probes(
     for t in v.iter_mut() {
         t.launch_mode = TOOL_SPECS.iter().find(|s| s.id == t.id).map_or(LaunchMode::None, |s| s.launch_mode);
         t.installed = installed(&t.id);
+        // Cline's installer remains retired. Preserve access to existing installs
+        // without suggesting an unverified installation flow to new users.
+        if t.id == "cline" && !t.installed { t.hidden = true; }
         t.version = version(&t.id);
         t.config_target = TOOL_SPECS
             .iter()
@@ -1293,6 +1454,12 @@ fn probe_tool(id: &str) -> Option<bool> {
         "codebuddy-code" => crate::installer::tool_installed("codebuddy"),
         "qoder-cn" => crate::installer::tool_installed("qodercn"),
         "kimi-code" => crate::installer::tool_installed("kimi"),
+        "qwen-code" => crate::installer::tool_installed("qwen"),
+        "crush" => crate::installer::tool_installed("crush"),
+        "gemini-cli" => crate::installer::tool_installed("gemini"),
+        "grok-build" => crate::installer::tool_installed("grok"),
+        "harness-doctor" => crate::installer::tool_installed("harness-doctor"),
+        "cline" => crate::installer::tool_installed("cline"),
         "claude-code" => crate::installer::tool_installed("claude"),
         "codex" => crate::installer::tool_installed("codex"),
         "openclaw" => crate::installer::tool_installed("openclaw") || openclaw_installed(),
@@ -1308,6 +1475,9 @@ fn probe_tool(id: &str) -> Option<bool> {
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
         "claude-app" => crate::installer::managed_desktop_installed("claude-app"),
         "codex-app" => crate::installer::codex_app_installed(),
+        "magpie" => crate::installer::tool_installed("magpie"),
+        "workbuddy" => crate::installer::managed_desktop_installed("workbuddy"),
+        "opencodex" => crate::opencodex_bundle::ensure_opencodex().is_ok(),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
         _ => return None,
     })
@@ -1356,6 +1526,37 @@ mod catalog_probe_tests {
             assert_eq!(tool.launch_mode, spec.launch_mode);
         }
         assert_eq!(tools.iter().filter(|t| t.installed).map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["kimi-code"]);
+    }
+
+    #[test]
+    fn installed_agents_remain_visible_and_allowed_to_launch() {
+        let catalog = catalog_with_probes(None, |_| true, |_| None);
+        for id in ["mimo-code", "codebuddy-code", "qoder-cn", "kimi-code", "qwen-code", "crush", "gemini-cli", "grok-build", "cline"] {
+            let tool = catalog.iter().find(|tool| tool.id == id).expect("registered agent missing from catalog");
+            assert!(tool.installed && !tool.hidden, "{id} must be visible after detection");
+            assert_eq!(tool.launch_mode, LaunchMode::EmbeddedPty, "{id} needs a terminal launcher");
+            assert!(crate::term::validate_cmd(&tool.launch_cmd), "{id} launcher is rejected by the terminal command guard");
+        }
+        let gemini = catalog.iter().find(|tool| tool.id == "gemini-cli").unwrap();
+        assert_eq!(gemini.action, "url", "Gemini's installer is not verified; offer the official guide");
+        assert!(gemini.config_target.is_none(), "do not claim Gemini model configuration support");
+        let empty = catalog_with_probes(None, |_| false, |_| None);
+        assert!(empty.iter().find(|tool| tool.id == "cline").unwrap().hidden);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn legacy_cli_health_distinguishes_working_and_broken_cmd_shims() {
+        let root = std::env::temp_dir().join(format!("uking-cmd-health-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let healthy = root.join("healthy.cmd");
+        let broken = root.join("broken.cmd");
+        std::fs::write(&healthy, "@echo off\r\necho 1.2.3\r\nexit /b 0\r\n").unwrap();
+        std::fs::write(&broken, "@echo off\r\necho missing native binary 1>&2\r\nexit /b 1\r\n").unwrap();
+        assert!(probe_health(&healthy.to_string_lossy()).is_none());
+        let error = probe_health(&broken.to_string_lossy()).expect("broken shim must fail health check");
+        assert!(error.contains("missing native binary"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     /// 「装了没」的判据表（`probe_tool`）必须覆盖 `TOOL_SPECS` 的每一个 id。
@@ -1641,6 +1842,7 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
         // openclaw 网页版不在这里启动（要 AppHandle 开内嵌网页窗）；前端按 id 拦截切到 openclaw 页。
         // 万一漏拦走到这里，给条清楚指引而不是「未知应用」。
         "openclaw-webui" => Err("请在「我的 AI」点 OpenClaw 网页版打开".into()),
+        "opencodex" => crate::opencodex_bundle::launch_opencodex(),
         other => Err(format!("未知应用 {other}")),
     }
 }

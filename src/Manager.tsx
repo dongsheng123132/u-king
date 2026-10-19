@@ -159,6 +159,8 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
   // 全部』里的隐藏项」：客户既看不见也配不准（用户 2026-08-24 点名要）。cc-switch 和
   // EchoBird 都把 opencode 当一等公民列着，我们不列纯粹是自己藏自己。
   { target: "opencode", label: "OpenCode", icon: "opencode" },
+  { target: "qwen", label: "Qwen Code", icon: "qwen" },
+  { target: "crush", label: "Crush", icon: "crush" },
 ];
 
 /** 配置目标 → 「我的 AI」里的工具 id，只为 `realInstalled()` 读安装态（渲染「未安装」徽章）。
@@ -172,6 +174,8 @@ const TARGET_TOOL_ID: Record<string, string> = {
   dsh: "dsh",
   pi: "pi",
   opencode: "opencode",
+  qwen: "qwen-code",
+  crush: "crush",
 };
 
 /**
@@ -357,6 +361,9 @@ function toolInstalledOf(driver: DriverStatus | null, target: string): boolean {
     // 那批照样填这张表（不填就会从「一键配好全部」弹窗里静默消失）。
     case "opencode":
       return !!driver.extra_installed?.opencode;
+    case "qwen":
+    case "crush":
+      return !!driver.extra_installed?.[target];
     default:
       return false;
   }
@@ -402,7 +409,6 @@ function modelOptionsFor(
 
 export function Manager({
   onGoCodex,
-  onGoAdvanced,
   onGoPage,
   onDeviceKeyChange,
   onRecharge,
@@ -413,7 +419,6 @@ export function Manager({
   renderAccount,
 }: {
   onGoCodex?: () => void;
-  onGoAdvanced?: () => void;
   /** 跳到某个全屏页（工具中心等）。App 那边照 tab id 渲染，这里只负责跳
    *  （同 Codex 专区那条的手法）。 */
   onGoPage?: (tab: string) => void;
@@ -2580,9 +2585,9 @@ export function Manager({
         <div className="px-4 pb-4 pt-1 space-y-5">
 
       {/* 桌面 App（ClawX / Hermes）状态条 —— 小白在「AI 设置」一眼看到装没装。
-          ClawX 已有上方 Tab 可一键切（apply_clawx_managed），「配置 →」直接跳那个 Tab；
-          Hermes 桌面版仍走进阶页「复制 Key 到设置」图文教程。 */}
-      {onGoAdvanced && (
+          ClawX/Hermes 都有上方 Tab 可一键切，「配置 →」直接跳那个 Tab。
+          2026-10-19：进阶页（Advanced.tsx）已删，不再依赖 onGoAdvanced。 */}
+      {(
         <section className="rounded-card border border-white/[0.08] bg-bg-1/60 px-5 py-4 shadow-card">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="text-[14px] font-semibold text-ink-0">{t("桌面 App（图形版）")}</h3>
@@ -2620,8 +2625,6 @@ export function Manager({
                       setActiveTab(app.goTab);
                       setSelected(null);
                       window.scrollTo({ top: 0, behavior: "smooth" });
-                    } else {
-                      onGoAdvanced?.();
                     }
                   }}
                   className="shrink-0 inline-flex items-center gap-1 px-3 h-8 rounded-lg border border-white/[0.10] text-[11px] text-ink-2 hover:text-accent hover:bg-white/[0.04] transition-colors"

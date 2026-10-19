@@ -6851,6 +6851,53 @@ pub(crate) fn removable_and_portable_search_paths_classified() -> Vec<(PathBuf, 
     Vec::new()
 }
 
+/// One raw drive slot as reported by Windows, before any feature-specific
+/// filtering (removable-only, ownership, etc).
+///
+/// **公共能力**（不是 U 盘工具盘私有）：装机发现 `scan_removable_and_portable_search_paths`
+/// 复用它来找外接盘/副固定盘上已装的工具。原住 `usb_genie.rs`，随 U 盘工具盘
+/// 删除（2026-10）时整体搬来这里 —— 只留这一份实现，不在删除模块里留副本，
+/// 也不让装机发现去依赖已删除的模块（CLAUDE.md 第 8/13 条：同一事实只查一次，
+/// 公共能力复用不复制）。
+#[derive(Clone, Debug)]
+pub(crate) struct DriveSlot {
+    pub root: PathBuf,
+    /// Raw `GetDriveTypeW` value: 2 = removable, 3 = fixed, others = remote/CD/ramdisk/unknown.
+    pub drive_type: u32,
+}
+
+pub(crate) const DRIVE_TYPE_REMOVABLE: u32 = 2;
+pub(crate) const DRIVE_TYPE_FIXED: u32 = 3;
+
+/// Enumerate every assigned drive letter and its raw type. Deliberately just
+/// `GetLogicalDrives` + `GetDriveTypeW` per letter — both are cheap local
+/// bitmask/registry-ish lookups, not filesystem I/O, so this alone cannot
+/// block on a disconnected mapped drive. Callers still must not call
+/// `Path::exists()` etc. on the returned roots without their own timeout.
+#[cfg(windows)]
+pub(crate) fn enumerate_drive_slots() -> Vec<DriveSlot> {
+    extern "system" {
+        fn GetLogicalDrives() -> u32;
+        fn GetDriveTypeW(root: *const u16) -> u32;
+    }
+    let mask = unsafe { GetLogicalDrives() };
+    (0..26)
+        .filter_map(|index| {
+            if mask & (1 << index) == 0 {
+                return None;
+            }
+            let root = format!("{}:\\", (b'A' + index as u8) as char);
+            let wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+            let drive_type = unsafe { GetDriveTypeW(wide.as_ptr()) };
+            Some(DriveSlot { root: PathBuf::from(root), drive_type })
+        })
+        .collect()
+}
+#[cfg(not(windows))]
+pub(crate) fn enumerate_drive_slots() -> Vec<DriveSlot> {
+    Vec::new()
+}
+
 /// `removable_and_portable_search_paths_classified` 的实际扫描体，跑在后台线程里。
 /// 只做纯文件存在性检查，绝不起进程；候选路径固定、深度 ≤2，绝不递归全盘。
 #[cfg(windows)]
@@ -6872,9 +6919,9 @@ fn scan_removable_and_portable_search_paths() -> Vec<(PathBuf, &'static str)> {
     let system_drive_root = std::env::var("SystemDrive")
         .map(|d| format!("{}\\", d.to_uppercase()))
         .unwrap_or_default();
-    for slot in crate::usb_genie::enumerate_drive_slots() {
-        let is_removable = slot.drive_type == crate::usb_genie::DRIVE_TYPE_REMOVABLE;
-        let is_secondary_fixed = slot.drive_type == crate::usb_genie::DRIVE_TYPE_FIXED
+    for slot in enumerate_drive_slots() {
+        let is_removable = slot.drive_type == DRIVE_TYPE_REMOVABLE;
+        let is_secondary_fixed = slot.drive_type == DRIVE_TYPE_FIXED
             && !slot
                 .root
                 .to_string_lossy()
@@ -6896,8 +6943,8 @@ fn scan_removable_and_portable_search_paths() -> Vec<(PathBuf, &'static str)> {
                 }
             }
         }
-        // usb_genie DEPLOY 造出来的工具盘布局：<root>/U-King/AI-Genie/runtime/current/
-        // 里放 picoclaw.exe（见 usb_genie.rs 的 genie/runtime/current 三个私有 helper）。
+        // U 盘工具盘布局（原 usb_genie DEPLOY 造出来的）：<root>/U-King/AI-Genie/runtime/current/
+        // 里放 picoclaw.exe。
         // U-King 自己造的 U 盘，U-King 必须认得出来 —— 这条不能漏。
         let genie_current = root
             .join("U-King")

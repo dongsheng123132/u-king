@@ -315,24 +315,6 @@ pub const FOOTPRINT_INSPECT: &str = "runtime.footprint.inspect";
 pub const TOOLBOX_INSPECT: &str = "runtime.toolbox.inspect";
 pub const HERMES_BROWSER_INSPECT: &str = "runtime.hermes_browser.inspect";
 pub const CLAWX_INSPECT: &str = "runtime.clawx.inspect";
-pub const USB_GENIE_INSPECT: &str = "runtime.usb_genie.inspect";
-pub const USB_GENIE_DEPLOY: &str = "runtime.usb_genie.deploy";
-pub const USB_GENIE_VERIFY: &str = "runtime.usb_genie.verify";
-pub const USB_GENIE_LAUNCH: &str = "runtime.usb_genie.launch";
-pub const USB_GENIE_CREDENTIAL_REMOVE: &str = "runtime.usb_genie.credential_remove";
-
-/// 便携 AI「目标运行时」统一入口（合流方案 P2，真相源 docs/uclaw-genie-convergence.md）。
-/// 🔴 注册表长度恒定 8：新增第三个 target **只加 manifest 不加 action** ——
-/// 这是 action-parity 静态可枚举/allowlist 编译期穷举不受冲击的关键，任何
-/// 「给某 target 单开一组 action」的提议直接否掉。
-pub const TARGET_LIST: &str = "target.list";
-pub const TARGET_DETECT: &str = "target.detect";
-pub const TARGET_START: &str = "target.start";
-pub const TARGET_STOP: &str = "target.stop";
-pub const TARGET_STATUS: &str = "target.status";
-pub const TARGET_CONFIG_GET: &str = "target.config.get";
-pub const TARGET_CONFIG_SET: &str = "target.config.set";
-pub const TARGET_MANIFEST_LIST: &str = "target.manifest.list";
 pub const UU_REMOTE_INSPECT: &str = "runtime.uu_remote.inspect";
 pub const OPTIMIZER_INSPECT: &str = "runtime.optimizer.inspect";
 /// 任务本象（2Origin 长期存储层）：这个任务**干到哪了、验过什么、下一步是什么**。
@@ -393,8 +375,7 @@ pub const READ_ACTIONS: &[&str] = &[
     COMMAND_GUARD_INSPECT, NETWORK_INSPECT, AI_PROCESS_INSPECT, CRASH_INSPECT, INSTANCE_INSPECT, STACK_INSPECT,
     MODEL_CATALOG_INSPECT, HARDWARE_INSPECT, CODEX_INSPECT, DRIVER_INSPECT,
     FOOTPRINT_INSPECT, TOOLBOX_INSPECT, HERMES_BROWSER_INSPECT,
-    CLAWX_INSPECT, USB_GENIE_INSPECT, USB_GENIE_VERIFY, UU_REMOTE_INSPECT,
-    TARGET_LIST, TARGET_DETECT, TARGET_STATUS, TARGET_MANIFEST_LIST,
+    CLAWX_INSPECT, UU_REMOTE_INSPECT,
     OPTIMIZER_INSPECT, ORIGIN_INSPECT, USAGE_LOCAL_INSPECT, DIAGNOSTICS_COLLECT,
     IDENTITY_INSPECT, CHAT_INSPECT, DOC_INSPECT, DOC_READ, JOURNAL_INSPECT,
     WORKBENCH_INSPECT, WORKBENCH_SCAN, LOCALLLM_INSPECT,

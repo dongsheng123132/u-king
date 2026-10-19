@@ -90,6 +90,69 @@ fn default_wire_api() -> String {
     WIRE_API.into()
 }
 
+fn is_mimo_host(host: &str) -> bool {
+    matches!(host, "api.xiaomimimo.com" | "token-plan-cn.xiaomimimo.com"
+        | "token-plan-sgp.xiaomimimo.com" | "token-plan-ams.xiaomimimo.com")
+}
+
+fn is_mimo_endpoint(base: &str) -> bool {
+    tauri::Url::parse(base).ok().is_some_and(|url| url.scheme() == "https"
+        && url.username().is_empty() && url.password().is_none()
+        && is_mimo_host(url.host_str().unwrap_or_default()))
+}
+
+fn provider_base(base: &str, anthropic: bool) -> String {
+    let base = base.trim().trim_end_matches('/');
+    let routes: &[&str] = if anthropic { &["/v1/messages", "/messages", "/v1"] }
+        else { &["/chat/completions", "/responses", "/models"] };
+    routes.iter().find_map(|route| base.strip_suffix(route))
+        .unwrap_or(base).trim_end_matches('/').to_string()
+}
+
+/// Pair credentials only with exact official MiMo endpoints. Custom gateways keep their URL.
+fn mimo_base_for_key(base: &str, key: &str) -> String {
+    let base = base.trim().trim_end_matches('/');
+    let Ok(mut url) = tauri::Url::parse(base) else { return base.into() };
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some()
+        || url.port().is_some() || url.query().is_some() || url.fragment().is_some()
+    {
+        return base.into();
+    }
+    let host = url.host_str().unwrap_or_default().to_string();
+    if !is_mimo_host(&host) { return base.into(); }
+    let plan = host != "api.xiaomimimo.com";
+    if !matches!(url.path(), "" | "/" | "/v1" | "/anthropic" | "/anthropic/v1") {
+        return base.into();
+    }
+    let key = key.trim();
+    let target = if key.starts_with("sk-") {
+        "api.xiaomimimo.com"
+    } else if key.starts_with("tp-") || key.starts_with("ttp-") {
+        if plan { host.as_str() } else { "token-plan-cn.xiaomimimo.com" }
+    } else {
+        return base.into();
+    };
+    if url.set_host(Some(target)).is_err() { return base.into(); }
+    url.as_str().trim_end_matches('/').to_string()
+}
+
+fn pair_provider_endpoints(p: &mut ProviderPreset, key: &str) {
+    p.openai_base = mimo_base_for_key(&provider_base(&p.openai_base, false), key);
+    if let Some(base) = p.anthropic_base.as_mut() {
+        *base = mimo_base_for_key(&provider_base(base, true), key);
+    }
+}
+
+fn provider_request_url(base: &str, key: &str, route: &str) -> String {
+    let base = mimo_base_for_key(&provider_base(base, route == "/v1/messages"), key);
+    let base = base.trim_end_matches('/');
+    if base.ends_with(route) { return base.into(); }
+    if route == "/v1/messages" && base.ends_with("/v1") {
+        return format!("{base}/messages");
+    }
+    format!("{base}{route}")
+}
+
 /// 唯一合法的 wire_api 值。集中成常量，免得下次又在某个分支里漏掉一处写回 "chat"。
 const WIRE_API: &str = "responses";
 
@@ -507,6 +570,8 @@ fn read_custom_providers() -> Vec<ProviderPreset> {
             let t = a.trim().to_string();
             *a = t;
         }
+        let key = p.api_key.clone();
+        pair_provider_endpoints(p, &key);
     }
     list
 }
@@ -585,6 +650,8 @@ pub fn save_custom_provider(mut p: ProviderPreset) -> Result<ProviderPreset, Str
         let t = a.trim().to_string();
         *a = t;
     }
+    let key = p.api_key.clone();
+    pair_provider_endpoints(&mut p, &key);
 
     let builtin_ids: Vec<String> = builtin_providers().into_iter().map(|x| x.id).collect();
 
@@ -1331,7 +1398,9 @@ pub fn apply_provider(
     model_override: Option<&str>,
     targets: &[String],
 ) -> Result<ApplyResult, String> {
-    let p = preset(provider_id)?;
+    let mut p = preset(provider_id)?;
+    let api_key = api_key.trim();
+    pair_provider_endpoints(&mut p, api_key);
     let mut r = ApplyResult {
         claude: None,
         codex: None,
@@ -6444,7 +6513,7 @@ pub struct ToolDiscovery {
 /// 2026-08-24：`opencode` 也挪去了 `LIST_TOOLS`（它现在有自己的 Tab）。同 pi 的处理，
 /// 见下面的 [`PROMOTED_TO_LIST_TOOLS`]。
 /// 2026-08-29：`cline` 上架即走 pi/opencode 同款路径。2026-09-08 下架，已从四处全部移除。
-pub const EXTRA_APPLY_TOOLS: &[&str] = &["qwen", "crush"];
+pub const EXTRA_APPLY_TOOLS: &[&str] = &[];
 
 /// 从 [`EXTRA_APPLY_TOOLS`] **升上去**到 [`LIST_TOOLS`]（有了自己的 Tab）、
 /// 但「一键配好全部」弹窗仍要靠 `extra_installed` / `active` 回显的工具。
@@ -6454,7 +6523,7 @@ pub const EXTRA_APPLY_TOOLS: &[&str] = &["qwen", "crush"];
 /// 一个工具从 `EXTRA_APPLY_TOOLS` 挪走 = **从弹窗里静默消失**（两处入口只剩一处）。
 /// pi 那次是在 `driver_status()` 里硬写了两行补上的；opencode 再来一次就会是第二份复制。
 /// 抽成数组之后，下一个工具升级只要在这里加一个词。
-pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode"];
+pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode", "qwen", "crush"];
 
 /// 🔴 **「一键配好全部」真正会配的全部目标 —— 动作契约 `targets` 那份 enum 的唯一真相源。**
 ///
@@ -7454,10 +7523,12 @@ pub fn test_provider(
     model_override: Option<&str>,
     api: &str,
 ) -> TestResult {
-    let p = match preset(provider_id) {
+    let mut p = match preset(provider_id) {
         Ok(p) => p,
         Err(e) => return test_err(api, 0, e),
     };
+    let api_key = api_key.trim();
+    pair_provider_endpoints(&mut p, api_key);
     let t0 = Instant::now();
 
     let r = match api {
@@ -7501,19 +7572,27 @@ pub fn test_provider(
 /// 于是填错的人只能盲存，然后在列表深处、甚至切换驱动失败时才见到第一条报错，
 /// 到那会儿报错已经离「你填错的那一格」隔了三层。存前能测，错误就死在弹窗里。
 pub fn probe_openai_endpoint(base: &str, api_key: &str, model: &str) -> TestResult {
+    probe_provider_endpoint(base, api_key, model, "openai-chat")
+}
+
+pub fn probe_provider_endpoint(base: &str, api_key: &str, model: &str, api: &str) -> TestResult {
     let base = base.trim().trim_end_matches('/');
     if base.is_empty() {
-        return test_err("openai", 0, "接口地址还没填".into());
+        return test_err(api, 0, "接口地址还没填".into());
     }
     if model.trim().is_empty() {
-        return test_err("openai", 0, "先填一个模型 id（或点「拉取」从清单里选）".into());
+        return test_err(api, 0, "先填一个模型 id（或点「拉取」从清单里选）".into());
     }
     let t0 = Instant::now();
-    let r = openai_chat(base, api_key, model.trim(), "请用一句中文确认你已就绪。");
+    let r = match api {
+        "anthropic" => anthropic_chat(base, api_key, model.trim(), "请用一句中文确认你已就绪。"),
+        "openai" | "openai-chat" => openai_chat(base, api_key, model.trim(), "请用一句中文确认你已就绪。"),
+        _ => return test_err(api, 0, format!("不支持的测试协议：{api}")),
+    };
     let ms = t0.elapsed().as_millis() as u64;
     match r {
-        Ok(reply) => TestResult { ok: true, api: "openai".into(), latency_ms: ms, reply: Some(reply), error: None },
-        Err(e) => test_err("openai", ms, e),
+        Ok(reply) => TestResult { ok: true, api: api.into(), latency_ms: ms, reply: Some(reply), error: None },
+        Err(e) => test_err(api, ms, e),
     }
 }
 
@@ -7529,13 +7608,20 @@ fn test_err(api: &str, ms: u64, e: String) -> TestResult {
 
 fn friendlier_text_error(e: String) -> String {
     let low = e.to_lowercase();
-    if low.contains("quota is not enough") || low.contains("token quota") || low.contains("insufficient") {
-        return "余额不足：当前虾盘云余额不够这次 Codex/聊天请求，请充值补足后再试。".to_string();
-    }
-    if low.contains("invalid token") || low.contains("unauthorized") || low.contains("401") {
-        return "Key 暂时不可用：通常是这台电脑的虾盘云 Key 还未充值开通，或配置的 Key 不正确。请充值后刷新，仍不行再重新接入驱动。".to_string();
-    }
-    e
+    let hint = if low.contains("quota is not enough") || low.contains("insufficient_quota")
+        || low.contains("insufficient balance") || low.contains("insufficient funds") {
+        "供应商额度不足：请到当前供应商检查余额、套餐和模型额度。"
+    } else if low.contains("http 401") || low.contains("unauthorized")
+        || low.contains("invalid token") || low.contains("invalid_api_key") {
+        "认证未通过：请核对 Key 与接口地址、套餐及区域是否配对。"
+    } else if low.contains("http 403") {
+        "供应商拒绝访问：请检查账号或模型权限、套餐及区域限制。"
+    } else if low.contains("http 404") {
+        "接口或模型不存在：请检查接口路径、协议和模型名称。"
+    } else if low.contains("http 429") {
+        "供应商限制了请求：请检查速率或套餐额度，稍后重试。"
+    } else { return e };
+    format!("{hint} 原因：{e}")
 }
 
 /// 动态拉取某 provider **真实可用的模型清单**（OpenAI 兼容 `GET {base}/models`）。
@@ -7560,21 +7646,23 @@ pub fn list_remote_models(provider_id: &str, api_key: &str) -> Result<Vec<String
 /// （表单没保存就没有 provider id，`list_remote_models` 那条走不了）。
 /// 逻辑就是原来 `list_remote_models` 的后半截，抽出来两边共用，不复制第二份。
 pub fn list_models_at(base_url: &str, api_key: &str) -> Result<Vec<String>, String> {
-    let base = base_url.trim().trim_end_matches('/').to_string();
+    let api_key = api_key.trim();
+    let base = mimo_base_for_key(&provider_base(base_url, false), api_key);
     if base.is_empty() {
         return Err("接口地址还没填".into());
     }
     let url = format!("{base}/models");
     let auth = format!("Authorization: Bearer {api_key}");
-    let mut args: Vec<&str> = vec!["-sS", "-m", "20"];
+    let mut args: Vec<&str> = vec!["-sS", "-m", "20", "-w", "\n%{http_code}"];
     if !api_key.trim().is_empty() {
         args.push("-H");
         args.push(&auth);
     }
     args.push(&url);
-    let out = curl_provider_endpoint(&url, &args)?;
-    let v: Value = serde_json::from_str(&out)
-        .map_err(|_| format!("模型清单响应不是 JSON：{}", snippet(&out, 200)))?;
+    let out = curl_provider_endpoint(&url, &args)
+        .map_err(|e| redact_header_secrets(&e, &[auth.clone()]))?;
+    let out = redact_header_secrets(&out, &[auth.clone()]);
+    let v = parse_provider_response(&out).map_err(friendlier_text_error)?;
     if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
         return Err(api_error(err));
     }
@@ -7836,12 +7924,12 @@ fn parse_key_issue(v: &Value) -> Result<DeviceKeyIssue, String> {
 /// PID 相同，会互相覆盖请求体，造成「A 卡片实际发的是 B 的模型」这种串位。
 static REQUEST_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-fn request_temp_path(kind: &str) -> PathBuf {
+fn request_temp_path(kind: &str) -> Result<PathBuf, String> {
     let sequence = REQUEST_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
+    Ok(crate::installer::http_temp_dir()?.join(format!(
         "uking-{kind}-{}-{sequence}.json",
         std::process::id()
-    ))
+    )))
 }
 
 #[cfg(test)]
@@ -7850,9 +7938,12 @@ mod request_temp_path_tests {
 
     #[test]
     fn concurrent_requests_cannot_share_a_body_file() {
-        let first = request_temp_path("req");
-        let second = request_temp_path("req");
-        assert_ne!(first, second, "每条请求必须有自己的临时正文文件");
+        crate::testsandbox::with_sandbox("provider-http-temp", &[], |root| {
+            let first = request_temp_path("req").unwrap();
+            let second = request_temp_path("req").unwrap();
+            assert_ne!(first, second, "每条请求必须有自己的临时正文文件");
+            assert!(first.starts_with(root.join(".uking").join("tmp").join("http")));
+        });
     }
 }
 
@@ -7861,7 +7952,7 @@ fn curl_post_json_status(
     headers: &[String],
     body: &Value,
 ) -> Result<(u16, Value), String> {
-    let tmp = request_temp_path("devreq");
+    let tmp = request_temp_path("devreq")?;
     std::fs::write(&tmp, serde_json::to_vec(body).unwrap())
         .map_err(|e| format!("写请求临时文件失败: {e}"))?;
     let data = format!("@{}", tmp.display());
@@ -7898,13 +7989,13 @@ fn curl_post_json_timeout(
     body: &Value,
     timeout_s: u32,
 ) -> Result<Value, String> {
-    let tmp = request_temp_path("req");
+    let tmp = request_temp_path("req")?;
     std::fs::write(&tmp, serde_json::to_vec(body).unwrap())
         .map_err(|e| format!("写请求临时文件失败: {e}"))?;
     let data = format!("@{}", tmp.display());
     let tmo = timeout_s.to_string();
 
-    let mut args: Vec<&str> = vec!["-sS", "-m", &tmo, "-X", "POST", url];
+    let mut args: Vec<&str> = vec!["-sS", "-m", &tmo, "-X", "POST", url, "-w", "\n%{http_code}"];
     for h in headers {
         args.push("-H");
         args.push(h);
@@ -7913,8 +8004,41 @@ fn curl_post_json_timeout(
 
     let out = curl_provider_endpoint(url, &args);
     let _ = std::fs::remove_file(&tmp);
-    let out = out?;
-    serde_json::from_str(&out).map_err(|_| format!("响应不是 JSON：{}", snippet(&out, 300)))
+    let out = out.map_err(|e| redact_header_secrets(&e, headers))?;
+    parse_provider_response(&redact_header_secrets(&out, headers))
+}
+
+fn redact_header_secrets(text: &str, headers: &[String]) -> String {
+    let mut text = text.to_string();
+    for header in headers {
+        let Some((name, value)) = header.split_once(':') else { continue };
+        if !matches!(name.trim().to_ascii_lowercase().as_str(), "authorization" | "api-key" | "x-api-key") {
+            continue;
+        }
+        let value = value.trim();
+        let secret = value.strip_prefix("Bearer ").unwrap_or(value).trim();
+        if !secret.is_empty() { text = text.replace(secret, "[REDACTED]"); }
+    }
+    text
+}
+
+/// Keep HTTP failures distinct from malformed responses, including HTML proxy error pages.
+fn parse_provider_response(out: &str) -> Result<Value, String> {
+    let (body, status) = out.rsplit_once('\n').ok_or("响应缺少 HTTP 状态码")?;
+    let status: u16 = status.trim().parse().map_err(|_| "响应的 HTTP 状态码无效")?;
+    let parsed = serde_json::from_str::<Value>(body.trim());
+    if !(200..300).contains(&status) {
+        let detail = parsed.as_ref().ok()
+            .and_then(|v| v.get("error").filter(|e| !e.is_null()))
+            .map(api_error)
+            .unwrap_or_else(|| snippet(body, 240));
+        return Err(format!("HTTP {status}：{detail}"));
+    }
+    let value = parsed.map_err(|_| format!("HTTP {status} 响应不是 JSON：{}", snippet(body, 200)))?;
+    if let Some(error) = value.get("error").filter(|e| !e.is_null()) {
+        return Err(format!("HTTP {status}：{}", api_error(error)));
+    }
+    Ok(value)
 }
 
 /// 调外部供应商时，GUI 双击启动没有终端继承的 `HTTPS_PROXY`，但 Windows 系统代理仍是
@@ -7923,6 +8047,13 @@ fn curl_post_json_timeout(
 ///
 /// 已由调用者显式设置代理环境时不覆盖：显式环境的优先级高于 Windows 注册表设置。
 fn curl_provider_endpoint(url: &str, args: &[&str]) -> Result<String, String> {
+    if tauri::Url::parse(url).ok().is_some_and(|url| matches!(url.host_str(),
+        Some("localhost" | "127.0.0.1" | "[::1]" | "::1")))
+    {
+        let mut local = vec!["--noproxy", "*", "--proxy", ""];
+        local.extend_from_slice(args);
+        return curl(&local);
+    }
     if is_xiapan_endpoint(url)
         || std::env::var_os("HTTPS_PROXY").is_some()
         || std::env::var_os("https_proxy").is_some()
@@ -7946,13 +8077,14 @@ fn curl_provider_endpoint(url: &str, args: &[&str]) -> Result<String, String> {
 }
 
 fn openai_chat(base: &str, key: &str, model: &str, prompt: &str) -> Result<String, String> {
-    openai_chat_full(base, key, model, None, prompt, 128)
+    openai_chat_full(base, key.trim(), model, None, prompt, 1024)
 }
 
 /// OpenAI Responses 格式实测（新版 Codex 唯一认的协议）。
 /// 不限 max_output_tokens：codex 系是推理模型，预算太小会在思考阶段被截断拿不到正文。
 fn openai_responses(base: &str, key: &str, model: &str, prompt: &str) -> Result<String, String> {
-    let url = format!("{}/responses", base.trim_end_matches('/'));
+    let key = key.trim();
+    let url = provider_request_url(base, key, "/responses");
     let body = json!({
         "model": model,
         "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
@@ -7992,19 +8124,25 @@ fn openai_chat_full(
     prompt: &str,
     max_tokens: u32,
 ) -> Result<String, String> {
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let key = key.trim();
+    let url = provider_request_url(base, key, "/chat/completions");
     let mut messages = Vec::new();
     if let Some(s) = system {
         messages.push(json!({"role": "system", "content": s}));
     }
     messages.push(json!({"role": "user", "content": prompt}));
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "max_tokens": max_tokens,
         "messages": messages
     });
+    if model.starts_with("mimo-") && is_mimo_endpoint(&url) {
+        if let Some(body) = body.as_object_mut() { body.remove("max_tokens"); }
+        body["max_completion_tokens"] = json!(max_tokens);
+        body["thinking"] = json!({"type": "disabled"});
+    }
     let v = curl_post_json(&url, &[format!("Authorization: Bearer {key}")], &body)?;
-    if let Some(err) = v.get("error") {
+    if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
         return Err(api_error(err));
     }
     let msg = v.pointer("/choices/0/message");
@@ -8128,21 +8266,25 @@ pub fn ai_diagnose(api_key: &str, context: &str) -> Result<Diagnosis, String> {
 }
 
 fn anthropic_chat(base: &str, key: &str, model: &str, prompt: &str) -> Result<String, String> {
-    let url = format!("{}/v1/messages", base.trim_end_matches('/'));
-    let body = json!({
+    let key = key.trim();
+    let url = provider_request_url(base, key, "/v1/messages");
+    let mut body = json!({
         "model": model,
-        "max_tokens": 128,
+        "max_tokens": 1024,
         "messages": [{"role": "user", "content": prompt}]
     });
+    if is_mimo_endpoint(&url) { body["thinking"] = json!({"type": "disabled"}); }
+    let auth = if is_mimo_endpoint(&url)
+    { format!("Authorization: Bearer {key}") } else { format!("x-api-key: {key}") };
     let v = curl_post_json(
         &url,
         &[
-            format!("x-api-key: {key}"),
+            auth,
             "anthropic-version: 2023-06-01".to_string(),
         ],
         &body,
     )?;
-    if let Some(err) = v.get("error") {
+    if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
         return Err(api_error(err));
     }
     // content 是块数组；推理型模型（如 deepseek-v4-pro）会先回 thinking/signature 块，
@@ -8163,10 +8305,15 @@ fn anthropic_chat(base: &str, key: &str, model: &str, prompt: &str) -> Result<St
 }
 
 fn api_error(err: &Value) -> String {
-    err.get("message")
+    let message = err.get("message")
         .and_then(|m| m.as_str())
         .map(String::from)
-        .unwrap_or_else(|| snippet(&err.to_string(), 200))
+        .unwrap_or_else(|| snippet(&err.to_string(), 200));
+    let codes: Vec<String> = ["code", "type"].iter()
+        .filter_map(|name| err.get(*name).filter(|v| !v.is_null()))
+        .map(|value| value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string()))
+        .filter(|s| !s.is_empty()).collect();
+    if codes.is_empty() { message } else { format!("{message} ({})", codes.join(", ")) }
 }
 
 fn snippet(s: &str, n: usize) -> String {
@@ -8177,6 +8324,179 @@ fn snippet(s: &str, n: usize) -> String {
         // 按字符边界截断，避免切坏 UTF-8
         let cut: String = t.chars().take(n).collect();
         format!("{cut}…")
+    }
+}
+
+#[cfg(test)]
+mod provider_connection_regression_tests {
+    use super::*;
+
+    #[test]
+    fn mimo_credentials_are_paired_for_both_protocols_and_plan_regions() {
+        for path in ["/v1", "/anthropic", "/anthropic/v1"] {
+            for host in ["api", "token-plan-cn", "token-plan-sgp", "token-plan-ams"] {
+                let base = format!("https://{host}.xiaomimimo.com{path}");
+                assert_eq!(mimo_base_for_key(&base, " sk-demo \n"), format!("https://api.xiaomimimo.com{path}"));
+                for key in ["tp-demo", "ttp-demo"] {
+                    let expected = if host == "api" { "token-plan-cn" } else { host };
+                    assert_eq!(mimo_base_for_key(&base, key), format!("https://{expected}.xiaomimimo.com{path}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn custom_gateway_and_lookalike_hosts_are_never_rewritten() {
+        for base in ["https://api.xiaomimimo.com.example.com/v1", "https://example.com/v1",
+            "http://api.xiaomimimo.com/v1", "https://api.xiaomimimo.com/custom/v1",
+            "https://user@api.xiaomimimo.com/v1", "https://api.xiaomimimo.com/v1?x=1"] {
+            assert_eq!(mimo_base_for_key(base, "tp-demo"), base);
+        }
+    }
+
+    #[test]
+    fn complete_urls_and_anthropic_v1_do_not_duplicate_routes() {
+        for (base, route, expected) in [
+            ("https://example.com/v1", "/v1/messages", "https://example.com/v1/messages"),
+            ("https://example.com/anthropic", "/v1/messages", "https://example.com/anthropic/v1/messages"),
+            ("https://example.com/v1/chat/completions", "/chat/completions", "https://example.com/v1/chat/completions"),
+            ("https://example.com/v1/responses", "/responses", "https://example.com/v1/responses"),
+        ] { assert_eq!(provider_request_url(base, "sk-demo", route), expected); }
+    }
+
+    #[test]
+    fn probe_save_and_apply_share_canonical_base_addresses() {
+        let mut provider = builtin_providers().into_iter().find(|p| p.id == "deepseek").unwrap();
+        provider.openai_base = "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into();
+        provider.anthropic_base = Some("https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages".into());
+        pair_provider_endpoints(&mut provider, "sk-demo");
+        assert_eq!(provider.openai_base, "https://api.xiaomimimo.com/v1");
+        assert_eq!(provider.anthropic_base.as_deref(), Some("https://api.xiaomimimo.com/anthropic"));
+        assert_eq!(provider_request_url(&provider.openai_base, "sk-demo", "/chat/completions"),
+            "https://api.xiaomimimo.com/v1/chat/completions");
+        assert_eq!(provider_base("https://example.com/anthropic/v1", true), "https://example.com/anthropic");
+    }
+
+    #[test]
+    fn error_null_and_success_bodies_are_accepted() {
+        let value = parse_provider_response("{\"error\":null,\"choices\":[]}\n200").unwrap();
+        assert!(value["error"].is_null());
+        assert!(parse_provider_response("{\"data\":[]}\n200").is_ok());
+    }
+
+    #[test]
+    fn http_and_upstream_codes_survive_without_a_false_wallet_diagnosis() {
+        for (status, expected) in [(400, "HTTP 400"), (401, "认证未通过"), (403, "拒绝访问"),
+            (404, "接口或模型"), (429, "限制了请求"), (500, "HTTP 500")] {
+            let raw = format!("{{\"error\":{{\"message\":\"demo failure\",\"code\":\"demo_code\",\"type\":\"demo_type\"}}}}\n{status}");
+            let error = friendlier_text_error(parse_provider_response(&raw).unwrap_err());
+            assert!(error.contains(expected), "{error}");
+            assert!(error.contains("demo_code") && error.contains("demo_type"));
+            assert!(!error.contains("虾盘") && !error.contains("充值"));
+        }
+        let html = parse_provider_response("<html>Bad Gateway</html>\n502").unwrap_err();
+        assert!(html.contains("HTTP 502") && html.contains("Bad Gateway"));
+        let quota = friendlier_text_error("HTTP 429: insufficient_quota".into());
+        assert!(quota.contains("供应商额度不足"));
+    }
+
+    #[test]
+    fn echoed_credentials_are_removed_from_error_responses() {
+        for header in ["Authorization: Bearer sk-demo", "x-api-key: sk-demo", "api-key: sk-demo"] {
+            let text = redact_header_secrets("HTTP 401: rejected sk-demo", &[header.into()]);
+            assert!(!text.contains("sk-demo"));
+            assert!(text.contains("[REDACTED]"));
+        }
+    }
+
+    fn fixture(response_body: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let thread = std::thread::spawn(move || {
+            let deadline = Instant::now() + std::time::Duration::from_secs(10);
+            let mut stream = loop {
+                if let Ok((stream, _)) = listener.accept() { break stream; }
+                assert!(Instant::now() < deadline, "fixture request timed out");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
+            stream.set_nonblocking(false).unwrap();
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+            loop {
+                let n = stream.read(&mut buffer).unwrap();
+                if n == 0 { break; }
+                request.extend_from_slice(&buffer[..n]);
+                let text = String::from_utf8_lossy(&request);
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let size = head.lines().find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok()).flatten()
+                    }).unwrap_or(0);
+                    if body.len() >= size { break; }
+                }
+            }
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}", response_body.len()).unwrap();
+            String::from_utf8(request).unwrap()
+        });
+        (format!("http://{address}"), thread)
+    }
+
+    #[test]
+    fn real_chat_request_trims_key_and_accepts_error_null() {
+        crate::testsandbox::with_sandbox("chat-http-fixture", &[], |_| {
+        let (base, server) = fixture(r#"{"error":null,"choices":[{"message":{"content":"OK"}}]}"#);
+        let reply = openai_chat(&format!("{base}/v1"), " sk-demo \n", "demo-model", "ping");
+        let request = server.join().unwrap();
+        assert_eq!(reply.unwrap(), "OK");
+        assert!(request.starts_with("POST /v1/chat/completions "));
+        assert!(request.to_ascii_lowercase().contains("authorization: bearer sk-demo\r\n"));
+        let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["model"], "demo-model");
+        });
+    }
+
+    #[test]
+    fn anthropic_only_provider_is_really_validated() {
+        crate::testsandbox::with_sandbox("anthropic-http-fixture", &[], |_| {
+        let (base, server) = fixture(r#"{"error":null,"content":[{"type":"text","text":"OK"}]}"#);
+        let result = probe_provider_endpoint(&format!("{base}/v1"), " sk-demo ", "demo-model", "anthropic");
+        let request = server.join().unwrap();
+        assert!(result.ok, "{:?}", result.error);
+        assert!(request.starts_with("POST /v1/messages "));
+        assert!(request.to_ascii_lowercase().contains("x-api-key: sk-demo\r\n"));
+        });
+    }
+
+    #[test]
+    #[ignore = "requires an explicitly authorized live MiMo credential"]
+    fn live_mimo_probe_uses_the_same_core_as_the_settings_form() {
+        let key = std::env::var("UKING_TEST_MIMO_KEY").expect("missing test credential");
+        let result = probe_openai_endpoint("https://token-plan-cn.xiaomimimo.com/v1", &key, "mimo-v2.6-flash");
+        assert!(result.ok, "{:?}", result.error);
+        assert!(result.reply.as_deref().is_some_and(|reply| !reply.trim().is_empty()));
+    }
+
+    #[test]
+    #[ignore = "requires explicit authorization to test saved provider credentials"]
+    fn live_saved_providers_use_the_same_core_as_the_settings_form() {
+        assert_eq!(std::env::var("UKING_TEST_SAVED_PROVIDERS").as_deref(), Ok("1"));
+        let mut seen = std::collections::HashSet::new();
+        let mut rows = Vec::new();
+        for p in read_custom_providers().into_iter().rev() {
+            if p.api_key.is_empty() || p.openai_base.is_empty()
+                || !seen.insert((p.openai_base.clone(), p.api_key.clone())) { continue; }
+            let result = probe_openai_endpoint(&p.openai_base, &p.api_key, &p.model);
+            let row = json!({"id":p.id, "name":p.name, "base":p.openai_base, "model":p.model,
+                "ok":result.ok, "latency_ms":result.latency_ms, "error":result.error});
+            println!("{}", row);
+            rows.push(row);
+        }
+        if let Ok(path) = std::env::var("UKING_TEST_PROVIDER_REPORT") {
+            std::fs::write(path, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+        }
     }
 }
 

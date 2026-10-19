@@ -15,8 +15,6 @@ mod browser;
 mod chatstore;
 mod cleanup;
 mod clawx;
-mod usb_genie;
-mod usb_targets;
 mod claude_proxy;
 mod codex;
 mod codex_proxy;
@@ -52,6 +50,7 @@ mod macopt;
 mod mcp;
 mod mcp_serve;
 mod officedoc;
+mod opencodex_bundle;
 mod origin;
 mod toolbox;
 mod providers;
@@ -1620,194 +1619,6 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             5_000,
             &["running"],
             |_, _, _| Ok(serde_json::json!({ "running": clawx::is_running() })),
-        ),
-        actions::readonly(
-            actions::USB_GENIE_INSPECT,
-            "Inspect removable USB AI Genie targets",
-            "List removable drives and only stat the U-King/AI-Genie paths; it never recursively scans a drive.",
-            5_000,
-            &["schema_version", "ready", "blockers", "targets", "state_version"],
-            usb_genie::action_inspect,
-        ),
-        // ———————— target.*：便携 AI 目标运行时统一入口（P2 收编） ————————
-        // 形状与语义 = usb_genie 同款（盘面探测、乐观并发、确认门禁全部继承）。
-        // v1 只有 picoclaw manifest；对它的 handler 全部委托 usb_genie 现有实现，
-        // 零行为变化。target.stop / target.config.* 的注册与实现属 P3
-        //（U-Claw http-api transport 落地时一并提供），先注册桩位拒绝执行，
-        // 让 action-parity 清单现在就锁死 8 个、UI 可以开始按能力面渲染。
-        actions::readonly(
-            actions::TARGET_LIST,
-            "List portable AI targets",
-            "List every removable-disk portable AI target (disk × built-in manifest), including installed state and per-target capabilities. Reads only; never recursively scans a drive.",
-            5_000,
-            &["targets", "ready", "blockers", "state_version"],
-            |_, _, _| usb_targets::action_target_list(),
-        ),
-        actions::readonly_req(
-            actions::TARGET_DETECT,
-            "Detect portable AI targets on disks",
-            "Snapshot removable disks and report which built-in target manifests are detected or installed on each. Reads only.",
-            5_000,
-            serde_json::json!({ "disk": { "type": "string", "description": "Optional drive root to scope the snapshot to (e.g. F:\\\\). Omit to snapshot every removable disk." } }),
-            &[],
-            &["targets", "ready", "blockers", "state_version"],
-            |_, input, _| usb_targets::action_target_detect(&input),
-        ),
-        actions::readonly_req(
-            actions::TARGET_MANIFEST_LIST,
-            "List built-in target manifests",
-            "Read the built-in target manifest table shipped inside U-King (id, kind, capabilities, config transport). Never reads disks; U-disk files are never trusted as manifests.",
-            5_000,
-            serde_json::json!({}),
-            &[],
-            &["manifests"],
-            |_, _, _| usb_targets::action_manifest_list(),
-        ),
-        actions::write(
-            actions::TARGET_START,
-            "Start a portable AI target",
-            "Launch one installed portable AI target in its own console. Verifies the target immediately before launch and refuses a same-name executable elsewhere; duplicate launch is detected and reported instead of stacking processes.",
-            60_000,
-            "required",
-            serde_json::json!({
-                "id": { "type": "string", "minLength": 1, "description": "Target manifest id from target.manifest.list (e.g. picoclaw)." },
-                "target_id": { "type": "string", "minLength": 1, "description": "Stable removable-volume identity from target.list; a drive letter alone is not trusted." },
-                "target_root": { "type": "string", "minLength": 1 }
-            }),
-            &["id", "target_id", "target_root"],
-            &["changed", "launched", "state_version"],
-            usb_targets::action_target_start,
-            Some(usb_genie::action_state_version),
-        ),
-        actions::readonly_req(
-            actions::TARGET_STATUS,
-            "Read one portable AI target's status",
-            "Verify one installed target on its disk: runtime files, pinned version, config shape and credential consistency. No model request is made.",
-            30_000,
-            serde_json::json!({
-                "id": { "type": "string", "minLength": 1 },
-                "target_id": { "type": "string", "minLength": 1 },
-                "target_root": { "type": "string", "minLength": 1 }
-            }),
-            &["id", "target_id", "target_root"],
-            &["ok", "checks", "blockers", "state_version"],
-            |_, input, progress| usb_targets::action_target_status("", input, progress),
-        ),
-        // —— P3 桩位：target.stop / target.config.get / target.config.set ——
-        // 注册即进 parity 清单（锁定 8 个），但 picoclaw 没有对应能力（它的
-        // launch 去重靠进程探测，停止交给用户关控制台），U-Claw 的 http-api
-        // transport 属 P3。桩位 handler 一律明确拒绝，不虚报、不静默成功。
-        actions::write(
-            actions::TARGET_STOP,
-            "Stop a portable AI target (not available yet)",
-            "Reserved for the next phase: stop one running portable AI target. Currently refuses with unsupported_target because no built-in manifest declares a stop capability yet.",
-            10_000,
-            "required",
-            serde_json::json!({
-                "id": { "type": "string", "minLength": 1 },
-                "target_id": { "type": "string", "minLength": 1 },
-                "target_root": { "type": "string", "minLength": 1 }
-            }),
-            &["id", "target_id", "target_root"],
-            &["changed", "stopped"],
-            |_, input, _| usb_targets::action_target_unsupported(&input),
-            None,
-        ),
-        actions::readonly_req(
-            actions::TARGET_CONFIG_GET,
-            "Read a portable AI target's configuration (not available yet)",
-            "Reserved for the next phase: read one target's configuration through its manifest-declared transport. Currently refuses with unsupported_target.",
-            10_000,
-            serde_json::json!({
-                "id": { "type": "string", "minLength": 1 },
-                "target_id": { "type": "string", "minLength": 1 },
-                "target_root": { "type": "string", "minLength": 1 }
-            }),
-            &["id", "target_id", "target_root"],
-            &["config"],
-            |_, input, _| {
-                let _ = usb_targets::action_target_unsupported(&input)?;
-                Err("unsupported_target: target.config.get 属于 P3（U-Claw 接入阶段）".to_string())
-            },
-        ),
-        actions::write(
-            actions::TARGET_CONFIG_SET,
-            "Write a portable AI target's configuration (not available yet)",
-            "Reserved for the next phase: write one target's configuration through its manifest-declared transport (http-api for openclaw; the shell never writes openclaw.json directly). Currently refuses with unsupported_target.",
-            30_000,
-            "required",
-            serde_json::json!({
-                "id": { "type": "string", "minLength": 1 },
-                "target_id": { "type": "string", "minLength": 1 },
-                "target_root": { "type": "string", "minLength": 1 },
-                "patch": { "type": "object", "description": "Configuration fields to write, keyed by the target's config field schema." }
-            }),
-            &["id", "target_id", "target_root", "patch"],
-            &["changed"],
-            |_, input, _| {
-                let _ = usb_targets::action_target_unsupported(&input)?;
-                Err("unsupported_target: target.config.set 属于 P3（U-Claw 接入阶段）".to_string())
-            },
-            None,
-        ),
-        actions::with_progress(actions::write(
-            actions::USB_GENIE_DEPLOY,
-            "Build or refresh a USB AI Genie",
-            "Install U-King's pinned PicoClaw runtime into the selected target. It only writes the U-King/AI-Genie subtree and never formats or scans unrelated files. API keys are referenced, never accepted as input or returned.",
-            600_000,
-            "required",
-            serde_json::json!({
-                "target_id": { "type": "string", "minLength": 1, "description": "Stable removable-volume identity returned by inspect; a drive letter alone is not trusted." },
-                "target_root": { "type": "string", "minLength": 1 },
-                "credential_ref": { "type": "string", "enum": ["none", "official_device"], "description": "none creates a credential-free first install and preserves an existing credential during updates; official_device writes the existing U-King device wallet." },
-                "zip_path": { "type": "string", "minLength": 1, "description": "Optional verified local PicoClaw archive for offline repair or manufacturing. When omitted, U-King downloads the pinned archive into its host cache and verifies its exact SHA-256 before touching the selected U disk." }
-            }),
-            &["target_id", "target_root", "credential_ref"],
-            &["changed", "target_root", "picoclaw_version", "sha256_ok", "credential_mode", "state_version"],
-            |action_id, input, progress| {
-                // Composition root resolves the optional device-wallet reference;
-                // usb_genie itself remains a portable-runtime adapter with no
-                // dependency on the wallet implementation.
-                let key = if input.get("credential_ref").and_then(serde_json::Value::as_str) == Some("official_device") {
-                    Some(device::get_device_key()?.key)
-                } else {
-                    None
-                };
-                usb_genie::action_deploy_with_device_key(action_id, input, progress, key)
-            },
-            Some(usb_genie::action_state_version),
-        )),
-        actions::readonly_req(
-            actions::USB_GENIE_VERIFY,
-            "Verify a USB AI Genie target",
-            "Verify only the pinned runtime, launcher and generated configuration. No model request is made.",
-            30_000,
-            serde_json::json!({ "target_id": { "type": "string", "minLength": 1 }, "target_root": { "type": "string", "minLength": 1 } }),
-            &["target_id", "target_root"],
-            &["ok", "checks", "blockers", "state_version"],
-            usb_genie::action_verify,
-        ),
-        actions::write(
-            actions::USB_GENIE_LAUNCH,
-            "Open USB AI Genie",
-            "Open only this target's ASCII launcher in a new interactive console.",
-            60_000,
-            "required",
-            serde_json::json!({ "target_id": { "type": "string", "minLength": 1 }, "target_root": { "type": "string", "minLength": 1 } }),
-            &["target_id", "target_root"],
-            &["changed", "launched", "state_version"],
-            usb_genie::action_launch,
-            Some(usb_genie::action_state_version),
-        ),
-        actions::destructive(
-            actions::USB_GENIE_CREDENTIAL_REMOVE,
-            "Remove USB AI Genie credentials",
-            "Remove only this target's PicoClaw credential file. This cannot revoke a copied or lost key; rotate it with the provider.",
-            10_000,
-            serde_json::json!({ "target_id": { "type": "string", "minLength": 1 }, "target_root": { "type": "string", "minLength": 1 } }),
-            &["target_id", "target_root"],
-            &["changed", "removed", "state_version"],
-            usb_genie::action_credential_remove,
         ),
         actions::readonly(
             actions::LOCALLLM_INSPECT,
