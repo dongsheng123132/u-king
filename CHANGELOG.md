@@ -5,6 +5,12 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 1.4.9（2026-10-21）
+
+- **技能包再减一档**：AI 工具目录里**只留 3 个默认包**（aigc / office-read / workbench），其余 5 个（ppt / docx / xlsx / cad / office-edit）只保留在 `~/.uking/skills`，供软件自己的「出 PPT / 出 Word / 出 Excel / 出 CAD 图纸」动作调用 —— 那些动作不经过 AI 上下文，不花 token。老机器上多铺的包会在启动同步时从各 AI 工具目录精确清掉。
+- **客户自己装的包不会被删**：新增 `~/.uking/skills-user.json` 记录手动安装的包，启动清理时跳过。
+- 效果：AI 每轮要读的技能说明从 8 份降到 3 份（约再省 1.6 万字符/轮）。
+- 版本号四处同步到 1.4.9。
 ## 1.4.8（2026-10-21）
 
 - **技能包做减法（14 → 8）**：下线 `uking-vision` / `uking-teamwork` / `uking-web` / `uking-mail` / `uking-browse` / `uking-pdf` 六个包；老机器升级后由 `prune_retired()` 从各工具落点精确清掉（只认这几个名字）。保留：workbench / aigc / ppt / docx / xlsx / office-read / office-edit / cad（CAD 与 office 三件套是应用内动作直接调用的脚本，必须留）。少 6 份 SKILL.md = 每轮 AI 上下文少约 2.2 万字符。

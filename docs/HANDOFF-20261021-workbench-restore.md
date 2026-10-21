@@ -160,12 +160,12 @@
 
 - 提交：`d1eeb520a release: 1.4.7 —— 工作台回原样、工具目录收敛到 11 个、界面减法、官方 logo、交接兜底`（54 文件，+1255/−2077），已合入 `main` 并推送；tag `v1.4.7` 已推。
 - Mac 包：GitHub Actions `build-mac`（run 39586540453，headSha=d1eeb520a）成功，产物 `U-King-Mac.zip` + `U-King-Mac.dmg` + `mac-release-proof.json`（ad-hoc 签名，version 1.4.7）。
-- 发布：`node scripts/release-uking.mjs publish --config shots/release-147-config.json` 成功（中途两次因长途 scp "Connection reset" 失败，给 `~/.ssh/config` 的 singapore 段补了 `IPQoS 0x00 / Compression yes / ServerAliveInterval 15` 后一次通过；原配置备份在 `~/.ssh/config.bak-20261021-sg`）。
+- 发布：`node scripts/release-uking.mjs publish --config shots/release-147-config.json` 成功（中途两次因长途 scp "Connection reset" 失败，给 `~/.ssh/config` 的海外镜像主机段补了 `IPQoS 0x00 / Compression yes / ServerAliveInterval 15` 后一次通过；原配置备份在 `~/.ssh/config.bak-20261021-sg`）。
 - 线上核验：
   - `https://u-claw.org.cn/uking/version.json` → **1.4.7**（2026-10-21）
   - `https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/version.json` → **1.4.7**
   - 下载：`U-King.exe` 13,632,000 B、`U-King-Mac.zip` 10,035,822 B、`U-King-Setup.exe` 5,169,240 B、`U-King-Mac.dmg` 10,719,641 B（与本地产物逐字节一致）
-  - 热下发：装机清单 **v66**、模型目录 **v3**（cn 与 singapore 均已是新版）
+  - 热下发：装机清单 **v66**、模型目录 **v3**（国内与海外镜像均已是新版）
 - 发布产物与 manifest 留在 `shots/release-1.4.7/`（gitignore，不入库）。
 
 ## 第十轮：1.4.8 发布（2026-10-21 晚）
@@ -174,7 +174,7 @@
 
 | 项 | 落点 |
 | --- | --- |
-| 官网 GitHub | `website/index.html` 页脚新增「GitHub 开源仓库」→ github.com/dongsheng123132/u-king（线上已核验 1 处命中）；已 scp 到 guangzhou + singapore 两处站点目录（带 `.uking-backup/site-*` 备份） |
+| 官网 GitHub | `website/index.html` 页脚新增「GitHub 开源仓库」→ github.com/dongsheng123132/u-king（线上已核验 1 处命中）；已 scp 到国内 + 海外两处站点目录（带 `.uking-backup/site-*` 备份） |
 | 官网动态 | `whats-new.json` / `whats-new.html` 置顶 1.4.8 说明；`version.json` 顶部 1.4.8、1.4.7 进 history |
 | 技能包减法 | 14 → 8：下线 vision / teamwork / web / mail / browse / pdf（`skillpack.rs` 删 const + PACKS 条目，新增 `RETIRED_PACKS` + `prune_retired()` 在启动同步时精确清理老机器；CAD 保留——`doc.rs` 的 CAD 动作直接调它的脚本）。实测本机清掉 **31 个**已下线包目录（~/.claude/skills 等 4+ 个落点），`~/.claude/skills` 里 6 个包已消失 |
 | 对话成本 | `historyTrim` 硬上界 12 万 → **4 万字符**（约 1/3）；`MaintenanceAssistant` 之前**全量重发**历史，现在也走 `trimHistoryForPayload`。技能包少 6 份 SKILL.md ≈ 每轮上下文少 **21,920 字符**（实测 skills/*/SKILL.md 累计 59,182 → 37,262） |

@@ -546,6 +546,11 @@ pub fn uninstall_pack(name: &str) -> Result<Vec<String>, String> {
         return Err(format!("不认识这个技能包：{name}（只能卸载 U-King 自带的那几个）"));
     }
     let mut removed = Vec::new();
+    let mut user = user_installed();
+    if user.iter().any(|u| u == name) {
+        user.retain(|u| u != name);
+        set_user_installed(&user);
+    }
     for d in pack_dirs_on_disk(name) {
         match std::fs::remove_dir_all(&d) {
             Ok(()) => removed.push(d.display().to_string()),
@@ -608,6 +613,56 @@ pub fn prune_retired() -> usize {
 /// 🔴 老客户升级后**会变少**：已下线的包由 [`prune_retired`] 清掉，其余非默认包保持原样。
 const DEFAULT_PACKS: &[&str] = &["uking-aigc", "uking-office-read", "uking-workbench"];
 
+/// 用户手动装过的包（「技能包」页点装）。启动同步时**不能把它们删掉** ——
+/// 客户自己装的东西被我们每次启动清掉，比多装坏得多。
+const USER_PACKS_FILE: &str = "skills-user.json";
+
+fn user_installed() -> Vec<String> {
+    let p = uking_home().join(USER_PACKS_FILE);
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_default()
+}
+
+fn set_user_installed(list: &[String]) {
+    let dir = uking_home();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(s) = serde_json::to_string(list) {
+        let _ = std::fs::write(dir.join(USER_PACKS_FILE), s);
+    }
+}
+
+/// 2026-10-21 做减法（客户口径「不需要那些乱七八糟的技能」）：
+/// **AI 工具目录里只留 DEFAULT_PACKS**；其余包只在 `~/.uking/skills` 里供程序自己的
+/// 动作（出 Word/PPT/Excel、CAD 出图…）调用 —— 那些动作不经过 AI 上下文，不花钱。
+///
+/// 判据：pack_names() 里、但不是默认包、也不是客户自己装过的 → 从这个落点删掉。
+/// 只删精确包名，绝不 `uking-*` 泛匹配（同 uninstall_pack 的纪律）。
+fn prune_non_default() -> usize {
+    let keep: Vec<&str> = DEFAULT_PACKS.to_vec();
+    let user = user_installed();
+    let mut removed = 0usize;
+    for parent in scan_parents() {
+        for name in pack_names() {
+            if keep.contains(&name) || user.iter().any(|u| u == name) {
+                continue;
+            }
+            let d = parent.join(name);
+            if !d.is_dir() {
+                continue;
+            }
+            match std::fs::remove_dir_all(&d) {
+                Ok(()) => {
+                    removed += 1;
+                    crate::ulog::write("skillpack", &format!("非默认技能包已从 AI 目录清掉: {}", d.display()));
+                }
+                Err(e) => crate::ulog::write("skillpack", &format!("清理非默认包 {} 失败: {e}", d.display())),
+            }
+        }
+    }
+    removed
+}
 /// 把技能包拷进**已装**的 AI 工具各自的 skills 目录。
 /// 这样客户「只点了复制说明、没手动拷文件夹」也能让 AI 直接发现脚本（治路径发现痛点）。
 /// best-effort：某个失败不影响其它。目录表见 [`skill_targets`]。
@@ -618,6 +673,10 @@ pub fn install_into_tools() -> Vec<(String, String, bool)> {
     let pruned = prune_retired();
     if pruned > 0 {
         crate::ulog::write("skillpack", &format!("启动同步：清掉 {pruned} 个已下线技能包目录"));
+    }
+    let slimmed = prune_non_default();
+    if slimmed > 0 {
+        crate::ulog::write("skillpack", &format!("启动同步：AI 目录只留默认包，清掉 {slimmed} 个非默认包目录"));
     }
     crate::ulog::section("skillpack", "把 AI 技能包装进已装的工具");
     for t in skill_targets() {
@@ -668,6 +727,14 @@ pub fn install_pack(name: &str) -> Result<Vec<String>, String> {
         match write_pack(pack, &parent) {
             Ok((p, _)) => done.push(p),
             Err(e) => crate::ulog::write("skillpack", &format!("装 {name} 到 {} 失败: {e}", parent.display())),
+        }
+    }
+    // 记下「客户自己装的」：启动同步做减法时不能把它删掉。
+    if !done.is_empty() {
+        let mut user = user_installed();
+        if !user.iter().any(|u| u == name) {
+            user.push(name.to_string());
+            set_user_installed(&user);
         }
     }
     Ok(done)
