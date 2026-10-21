@@ -1,5 +1,8 @@
 /** 英文覆盖字典 · OpenCodex / U-Workspace 工作台（opencodex/*）。 */
 export const workbench: Record<string, string> = {
+  // ---- 工作台面板精简（2026-10-21）：产出文件改走系统默认程序 ----
+  "打开失败：{e}": "Failed to open: {e}",
+  "用系统播放器打开": "Open with the system player",
   // 工作台不再绑死虾盘云（2026-08-21）：没 Key 的两种情况要分开说 ——
   // 「等一下」和「你得去填」是完全不同的两件事。
   "{name} 还没填 API Key —— 去「AI 设置 → 供应商库」补上":
@@ -63,7 +66,6 @@ export const workbench: Record<string, string> = {
   "在新终端打开 OpenClaw CLI": "Open OpenClaw CLI in a new terminal",
 
   // SessionList.tsx
-  "创建 worktree 失败: {e}": "Failed to create worktree: {e}",
   "新对话": "New chat",
   "展开会话栏": "Expand session bar",
   // 让步链（lib/yieldChain.ts）：终端排不开 TUI 时自动收起，窗口拉宽自己还原
@@ -93,9 +95,7 @@ export const workbench: Record<string, string> = {
     "Click again: delete all sessions in this project (won't delete the folder on disk)",
   "删除整个项目（移除其下所有会话，不动磁盘文件夹）":
     "Delete the whole project (removes all its sessions, leaves the disk folder untouched)",
-  "新建 worktree（并行在另一个分支上工作）": "New worktree (work on another branch in parallel)",
   "在此项目新开一个 AI 会话": "Open a new AI session in this project",
-  "分支名（回车确认）": "Branch name (Enter to confirm)",
   "再点一次确认关闭（不会删除磁盘文件夹）": "Click again to confirm closing (won't delete the disk folder)",
   "关闭会话": "Close session",
   "插件（即将上线）": "Plugins (coming soon)",

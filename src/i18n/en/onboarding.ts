@@ -1,5 +1,10 @@
 /** 英文覆盖字典 · 新手引导 + 装机向导（Guide.tsx / Wizard.tsx）。 */
 export const onboarding: Record<string, string> = {
+  // ---- Wizard：「让 AI 来安装」（2026-10-21）----
+  "让 AI 来安装": "Let AI install",
+  "勾选后不跑自动安装，直接把脱敏的安装任务交给维护助手": "When checked, skip the automatic install and hand a redacted install task to the Maintenance Assistant",
+  "好，安装任务已整理好（不含 Key），正在打开维护助手——看一眼没问题自己按发送即可。":
+    "Done — the install task is packaged (no keys included). Opening the Maintenance Assistant; review it and press Send yourself.",
   // ---------------- Guide.tsx ----------------
 
   // CodeBlock / copy toasts

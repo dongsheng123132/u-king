@@ -1,7 +1,7 @@
 {
   "catalog": "xiapan-models",
-  "version": 2,
-  "updated": "2026-10-04",
+  "version": 3,
+  "updated": "2026-10-21",
   "default": "deepseek-v4-flash",
   "strong": "deepseek-v4-pro",
   "groups": [
@@ -13,56 +13,29 @@
           "label": "DeepSeek V4 Flash · 最快最省（默认）",
           "desc": "不知道选啥就用它，装好就是它。国产、速度快、最省额度，日常聊天问答写文章都够用，也能直接发图片给它（读大图里的小字偏弱）。",
           "recommend": true,
-          "input": ["text", "image"],
+          "input": [
+            "text",
+            "image"
+          ],
           "verified": "2026-10-03"
         },
         {
           "id": "deepseek-v4-pro",
           "label": "DeepSeek V4 Pro · 满血推理",
           "desc": "同门的「深思」版，遇到难题会先想一大段再答，复杂推理更强，但更慢也更费额度。日常别用它，卡住了再切。注意：它不能看图，要发图请换 DeepSeek V4 Flash。",
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "verified": "2026-10-03"
         },
         {
           "id": "kimi-k3",
           "label": "Kimi K3 · 超长上下文",
           "desc": "能一口气读很长的文档/几十页 PDF，做长文总结、整本资料分析时选它，也能看图。月之暗面最新一代。",
-          "input": ["text", "image"],
-          "verified": "2026-10-03"
-        }
-      ]
-    },
-    {
-      "group": "海外",
-      "pricey": true,
-      "items": [
-        {
-          "id": "claude-sonnet-5-5",
-          "label": "Claude Sonnet 5.5 · 编程之王",
-          "desc": "写代码、改 bug 最强的一档，程序员首选，也能看图。比国产费额度。",
-          "input": ["text", "image"],
-          "verified": "2026-10-03"
-        },
-        {
-          "id": "claude-opus-5-5",
-          "label": "Claude Opus 5.5 · 顶配旗舰",
-          "desc": "最聪明、最会思考，复杂分析/难题/大工程交给它，也能看图。也最费额度。",
-          "recommend": true,
-          "input": ["text", "image"],
-          "verified": "2026-10-03"
-        },
-        {
-          "id": "gpt-6-astra",
-          "label": "GPT-6 Astra · OpenAI 新一代",
-          "desc": "OpenAI 新一代旗舰，综合能力强、知识面广，什么都能聊，也能看图。比国产费额度，用量大时留意余额。",
-          "input": ["text", "image"],
-          "verified": "2026-10-03"
-        },
-        {
-          "id": "gpt-6.1-sol",
-          "label": "GPT-6.1 Sol · OpenAI 前沿旗舰",
-          "desc": "OpenAI 前沿旗舰，能力强但费额度，日常别用它，确有需要再选，用量大时留意余额。也能看图。",
-          "input": ["text", "image"],
+          "input": [
+            "text",
+            "image"
+          ],
           "verified": "2026-10-03"
         }
       ]

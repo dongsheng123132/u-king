@@ -94,6 +94,7 @@ import { cn } from "../lib/cn";
 import { useI18n } from "../i18n";
 import { getLaunchPref, setLaunchPref, type LaunchPref } from "./launchPref";
 import { buildProviderRepairPrompt, type ProviderRepairPromptInput } from "../lib/providerRepairPrompt";
+import { buildMaintenanceTask } from "../lib/maintenanceTask";
 import { ACTION, createTauriActionClient } from "../generated/action-client";
 
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
@@ -901,6 +902,29 @@ export function ToolHub({
               className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11.5px] text-ink-3 hover:text-accent-400 hover:bg-white/[0.04]"
             >
               <Download size={12} /> {tr("升级 / 修复")}
+            </button>
+          )}
+          {/* 升级/修复失败兜底（2026-10-21 用户口径「装不上就交给轻助手」）：
+              点了升级没装好、或反复失败时，直接把脱敏维护任务交给维护助手。 */}
+          {onAskAiToFix && (
+            <button
+              data-testid="toolhub-upgrade-ai-fallback"
+              data-tool-id={t.id}
+              onClick={() =>
+                onAskAiToFix(
+                  buildMaintenanceTask({
+                    target: `${t.name} 升级 / 修复`,
+                    failure: "（用户点了「升级 / 修复」重走安装；如果没装好、装不上或反复失败，请帮诊断）",
+                    steps: ["已在「我的 AI」点过「升级 / 修复」重走安装"],
+                    verify: "命令行能打印版本号，「我的 AI」里显示已安装且可用。",
+                    rollback: "装坏了可在「我的 AI」里卸载后重装。",
+                  }),
+                )
+              }
+              title={tr("升级失败时：把这台机器的脱敏现状交给维护助手，让 AI 接着排查（不含 Key）")}
+              className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11.5px] text-ink-3 hover:text-accent-400 hover:bg-white/[0.04]"
+            >
+              <Sparkles size={12} /> {tr("升级失败？让 AI 修")}
             </button>
           )}
           {canUninstallTool(t.id) && (

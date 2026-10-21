@@ -33,8 +33,12 @@ import {
   Power,
   RefreshCw,
   ClipboardList,
+  Languages,
+  LifeBuoy,
   Lightbulb,
+  Moon,
   Settings,
+  Sun,
   Trash2,
   Wallet,
   X,
@@ -159,8 +163,6 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
   // 全部』里的隐藏项」：客户既看不见也配不准（用户 2026-08-24 点名要）。cc-switch 和
   // EchoBird 都把 opencode 当一等公民列着，我们不列纯粹是自己藏自己。
   { target: "opencode", label: "OpenCode", icon: "opencode" },
-  { target: "qwen", label: "Qwen Code", icon: "qwen" },
-  { target: "crush", label: "Crush", icon: "crush" },
 ];
 
 /** 配置目标 → 「我的 AI」里的工具 id，只为 `realInstalled()` 读安装态（渲染「未安装」徽章）。
@@ -174,8 +176,6 @@ const TARGET_TOOL_ID: Record<string, string> = {
   dsh: "dsh",
   pi: "pi",
   opencode: "opencode",
-  qwen: "qwen-code",
-  crush: "crush",
 };
 
 /**
@@ -417,6 +417,10 @@ export function Manager({
   initialSettingsTab,
   deviceKey: deviceKeyProp,
   renderAccount,
+  theme,
+  onToggleTheme,
+  onRecheckUpdate,
+  checkingUpdate,
 }: {
   onGoCodex?: () => void;
   /** 跳到某个全屏页（工具中心等）。App 那边照 tab id 渲染，这里只负责跳
@@ -451,8 +455,13 @@ export function Manager({
    * 不把它们穿进本组件。`goSubtab` 让它能切回本页别的分区（如「我有自己的 Key」→ 供应商库）。
    */
   renderAccount?: (goSubtab: (tab: SettingsTab) => void) => ReactNode;
+  /** 外观（2026-10-21 从侧栏页脚搬到本页）：深浅主题、语言、手动检查更新。 */
+  theme?: "light" | "dark";
+  onToggleTheme?: () => void;
+  onRecheckUpdate?: () => void;
+  checkingUpdate?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, lang, setLang } = useI18n();
   /**
    * 页内分区（2026-08-21）。原来这一页是**四段竖着排下来**：余额条 → 用量账单（折叠）
    * → 选择要配置的 AI → 更多设置（折叠）。客户的原话是「大体的功能都是有的，就是繁琐了，
@@ -2709,6 +2718,51 @@ export function Manager({
         />
       )}
 
+      {/* 外观与支持（2026-10-21 从侧栏页脚搬到这里）：语言 / 主题 / 检查更新 / 技术支持 / 官网。
+          侧栏页脚原本一行塞了语言+主题+刷新+充值+版本，用户反馈「太挤」。 */}
+      <div id="uking-appearance" className="mt-5 pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px] text-ink-3">
+        <div className="inline-flex items-center gap-1.5">
+          <Languages size={13} />
+          <div className="flex items-center gap-0.5 rounded-md bg-white/[0.04] p-0.5">
+            {(["zh", "en"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                title={t("语言")}
+                className={cn(
+                  "px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors",
+                  lang === l ? "bg-accent/[0.18] text-accent" : "text-ink-4 hover:text-ink-1",
+                )}
+              >
+                {l === "zh" ? "中" : "EN"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {onToggleTheme && (
+          <button onClick={onToggleTheme} className="inline-flex items-center gap-1.5 hover:text-ink-0 transition-colors">
+            {theme === "dark" ? <Moon size={13} /> : <Sun size={13} />}
+            {theme === "dark" ? t("夜间开") : t("白天")}
+          </button>
+        )}
+        {onRecheckUpdate && (
+          <button
+            onClick={onRecheckUpdate}
+            disabled={checkingUpdate}
+            className="inline-flex items-center gap-1.5 hover:text-ink-0 transition-colors disabled:opacity-60"
+          >
+            <RefreshCw size={13} className={checkingUpdate ? "animate-spin" : ""} /> {t("检查更新")}
+          </button>
+        )}
+        <span className="text-ink-4">·</span>
+        <button onClick={() => onGoPage?.("feedback")} className="inline-flex items-center gap-1.5 hover:text-ink-0 transition-colors">
+          <LifeBuoy size={13} /> {t("技术支持 · 报告问题")}
+        </button>
+        <span className="text-ink-4">·</span>
+        <button onClick={() => onGoPage?.("guide")} className="hover:text-ink-0 transition-colors">
+          {t("官网 · 充值说明")}
+        </button>
+      </div>
       {toast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
           <div className="flex items-center gap-2 rounded-full border border-white/[0.10] bg-bg-3/95 backdrop-blur px-4 py-2 text-[13px] text-ink-1 shadow-card">

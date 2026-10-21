@@ -82,8 +82,15 @@ Copyright (c) 2023 LobeHub), package @lobehub/icons-static-svg:
   lobe-icons file (bailian, groq, hunyuan, longcat, mistral, modelscope,
   opencode, openrouter, qianfan, siliconflow, stepfun, volcengine, xai,
   xiaomi-mimo, zai)
-- Codex mark inline in `ToolIcon.tsx` (`CodexMark`, path identical to lobe-icons
-  icons/codex.svg)
+- OpenAI blossom mark inline in `ToolIcon.tsx` (`OpenAIMark`, path identical to
+  lobe-icons icons/openai.svg). Used for the `codex` (CLI) card as a plain
+  `fill="currentColor"` mark, and for the `codex-app` (Codex desktop) card on a
+  dark rounded app tile — the same treatment as the official Codex desktop app
+  icon. Cross-checked on 2026-10-21 against the official Microsoft Store package
+  `OpenAI.Codex` (family `OpenAI.Codex_2p2nqsd0c76g0`, installed version
+  26.1013.4894.0): its `Square44x44Logo.*_altform-unplated.png` assets are the
+  OpenAI blossom, white for dark and black for light. U-King reproduces that
+  white-on-black app-icon treatment without shipping the MSIX bitmap.
 
 Existing model-brand SVGs in `src/assets/logos/` (no header): `claude.svg`,
 `gemini.svg`, `deepseek.svg`, `kimi.svg` (legacy provider asset), `minimax.svg`, `zhipu.svg`,
@@ -92,12 +99,15 @@ SVG shape (`<title>`, `height="1em"`, `flex:none`); `claude.svg`, `deepseek.svg`
 and `zhipu.svg` are byte-identical (ignoring line breaks) to lobe-icons v1.95.1
 `claude-color.svg`, `deepseek-color.svg` and `zhipu-color.svg`; the others differ
 from v1.95.1 (older release or locally recolored). Provenance is therefore
-inferred as lobe-icons (MIT), exact source and version 来源待核.
+inferred as lobe-icons (MIT), exact source and version 来源待核. On 2026-10-21
+`openai.svg` and `codex.svg` were changed from a hard-coded white fill to
+`fill="currentColor"` (geometry untouched) so they render on both light and
+dark backgrounds instead of disappearing on white.
 
 Icons from official product sites or repositories:
 
 Artwork verified on 2026-10-03 (unmodified; product identification only):
-- `src/assets/logos/clawx.svg` — https://github.com/ValueCell-ai/ClawX/blob/main/resources/icons/icon.svg (MIT; full text in `third_party/licenses/clawx-MIT.txt`). ClawX has its own application mark and is not represented by the OpenClaw lobster.
+- `src/assets/logos/clawx.svg` — https://github.com/ValueCell-ai/ClawX/blob/main/src/assets/logo.svg (MIT; full text in `third_party/licenses/clawx-MIT.txt`). U-King uses the plain blue lobster mark from this file; the repository's `resources/icons/icon.svg` (the same mark baked onto a light app tile) was replaced on 2026-10-21 because the baked tile and thin lines washed out at 24-40 px. ClawX has its own application mark and is not represented by the OpenClaw lobster.
 - `src/assets/logos/kimi-code.png` — https://raw.githubusercontent.com/MoonshotAI/kimi-cli/main/web/public/logo.png
 - `src/assets/logos/mimo.svg` — https://mimo.mi.com/static/mimo-code.a1594b207bbc4bee.svg
 - `src/assets/logos/codebuddy.svg` — https://download.codebuddy.cn/web/website/a156fee78f35e874d407848198e5f96a4cf383ef/assets/logo.svg
@@ -124,16 +134,55 @@ tools. Source URLs are recorded here instead of modifying the original files.
   `<style>`; U-King kept only the inner svg, with its geometry and colors
   unchanged).
   MIT, Copyright (c) 2025 opencode. Trademark remains with its owner.
-- `src/assets/logos/uu-remote.png` — the single 64x64 frame of the favicon of
-  the UU Remote official site (uuyc.163.com), converted from ICO to PNG. Brand
-  asset of its owner (NetEase), no open-source license; nominative use only.
-- `src/assets/logos/hermes.png` — Nous Research's Hermes mascot avatar per the
-    code comment in `ToolIcon.tsx`; the mascot was visually verified against
-    https://hermes-agent.nousresearch.com/icon.png on 2026-10-03. Brand asset;
-    no separate artwork license was found.
 - OpenClaw lobster (`OpenClawLobster` in `ToolIcon.tsx`) — the code comment says
   it was borrowed from the ccswitch build's `claw.svg`; original source and
   license 来源待核.
+
+Artwork verified on 2026-10-21 (unmodified official artwork unless stated):
+- `src/assets/logos/uu-remote.png` — the official UU Remote app icon published on
+  the App Store (https://apps.apple.com/cn/app/uu远程/id1642306791), fetched at
+  512x512 from Apple's artwork CDN, downscaled to 256x256, with its flat white
+  background made transparent (alpha-key only; the pinwheel mark itself is not
+  redrawn). Replaces the old 64x64 favicon frame, which was blurry on 2x
+  screens. Brand asset of its owner (NetEase), no open-source license;
+  nominative use only.
+- `src/assets/logos/hermes.png` — the Nous Research mark: the "Nous girl"
+  artwork from the official Hermes Agent repository's dark-theme app icon
+  master,
+  https://raw.githubusercontent.com/NousResearch/hermes-agent/main/assets/nous-girl-white.svg
+  (repo also ships `icon-master.svg` / `icon-master-dark.svg` and
+  `nous-girl-black.svg`). Rasterised to 256x256 PNG with transparency (the
+  139 KB traced SVG would otherwise dominate the bundle) and drawn by
+  `ToolIcon.tsx` on a dark rounded app tile, so the white line art is visible in
+  both themes. Replaces the earlier NOUS badge lockup (`hermes.svg`, removed
+  2026-10-21) — that badge had a frame plus dense "NOUS" lettering and turned
+  into a smudge at 40 px — and the original 256px mascot-avatar bitmap
+  (https://hermes-agent.nousresearch.com/icon.png). Brand asset of its owner
+  (Nous Research); no separate artwork license was found; nominative use only.
+- `src/assets/logos/dsh.svg` — the official favicon of DeepSeek Harness,
+  https://www.deepseek.com/harness/favicon.svg (the file's own comment says the
+  path comes from DeepSeek's platform favicon). Only the `<style>`
+  prefers-color-scheme switch was dropped and the path pinned to the file's
+  documented base brand blue `#4D6BFE`, so an `<img>` renders the same colour in
+  both theme modes; the path geometry is unchanged. Brand asset of its owner
+  (DeepSeek), no open-source license; nominative use only. Used only for the
+  `dsh` tool card; the `deepseek` provider keeps `deepseek.svg`.
+- `src/assets/logos/workbuddy.png` — the WorkBuddy app icon from the official
+  product site https://www.codebuddy.cn/work/ (the page renders the same green
+  mascot icon on its "下载 WorkBuddy" button, and its JS bundle references the
+  source as `assets/app_icon-*.webp` on download.codebuddy.cn). Converted from
+  WebP to PNG with its alpha channel preserved, 400x400. The official artwork is
+  this green rounded tile with the white mascot — not the CodeBuddy purple mark
+  used elsewhere on that site; re-verified against the live page on 2026-10-21.
+  Brand asset of its owner (Tencent), no open-source license; nominative use
+  only.
+- `src/assets/logos/magpie.png` — the icon shipped in the official magpie
+  repository,
+  https://raw.githubusercontent.com/yetone/magpie/main/site/public/img/icon-256.png
+  (256x256, RGBA). The repository is MIT, Copyright (c) 2026 yetone, per its
+  LICENSE file; the artwork itself carries no separate license. magpie is hidden
+  in the current UI; the asset is kept so the tool card has an official mark if
+  it is ever shown again.
 
 Icons drawn by U-King (inline SVG in `ToolIcon.tsx`, covered by the Apache
 License 2.0 of this project, not derived from any third-party logo):

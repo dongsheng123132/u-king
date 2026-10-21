@@ -9,7 +9,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useI18n } from "./i18n";
-import { ShareButton } from "./components/ShareCard";
 // 「AI 工具专项修复」：Codex 工作站下架后，「这个 agent 装好没 / 跑得起来没 / 配对没」
 // 这半边能力接到这儿。独立组件，删它只动本文件 + lib.rs（去 agent_launch_probe）。
 import { AgentRepair } from "./AgentRepair";
@@ -461,17 +460,9 @@ export function AiRuntime({ onToast, onGoSetup, onAskAI }: { onToast?: (msg: str
             >
               {t("一键复原")}
             </button>
-            {/* 杀软白名单是 Windows Defender 专属；macOS（tool=macopt）无此概念，隐藏 */}
-            {report.tool !== "macopt" && (
-              <button
-                className="px-3 py-2 rounded-card border border-white/10 text-[12px] text-ink-2 hover:bg-white/[0.04] disabled:opacity-40"
-                disabled={busy !== null}
-                title={t("把 AI 工具目录加进 Windows Defender 排除，npm/装机不再被实时扫描拖慢（需管理员，可一键复原）")}
-                onClick={() => void addDefender()}
-              >
-                {busy === "defender" ? t("处理中…") : t("加杀软白名单·提速")}
-              </button>
-            )}
+            {/* 2026-10-21 精简：撤掉「加杀软白名单·提速」和「晒体检分」两个按钮（用户口径：按钮太多、
+                很多功能用不到）。白名单能力仍在 `addDefender`（使用数据里的建议卡还会用到），
+                分享卡组件也不再在这里出现。 */}
             <button
               className="px-3 py-2 rounded-card text-[12px] text-ink-4 hover:text-ink-2 disabled:opacity-40"
               disabled={busy !== null}
@@ -479,25 +470,6 @@ export function AiRuntime({ onToast, onGoSetup, onAskAI }: { onToast?: (msg: str
             >
               {t("重新体检")}
             </button>
-            <ShareButton
-              onToast={(m) => onToast?.(m)}
-              label={t("晒体检分")}
-              className="px-3 py-2 rounded-card border border-accent/40 bg-accent/[0.08] text-[12px] font-medium text-accent hover:bg-accent/[0.16] inline-flex items-center gap-1.5 disabled:opacity-40"
-              spec={{
-                kind: "ai-score",
-                badge: t("电脑 AI 就绪度"),
-                title: t("我的电脑 AI 优化到"),
-                heroValue: String(report.score),
-                heroUnit: t("分"),
-                heroSub:
-                  percentile != null ? t("🏆 超过全国 {p}% 的电脑", { p: String(percentile) }) : undefined,
-                stats: [
-                  { label: t("已达标"), value: String(passes.length) },
-                  { label: t("待优化"), value: String(misses.length) },
-                ],
-                footnote: t("AI 优化大师 · 一键优化全可回滚"),
-              }}
-            />
           </div>
         </div>
       </div>

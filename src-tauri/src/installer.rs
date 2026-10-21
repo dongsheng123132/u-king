@@ -3010,21 +3010,15 @@ fn post_install(tool_id: &str, on_log: &(dyn Fn(&str, &str) + Send + Sync)) {
 }
 
 /// 装机清单的工具 id → 它装出来的命令名（即 `GUARDED_CLIS` 里的那一项）。
-/// 两边名字不同的只有 `claude-code`→`claude`、`qwen-code`→`qwen`，所以不能直接拿 tool_id 去查 `GUARDED_CLIS`。
+/// 两边名字不同的只有 `claude-code`→`claude`，所以不能直接拿 tool_id 去查 `GUARDED_CLIS`。
 /// 单测 `command_guard_tool_map_covers_every_guarded_cli` 断言它与 `GUARDED_CLIS` 一一对应且 id 都在内嵌清单里。
 #[cfg_attr(not(windows), allow(dead_code))]
 const CLI_TOOL_COMMANDS: &[(&str, &str)] = &[
-    ("mimo-code", "mimo"),
-    ("codebuddy-code", "codebuddy"),
-    ("qoder-cn", "qodercn"),
-    ("kimi-code", "kimi"),
     ("claude-code", "claude"),
     ("codex", "codex"),
     ("pi", "pi"),
     ("openclaw", "openclaw"),
     ("hermes", "hermes"),
-    ("qwen-code", "qwen"),
-    ("crush", "crush"),
     ("opencode", "opencode"),
 ];
 
@@ -6079,11 +6073,14 @@ pub fn inspect_ai_process_health() -> AiProcessInspection {
 /// 命令转发器（`~/.uking/shims/<name>.cmd`）覆盖的命令名单 —— **Rust 侧的唯一真相源**。
 ///
 /// 为什么单拎一份：原先 `ensure_cli_command_guard` 与 `migrate_legacy_cli_command_guards` 各写了一份
-/// 5 个名字的字面量，而装机清单 shim 步（`foreach($t in @(...))`）是 8 个，装机流程建出来的
-/// qwen / crush / opencode 转发器 Rust 这边既不迁移也不认。清单是热下发的脚本、没法 import 这个常量，
+/// 名字字面量，而装机清单 shim 步（`foreach($t in @(...))`）是另一份，装机流程建出来的转发器
+/// Rust 这边既不迁移也不认。清单是热下发的脚本、没法 import 这个常量，
 /// 所以由单测 `guarded_clis_match_manifest_shim_step` 解析内嵌清单与它逐项比对，漂移当场变红。
+///
+/// 2026-10-21：「我的 AI」工具目录收敛到 11 项，qwen / crush / kimi / mimo / codebuddy / qodercn
+/// 已从工具目录与装机清单删除，这里同步摘掉——保留它们只会让守卫表把已删工具又「认」回来。
 #[cfg_attr(not(windows), allow(dead_code))]
-const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "qwen", "crush", "opencode", "kimi", "mimo", "codebuddy", "qodercn"];
+const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "opencode"];
 
 #[cfg(windows)]
 /// Build an ACP-safe `.cmd` body. Never interpolate a Unicode absolute path: Rust writes UTF-8
@@ -8965,10 +8962,10 @@ mod tests {
         assert!(spec.smoke_cmd.is_none());
     }
 
-    /// 反向判据：内嵌清单里 OpenCode / MiMo 必须真的带上门禁和冒烟。
-    /// 只改代码不改清单 = 两层验收对这两个工具仍然是空转。
+    /// 反向判据：内嵌清单里 OpenCode 必须真的带上门禁和冒烟。
+    /// 只改代码不改清单 = 两层验收对它仍然是空转。
     #[test]
-    fn embedded_manifest_gates_opencode_bun_shell_and_mimo_sqlite() {
+    fn embedded_manifest_gates_opencode_bun_shell() {
         let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单应能解析");
 
         let oc = skill.tools.get("opencode").expect("内嵌清单应含 opencode");
@@ -8988,16 +8985,6 @@ mod tests {
                 assert!(*with_optional, "opencode 的 npm_install 必须 with_optional");
             }
         }
-
-        let mimo = skill.tools.get("mimo-code").expect("内嵌清单应含 mimo-code");
-        assert_eq!(mimo.verify_cmd, "mimo --version");
-        assert_eq!(mimo.smoke_reject.as_deref(), Some("unable to open database file"));
-        assert!(output_gate("sqlite-migration:done\n1", mimo.smoke_expect.as_deref(), mimo.smoke_reject.as_deref()).is_ok());
-        assert!(
-            mimo.smoke_cmd.as_deref().unwrap_or("").contains("mimo db"),
-            "MiMo 冒烟必须真触库（db 子命令），实际：{:?}",
-            mimo.smoke_cmd
-        );
     }
 
     #[test]

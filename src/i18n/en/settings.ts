@@ -1,5 +1,8 @@
 /** 英文覆盖字典 · AI 设置 / 驱动 UI（Manager + components/*）。key = 中文原文，value = English。 */
 export const settings: Record<string, string> = {
+  // ---- Manager：设置页底部技术支持行（2026-10-21 从侧栏页脚搬来）----
+  "技术支持 · 报告问题": "Support · Report an issue",
+  "官网 · 充值说明": "Website · Top-up guide",
   // AI 设置的分区（2026-08-21：原来四段竖排，低频块挤着高频块；08-24 加「免费额度」第五个）
   "工具分配": "Tools",
   "哪个 AI 用哪家、用什么模型": "Which provider and model each AI uses",

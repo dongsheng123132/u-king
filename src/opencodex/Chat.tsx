@@ -9,14 +9,14 @@
  * 审批模式（copy Codex）：每步确认 / 自动（写自动·命令问）/ 全授权（都不问，危险命令仍 Rust 硬拦）。
  *
  * 【U-Workspace 模块】本文件是 U-Workspace（AI 工作台）的对话引擎，随工作台一起收进 opencodex/ 独立演进。
- * 右侧面板直接复用同目录 panels（TermPanel/FilesPanel），display 切换保活（切面板不杀 PTY）。
+ * 右侧面板只剩终端（TermPanel），display 切换保活（切面板不杀 PTY）。
  * 自包含，删掉只动 App.tsx + Sidebar.tsx。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type ReactNode } from "react";
-import { invoke, Channel, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Bot, Check, ChevronRight, Copy, Eye, FileText, Film, FolderOpen, FolderTree, Globe, Image as ImageIcon, Loader2, Maximize2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, RotateCcw, ShieldCheck, Terminal, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Bot, Check, ChevronRight, Copy, FileText, Film, FolderOpen, Image as ImageIcon, Loader2, Maximize2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, RotateCcw, ShieldCheck, Terminal, X, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "../lib/cn";
 import { trimHistoryForPayload } from "./historyTrim";
 import { useViewport } from "../lib/useViewport";
@@ -28,17 +28,14 @@ import { describeImages, fileLabel, ImageDescribeError, isImageFile, visionError
 import { PendingImageChips, usePendingImages } from "./PendingImages";
 import { MiniMd } from "../lib/miniMd";
 import { TermPanel, type TermPanelApi } from "./panels/TermPanel";
-import { FilesPanel } from "./panels/FilesPanel";
-import { ChatPanel, ProducedFile, deliverableExt, previewableExt, producedFiles } from "./panels/ChatPanel";
-import { RedlinePanel } from "../vendor/redline-core";
-import { createTauriRedlineHost } from "./redline-host-tauri";
+import { ChatPanel, ProducedFile, deliverableExt, producedFiles } from "./panels/ChatPanel";
 // 相对路径 → 绝对路径只此一份实现（终端链接和这里用同一个，跨平台分隔符也在它里面判）
 import { resolvePath } from "./term/fileLinks";
 import { ENGINE_TUI_CMD, type Engine } from "./types";
 import { DiffView } from "./panels/DiffView";
 import { QuickPrompts, type Best } from "./QuickPrompts";
 import { useComposerMenu } from "./ComposerMenu";
-import { AttachButton, Composer, ComposerSelect } from "./Composer";
+import { AttachButton, Composer } from "./Composer";
 import { buildSystemPrompt } from "./experts";
 import { deliver, takeHandoff, type Handoff } from "./handoff";
 import { releaseYield, reportTermWidth } from "../lib/yieldChain";
@@ -74,22 +71,7 @@ type TextItem = { type: "text"; role: "user" | "assistant"; content: string };
 type ToolItem = { type: "tool"; name: string; phase: "running" | "done" | "error"; prompt?: string; path?: string; command?: string; output?: string; b64?: string; url?: string; message?: string; oldStr?: string; newStr?: string; isNew?: boolean };
 type ApprovalItem = { type: "approval"; id: string; tool: string; action?: string; inputKeys?: string[]; path?: string; bytes?: number; command?: string; decided?: "approved" | "rejected"; oldStr?: string; newStr?: string };
 type Item = TextItem | ToolItem | ApprovalItem;
-type RightKind = "terminal" | "files" | "preview";
-// 右侧「预览/画布」内容：生成的图（可放大）/ 视频（可播放）/ 渲染的 HTML / 办公文档（交给 redline 内核）
-type Preview =
-  | { kind: "image"; src: string; caption?: string }
-  | { kind: "video"; src: string; caption?: string }
-  /**
-   * 网页预览。`src`（asset 协议地址）优先，没有才退回 `html`（整段源码塞 srcDoc）。
-   *
-   * 🔴 为什么必须有 `src` 这一路：`srcDoc` 里的页面**没有 base URL**，
-   * `<img src="pic.png">` / `<link href="style.css">` 这些相对路径一个都解析不到 ——
-   * AI 生成的网页十有八九带同目录资源，客户看到的是一张裸骨架，还会以为是 AI 做坏了。
-   * 走 asset 协议就是真·文件 URL，相对资源照常加载（前提：那个目录 allow_fs_preview 过）。
-   */
-  | { kind: "html"; html?: string; src?: string; path?: string; caption?: string }
-  | { kind: "doc"; path: string; caption?: string }
-  | null;
+type RightKind = "terminal";
 
 // 模型清单来自 `lib/models.ts`（Manager「换模型」/ ProviderSwitch 用的是同一份）——
 // 这儿原先自己抄了 5 条，其中 `gpt-5.6-luna` 正是把客户余额打穿的那一档，而抄的那份
@@ -103,9 +85,8 @@ const MODES = [
 // 按钮上写人话（客户认「终端」不认「U-CLI」），tooltip 里带代号 —— 代号是给报 bug /
 // 看文档时**指认是哪一块**用的，不是拿来教育客户的。命名约定见 Sidebar.tsx 的 CORE 注释。
 const RIGHT_META: { kind: RightKind; label: string; title: string; icon: typeof Terminal; needsWs: boolean; lab?: boolean }[] = [
-  { kind: "preview", label: "预览", title: "预览（图 / 网页 / 文档）", icon: Eye, needsWs: false },
   { kind: "terminal", label: "终端", title: "终端（U-CLI）", icon: Terminal, needsWs: true },
-  { kind: "files", label: "文件", title: "文件树", icon: FolderTree, needsWs: true },
+  // 「文件」文件树 2026-10-21 从右侧入口撤掉（用户口径：工作台要精简，不常用的去掉）。
   // 「创作」面板 2026-08-23 撤掉 —— **能力一点没动**，`Create.tsx` 回到侧栏「AI 创作」独立页。
   //
   // 它 08-21 从侧栏搬进这里，理由是「和 U-Chat 是同一件事的两个入口」。撤回的理由是用户反馈
@@ -315,25 +296,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
    * 「哪个模型」是 19 选 1、而且绝大多数人一辈子就用「跟随驱动设置」。
    * 常驻位给前者，抽屉给后者。
    */
-  // 2026-10-04：可选 = PICKABLE_ENGINES + 「当前 engine」（若不在其中）。
-  // 后者是留给任务护照交接的逃生口：`takeHandoff` → `setEngine(h.engine)` 仍可能把会话落在 codex/uking 上，
-  // 下拉里必须还能切回 Claude Code，不能做成死路。
-  const brainOptions = ENGINES.filter((e) => PICKABLE_ENGINES.includes(e.id) || e.id === engine);
-  const brainSelect = brainOptions.length <= 1 ? (
-    // 只剩一个大脑：不渲染下拉，只放一个不可点的静态标签（外观同 ComposerSelect tone="accent"，去掉箭头）
-    <span className="inline-flex items-center gap-1 h-7 rounded-lg border text-[11px] px-2 bg-accent/[0.12] border-accent/30 text-ink-1"
-      title={t("用哪个大脑干这活")}>
-      <Bot size={12} className="shrink-0 text-ink-4" />
-      <span className="truncate">{t(brainOptions[0]?.label ?? "").split("（")[0]}</span>
-    </span>
-  ) : (
-    <ComposerSelect value={engine} onChange={(v) => setEngine(v as Engine)} icon={Bot} tone="accent"
-      title={t("用哪个大脑干这活")}>
-      {brainOptions.map((e) => (
-        <option key={e.id} value={e.id}>{t(e.label).split("（")[0]}</option>
-      ))}
-    </ComposerSelect>
-  );
+  // 2026-10-21 用户口径：工作台顶部「大脑」下拉删掉 —— 现在只有 Claude Code 一个底座，没有可选项。
 
   /** 当前大脑吃不吃模型覆盖。TUI 那两个跑真身，传什么都不生效 —— 不给假开关。 */
   const brainTakesModel = engine !== "claude-cli" && engine !== "hermes";
@@ -423,29 +386,12 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   const [queue, setQueue] = useState<string[]>([]); // 提示词队列（忙时排队，空闲自动派发）
   const [workspace, setWorkspace] = useState(initialWorkspace);
   // 右侧面板：rightOpen 显隐；opened 记录挂载过的（保活）；ratio=对话列占比
-  const [rightKind, setRightKind] = useState<RightKind>("preview");
+  const [rightKind, setRightKind] = useState<RightKind>("terminal");
   const [rightOpen, setRightOpen] = useState(false);
   const [opened, setOpened] = useState<Set<RightKind>>(new Set());
   const [ratio, setRatio] = useState(0.55);
   // 收起对话列：终端编程时把中间对话整列藏起，让右侧终端/预览全屏。只在右侧面板已打开时有意义。
   const [chatCollapsed, setChatCollapsed] = useState(false);
-  /**
-   * 终端右边那条文件栏（树 + 就地预览）。**跟「文件」tab 是同一个 FilesPanel**，
-   * 不是第二份实现 —— 区别只在于它跟终端**并排**，不把终端顶掉。
-   *
-   * 为什么要它：右侧四个 tab 是互斥单选，在终端里干活时想看一眼刚产出的文件就得切走，
-   * 终端连同正在跑的东西一起消失。客户的原话是「发到 ucli 里边好像啥都不是」。
-   * 宽度记住 —— 会开这条栏的人多半要连着看好几个文件，每次重开都要拖一遍等于没给。
-   */
-  const [termFilesOpen, setTermFilesOpen] = useState(false);
-  const [termFilePath, setTermFilePath] = useState<string | null>(null);
-  const [termFilesWidth, setTermFilesWidth] = useState<number>(() => {
-    const v = Number(localStorage.getItem("uking.term.filesWidth"));
-    return v >= 260 && v <= 1200 ? v : 480;
-  });
-  // 右侧「预览/画布」：生成的图（可放大）/ 渲染的 HTML；zoom=图片缩放倍数
-  const [preview, setPreview] = useState<Preview>(null);
-  const [zoom, setZoom] = useState(1);
   // 对话正文字号（测试报告 #007：「字体大小固定」）。记住选择 —— 会调字号的人多半是眼睛累了，
   // 每次开页面再调一遍等于没给。范围卡在 12~22：再小读不清，再大一屏放不下几句话。
   const [chatFont, setChatFont] = useState<number>(() => {
@@ -478,13 +424,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   // **导航是「用户刚点了什么」的结果，不是「屏幕上挂着什么」的结果** —— 已挪到
   // `UWorkspace.summon()`（用户真点专家卡的那一刻，只跑一次）。
   // 把内容送进右侧预览并自动展开（生成图/点图放大/预览 HTML 都走这）
-  const showPreview = useCallback((p: Preview) => {
-    setPreview(p);
-    setZoom(1);
-    setOpened((s) => (s.has("preview") ? s : new Set(s).add("preview")));
-    setRightKind("preview");
-    setRightOpen(true);
-  }, []);
 
   // 起手词落到输入框（不覆盖已输入内容），聚焦让用户接着写。**不自动发送**。
   //
@@ -559,76 +498,21 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   );
 
   /**
-   * 把一个产出文件送进右侧预览。**轻助手和 Claude/Codex 共用这一个** ——
-   * 以前预览只做在轻助手侧，而默认大脑是 Claude：客户让 Claude 做了个网页、出了张图，
-   * 对话里只有一行 `Write: xxx.html ✓`，点不开、看不见。
+   * 产出文件一律交给系统默认程序打开。
    *
-   * 路径可以是相对工作目录的（Claude 常给相对路径），也可以是绝对的（脚本产出常给绝对路径）。
-   * 图片/视频/办公文档都走 asset 协议读字节，**必须先 `allow_fs_preview` 授权那个目录**，
-   * 否则 403 白屏（踩过：asset scope 当初只放了 video）。
-   *
-   * **办公三件套（docx/xlsx/pptx/pdf…）交给 redline 内核**（`previewableExt` 判 `"doc"`）——
-   * 那套 viewer 早就有，之前只接在文件树双击那一处。以前走到这儿只剩最后那行
-   * `read_text_file`，对二进制不是报错就是满屏乱码：办公活做完了，客户在软件里看不到成果。
+   * 2026-10-21 用户口径：右侧「预览」面板删掉（不在应用内看图片/网页/文档）。
+   * 所以这里不再做 allow_fs_preview + asset 协议转换，直接 `open_produced_file`；
+   * 网址仍走系统浏览器（原来的 URL 分流保留，终端里点网址不会拿去当文件路径）。
    */
-  const previewFile = useCallback(async (p: string) => {
-    // 🔴 兜底：网址永远不进文件预览。终端链接那条路已经在 fileLinks 里按 kind 分流了，
-    // 但这个函数是**所有入口共用**的（工具卡、文件树、AI 回答里的产出行），谁喂一个
-    // `https://…` 进来，下面就会拿它当路径去 read_text_file，客户看到的是
-    // 「预览失败: 读取失败: 系统找不到指定的路径。(os error 3)」——2026-08-16 截图里那句。
+  const openProducedFile = useCallback((p: string) => {
+    if (!p) return;
     if (/^(https?|file):\/\//i.test(p)) {
       void openUrl(p).catch(() => onToast?.(t("打不开这个网址：{e}", { e: p })));
       return;
     }
-    const isAbs = /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p);
-    if (!isAbs && !workspace) { onToast?.(t("先选一个工作文件夹才能定位这个文件")); return; }
-    // 🔴 拼路径复用 `resolvePath`，别在这儿再写一份（宪法 12：公共能力复用不复制）。
-    // 原来这行是 `(workspace + "\\" + p).replace(/\//g, "\\")` —— 在 Windows 上对，
-    // 在 **Mac 上把绝对路径整个拧断**：`/Users/example/ws` + `\` + `out.md` 再把所有 `/` 换成 `\`
-    // = `\Users\example\ws\out.md`，磁盘上不存在 → asset 协议 404。开发机是 Windows，
-    // 这类错跟「优化大师念 PowerShell」是同一个盲区：只有 Mac 用户撞得到。
     const abs = resolvePath(p, workspace);
-    // 先问一句「这个文件在不在」。不问的话，路径错了要等 redline 去 fetch 才炸，
-    // 客户看到的是一句 **不带路径** 的 `读取文件失败: HTTP 404` —— 他没法判断是文件没生成、
-    // 还是我们找错了地方。带上路径，至少能自己看出来。
-    const info = await invoke<{ exists: boolean }>("produced_file_info", { path: abs }).catch(() => null);
-    if (info && !info.exists) {
-      onToast?.(t("找不到这个文件：{p}（AI 可能还没写出来，或路径不是相对这个工作文件夹）", { p: abs }));
-      return;
-    }
-    const ext = (p.split(/[?#]/)[0].split(".").pop() ?? "").toLowerCase();
-    const allowDir = () => invoke("allow_fs_preview", { path: abs.replace(/[\\/][^\\/]*$/, "") }).catch(() => {});
-    try {
-      if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "mp4", "webm", "mov"].includes(ext)) {
-        await allowDir();
-        const kind = ["mp4", "webm", "mov"].includes(ext) ? "video" : "image";
-        showPreview({ kind, src: convertFileSrc(abs), caption: p } as Preview);
-        return;
-      }
-      if (previewableExt(p) === "doc") {
-        await allowDir();
-        showPreview({ kind: "doc", path: abs, caption: p });
-        return;
-      }
-      // 网页：走 asset 协议**真文件地址**，相对路径的图片/样式才加载得到（见 Preview 类型的注释）。
-      // 其余文本（.md/.log/日志…）没有相对资源可言，照旧读进来当整段 HTML 塞进去。
-      if (["html", "htm", "svg"].includes(ext)) {
-        await allowDir();
-        showPreview({ kind: "html", src: convertFileSrc(abs), path: abs, caption: p });
-        return;
-      }
-      // 🔴 **文本文件交给 redline，别当 HTML 塞进去**（2026-08-18 客户实拍：
-      //    点终端里的 .md，预览出来是一坨没有换行的文字）。
-      //    原来这里 `read_text_file` 读出来直接 `kind:"html"` —— 而 HTML 把换行全吃掉，
-      //    整篇 markdown 挤成一段。**顺带还是个注入面**：.md/.log 里写了 `<script>` 会被执行。
-      //    redline 那套按扩展名分流（`viewers/registry.ts`：md→MdViewer、其余→TextViewer），
-      //    换行、标题、代码块都对，而且不执行内容。
-      await allowDir();
-      showPreview({ kind: "doc", path: abs, caption: p });
-    } catch (e) {
-      onToast?.(t("预览失败: {e}", { e: String(e) }));
-    }
-  }, [workspace, showPreview, onToast, t]);
+    void invoke("open_produced_file", { path: abs }).catch((e) => onToast?.(t("打开失败：{e}", { e: String(e) })));
+  }, [workspace, onToast, t]);
 
   useEffect(() => {
     invoke<DeviceKey>("get_device_key")
@@ -676,8 +560,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   const slashCommands = useMemo(
     () => [
       { label: "开终端", hint: "右侧开一个终端", run: () => togglePanel("terminal") },
-      { label: "开文件面板", hint: "浏览工作文件夹", run: () => togglePanel("files") },
-      { label: "开预览", hint: "看生成的图 / 网页", run: () => togglePanel("preview") },
       { label: "换工作文件夹", hint: "AI 在哪儿干活", run: () => void pickWorkspace() },
       { label: "清空对话", hint: "这个会话从头开始", run: () => setItems([]) },
     ],
@@ -706,56 +588,27 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     if (api) api.paste(text);
     else pendingPasteRef.current = text; // 终端面板刚挂载，等 onReady 冲刷
   }, []);
-  // redline 宿主（读字节 / asset URL / markdown 渲染 / 外部打开）。**和 FilesPanel 同一个工厂**。
-  const redlineHost = useMemo(() => createTauriRedlineHost(), []);
 
   /**
    * 终端里点了一条文件路径。**跟别处的「预览」不是同一件事**：那些可以切走面板，
    * 这里不行 —— 终端一消失，客户正在跑的东西就看不见了。所以开右边那条文件栏就地看。
    *
    * 视频例外：redline 没有视频 viewer（会落到 TextViewer 报「二进制文件」），
-   * 交回给通用 previewFile 走预览 tab 的 <video>。网址同理，它会 openUrl。
+   * 交回给通用 openProducedFile 走预览 tab 的 <video>。网址同理，它会 openUrl。
    */
   const openFromTerminal = useCallback(
     (p: string) => {
       const ext = (p.split(/[?#]/)[0].split(".").pop() ?? "").toLowerCase();
       if (/^(https?|file):\/\//i.test(p) || ["mp4", "webm", "mov"].includes(ext)) {
-        void previewFile(p);
+        void openProducedFile(p);
         return;
       }
       const isAbs = /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p);
       if (!isAbs && !workspace) { onToast?.(t("先选一个工作文件夹才能定位这个文件")); return; }
-      setTermFilePath(resolvePath(p, workspace));
-      setTermFilesOpen(true);
     },
-    [workspace, previewFile, onToast, t],
+    [workspace, openProducedFile, onToast, t],
   );
 
-  /**
-   * 终端 ↔ 文件栏 的拖条。跟 startDrag 一样按住拖，但它夹的是**像素宽度**不是比例：
-   * 比例会让文件栏在宽屏上宽得离谱、在窄屏上窄到没法看。给终端硬留 240px ——
-   * TUI 按列排版，再窄就是错位（同让步链那条注释的理由）。
-   */
-  const startTermFilesDrag = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const el = termAreaRef.current;
-    if (!el) return;
-    const move = (ev: MouseEvent) => {
-      const rect = el.getBoundingClientRect();
-      const w = Math.round(rect.right - ev.clientX);
-      setTermFilesWidth(Math.min(Math.max(260, w), Math.max(260, rect.width - 240)));
-    };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      setTermFilesWidth((w) => {
-        localStorage.setItem("uking.term.filesWidth", String(w));
-        return w;
-      });
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  }, []);
 
   /**
    * 顶栏「对话 ↔ 终端」主切换。
@@ -903,15 +756,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
           if (ev.phase !== "output") n.push({ type: "tool", name: ev.name, phase: ev.phase === "result" ? "done" : "error", path: ev.path, command: ev.command, output: ev.output, b64: ev.b64, url: ev.url, message: ev.message, oldStr: ev.old, newStr: ev.new, isNew: ev.is_new });
           return n;
         });
-        // 生成的图自动进右侧「预览」大图（用户要「图片放右侧预览」）
-        if (ev.name === "generate_image" && ev.phase === "result") {
-          const src = ev.b64 ? `data:image/png;base64,${ev.b64}` : ev.url;
-          if (src) showPreview({ kind: "image", src });
-        }
-        // 生成的视频自动进右侧「预览」播放（asset 协议流式读磁盘 mp4，不走 IPC）
-        if (ev.name === "generate_video" && ev.phase === "result" && ev.path) {
-          showPreview({ kind: "video", src: convertFileSrc(ev.path), caption: t("生成的视频") });
-        }
       } else if (ev.kind === "approval") {
         setItems((prev) => [...prev, { type: "approval", id: ev.id, tool: ev.tool, action: ev.action, inputKeys: ev.input_keys, path: ev.path, bytes: ev.bytes, command: ev.command, oldStr: ev.old, newStr: ev.new }]);
       } else if (ev.kind === "usage") {
@@ -936,7 +780,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
       await invoke("chat_send", { taskId: sessionId, messages: payload, model, apiKey: effectiveKey, baseUrl: effectiveBase, workspace: workspace || null, approvalMode: mode, onEvent: ch });
     } catch (e) { setBusy(false); onStatus?.("error"); onToast?.(t("对话启动失败: {e}", { e: String(e) })); }
     });
-  }, [items, model, workspace, mode, onToast, showPreview, sessionId, onTitle, systemText, t, onStatus, effectiveKey, effectiveBase]);
+  }, [items, model, workspace, mode, onToast, sessionId, onTitle, systemText, t, onStatus, effectiveKey, effectiveBase]);
 
   // 提示词队列（借 OpenGUI）：忙时回车/发送把提示词排队，本轮结束自动派发下一条。
   const send = useCallback(async () => {
@@ -1151,8 +995,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
               </div>
             ) : engine === "claude" || engine === "codex" ? (
               /* claude / codex：都走结构化卡片（ChatPanel + agent/claude.rs / agent/codex.rs 的 JSONL） */
-              <ChatPanel key={engine} taskId={`${sessionId}-${engine}`} cwd={workspace} active agent={engine} title={taskName} onRunInTerminal={pasteToTerminal} onStatus={onStatus} onQuickPick={applyQuick} onPreview={previewFile}
-                brainSlot={brainSelect}
+              <ChatPanel key={engine} taskId={`${sessionId}-${engine}`} cwd={workspace} active agent={engine} title={taskName} onRunInTerminal={pasteToTerminal} onStatus={onStatus} onQuickPick={applyQuick} onPreview={openProducedFile}
                 modelPicker={modelPicker}
                 seedPrompt={seed && seed.engine === engine ? seed.prompt : null}
                 onSeedSent={() => { if (seed) { deliver(sessionId, seed.passportId); setSeed(null); } }}
@@ -1162,7 +1005,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                  🔴 命令来自 ENGINE_TUI_CMD，**不是 engine id** —— `claude-cli` 不是命令名，
                  直接拿 id 当命令会开出一个「找不到 claude-cli」的空终端。 */
               <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-white/[0.06]">
-                <TermPanel key={engine} cwd={workspace} active={true} initialCmd={tuiCmd} prompts={[{ label: tuiCmd, cmd: tuiCmd }]} onOpenFile={previewFile} onToast={onToast} />
+                <TermPanel key={engine} cwd={workspace} active={true} initialCmd={tuiCmd} prompts={[{ label: tuiCmd, cmd: tuiCmd }]} onOpenFile={openProducedFile} onToast={onToast} />
               </div>
             )
           ) : (
@@ -1235,16 +1078,13 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                         isImg && dataUrl ? (
                           <div>
                             <div className="text-ink-3 mb-1.5">{t("已生成：")}{it.prompt}</div>
-                            <button onClick={() => showPreview({ kind: "image", src: dataUrl, caption: it.prompt })} className="group relative block" title={t("点击在右侧放大预览")}>
-                              <img src={dataUrl} alt={it.prompt} className="rounded-lg max-w-[240px] max-h-56 border border-white/[0.06] group-hover:opacity-90" />
-                              <span className="absolute inset-0 grid place-items-center opacity-0 group-hover:opacity-100 bg-black/35 rounded-lg text-white text-[12px] gap-1"><Maximize2 size={15} /> {t("点击放大")}</span>
-                            </button>
+                                                      <img src={dataUrl} alt={it.prompt} className="rounded-lg max-w-[240px] max-h-56 border border-white/[0.06]" />
                           </div>
                         )
                         : isVideo && it.path ? (
                           <div>
                             <div className="text-ink-3 mb-1.5">{t("已生成视频：")}{it.prompt}</div>
-                            <button onClick={() => showPreview({ kind: "video", src: convertFileSrc(it.path!), caption: it.prompt })} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-accent/15 border border-accent/30 text-accent text-[12px] hover:bg-accent/25" title={t("在右侧预览播放")}>
+                            <button onClick={() => openProducedFile(it.path!)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-accent/15 border border-accent/30 text-accent text-[12px] hover:bg-accent/25" title={t("用系统播放器打开")}>
                               <Film size={13} /> {t("在右侧播放")}
                             </button>
                           </div>
@@ -1266,7 +1106,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                             {it.phase === "done" && producedFiles(it.output).length > 0 && (
                               <div className="-mx-3 mt-1.5">
                                 {producedFiles(it.output).map((p) => (
-                                  <ProducedFile key={p} path={p} onPreview={previewFile} />
+                                  <ProducedFile key={p} path={p} onPreview={openProducedFile} />
                                 ))}
                               </div>
                             )}
@@ -1282,7 +1122,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                                 跟 Claude/Codex 那侧共用，不是第二份实现。 */}
                             {(it.name === "write_file" || it.name === "edit_file") && deliverableExt(it.path ?? "") && (
                               <div className="-mx-3 mt-1.5">
-                                <ProducedFile path={it.path!} onPreview={previewFile} />
+                                <ProducedFile path={it.path!} onPreview={openProducedFile} />
                               </div>
                             )}
                             {(it.name === "write_file" || it.name === "edit_file") && (it.oldStr != null || it.newStr != null) && (
@@ -1394,7 +1234,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                     approval={{ value: mode, onChange: setMode, options: MODES }}
                     model={modelPicker}
                   />
-                  {brainSelect}
                   {/* 🔴 审批档**已折进 `+` 菜单**（客户：「权限……最好是自动模式，也不要让客户选择，
                       或者折叠进设置」）。默认档没变，改的只是它常驻不常驻 ——
                       **没有默默改成全自动**：那是产品安全档，静默放宽比多一个下拉危险得多。
@@ -1451,7 +1290,7 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
             )}
             {/* 🔴 终端态下不显示「文件」tab —— 它旁边就是文件栏开关，两颗同名按钮点了行为还不一样
                 （一个开旁栏、一个把整个面板切走、终端消失）。同一时刻只该有一个「文件」。 */}
-            {RIGHT_META.filter((m) => (opened.has(m.kind) || m.kind === rightKind) && !(rightKind === "terminal" && m.kind === "files")).map(({ kind, label, icon: Icon, needsWs }) => (
+            {RIGHT_META.filter((m) => opened.has(m.kind) || m.kind === rightKind).map(({ kind, label, icon: Icon, needsWs }) => (
               <button key={kind} onClick={() => togglePanel(kind)} disabled={needsWs && !workspace}
                 className={cn("inline-flex items-center gap-1 h-6 px-2 rounded text-[12px]", rightKind === kind ? "bg-accent/[0.14] text-ink-0" : "text-ink-3 hover:bg-white/[0.05]")}>
                 <Icon size={13} /> {t(label)}
@@ -1474,15 +1313,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                 <Maximize2 size={13} /> {t("新窗口")}
               </button>
             )}
-            {rightKind === "terminal" && workspace && (
-              <button
-                onClick={() => setTermFilesOpen((v) => !v)}
-                title={termFilesOpen ? t("关掉右边的文件栏") : t("在终端右边开一栏：文件树 + 预览")}
-                className={cn("inline-flex items-center gap-1 h-6 px-2 rounded text-[12px] ml-1",
-                  termFilesOpen ? "bg-accent/[0.14] text-ink-0" : "text-ink-3 hover:bg-white/[0.05]")}>
-                <FolderTree size={13} /> {t("文件")}
-              </button>
-            )}
             <button onClick={() => setRightOpen(false)} title={t("收起面板")} className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded text-ink-4 hover:text-ink-1 hover:bg-white/[0.08]"><X size={14} /></button>
           </div>
           <div className="flex-1 min-h-0 relative">
@@ -1494,104 +1324,6 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
                   <TermPanel cwd={workspace} active={rightOpen && rightKind === "terminal"} onReady={handleTermReady}
                     onOpenFile={openFromTerminal} onToast={onToast} />
                 </div>
-                {termFilesOpen && (
-                  <>
-                    <div onMouseDown={startTermFilesDrag} className="w-1.5 shrink-0 cursor-col-resize bg-white/[0.06] hover:bg-accent/40" />
-                    {/* 🔴 宽度必须在**渲染时**夹一次，不能只在拖条里夹。
-                        原来只有 startTermFilesDrag 里有 `rect.width - 240` 的保底，初次打开时
-                        直接吃 termFilesWidth(480) —— 实测 1280 宽的机器上终端只剩 34px、
-                        1440 上剩 101px（scripts/shot-workspace-ui.mjs 拍出来的）。
-                        TUI 按列排版，那个宽度等于废掉。用 CSS 夹：终端保底 240px。 */}
-                    <div
-                      style={{ width: `max(240px, min(${termFilesWidth}px, calc(100% - 240px)))` }}
-                      className="shrink-0 min-w-0 border-l border-white/[0.06]"
-                    >
-                      <FilesPanel root={workspace} active={rightOpen && rightKind === "terminal"}
-                        treeWidth={200} activePath={termFilePath} onActivePathChange={setTermFilePath} onToast={onToast} />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            {opened.has("files") && workspace && (
-              <div className="absolute inset-0" style={{ display: rightKind === "files" ? "block" : "none" }}>
-                <FilesPanel root={workspace} active={rightOpen && rightKind === "files"} onToast={onToast} />
-              </div>
-            )}
-            {opened.has("preview") && (
-              <div className="absolute inset-0 flex flex-col" style={{ display: rightKind === "preview" ? "flex" : "none" }}>
-                {!preview ? (
-                  <div className="flex-1 grid place-items-center text-center px-4">
-                    <div>
-                      <Eye size={30} className="text-ink-5 mx-auto mb-2" />
-                      <div className="text-[13px] text-ink-3">{t("图片 / 视频 / 网页 / PPT · Word · Excel · PDF 都在这里预览")}</div>
-                      <div className="text-[11px] text-ink-5 mt-1">{t("让它「画一张…」「做个 PPT…」「整理成表格…」，成果就出现在这里")}</div>
-                    </div>
-                  </div>
-                ) : preview.kind === "image" ? (
-                  <>
-                    <div className="flex items-center gap-1.5 h-9 px-2 border-b border-white/[0.06] shrink-0">
-                      <span className="text-[12px] text-ink-3 truncate flex-1">{preview.caption || t("预览")}</span>
-                      <button onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} title={t("缩小")} className="w-6 h-6 grid place-items-center rounded text-ink-3 hover:bg-white/[0.06]"><ZoomOut size={14} /></button>
-                      <span className="text-[11px] text-ink-4 w-10 text-center">{Math.round(zoom * 100)}%</span>
-                      <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} title={t("放大")} className="w-6 h-6 grid place-items-center rounded text-ink-3 hover:bg-white/[0.06]"><ZoomIn size={14} /></button>
-                      <button onClick={() => setZoom(1)} title={t("还原")} className="w-6 h-6 grid place-items-center rounded text-ink-3 hover:bg-white/[0.06]"><Maximize2 size={13} /></button>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-auto grid place-items-center bg-bg-0/40 p-3">
-                      <img src={preview.src} alt={preview.caption || ""} style={{ transform: `scale(${zoom})`, transformOrigin: "center" }} className="max-w-full max-h-full object-contain rounded transition-transform" />
-                    </div>
-                  </>
-                ) : preview.kind === "video" ? (
-                  <>
-                    <div className="flex items-center gap-1.5 h-9 px-2 border-b border-white/[0.06] shrink-0">
-                      <Film size={13} className="text-ink-4" /><span className="text-[12px] text-ink-3 truncate flex-1">{preview.caption || t("视频预览")}</span>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-auto grid place-items-center bg-bg-0/40 p-3">
-                      <video src={preview.src} controls autoPlay loop className="max-w-full max-h-full rounded" />
-                    </div>
-                  </>
-                ) : preview.kind === "doc" ? (
-                  /* 办公文档 / PDF / 压缩包 …：整块交给 redline 内核（它自带标题栏、格式识别、
-                     懒加载 viewer、渲染失败兜底「用默认程序打开」）。**和文件树双击是同一个组件**，
-                     不是第二份实现；key=path 换文件即重挂。 */
-                  <RedlinePanel
-                    key={preview.path}
-                    host={redlineHost}
-                    path={preview.path}
-                    fileName={preview.path.split(/[\\/]/).pop() ?? preview.path}
-                  />
-                ) : (
-                  <>
-                    <div className="flex items-center gap-1.5 h-9 px-2 border-b border-white/[0.06] shrink-0">
-                      <Globe size={13} className="text-ink-4" /><span className="text-[12px] text-ink-3 truncate flex-1">{preview.caption || t("网页预览")}</span>
-                      {/* iframe 里的页面点链接不跳、有些脚本被 sandbox 拦 —— 交给系统浏览器打开，
-                          能点链接、能登录，比内置浏览器更实用（也不再需要维护一整套浏览器面板）。
-                          只对有真实路径的网页给；整段源码塞进来的那种（read_text_file 那条）没有文件可开。 */}
-                      {preview.path && (
-                        <button
-                          onClick={() => {
-                            // 本地文件交给系统默认程序（.html = 系统浏览器）。不能走 browser_nav
-                            // external：它只放行 https/localhost，file:/// 会被校验拦下。
-                            invoke("open_produced_file", { path: preview.path }).catch((e) =>
-                              onToast?.(t("打开系统浏览器失败：{err}", { err: String(e) })),
-                            );
-                          }}
-                          title={t("用系统浏览器打开（可点链接、可登录）")}
-                          className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-white/[0.10] text-[11px] text-ink-3 hover:text-ink-0 hover:border-accent/40"
-                        >
-                          <Globe size={11} /> {t("用浏览器打开")}
-                        </button>
-                      )}
-                    </div>
-                    {/* src（真文件地址，相对资源能加载）优先；没有才退回整段源码。
-                        sandbox 两条都留着 allow-scripts —— 生成的网页多半有交互，不给脚本等于给个死页面。 */}
-                    {preview.src ? (
-                      <iframe title="preview" src={preview.src} sandbox="allow-scripts allow-same-origin" className="flex-1 min-h-0 w-full bg-white" />
-                    ) : (
-                      <iframe title="preview" srcDoc={preview.html} sandbox="allow-scripts" className="flex-1 min-h-0 w-full bg-white" />
-                    )}
-                  </>
-                )}
               </div>
             )}
           </div>

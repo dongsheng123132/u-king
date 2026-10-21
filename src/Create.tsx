@@ -8,8 +8,9 @@
  * 作图历史/视频轮询等页内状态不丢）。三个原页面（Draw/Video/QrMerge）保持独立、
  * 原路由不动（AI 专家页等深链仍可直达）。删除本页只需动 App.tsx + Sidebar（铁律④）。
  */
-import { lazy, Suspense, useState } from "react";
-import { Clapperboard, Image as ImageIcon, QrCode } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Clapperboard, ExternalLink, Image as ImageIcon, QrCode } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "./lib/cn";
 import { useI18n } from "./i18n";
 import type { DeviceKey } from "./lib/types";
@@ -59,6 +60,10 @@ export function Create({
     setSub(id);
     setMounted((s) => (s.has(id) ? s : new Set(s).add(id)));
   };
+  useEffect(() => {
+    setSub(initialSub);
+    setMounted((current) => current.has(initialSub) ? current : new Set(current).add(initialSub));
+  }, [initialSub]);
 
   return (
     // 高度链的一环（测试报告 #005）：外层 main 已改成不滚的 flex 容器，
@@ -86,6 +91,17 @@ export function Create({
             </button>
           );
         })}
+        {/* 在线作图（2026-10-21 用户要求）：站外的图站入口，直接用浏览器打开。 */}
+        <button
+          onClick={() => {
+            void openUrl("https://tu.u-claw.org.cn/").catch(() => {});
+          }}
+          title={t("在线作图站：https://tu.u-claw.org.cn/（用浏览器打开）")}
+          className="inline-flex shrink-0 items-center gap-1.5 px-3.5 h-9 rounded-lg border border-white/[0.08] text-ink-2 hover:bg-white/[0.04] md:w-full"
+        >
+          <ExternalLink size={14} />
+          {t("在线作图")}
+        </button>
       </nav>
 
       {/* 子页内容：可用页面访问过即挂载，display 切换保活。 */}

@@ -3,10 +3,17 @@
  *
  * 一份数据驱动三处：① Sidebar 应用列表 ② App 路由（哪些 tab 是 TUI 应用）③ ToolAppView 的提示词按钮。
  * 每个应用进去是空终端 + 提示词按钮，点提示词才启动，启动后常驻保活，手动逐个关终端才停。
+ *
+ * 🔴 2026-10-21 工具目录收敛：「我的 AI」只保留 11 个工具（TOOL_SPECS 是唯一真相源）。
+ * 这里只登记其中有终端入口的那批；mimo / codebuddy / qodercn / kimi / qwen / crush /
+ * gemini / grok / cline / openclaw 的条目已删除，`node scripts/check-tool-registry-sync.mjs`
+ * 保证本表与 TOOL_SPECS 的 id/cmd/config_target 一致。
  */
 
-// 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突
-export type TuiAppId = "mimo" | "codebuddy" | "qodercn" | "kimi" | "qwen" | "crush" | "gemini" | "grok" | "cline" | "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "opencode" | "pi";
+// 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突。
+// 「openclaw」仍留在联合类型里只为兼容存量代码（ToolAppView / SessionList 里还有它的比较
+// 字面量），TUI_APPS 里已无该条目 —— OpenClaw CLI 按用户要求不出现在「我的 AI」。
+export type TuiAppId = "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "opencode" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -30,24 +37,6 @@ export type TuiApp = {
 };
 
 export const TUI_APPS: TuiApp[] = [
-  { id: "mimo", toolId: "mimo-code", name: "MiMo Code", tool: "mimo",
-    prompts: [{ label: "启动", cmd: "mimo" }], configTargets: [], group: "cli" },
-  { id: "codebuddy", toolId: "codebuddy-code", name: "CodeBuddy Code", tool: "codebuddy",
-    prompts: [{ label: "启动", cmd: "codebuddy" }], configTargets: [], group: "cli" },
-  { id: "qodercn", toolId: "qoder-cn", name: "Qoder CN CLI", tool: "qodercn",
-    prompts: [{ label: "启动", cmd: "qodercn" }], configTargets: [], group: "cli" },
-  { id: "kimi", toolId: "kimi-code", name: "Kimi Code", tool: "kimi",
-    prompts: [{ label: "启动", cmd: "kimi" }], configTargets: [], group: "cli" },
-  { id: "qwen", toolId: "qwen-code", name: "Qwen Code", tool: "qwen",
-    prompts: [{ label: "启动", cmd: "qwen" }], configTargets: ["qwen"], group: "cli" },
-  { id: "crush", toolId: "crush", name: "Crush", tool: "crush",
-    prompts: [{ label: "启动", cmd: "crush" }], configTargets: ["crush"], group: "cli" },
-  { id: "gemini", toolId: "gemini-cli", name: "Gemini CLI", tool: "gemini",
-    prompts: [{ label: "启动", cmd: "gemini" }], configTargets: [], group: "cli" },
-  { id: "grok", toolId: "grok-build", name: "Grok Build", tool: "grok",
-    prompts: [{ label: "启动", cmd: "grok" }], configTargets: [], group: "cli" },
-  { id: "cline", toolId: "cline", name: "Cline CLI", tool: "cline",
-    prompts: [{ label: "启动", cmd: "cline" }], configTargets: [], group: "cli" },
   {
     id: "claude",
     toolId: "claude-code",
@@ -72,39 +61,6 @@ export const TUI_APPS: TuiApp[] = [
     prompts: [{ label: "启动", cmd: "codex" }],
     configTargets: ["codex"],
     group: "cli",
-  },
-  {
-    // ★ 2026-08-03 复活。原隐藏理由（2026-07-07）是「ClawX 桌面版就是 OpenClaw 的 GUI 版，
-    // 双入口让客户犯懵」—— 在「GUI 优先」的前提下成立，但现在 ClawX 自己被降级了，
-    // 于是这条理由连同它的前提一起没了：**唯一的人类入口反而应该是 CLI**。
-    // 双配置面（openclaw.json vs clawx-providers.json）和 18789 端口冲突那两个老坑仍然真实，
-    // 靠的是 configTargets 仍指 "clawx"（同一份配置），不是靠藏入口。
-    id: "openclaw",
-    toolId: "openclaw",
-    name: "OpenClaw CLI",
-    tool: "openclaw",
-    // gateway 必须带 --allow-unconfigured，否则裸 `openclaw gateway run` 会报
-    // 「Missing config. Run openclaw setup...」直接卡住（客户实测懵逼点）。
-    prompts: [
-      { label: "启动网页版", cmd: "openclaw gateway run --allow-unconfigured --port 18789" },
-      { label: "命令行版", cmd: "openclaw" },
-    ],
-    configTargets: ["clawx"], // 注意：openclaw 的 apply_provider target 是 "clawx" 不是 "openclaw"
-    group: "cli",
-    // ★ 2026-08-05 重新隐藏（第三次翻转，所以这次把判据写死）。
-    // **隐藏的是入口，不是砍配置能力** —— gateway / 备份 / configTargets("clawx")
-    // 那条链一个字节没动，已装的客户照配照用。
-    // ⚠️ 但要清楚这一改的合力：ClawX 桌面版（tools.rs 里另一条 id）08-03 已降级隐藏，
-    // 所以 **OpenClaw 生态在主推面上从此不再出现**，只在「进阶 / App 版」页可达。
-    // 这是有意的收窄；哪天要复活，两处得一起放回来，只放一处客户仍然点不通。
-    // 判据（不是"不好用"，它好不好用这里根本没测出来）：
-    //   · 它**没有可靠的无头一次性推理入口**：`infer model run` 走另一套模型目录，
-    //     显式传 --model 直接 Unknown model，而我们写的三份配置一个字段都没错。
-    //     在「CLI 干活 + U-Workspace 当壳」的主线里，一个脚本调不动的 CLI 价值有限。
-    //   · 双入口（ClawX 桌面版 + 这个）让客户犯懵 —— 这是 2026-07-07 隐藏它的原始理由，
-    //     08-03 以「ClawX 被降级、唯一人类入口应该是 CLI」复活；但那轮复活没解决
-    //     「gateway 起不来就什么都没有」，客户看到的仍是两个都点不通。
-    hidden: true,
   },
   {
     id: "hermes",
@@ -163,14 +119,9 @@ export const TUI_APPS: TuiApp[] = [
     ],
     configTargets: ["opencode"],
     group: "cli",
-    // ★ 2026-08-05 隐藏。**上面那段「run 恒定挂满超时」的结论要修正**：2026-08-04 用
-    // U-King 配好的虾盘云（deepseek-v4-flash）在沙箱里跑通了，11.8s 有输出。
-    // 所以那三轮挂大概率是 provider 的锅（当时真实 HOME 里配的是 zhipuai glm-4.6），
-    // 不是它 run 子命令本身起不来 —— 原注释把「换个 provider 就好」写成了「它坏了」。
-    // 2026-08-24 取消隐藏（用户点名要 opencode 出现在「我的 AI」和「AI 设置」里，
+    // ★ 2026-08-24 取消隐藏（用户点名要 opencode 出现在「我的 AI」和「AI 设置」里，
     // 同批把 `tools.rs` 的 hidden 也翻了）。「装得慢」是安装时才付的代价，
-    // 换来「装完在工作台 Dock 里也找不到它」不划算 —— 上面那条修正本身就说明
-    // 当初的隐藏理由（run 子命令坏了）是误判，剩下的只有体积，而体积已在文案里明说。
+    // 换来「装完在工作台 Dock 里也找不到它」不划算。
     hidden: false,
   },
   {

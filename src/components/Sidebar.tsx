@@ -9,7 +9,7 @@ import { useState } from "react";
 // 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱，页面 2026-10-04 已删）/ SquareTerminal（终端工作台）/
 // Sparkles（装机 · 体检）/ Wallet（虾盘云 · 充值）/ Gauge（Token 水电表）随入口撤下一并去掉，
 // 恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
-import { ArrowUpCircle, ChevronDown, CodeXml, Cpu, FlaskConical, GitPullRequest, Globe, History, LayoutGrid, Languages, LifeBuoy, MessageSquare, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Sun, Terminal as TerminalIcon, Wallet, Wand2 } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, CodeXml, Cpu, FlaskConical, Globe, History, LayoutGrid, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Settings, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -23,6 +23,7 @@ import type { TuiAppId } from "../opencodex/apps";
 // 能编译通过并在 App.tsx 的 LEGACY_TAB_FALLBACK 里安全回退 —— 不再挂载已删页面。
 export type TabId =
   | TuiAppId
+  | "workbench"
   | "toolhub"
   | "terminal"
   | "setup"
@@ -60,12 +61,11 @@ const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
   // 2026-10-19：chat/termwb/create/draw/qrmerge/video 全部落「维护助手」高亮；
   // advanced/usbgenie 落「我的 AI」。App.tsx 的 LEGACY_TAB_FALLBACK 会先把旧 id 换成
   // 新 id，这里再兜一层（Sidebar 可能被传入未归一的 active）。
-  termwb: "maintenance",
-  chat: "maintenance",
-  create: "maintenance",
-  draw: "maintenance",
-  qrmerge: "maintenance",
-  video: "maintenance",
+  termwb: "workbench",
+  chat: "workbench",
+  draw: "create",
+  qrmerge: "create",
+  video: "create",
   advanced: "toolhub",
   usbgenie: "toolhub",
   // 2b：「装机 · 体检」(myai) 降为「我的 AI」的子页「体检 · 升级」，装机向导 (setup) 本来就是
@@ -107,6 +107,12 @@ const NAV_ALIAS: Partial<Record<TabId, TabId>> = {
  * 从 `setup`/`chat` 改成了统一落 toolhub（见 App.tsx `refresh()` 里的落点逻辑）。
  */
 const CORE: NavItem[] = [
+  // 「工作台」（2026-10-21 用户拍板）：对话工作台 + 终端工作台同页，底座回到 Claude Code。
+  // 上一个批次（10-19/10-20）曾把这里换成「维护助手」，用户口径是**很多老用户还是用原来的样子**，
+  // 维护助手退回维护场景（装机失败 / 体检异常 / 「更多」里），不占核心位。
+  { id: "workbench", label: "工作台", sub: "对话 · 终端 · 会话", icon: MessageSquare },
+  // 「AI 创作」独立页：作图 / 视频 / 海报二维码。工作台里不再嵌创作面板。
+  { id: "create", label: "AI 创作", sub: "作图 · 视频 · 海报二维码", icon: Palette },
   // 「我的 AI」（原「AI 工具中心」，2026-09-29 改名）：已装工具卡片网格，换模型、
   // 一键启动。
   //
@@ -115,18 +121,6 @@ const CORE: NavItem[] = [
   // 装机向导是点安装后进的流程页。两者激活时侧栏照样高亮本项（见 NAV_ALIAS）。
   // 页面渲染分支一个没删，两页数据源仍是同一份 tools/driver，互不重实现。
   { id: "toolhub", label: "我的 AI", sub: "已装工具 · 换模型 · 一键启动", icon: LayoutGrid },
-  // 维护助手（2026-10-19 轻量维护助手批次）：UChat/UCLI 收敛后的唯一内置对话入口。
-  // 只做装机/故障维护（虾盘云 DeepSeek Flash），不再默认常驻挂载完整 UWorkspace。
-  // 旧 chat/termwb/create 等 tab id 由 App.tsx LEGACY_TAB_FALLBACK 落到这里（见 NAV_ALIAS）。
-  { id: "maintenance", label: "维护助手", sub: "装机/故障排查 · 写操作每步确认", icon: MessageSquare },
-  // 「首页 · 我的 AI」→「我的 AI」（用户 2026-08-25：它就在侧栏上，「首页」两个字多余）。
-  // 🔴 2026-09-29 再改名「装机 · 体检」——「我的 AI」这个名字挪给了上面的 toolhub
-  // （现在是天天用的落地页），这页还是原来那套装机漏斗（装/体检/卸载），
-  // id 和页面实现都没动，只是换了个跟内容对得上的名字，避免两条侧栏都叫「我的 AI」。
-  // 🔴 2026-10-03 收敛方案 §5 第 2b 步：**撤入口，保页面**——改名「体检 · 升级」降为「我的 AI」的子页
-  // （入口见 ToolHub 页头「体检 · 升级 →」）。恢复：解除下面这行注释，把 `Sparkles` 加回顶部 lucide import，
-  // 并把 NAV_ALIAS 里 myai / setup 两行去掉。
-  // { id: "myai", label: "体检 · 升级", sub: "体检修复 · 一键升级 · 卸载", icon: Sparkles },
   // 「AI 设置」2026-08-31 升回核心第 4 位（用户拍板，见上方 CORE 组注释）。
   // 体检/升级 2026-09-04 按动词分家搬去「我的 AI」，这里的牌子 09-06 才跟上——
   // 副标题只写这页真有的东西：配模型、看余额（用户反馈「体检在有些地方冒出来」）。
@@ -175,6 +169,9 @@ const MORE: NavItem[] = [
   // 「Token 水电表」2026-10-04 删除（零用量证据，收敛方案第 4 步）：页面、挂载、后端读表与偏好全删；
   // 「AI 设置 → 用量账单」的每日柱图与「钱花在哪了」明细（usage_local::breakdown）保留。
   // 2026-10-03 收敛方案初稿判「冻」，同日产品负责人裁决**保留**（「AI 优化大师我感觉还可以留下」）。
+  // 维护助手（2026-10-21 用户拍板）：退回**维护场景**，不占核心位 —— 装机失败、体检异常、
+  // 「让 AI 来安装」这三处会把提示词递进来；每次进来都是全新对话框（见 App.tsx 的 key 重挂载）。
+  { id: "maintenance", label: "维护助手", sub: "装机 / 故障排查 · 写操作每步确认", icon: MessageSquare },
   { id: "airuntime", label: "AI 优化大师", sub: "让 AI 工具跑得更稳、更省 token", icon: Wand2 },
   // 「Token 压缩机」2026-10-04 退役（零用量证据，收敛方案第 4 步）：页面、后端、动作全删；
   // 只留 `rtk_retire.rs`（`rtk-hook` 空壳入口 + 自动摘除客户机 hook，至少保留到 2026-12-31）。
@@ -234,12 +231,11 @@ const LAB: NavItem[] = [
 export function Sidebar({
   active,
   onSelect,
+  onOpenSettings,
   version,
   onShowChangelog,
   platform,
   onOpenSite,
-  onOpenGithub,
-  onOpenPullRequest,
   theme = "light",
   onToggleTheme,
   hasUpdate,
@@ -257,7 +253,6 @@ export function Sidebar({
   onReinstall,
   onHideToTray,
   showTerminal,
-  onRecharge,
 }: {
   active: TabId;
   onSelect: (t: TabId) => void;
@@ -298,19 +293,17 @@ export function Sidebar({
    *  按钮却吃 36px，而 1366×768 客户区才 688px）。不矮的机器上标题栏还在，这里就不传，
    *  免得同一个动作在界面上有两个入口。 */
   onHideToTray?: () => void;
+  /** 页脚「设置」入口（2026-10-21）：跳到 AI 设置并滚到外观/支持那一段。 */
+  onOpenSettings?: () => void;
   /** 内嵌终端页入口平时隐藏（易与「打开终端」弹出的独立窗口混淆）；只在内嵌终端页
    *  已经挂了会话（termMounted）时才露出，让用户能切回去，不留「进得去出不来」的幽灵页。
    *  2026-09-06 修：工具启动改走独立窗口后，唯一还会落进内嵌终端页的是快照恢复。 */
   showTerminal?: boolean;
-  /** 「一键充值」——醒目且全站唯一语义一致的充值入口（复用 App 的 openRechargeAndWatch，
-   *  打开充值页 + 静默轮询余额）。放侧栏页脚是因为它在每一页常驻，跟升级入口同级。 */
-  onRecharge?: () => void;
 }) {
   const { t, lang, setLang } = useI18n();
-  const contributionLinks = [
-    { id: "github", label: "GitHub", title: t("查看 GitHub 源码"), icon: CodeXml, onOpen: onOpenGithub },
-    { id: "pull-request", label: t("提交 PR"), title: t("提交 Pull Request，参与代码贡献"), icon: GitPullRequest, onOpen: onOpenPullRequest },
-  ].filter((link) => link.onOpen);
+  // 2026-10-21 收起：页脚不再占两行放 GitHub / 提交 PR（用户口径「东西太多」）。
+  // 恢复：把这两条放回数组，并还原 import 的 CodeXml / GitPullRequest。
+  const contributionLinks: { id: string; label: string; title: string; icon: typeof CodeXml; onOpen?: () => void }[] = [];
   /** 高亮用的 tab：没有自己侧栏项的 tab 映射到所属项（见 NAV_ALIAS）。 */
   const navActive: TabId = NAV_ALIAS[active] ?? active;
   /** 矮屏（1366×768 笔记本客户区 ≈ 696px）：这一栏装不下自己。见下方 `short &&` 各处。 */
@@ -474,6 +467,7 @@ export function Sidebar({
               {hasUpdate && <span className={cn("absolute right-1 top-1 w-1.5 h-1.5 rounded-full", updateFailed > 0 ? "bg-amber-500" : "bg-accent")} />}
             </button>
           )}
+          {/* 技术支持 2026-10-21 从页脚搬进「AI 设置」页脚 —— 页脚太挤（用户口径）。 */}
           <button
             onClick={onRecheck}
             disabled={checking}
@@ -481,18 +475,6 @@ export function Sidebar({
             className="w-10 h-10 grid place-items-center rounded-card text-ink-3 hover:bg-white/[0.04] hover:text-ink-1 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
           >
             <RefreshCw size={16} className={checking ? "animate-spin" : ""} />
-          </button>
-          <button
-            onClick={() => onSelect("feedback")}
-            title={t("技术支持 · 报告问题 · 加微信找我们")}
-            className={cn(
-              "w-10 h-10 grid place-items-center rounded-card transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none",
-              active === "feedback"
-                ? "bg-accent/[0.14] text-accent"
-                : "text-ink-4 hover:bg-white/[0.04] hover:text-ink-1",
-            )}
-          >
-            <LifeBuoy size={18} />
           </button>
           {contributionLinks.map(({ id, label, title, icon: Icon, onOpen }) => (
             <button
@@ -707,96 +689,21 @@ export function Sidebar({
         </div>
       )}
 
-      {/* 技术支持 —— 常驻底部（全页可达），把"报告问题/联系作者"放在最好找的位置（客户要求）。
-          归属"页脚工具组"：顶部分隔线把它和上面的导航/升级分开，样式跟下方语言/主题/官网 一致
-          的卡片底色（不再用 nav 的 border-l-2 —— 那会让它像一条漂在页脚上的游离导航项，客户反馈「突兀」）。 */}
-      <div className={cn("px-2.5 border-t border-white/[0.06]", short ? "mt-0.5 pt-1 pb-0.5" : "mt-1 pt-2 pb-1")}>
-        <button
-          onClick={() => onSelect("feedback")}
-          className={cn(
-            "w-full flex items-center gap-2.5 px-3 rounded-card text-left transition-colors",
-            short ? "py-1.5" : "py-2",
-            active === "feedback"
-              ? "bg-accent/[0.12] text-accent"
-              : "bg-white/[0.02] text-ink-2 hover:bg-accent/[0.08] hover:text-ink-0",
-          )}
-          title={t("技术支持 · 报告问题 · 加微信找我们")}
-        >
-          <LifeBuoy size={15} className={active === "feedback" ? "text-accent" : "text-ink-4"} />
-          <div className="text-[12px] font-medium">{t("技术支持")}</div>
-        </button>
-      </div>
 
-      {/* 语言 + 主题合并成一行：原来是两整行（各 py-2）太占纵向空间（客户反馈「堆一块、占地方太多」）。
-          合并后省一行高度，又保留标签+分段控件的可发现性（不退回当年那个没人发现的 24px 页脚小图标）。 */}
-      <div className="px-2.5 pb-1 flex flex-wrap items-center gap-1">
-        {/* 语言分段 */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-[100px] px-1 py-1.5 rounded-card bg-white/[0.02] text-ink-2">
-          <Languages size={15} className="text-ink-4 shrink-0" />
-          <div className="flex items-center gap-0.5 rounded-md bg-white/[0.04] p-0.5">
-            {(["zh", "en"] as const).map((l) => (
-              <button
-                key={l}
-                onClick={() => setLang(l)}
-                title={t("语言")}
-                className={cn(
-                  "px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors",
-                  lang === l ? "bg-accent/[0.18] text-accent" : "text-ink-4 hover:text-ink-1",
-                )}
-              >
-                {l === "zh" ? "中" : "EN"}
-              </button>
-            ))}
-          </div>
-        </div>
-        {/* 主题切换：图标+当前状态短标签，tooltip 说明点了会切到哪。 */}
-        <button
-          onClick={onToggleTheme}
-          title={theme === "dark" ? t("浅色模式") : t("深色模式")}
-          className="flex items-center gap-1.5 shrink-0 min-h-[32px] px-1.5 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
-        >
-          {theme === "dark" ? (
-            <Moon size={15} className="text-ink-4" />
-          ) : (
-            <Sun size={15} className="text-ink-4" />
-          )}
-          <span className="text-[11px] font-medium">{theme === "dark" ? t("夜间开") : t("白天")}</span>
-        </button>
-        <button
-          onClick={onRecheck}
-          disabled={checking}
-          title={checking ? t("检查中…") : t("检查更新")}
-          // 2026-09-06 B3：底部图标按钮点击区至少 32×32px + 键盘焦点 accent 描边
-          // （原来 px-2 py-1.5 实测算下来矮于 32px）。
-          className="flex items-center justify-center shrink-0 min-w-[32px] min-h-[32px] px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
-        >
-          <RefreshCw size={15} className={checking ? "animate-spin" : ""} />
-        </button>
-        {/* 矮屏才有：自定义标题栏被撤，这是「缩到托盘」唯一的界面入口（见 onHideToTray 注释）。
-            只放图标不放字 —— 这一行已经有语言和主题，再挤一个带标签的按钮会把它们压换行，
-            那就把省下来的 36px 又还回去了。 */}
-        {onHideToTray && (
+      {/* 语言 / 主题 / 检查更新 2026-10-21 搬进「AI 设置」页脚（用户口径：侧栏页脚太挤）。 */}
+      {onHideToTray && (
+        <div className="px-2.5 pb-1">
           <button
             onClick={onHideToTray}
             title={t("隐藏到右下角托盘")}
-            className="flex items-center justify-center shrink-0 min-w-[32px] min-h-[32px] px-2 py-1.5 rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
+            className="flex items-center justify-center w-full min-h-[30px] rounded-card bg-white/[0.02] text-ink-3 hover:bg-accent/[0.08] hover:text-ink-0 transition-colors"
           >
             <PanelTopClose size={15} />
           </button>
-        )}
-      </div>
-
-      {/* 「一键充值」——醒目唯一入口（2026-10-19）。全站语义一致：都是 openRechargeAndWatch。 */}
-      {onRecharge && !railed && (
-        <div className={cn("px-4 border-t border-white/[0.06]", short ? "py-1.5" : "py-2")}>
-          <button
-            onClick={onRecharge}
-            className="w-full inline-flex items-center justify-center gap-1.5 rounded-card bg-accent px-3 h-9 text-[12.5px] font-semibold text-white hover:opacity-90 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 focus:outline-none"
-          >
-            <Wallet size={14} /> {t("一键充值")}
-          </button>
         </div>
       )}
+
+      {/* 2026-10-21 用户口径：充值按钮不要放侧栏页脚（「就剩一个充值按钮」太挤）——充值走「AI 设置 → 账号 · 充值」。 */}
 
       {/* 版本与官网一行，开源贡献入口一行；各页常驻，窄侧栏保留图标。 */}
       <div className={cn("px-4 border-t border-white/[0.06] bg-white/[0.01]", short ? "py-1.5" : "py-3")}>
@@ -812,13 +719,23 @@ export function Sidebar({
             <History size={11} />
             <span className="font-mono">v{version}</span>
           </button>
-          <button
-            onClick={() => onOpenSite?.()}
-            className="flex items-center gap-1 text-[10px] text-ink-4 hover:text-accent transition-colors"
-            title={t("打开官网")}
-          >
-            <Globe size={11} /> {t("官网")}
-          </button>
+          {/* 设置入口（2026-10-21）：语言/主题/检查更新都搬进「AI 设置」，这里留一个齿轮当路标。 */}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => (onOpenSettings ? onOpenSettings() : onSelect("manage"))}
+              className="flex items-center gap-1 text-[10px] text-ink-3 hover:text-accent transition-colors"
+              title={t("设置：语言 / 主题 / 检查更新 / 技术支持")}
+            >
+              <Settings size={11} /> {t("设置")}
+            </button>
+            <button
+              onClick={() => onOpenSite?.()}
+              className="flex items-center gap-1 text-[10px] text-ink-4 hover:text-accent transition-colors"
+              title={t("打开官网")}
+            >
+              <Globe size={11} /> {t("官网")}
+            </button>
+          </div>
         </div>
         <div className="mt-1.5 flex items-center gap-2">
           {contributionLinks.map(({ id, label, title, icon: Icon, onOpen }) => (

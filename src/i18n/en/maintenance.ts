@@ -1,6 +1,20 @@
 /** 维护助手（MaintenanceAssistant）+ 装机失败交接（Wizard「交给轻助手/复制任务」）专用英文词条。
  *  2026-10-19 轻量维护助手批次。与别处共用的词（复制/取消/文件/余额不足等）复用中央字典，不重复翻。 */
 export const maintenance: Record<string, string> = {
+  // ---- 维护助手左侧记录列表 + AI 创作用词（2026-10-21）----
+  "删除这条记录": "Delete this record",
+  "在线作图": "Online image editor",
+  "在线作图站：https://tu.u-claw.org.cn/（用浏览器打开）": "Online image site: https://tu.u-claw.org.cn/ (opens in your browser)",
+  "聊天历史加载失败，请重新打开工作台后重试": "Could not load chat history. Reopen the workbench and try again.",
+  "聊天记录保存失败，请保留当前会话并重试": "Could not save chat history. Keep this session open and try again.",
+  "U-King 轻助手": "U-King Assistant",
+  "虾盘云 · DeepSeek Flash · 日常对话与维护协助": "Xiapan Cloud · DeepSeek Flash · Chat and maintenance",
+  "请先中断当前会话，再归档": "Interrupt this session before archiving it.",
+  "还没有项目。点上方选择一个文件夹开始对话。": "No projects yet. Select a folder above to start chatting.",
+  "归档这个会话（聊天记录可恢复）": "Archive this session (history can be restored)",
+  "恢复会话": "Restore session",
+  "正在加载会话…": "Loading sessions…",
+  "左侧选择项目文件夹，开始对话；也可以在同一目录新建多个会话。": "Select a project folder on the left to start chatting. You can create multiple sessions in the same folder.",
   // ── MaintenanceAssistant.tsx ──────────────────────────────────
   "维护任务已复制（已脱敏，不含 Key）": "Maintenance task copied (sanitized — no keys)",
   "余额查询失败，请重查后再发（不是没余额）":

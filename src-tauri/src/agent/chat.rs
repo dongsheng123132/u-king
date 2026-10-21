@@ -62,6 +62,13 @@ const MAX_CMD_OUTPUT: usize = 20_000;
 const CMD_OUTPUT_HARD_CAP: usize = 200_000; // 缓冲上限（>MAX_CMD_OUTPUT，好留尾部给 head_tail 首尾截断）
 const CMD_TIMEOUT_SECS: u64 = 60;
 
+fn cancelled() -> &'static Mutex<std::collections::HashSet<String>> {
+    static C: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+fn is_cancelled(task_id: &str) -> bool {
+    cancelled().lock().map(|ids| ids.contains(task_id)).unwrap_or(true)
+}
 fn running() -> &'static Mutex<HashMap<String, Child>> {
     static R: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
     R.get_or_init(|| Mutex::new(HashMap::new()))
@@ -85,6 +92,98 @@ fn curl_command() -> std::process::Command {
 #[cfg(not(windows))]
 fn curl_command() -> std::process::Command {
     std::process::Command::new("curl")
+}
+
+fn curl_header_config(api_key: &str) -> Result<Vec<u8>, String> {
+    if api_key.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err("API Key 含有不支持的控制字符".into());
+    }
+    let mut escaped = String::with_capacity(api_key.len());
+    for ch in api_key.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            _ => escaped.push(ch),
+        }
+    }
+    Ok(format!("header = \"Authorization: Bearer {escaped}\"\n").into_bytes())
+}
+
+struct RequestBodyFile(PathBuf);
+
+impl Drop for RequestBodyFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn write_request_body(body: &[u8]) -> Result<RequestBodyFile, String> {
+    use std::fs::OpenOptions;
+    use std::io::Write as _;
+
+    let dir = std::env::temp_dir();
+    for _ in 0..8 {
+        let path = dir.join(format!("uking-chat-{}-{}.json", std::process::id(), next_id()));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&path) {
+            Ok(mut file) => {
+                if let Err(error) = file.write_all(body).and_then(|_| file.flush()) {
+                    let _ = std::fs::remove_file(&path);
+                    return Err(format!("写入对话请求失败：{error}"));
+                }
+                return Ok(RequestBodyFile(path));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("创建对话请求文件失败：{error}")),
+        }
+    }
+    Err("创建对话请求文件失败：临时名称冲突".into())
+}
+
+fn request_args(endpoint: &str, body_path: &Path) -> Vec<String> {
+    vec![
+        "-q".into(), // 不读取用户 curlrc（可能带 verbose/trace，导致 header 落日志）
+        "-sS".into(),
+        "-N".into(),
+        "--proxy".into(),
+        "".into(),
+        "--connect-timeout".into(),
+        "20".into(),
+        "-m".into(),
+        "300".into(),
+        "-X".into(),
+        "POST".into(),
+        endpoint.into(),
+        "--config".into(),
+        "-".into(),
+        "-H".into(),
+        "Content-Type: application/json".into(),
+        "--data-binary".into(),
+        format!("@{}", body_path.display()),
+    ]
+}
+
+fn redact_secret(text: &str, secret: &str) -> String {
+    if secret.is_empty() { text.to_string() } else { text.replace(secret, "[已隐藏]") }
+}
+
+fn redact_json(value: &mut Value, secret: &str) {
+    match value {
+        Value::String(text) => {
+            if !secret.is_empty() && text.contains(secret) {
+                *text = text.replace(secret, "[已隐藏]");
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(|item| redact_json(item, secret)),
+        Value::Object(fields) => fields.values_mut().for_each(|item| redact_json(item, secret)),
+        _ => {}
+    }
 }
 
 /// PATH 注入（复用 installer::search_paths，让 claude/codex/python/node 等在命令里能找到）。
@@ -308,24 +407,7 @@ fn diff_cap(s: &str) -> String {
 ///
 /// 落地保险：`tools_schema_lint()` 把这条变成门禁，`--brain-actions-test` 进网络之前先跑它。
 fn tools_spec(has_workspace: bool, allow_actions: bool) -> Value {
-    let mut arr = vec![json!({
-        "type": "function",
-        "function": {
-            "name": "generate_image",
-            "description": "根据文字描述生成一张图片。用户想画图/作图/出图/生成图片/配图时调用。",
-            "parameters": { "type": "object", "properties": { "prompt": { "type": "string", "description": "要画的画面描述（越具体越好）" } }, "required": ["prompt"] }
-        }
-    })];
-    // 生成视频：原生工具（零风险，不需工作文件夹）——治「让做视频它退化成静态图/不调 uking-aigc」。
-    // 直连火山 Seedance 真实出片管线（video.rs），异步出片自动进右侧预览。
-    arr.push(json!({
-        "type": "function",
-        "function": {
-            "name": "generate_video",
-            "description": "根据文字描述生成一段短视频（文生视频，火山 Seedance 模型）。用户想做视频/生成视频/文生视频/短视频/做动画/出片时调用。出片是异步的，通常要等 1~3 分钟。把画面写具体：主体 + 怎么动 + 镜头/景别 + 风格/氛围。",
-            "parameters": { "type": "object", "properties": { "prompt": { "type": "string", "description": "视频画面描述（主体+动作+镜头+风格，越具体越好）" } }, "required": ["prompt"] }
-        }
-    }));
+    let mut arr = Vec::new();
     if has_workspace {
         arr.push(json!({ "type": "function", "function": { "name": "list_dir", "description": "列出工作文件夹里某目录下的文件和子目录。", "parameters": { "type": "object", "properties": { "path": { "type": "string", "description": "相对工作文件夹的路径，空或 \".\" 表示根" } }, "required": [] } } }));
         arr.push(json!({ "type": "function", "function": { "name": "read_file", "description": "读取工作文件夹里一个文本文件的内容。", "parameters": { "type": "object", "properties": { "path": { "type": "string", "description": "相对工作文件夹的文件路径" } }, "required": ["path"] } } }));
@@ -408,6 +490,7 @@ fn run_chat(
     headless: bool,
     emit: &dyn Fn(Value),
 ) -> Result<(), String> {
+    if let Ok(mut ids) = cancelled().lock() { ids.remove(&task_id); }
     let endpoint = chat_endpoint(base_url.as_deref());
     let mut msgs: Vec<Value> = messages.as_array().cloned().unwrap_or_default();
     // ★ **北桥：把任务本象编译进系统消息**（2Origin「状态 → Context」总线在轻助手这一侧的落点）。
@@ -436,7 +519,8 @@ fn run_chat(
     // 诚实边界：`list_dir` / `read_file` 是**先 emit result 再去读盘**，读失败只返回错误文本
     // 不补发 error 事件 —— 所以这两个「读」偶尔会被记成成功。写和跑命令（时间轴真正关心的那些）
     // 三个 arm 都规规矩矩发 error，不受影响。要修得动那两个 arm 的顺序，不在本次范围。
-    let tap = |v: Value| {
+    let tap = |mut v: Value| {
+        redact_json(&mut v, &api_key);
         if v["kind"] == json!("tool") {
             let phase = v["phase"].as_str().unwrap_or("");
             // 只认终态：start / output 是过程，记进去会把一次调用变成三条。
@@ -466,6 +550,7 @@ fn run_chat(
     let emit: &dyn Fn(Value) = &tap;
 
     for _step in 0..MAX_STEPS {
+        if is_cancelled(&task_id) { break; }
         tlog.enter("等模型回话");
         let (tool_calls, api_err) = match stream_once(&Value::Array(msgs.clone()), &tools, &model, &api_key, &endpoint, &task_id, emit) {
             Ok(x) => x,
@@ -476,6 +561,7 @@ fn run_chat(
         let tc_json: Vec<Value> = tool_calls.iter().map(|t| json!({ "id": t.id, "type": "function", "function": { "name": t.name, "arguments": t.args } })).collect();
         msgs.push(json!({ "role": "assistant", "content": Value::Null, "tool_calls": tc_json }));
         for t in &tool_calls {
+            if is_cancelled(&task_id) { break; }
             // 走 `on_event` 而不是 `enter`：顺带把工具计数记对。汇总行里 tools=0 而实际跑了工具，
             // 比不记更坏 —— 一份会少报的日志，下次没人敢信。
             tlog.on_event("tool_start", Some(&t.name));
@@ -489,17 +575,28 @@ fn run_chat(
     Ok(())
 }
 
-fn stream_once(msgs: &Value, tools: &Value, model: &str, api_key: &str, endpoint: &str, task_id: &str, emit: &dyn Fn(Value)) ->Result<(Vec<ToolCallAcc>, Option<String>), String> {
+fn stream_once(msgs: &Value, tools: &Value, model: &str, api_key: &str, endpoint: &str, task_id: &str, emit: &dyn Fn(Value)) -> Result<(Vec<ToolCallAcc>, Option<String>), String> {
     let body = json!({ "model": model, "messages": msgs, "tools": tools, "stream": true });
-    let body_str = serde_json::to_string(&body).map_err(|e| format!("请求体序列化失败: {e}"))?;
+    let body_str = serde_json::to_vec(&body).map_err(|e| format!("请求体序列化失败: {e}"))?;
+    let body_file = write_request_body(&body_str)?;
+    let header_config = curl_header_config(api_key)?;
     let mut c = curl_command();
-    c.args(["-sS", "-N", "--proxy", "", "--connect-timeout", "20", "-m", "300", "-X", "POST", endpoint, "-H", &format!("Authorization: Bearer {api_key}"), "-H", "Content-Type: application/json", "--data-binary", "@-"]);
+    c.args(request_args(endpoint, &body_file.0));
     c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = c.spawn().map_err(|e| format!("启动 curl 失败: {e}"))?;
-    if let Some(mut si) = child.stdin.take() { let _ = si.write_all(body_str.as_bytes()); }
+    if let Some(mut stdin) = child.stdin.take() {
+        if let Err(error) = stdin.write_all(&header_config) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("传递对话请求配置失败：{error}"));
+        }
+    }
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    if let Ok(mut m) = running().lock() { m.insert(task_id.to_string(), child); }
+    if let Ok(mut m) = running().lock() {
+        if is_cancelled(task_id) { let _ = child.kill(); }
+        m.insert(task_id.to_string(), child);
+    }
     let err_buf = Arc::new(Mutex::new(String::new()));
     let err_store = err_buf.clone();
     let err_h = stderr.map(|se| std::thread::spawn(move || { for line in BufReader::new(se).lines().map_while(Result::ok) { if let Ok(mut g) = err_store.lock() { g.push_str(&line); g.push('\n'); } } }));
@@ -509,13 +606,13 @@ fn stream_once(msgs: &Value, tools: &Value, model: &str, api_key: &str, endpoint
         for line in BufReader::new(so).lines().map_while(Result::ok) {
             let line = line.trim();
             let Some(data) = line.strip_prefix("data:") else {
-                if line.contains("\"error\"") { if let Ok(v) = serde_json::from_str::<Value>(line) { if let Some(m) = v.pointer("/error/message").and_then(|m| m.as_str()) { api_err = Some(m.to_string()); } } }
+                if line.contains("\"error\"") { if let Ok(v) = serde_json::from_str::<Value>(line) { if let Some(m) = v.pointer("/error/message").and_then(|m| m.as_str()) { api_err = Some(redact_secret(m, api_key)); } } }
                 continue;
             };
             let data = data.trim();
             if data == "[DONE]" { break; }
             let Ok(v) = serde_json::from_str::<Value>(data) else { continue; };
-            if let Some(m) = v.pointer("/error/message").and_then(|m| m.as_str()) { api_err = Some(m.to_string()); continue; }
+            if let Some(m) = v.pointer("/error/message").and_then(|m| m.as_str()) { api_err = Some(redact_secret(m, api_key)); continue; }
             let delta = v.pointer("/choices/0/delta");
             if let Some(txt) = delta.and_then(|d| d.pointer("/content")).and_then(|c| c.as_str()) { if !txt.is_empty() { let _ = emit(json!({ "kind": "delta", "text": txt })); } }
             if let Some(tcs) = delta.and_then(|d| d.get("tool_calls")).and_then(|t| t.as_array()) {
@@ -532,7 +629,12 @@ fn stream_once(msgs: &Value, tools: &Value, model: &str, api_key: &str, endpoint
     }
     if let Some(h) = err_h { let _ = h.join(); }
     if let Some(mut ch) = running().lock().ok().and_then(|mut m| m.remove(task_id)) { let _ = ch.wait(); }
-    if api_err.is_none() { let e = err_buf.lock().map(|g| g.trim().to_string()).unwrap_or_default(); if tools_acc.is_empty() && !e.is_empty() { api_err = Some(e); } }
+    if api_err.is_none() {
+        let error = err_buf.lock().map(|g| g.trim().to_string()).unwrap_or_default();
+        if tools_acc.is_empty() && !error.is_empty() {
+            api_err = Some(redact_secret(&error, api_key));
+        }
+    }
     Ok((tools_acc.into_iter().filter(|t| !t.name.is_empty()).collect(), api_err))
 }
 
@@ -553,6 +655,7 @@ fn resolve_in_workspace(workspace: &str, rel: &str) -> Result<PathBuf, String> {
 
 /// 弹审批 → 阻塞等前端 chat_approve（180s 超时默认拒）。
 fn ask_approval(task_id: &str, detail: Value, emit: &dyn Fn(Value)) ->bool {
+    if is_cancelled(task_id) { return false; }
     let approval_id = format!("{task_id}-{}", next_id());
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     if let Ok(mut m) = approvals().lock() { m.insert(approval_id.clone(), tx); }
@@ -560,7 +663,7 @@ fn ask_approval(task_id: &str, detail: Value, emit: &dyn Fn(Value)) ->bool {
     ev["kind"] = json!("approval");
     ev["id"] = json!(approval_id);
     let _ = emit(ev);
-    let ok = rx.recv_timeout(Duration::from_secs(180)).unwrap_or(false);
+    let ok = !is_cancelled(task_id) && rx.recv_timeout(Duration::from_secs(180)).unwrap_or(false) && !is_cancelled(task_id);
     if let Ok(mut m) = approvals().lock() { m.remove(&approval_id); }
     ok
 }
@@ -785,35 +888,6 @@ fn exec_tool(name: &str, args_json: &str, task_id: &str, workspace: Option<&str>
         }
     };
     match name {
-        "generate_image" => {
-            let prompt = args.get("prompt").and_then(|p| p.as_str()).unwrap_or("").trim().to_string();
-            if prompt.is_empty() { return "作图失败：没有拿到画面描述".into(); }
-            let _ = emit(json!({ "kind": "tool", "name": "generate_image", "phase": "start", "prompt": prompt }));
-            let key = match crate::device::device_key_offline() { Ok(k) => k, Err(e) => { let _ = emit(json!({ "kind": "tool", "name": "generate_image", "phase": "error", "message": e })); return format!("作图失败：{e}"); } };
-            match crate::providers::generate_image(&key, &prompt, "gpt-image-2", "1024x1024", None) {
-                Ok(img) => { let _ = emit(json!({ "kind": "tool", "name": "generate_image", "phase": "result", "b64": img.b64, "url": img.url })); "已生成图片并展示给用户。".into() }
-                Err(e) => { let _ = emit(json!({ "kind": "tool", "name": "generate_image", "phase": "error", "message": e })); format!("作图失败：{e}") }
-            }
-        }
-        "generate_video" => {
-            let prompt = args.get("prompt").and_then(|p| p.as_str()).unwrap_or("").trim().to_string();
-            if prompt.is_empty() { return "做视频失败：没有拿到画面描述".into(); }
-            let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "start", "prompt": prompt }));
-            // 文生视频默认 Seedance Fast（画质/成本平衡，直连火山、中文好）——治「视频很丑」。
-            // 统一走 lib.rs 的动作核心（提交→落 running 记录→轮询下载），跟「AI 视频」页与
-            // ActionParity 的 CLI/MCP 入口完全同源；进度每 5s 流给前端（phase:"output"）。
-            const VIDEO_MODEL: &str = "doubao-seedance-2-0-fast-260128";
-            match crate::run_video_generation(&prompt, Some(VIDEO_MODEL), None, None, &|_id, _phase, progress| {
-                let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "output", "chunk": progress }));
-            }) {
-                Ok(id) => {
-                    let path = crate::video::video_file_path(id).map(|p| p.display().to_string()).unwrap_or_default();
-                    let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "result", "path": path, "id": id }));
-                    "已生成视频并展示在右侧预览。".into()
-                }
-                Err(e) => { let _ = emit(json!({ "kind": "tool", "name": "generate_video", "phase": "error", "message": e })); format!("做视频失败：{e}") }
-            }
-        }
         "list_dir" | "read_file" | "write_file" | "edit_file" | "run_command" => {
             let Some(ws) = workspace else { return "请用户先在对话页选一个「工作文件夹」，才能操作文件 / 跑命令。".into(); };
             match name {
@@ -910,6 +984,9 @@ fn exec_uking_action(task_id: &str, args: &Value, mode: &str, headless: bool, em
         .unwrap_or("")
         .trim()
         .to_string();
+    if action_id == crate::actions::CREATOR_VIDEO_SUBMIT {
+        return "图片和视频生成请由用户进入独立的 AI 创作页面操作。".into();
+    }
     // 空 / list / help → 返回活的动作清单（读动作表，不硬编码，动作表会自己长大）。
     if action_id.is_empty() || action_id == "list" || action_id == "help" {
         return uking_action_manifest();
@@ -971,6 +1048,7 @@ fn uking_action_manifest() -> String {
     let specs = crate::actions::list();
     let mut out = format!("U-King 可调动作（{} 个）：\n", specs.len());
     for a in &specs {
+        if a.id == crate::actions::CREATOR_VIDEO_SUBMIT { continue; }
         let flag = if a.confirmation == "required" { "【写·需确认】" } else { "【读】" };
         out.push_str(&format!("{flag} {} —— {}\n", a.id, a.description));
     }
@@ -1004,6 +1082,13 @@ pub fn chat_approve(approval_id: String, approved: bool) -> Result<(), String> {
 
 #[tauri::command]
 pub fn chat_interrupt(task_id: String) -> Result<(), String> {
+    if let Ok(mut ids) = cancelled().lock() { ids.insert(task_id.clone()); }
+    // 审批键是 <sessionId>-<单调编号>，拒绝本会话的等待项，不碰其它会话。
+    if let Ok(mut pending) = approvals().lock() {
+        let prefix = format!("{task_id}-");
+        let keys: Vec<String> = pending.keys().filter(|key| key.starts_with(&prefix)).cloned().collect();
+        for key in keys { if let Some(tx) = pending.remove(&key) { let _ = tx.send(false); } }
+    }
     // 停流式请求（curl 子进程）
     if let Ok(mut m) = running().lock() { if let Some(mut ch) = m.remove(&task_id) { let _ = ch.kill(); } }
     // 停正在跑的命令（含 claude -p / codex exec 派生的整棵进程树，不留孤儿）
@@ -1067,6 +1152,77 @@ pub fn chat_test_headless(prompt: &str, workspace: Option<String>, system: Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn curl_config_keeps_credential_out_of_argv_and_rejects_injection() {
+        let key = "demo-key-quote\"slash\\end";
+        let config = String::from_utf8(curl_header_config(key).unwrap()).unwrap();
+        assert_eq!(config, "header = \"Authorization: Bearer demo-key-quote\\\"slash\\\\end\"\n");
+        let args = request_args("http://127.0.0.1/demo", Path::new("C:/demo/body.json"));
+        assert!(!args.iter().any(|arg| arg.contains(key) || arg.contains("Authorization")));
+        assert!(args.windows(2).any(|pair| pair == ["--config", "-"]));
+        for key in ["demo\rheader = evil", "demo\nurl = evil", "demo\0secret", "demo\tsecret"] {
+            assert!(curl_header_config(key).is_err());
+        }
+    }
+
+    #[test]
+    fn curl_config_streams_sse_and_sends_body_over_loopback() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/chat", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let mut headers = String::new();
+            let mut content_length = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" { break; }
+                if line.to_ascii_lowercase().starts_with("content-length:") {
+                    content_length = line.split(':').nth(1).unwrap().trim().parse::<usize>().unwrap();
+                }
+                headers.push_str(&line);
+            }
+            let mut body = vec![0; content_length];
+            reader.read_exact(&mut body).unwrap();
+            assert!(headers.contains("Authorization: Bearer demo-secret"));
+            let body: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["messages"][0]["content"], "hello");
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n").unwrap();
+            socket.flush().unwrap();
+            std::thread::sleep(Duration::from_millis(40));
+            socket.write_all(b"data: {\"choices\":[{\"delta\":{\"content\":\"second\"}}]}\n\ndata: [DONE]\n\n").unwrap();
+        });
+        let mut events = Vec::new();
+        let output = Mutex::new(&mut events);
+        let (tools, error) = stream_once(&json!([{"role":"user","content":"hello"}]), &json!([]), "demo", "demo-secret", &endpoint, "curl-loopback-demo", &|event| output.lock().unwrap().push(event)).unwrap();
+        server.join().unwrap();
+        assert!(tools.is_empty());
+        assert!(error.is_none(), "{error:?}");
+        assert_eq!(events.iter().map(|event| event["text"].as_str().unwrap_or("")).collect::<Vec<_>>(), ["first", "second"]);
+    }
+
+    #[test]
+    fn assistant_has_no_creation_tools_and_interrupt_rejects_only_own_approval() {
+        let tools = tools_spec(true, true).to_string();
+        assert!(!tools.contains("generate_image"));
+        assert!(!tools.contains("generate_video"));
+        assert!(tools.contains("uking_action"));
+        assert!(!uking_action_manifest().contains(crate::actions::CREATOR_VIDEO_SUBMIT));
+        let (a_tx, a_rx) = std::sync::mpsc::channel();
+        let (b_tx, b_rx) = std::sync::mpsc::channel();
+        approvals().lock().unwrap().insert("demo-a-99".into(), a_tx);
+        approvals().lock().unwrap().insert("demo-b-99".into(), b_tx);
+        chat_interrupt("demo-a".into()).unwrap();
+        assert!(!a_rx.recv_timeout(Duration::from_secs(1)).unwrap());
+        assert!(b_rx.try_recv().is_err());
+        chat_approve("demo-b-99".into(), true).unwrap();
+        assert!(b_rx.recv_timeout(Duration::from_secs(1)).unwrap());
+        cancelled().lock().unwrap().remove("demo-a");
+    }
 
     /// 工作台解绑虾盘云之后，端点由调用方给 —— 这里是唯一会**静默打到 404** 的地方，
     /// 所以把四种输入形状钉死。客户在「AI 设置」里填 base 时多写/少写一截 `/chat/completions`

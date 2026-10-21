@@ -36,6 +36,8 @@ import {
 } from "lucide-react";
 import { Wizard } from "./Wizard";
 import { MaintenanceAssistant } from "./MaintenanceAssistant";
+// 工作台（原样保留）：Chat（底座 Claude Code）+ 终端 + 会话列表；维护助手不再挂在这里。
+import { UWorkspace } from "./opencodex/UWorkspace";
 import { Sidebar, type TabId } from "./components/Sidebar";
 import { SkillPackList } from "./components/SkillPackList";
 import { ToolIcon } from "./components/ToolIcon";
@@ -65,6 +67,8 @@ const GITHUB_REPO_URL = "https://github.com/dongsheng123132/u-king";
 // 2026-10-19 轻量维护助手批次：Create/Draw/QrMerge/Video（创作产品）与 Advanced/UsbToolDisk
 // 两条产品线入口已摘、页面已删 —— 不再 lazy import。
 const Manager = lazy(() => import("./Manager").then((m) => ({ default: m.Manager })));
+// 「AI 创作」独立页（作图 / 视频 / 海报二维码）：工作台里不再嵌创作面板，创作走这一页。
+const Create = lazy(() => import("./Create").then((m) => ({ default: m.Create })));
 const CodexZone = lazy(() => import("./CodexZone").then((m) => ({ default: m.CodexZone })));
 const Tutorial = lazy(() => import("./Tutorial").then((m) => ({ default: m.Tutorial })));
 const SkillPack = lazy(() => import("./SkillPack").then((m) => ({ default: m.SkillPack })));
@@ -170,24 +174,28 @@ export function App() {
   );
   // 对话式安装向导：runId 每次 +1 强制重开新会话
   const [wizard, setWizard] = useState<{ runId: number; preselect: string | string[] | null } | null>(null);
-  // 左侧边栏：setup=装机向导 / myai=我的 AI（已装快捷启动）/ manage=AI 设置（切驱动+余额+用量）。
-  const [tab, setTab] = useState<TabId>("setup");
-  // 旧 tab id 安全回退（2026-10-19 轻量维护助手批次）：Advanced/UsbToolDisk/Create/Draw/
-  // QrMerge/Video 页面已删，chat/termwb 由「维护助手」接替。外部 route_tab、书签、
-  // 残留深链再喂这些 id 时统一落到仍存在的页，绝不挂载已删页面。
+  // 左侧边栏：workbench=工作台（对话+终端）/ create=AI 创作 / toolhub=我的 AI / manage=AI 设置。
+  const [tab, setTab] = useState<TabId>("workbench");
+  // 「AI 创作」深链要落到哪个子页（作图 / 视频 / 海报二维码）。
+  const [createInitialSub, setCreateInitialSub] = useState<"draw" | "video" | "qrmerge">("draw");
+  // 维护助手的「第几次开」：每进一次都换 key → 组件重挂载 → 全新对话框（不留历史）。
+  const [maintenanceRun, setMaintenanceRun] = useState(0);
+  // 旧 tab id 安全回退：外部 route_tab、书签、残留深链喂旧 id 时统一落到仍存在的页。
+  // 旧 chat/termwb 就是工作台的对话态/终端态；draw/video/qrmerge 是 AI 创作的子页。
   useEffect(() => {
     const LEGACY_TAB_FALLBACK: Partial<Record<string, TabId>> = {
-      chat: "maintenance",
-      termwb: "maintenance",
-      create: "maintenance",
-      draw: "maintenance",
-      qrmerge: "maintenance",
-      video: "maintenance",
+      chat: "workbench",
+      termwb: "workbench",
+      maintenance: "maintenance",
       advanced: "toolhub",
       usbgenie: "toolhub",
     };
     const next = LEGACY_TAB_FALLBACK[tab];
     if (next) setTab(next);
+    if (tab === "draw" || tab === "video" || tab === "qrmerge") {
+      setCreateInitialSub(tab);
+      setTab("create");
+    }
   }, [tab]);
   // 「我的 AI」首页免费模型导流卡 → 跳「AI 设置」时要落到哪个分区（2026-09-06）。
   // 默认 "tools"（原行为不变）；点导流卡时置成 "free" 再切 tab，Manager 只在挂载时读一次
@@ -213,11 +221,17 @@ export function App() {
    * 这些页所在的 main 不滚、不留 py-6，页面本体改 `h-full` 从父级拿确定高度。
    * （2026-10-19：创作三页已删；维护助手同样是自管高度的三段式，沿用这条通道。）
    */
-  const selfHeightTab = tab === "maintenance";
+  const selfHeightTab = tab === "maintenance" || tab === "workbench" || tab === "create";
   // 小程序浮层：首页图标条和小程序页都往这里塞，容器只有一个
   // 「发一句话」handoff：页面里「让 AI 帮你…」→ 存这里 + 切到维护助手 → MaintenanceAssistant
   // 只把提示词填进草稿框（用户自己按发送，不加载页面就发消息/付费）。
   const [pendingChatPrompt, setPendingChatPrompt] = useState<{ prompt: string; engine?: Engine; passportId?: string } | null>(null);
+  // 每次进入维护助手都换一次 key —— 用户口径：维护对话框「每次都是一个新的」，不串历史。
+  // 🔴 例外：带着 prompt 的交接（「让 AI 给优化建议」/装机失败）不能重挂载，否则组件消费一次
+  // prompt 之后 key 再变 → 第二个实例拿到空 prompt，用户看到的就是「提示词没进聊天框」。
+  useEffect(() => {
+    if (tab === "maintenance" && !pendingChatPrompt) setMaintenanceRun((n) => n + 1);
+  }, [tab, pendingChatPrompt]);
   // 访问过的 TUI 应用（懒挂载，挂载后常驻 display 切换保活，不卸载 → PTY 续跑）
   const [mountedTui, setMountedTui] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -1036,8 +1050,13 @@ export function App() {
         <Sidebar
           active={tab}
           onSelect={(next) => setTab(next)}
-          // 「一键充值」唯一入口（2026-10-19）：打开充值页 + 静默轮询余额（openRechargeAndWatch）。
-          onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
+          // 「设置」入口：切到 AI 设置并滚到页底的外观/检查更新/技术支持那一段（否则用户以为没反应）。
+          onOpenSettings={() => {
+            setTab("manage");
+            window.setTimeout(() => {
+              document.getElementById("uking-appearance")?.scrollIntoView({ behavior: "smooth", block: "end" });
+            }, 80);
+          }}
           version={APP_VERSION}
           onShowChangelog={() => setChangelogOpen(true)}
           platform={env?.platform}
@@ -1079,18 +1098,34 @@ export function App() {
         />
         </PanelBoundary>
 
-        {/* 维护助手（2026-10-19）：UChat/UCLI 收敛后的唯一内置对话入口。不再默认常驻挂载
-            完整 UWorkspace（终端/预览/作图面板整包）；本页只做装机/故障维护对话。
-            **绝不能渲染第二个**：scripts/check-panel-boundary.mjs 要求它在本文件里只出现一次。 */}
+        {/* 工作台（原样）：U-Chat 底座是 Claude Code，右侧可切终端；会话/PTY 切页保活。
+            这是**唯一**的 UWorkspace 挂载点（scripts/check-panel-boundary.mjs 会查）。 */}
+        <main
+          className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}
+          style={{ display: tab === "workbench" ? undefined : "none" }}
+        >
+          <PanelBoundary name="U-Workspace">
+            <UWorkspace
+              onToast={flash}
+              pendingChatPrompt={pendingChatPrompt}
+              onConsumedChat={() => setPendingChatPrompt(null)}
+              onInstallClaude={startWizard}
+              paneMode="chat"
+            />
+          </PanelBoundary>
+        </main>
+
+        {/* 维护助手：只在维护场景出现（装机失败 / 体检异常 / 侧栏「更多」）。
+            每进一次 = 新开一个对话框（key 换掉 → 重挂载 → 全新会话，不串历史）。 */}
         <main
           className={cn("flex-1 min-w-0 min-h-0", short ? "p-1.5" : "p-3")}
           style={{ display: tab === "maintenance" ? undefined : "none" }}
         >
           <PanelBoundary name="maintenance">
             <MaintenanceAssistant
+              key={`maint-${maintenanceRun}`}
               onToast={flash}
-              onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
-              pendingPrompt={pendingChatPrompt}
+                  pendingPrompt={pendingChatPrompt}
               onConsumedPrompt={() => setPendingChatPrompt(null)}
             />
           </PanelBoundary>
@@ -1154,7 +1189,7 @@ export function App() {
         )}
 
         {/* 非 TUI 页面（manage/codex/myai/setup）：条件渲染，无 PTY 不需保活 */}
-        {tab !== "terminal" && tab !== "maintenance" && !isTuiAppId(tab) && (
+        {tab !== "terminal" && tab !== "maintenance" && tab !== "workbench" && !isTuiAppId(tab) && (
         <main className={cn(
           "flex-1 min-w-0",
           selfHeightTab ? "min-h-0 flex flex-col" : "overflow-y-auto",
@@ -1227,13 +1262,25 @@ export function App() {
                 某页崩了切走再回来自动重置，不用重启整个 U-King。 */}
             <PanelBoundary key={tab} name={tab}>
             <Suspense fallback={<PageFallback />}>
-            {tab === "manage" ? (
+            {tab === "create" ? (
+              <Create
+                deviceKey={deviceKey}
+                onToast={flash}
+                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
+                onGoSkillPack={() => setTab("skillpack")}
+                initialSub={createInitialSub}
+              />
+            ) : tab === "manage" ? (
               <Manager
                 onGoCodex={() => setTab("codex")}
                 onGoPage={(tb) => setTab(tb as TabId)}
                 onDeviceKeyChange={setDeviceKey}
                 onRecharge={(url) => openRechargeAndWatch(url)}
                 onAskAI={(prompt) => { setPendingChatPrompt({ prompt, engine: "uking", passportId: "ai-settings-repair" }); setTab("maintenance"); }}
+                theme={theme}
+                onToggleTheme={() => setTheme((m) => (m === "dark" ? "light" : "dark"))}
+                onRecheckUpdate={recheck}
+                checkingUpdate={checking}
                 // tools 只为读真实安装态（Manager::realInstalled，渲染「未安装」徽章）。
                 // 装 / 启动 / 卸载 2026-09-04 搬去了「我的 AI」页，本页不再传 onInstallTool/
                 // onLaunchTool（那两条唯一实现 openTool/launchTool 仍在下面 MyAI 那处调用）。
@@ -1320,9 +1367,9 @@ export function App() {
                 onUninstall={uninstallTool}
                 onGoManage={() => setTab("manage")}
                 onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
-                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onRefreshTools={refresh}
                 onToast={flash}
+                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onAskAiToFix={(prompt) => {
                   setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair" });
                   setTab("maintenance");

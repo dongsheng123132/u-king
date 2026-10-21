@@ -24,11 +24,12 @@ import {
   Check,
   Copy,
   Loader2,
-  RefreshCw,
+  MessageSquare,
+  Plus,
   Send,
   ShieldCheck,
   Square,
-  Wallet,
+  Trash2,
   X,
 } from "lucide-react";
 import { cn } from "./lib/cn";
@@ -99,6 +100,27 @@ const toolLabel: Record<string, string> = {
   generate_video: "出片",
 };
 
+/** 左侧「维护记录」列表的一条。消息本体在后端 archive（~/.uking/chats/<id>.jsonl），这里只存索引。 */
+type SessionMeta = { id: string; title: string; ts: number };
+const SESSIONS_KEY = "uking.maint.sessions";
+const NEW_CHAT_TITLE = "新对话";
+
+function loadSessionIndex(): SessionMeta[] {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY);
+    const list = raw ? (JSON.parse(raw) as SessionMeta[]) : [];
+    return Array.isArray(list) ? list.filter((s) => s && typeof s.id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function saveSessionIndex(list: SessionMeta[]) {
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(list.slice(0, 50)));
+  } catch {
+    /* 配额满：不落盘也能用，历史只是丢一次 */
+  }
+}
 export function MaintenanceAssistant({
   onToast,
   onRecharge,
@@ -116,18 +138,105 @@ export function MaintenanceAssistant({
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [balanceGate, setBalanceGate] = useState<BalanceGate | null>(null);
   const [key, setKey] = useState<string>("");
-  const sessionId = useRef(`maint-${Date.now().toString(36)}`);
+  // 页头的余额展示/按钮 2026-10-21 收起；门禁仍在发送前算一次，结果只用 toast 提示。
+  const [, setBalanceGate] = useState<BalanceGate | null>(null);
+  /** 当前会话 id —— 每次「新对话」换一个；历史记录在左侧列表里，落 ~/.uking/chats/<id>.jsonl。 */
+  const [sessionId, setSessionId] = useState<string>(() => `maint-${Date.now().toString(36)}`);
+  /** 左侧会话索引（id / 标题 / 时间）。消息本体由后端 archive 存，不塞 localStorage。 */
+  const [sessions, setSessions] = useState<SessionMeta[]>(() => loadSessionIndex());
+  /** 读历史时跳过「写回 archive」，否则会把刚加载的列表覆盖成空。 */
+  const loadingRef = useRef(false);
+  const persistTimer = useRef<number | null>(null);
+
+  // 当前会话必须出现在左侧列表里（挂载那一刻登记一条）
+  useEffect(() => {
+    setSessions((prev) => (prev.some((s) => s.id === sessionId) ? prev : [{ id: sessionId, title: NEW_CHAT_TITLE, ts: Date.now() }, ...prev].slice(0, 50)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 会话索引落盘
+  useEffect(() => {
+    saveSessionIndex(sessions);
+  }, [sessions]);
+
+  // 消息变化 → 写后端 archive（防抖 400ms；加载历史时跳过）
+  useEffect(() => {
+    if (loadingRef.current || items.length === 0) return;
+    if (persistTimer.current) window.clearTimeout(persistTimer.current);
+    persistTimer.current = window.setTimeout(() => {
+      void invoke("chat_archive_replace", { sessionId, items }).catch(() => {});
+    }, 400);
+    return () => {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+    };
+  }, [items, sessionId]);
+
+  // 首条用户消息当标题（只改还没起名的）
+  useEffect(() => {
+    const firstUser = items.find((it): it is TextItem => it.type === "text" && it.role === "user");
+    if (!firstUser) return;
+    const title = firstUser.content.replace(/\s+/g, " ").trim().slice(0, 24) || NEW_CHAT_TITLE;
+    setSessions((prev) => prev.map((s) => (s.id === sessionId && (!s.title || s.title === NEW_CHAT_TITLE) ? { ...s, title, ts: Date.now() } : s)));
+  }, [items, sessionId]);
+
+  /** 新开一条对话（左侧留记录，旧的不删）。 */
+  const newSession = useCallback(() => {
+    const id = `maint-${Date.now().toString(36)}`;
+    setSessionId(id);
+    setItems([]);
+    setInput("");
+    setBusy(false);
+    setBalanceGate(null);
+    setSessions((prev) => [{ id, title: NEW_CHAT_TITLE, ts: Date.now() }, ...prev].slice(0, 50));
+  }, []);
+
+  /** 点左侧历史记录 → 读回那次对话。 */
+  const openSession = useCallback(
+    async (id: string) => {
+      if (id === sessionId) return;
+      loadingRef.current = true;
+      setSessionId(id);
+      setItems([]);
+      setBusy(false);
+      try {
+        const loaded = await invoke<Item[]>("chat_archive_load", { sessionId: id });
+        setItems(Array.isArray(loaded) ? loaded : []);
+      } catch {
+        setItems([]);
+      }
+      loadingRef.current = false;
+    },
+    [sessionId],
+  );
+
+  const deleteSession = useCallback(
+    (id: string) => {
+      invoke("chat_archive_delete", { sessionId: id }).catch(() => {});
+      setSessions((prev) => {
+        const rest = prev.filter((s) => s.id !== id);
+        if (id === sessionId) {
+          const next = rest[0]?.id ?? `maint-${Date.now().toString(36)}`;
+          setSessionId(next);
+          setItems([]);
+        }
+        return rest;
+      });
+    },
+    [sessionId],
+  );
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // 草稿：来自深链的提示词只进输入框，等用户自己按发送（不加载页面就发消息/付费）。
+  // 草稿：来自深链/交接的提示词 —— 新开一条维护对话，并把提示词**预先填进输入框**，
+  // 等用户自己按发送（不加载页面就发消息/付费）。用户口径（2026-10-21）：
+  // 「点击这些让轻助手干活的时候，应该默认已经把提示词放进聊天框了」。
   useEffect(() => {
-    if (pendingPrompt?.prompt) {
-      setInput(pendingPrompt.prompt);
-      onConsumedPrompt?.();
-    }
-  }, [pendingPrompt, onConsumedPrompt]);
+    if (!pendingPrompt?.prompt) return;
+    newSession();
+    setInput(pendingPrompt.prompt);
+    onConsumedPrompt?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt?.prompt]);
 
   // 设备 Key：只在内存里引用，不落任何存储。加载时拿一次（拿不到先空着，发送时再查）。
   useEffect(() => {
@@ -141,15 +250,6 @@ export function MaintenanceAssistant({
     if (el) el.scrollTop = el.scrollHeight;
   }, [items]);
 
-  const refreshBalance = useCallback(async () => {
-    try {
-      const dk = await invoke<DeviceKey>("get_device_key");
-      setKey(dk?.key ?? "");
-      setBalanceGate(judgeBalance(dk));
-    } catch (e) {
-      setBalanceGate({ state: "error", message: String(e) });
-    }
-  }, []);
 
   const approve = useCallback((id: string, ok: boolean) => {
     invoke("chat_approve", { approvalId: id, approved: ok }).catch(() => {});
@@ -159,7 +259,7 @@ export function MaintenanceAssistant({
   }, []);
 
   const stop = useCallback(() => {
-    invoke("chat_interrupt", { taskId: sessionId.current }).catch(() => {});
+    invoke("chat_interrupt", { taskId: sessionId }).catch(() => {});
     setBusy(false);
   }, []);
 
@@ -290,7 +390,7 @@ export function MaintenanceAssistant({
     };
     try {
       await invoke("chat_send", {
-        taskId: sessionId.current,
+        taskId: sessionId,
         messages: msgs,
         model: DEFAULT_MODEL,
         apiKey,
@@ -306,7 +406,44 @@ export function MaintenanceAssistant({
   }, [items, input, busy, key, onToast, onRecharge, t]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-0">
+    <div className="flex h-full min-h-0 bg-bg-0">
+      {/* 左：维护记录 —— 每次「新对话」新开一条，历史保留、可点回看（用户 2026-10-21 口径） */}
+      <aside className="w-48 shrink-0 border-r border-white/[0.08] flex flex-col">
+        <div className="p-2">
+          <button
+            onClick={newSession}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-white/[0.10] bg-bg-1/60 h-8 text-[12px] text-ink-1 hover:bg-white/[0.04]"
+          >
+            <Plus size={13} /> {t("新对话")}
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 space-y-0.5">
+          {sessions.map((s) => (
+            <div key={s.id} className="group relative">
+              <button
+                onClick={() => void openSession(s.id)}
+                className={cn(
+                  "w-full text-left rounded-md px-2 py-1.5 pr-7 text-[12px] truncate transition-colors",
+                  s.id === sessionId ? "bg-accent/[0.12] text-ink-0" : "text-ink-3 hover:bg-white/[0.04]",
+                )}
+                title={s.title}
+              >
+                <MessageSquare size={11} className="inline mr-1 -mt-0.5" />
+                {s.title || NEW_CHAT_TITLE}
+              </button>
+              <button
+                onClick={() => deleteSession(s.id)}
+                title={t("删除这条记录")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-ink-4 hover:text-danger-400 p-1"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </aside>
+      {/* 右：对话区（原逻辑不变） */}
+      <div className="flex h-full min-h-0 flex-1 flex-col">
       {/* 页头：固定虾盘云 DeepSeek Flash，余额只读展示 + 一键充值 */}
       <header className="flex items-center gap-2 border-b border-white/[0.08] px-4 py-2.5">
         <ShieldCheck size={16} className="text-accent shrink-0" />
@@ -317,49 +454,8 @@ export function MaintenanceAssistant({
             <span className="text-ink-3">{t("写操作每步确认，不会自动执行")}</span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {balanceGate?.state === "error" ? (
-            <button
-              onClick={() => void refreshBalance()}
-              className="inline-flex items-center gap-1 rounded-md border border-warning-400/40 px-2 h-7 text-[11px] text-warning-400 hover:bg-warning-400/10"
-            >
-              <AlertTriangle size={12} /> {t("余额查询失败 · 重查")}
-            </button>
-          ) : balanceGate ? (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-2 h-7 text-[11px]",
-                balanceGate.state === "ok"
-                  ? "border-white/[0.10] text-ink-2"
-                  : balanceGate.state === "empty"
-                    ? "border-danger-500/40 text-danger-400"
-                    : "border-warning-400/40 text-warning-400",
-              )}
-            >
-              <Wallet size={12} />
-              {balanceGate.state === "ok"
-                ? t("余额 {text}", { text: balanceGate.text })
-                : balanceGate.state === "empty"
-                  ? t("余额不足")
-                  : t("还没查到余额")}
-            </span>
-          ) : null}
-          <button
-            onClick={() => void refreshBalance()}
-            title={t("重新查询余额")}
-            className="inline-flex items-center gap-1 rounded-md border border-white/[0.10] px-2 h-7 text-[11px] text-ink-3 hover:bg-white/[0.04]"
-          >
-            <RefreshCw size={12} /> {t("查余额")}
-          </button>
-          {onRecharge && (
-            <button
-              onClick={onRecharge}
-              className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 h-7 text-[11px] font-medium text-white hover:opacity-90"
-            >
-              <Wallet size={12} /> {t("一键充值")}
-            </button>
-          )}
-        </div>
+        {/* 2026-10-21 用户口径：页头的余额/充值按钮收起来 —— 余额门禁仍在「发送前」生效，
+            失败时用 toast 说清楚，不占页头。 */}
       </header>
 
       {/* 消息流 */}
@@ -498,6 +594,7 @@ export function MaintenanceAssistant({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

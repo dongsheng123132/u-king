@@ -1038,8 +1038,14 @@ fn apply_provider_with_cheap_route(
 /// 当前真正由设备钱包供 Key 的工具；不触碰官方登录、自备 Key 或其它中转。
 fn device_wallet_consumer_targets() -> Vec<String> {
     let status = providers::driver_status();
+    // 2026-10-21：「我的 AI」工具目录收敛，qwen / crush 已从 TOOL_SPECS / APPLY_ALL_TARGETS
+    // 删除（不再有「AI 设置」Tab、不再进「一键配好全部」）。但存量客户机上这两条仍可能装着、
+    // 仍由设备钱包供 Key —— 目录收窄不该让老配置在换 Key 时被饿死，所以
+    // `providers::LEGACY_RETIRED_TARGETS` 作为**运行时兼容**继续同步它们；新装用户不会再有
+    // 这两个工具，也就不会进这个名单。
     providers::APPLY_ALL_TARGETS
         .iter()
+        .chain(providers::LEGACY_RETIRED_TARGETS.iter())
         .filter(|target| status.active.get(**target).is_some_and(|id| id == "xiapan"))
         .map(|target| (*target).to_string())
         .collect()
@@ -8057,6 +8063,16 @@ pub fn run() {
                         Ok(f) => ulog::write("identity", &format!("说明书已生成: {}", f.join(" | "))),
                         // 失败不致命：说明书没了只是 AI 发现不了我们，app 本身照跑。
                         Err(e) => ulog::write("identity", &format!("说明书生成失败: {e}")),
+                    }
+                    // ★ 2026-10-21：生成完顺手把「指针」挂进各家 AI 的全局记忆文件。
+                    // 只 publish 不 link，说明书就锁在抽屉里 —— conformance 在客户机上实测
+                    // `runtime.identity.inspect` 一直 not_ready（3 个落点都没指针），而界面上
+                    // 已经没有 identity 页了，用户没有别的路可走。幂等、只增不删、首次留底。
+                    let home = identity::home_dir();
+                    match identity::link_in(&home, &[]) {
+                        Ok(paths) if paths.is_empty() => {}
+                        Ok(paths) => ulog::write("identity", &format!("指针已挂上: {}", paths.join(" | "))),
+                        Err(e) => ulog::write("identity", &format!("指针挂载失败（不致命）: {e}")),
                     }
                 });
             }

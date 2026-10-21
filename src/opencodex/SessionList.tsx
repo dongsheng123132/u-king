@@ -8,9 +8,12 @@
  *
  * 切到护照面板**不卸载任何会话**（右侧 Chat 实例照旧 display 保活，PTY 不断），
  * 点任意会话就回到 chat 视图。
+ *
+ * 「新建工作树 / worktree」入口 2026-10-21 按用户口径删除（给 git 老手用的，小白用不到）。
+ * 顺带发现：后端从没有 `git_create_worktree` / `git_is_repo` 这两个命令，那颗按钮本来就是死链。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ClipboardList, FolderPlus, GitBranch, GripVertical, MessageSquarePlus, Plus, Trash2, X, Zap } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ClipboardList, FolderPlus, GripVertical, MessageSquarePlus, Plus, Trash2, X, Zap } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Task, WorkView } from "./types";
@@ -185,7 +188,7 @@ export function SessionList({ view = "chat", onView }: {
   onView?: (v: WorkView) => void;
 } = {}) {
   const { t: tr } = useI18n();
-  const { state, addTask, addSession, addWorktree, removeTask, removeProject, reorderTasks, renameTask, activate, restoreTask } =
+  const { state, addTask, addSession, removeTask, removeProject, reorderTasks, renameTask, activate, restoreTask } =
     useWorkbench();
   // 「空文件夹要不要布置成工作台」那一问。一份实现多处用，别复制第二份弹窗。
   const { offer, node: workbenchOffer } = useWorkbenchOffer();
@@ -239,17 +242,6 @@ export function SessionList({ view = "chat", onView }: {
     return () => clearInterval(h);
   }, [liveKey]);
   const now = Date.now();
-
-  // git repo 检测缓存：projKey → boolean。首次渲染某个项目时异步检测，后续不重复。
-  const [gitRepos, setGitRepos] = useState<Record<string, boolean>>({});
-  const checkedDirsRef = useRef<Set<string>>(new Set());
-
-  // worktree 输入状态
-  const [worktreeInputFor, setWorktreeInputFor] = useState<string | null>(null);
-  const [worktreeRepoRoot, setWorktreeRepoRoot] = useState<string | null>(null);
-  const [worktreeBranch, setWorktreeBranch] = useState("");
-  const [worktreeCreate, setWorktreeCreate] = useState(false);
-  const [worktreeLoading, setWorktreeLoading] = useState(false);
 
   /** 归档单个会话。返回 true = 卡片可以移除（归档成功；或确实没聊过、没东西可归）。 */
   const archiveOne = async (id: string): Promise<boolean> => {
@@ -381,35 +373,6 @@ export function SessionList({ view = "chat", onView }: {
     }
     return Array.from(m.entries());
   }, [state.tasks]);
-
-  // 每当 groups 变化时，检测未查过的项目是否是 git repo
-  useEffect(() => {
-    for (const [, tasks] of groups) {
-      const mainTask = tasks.find((t) => !t.worktree_repo);
-      if (!mainTask) continue; // 全是 worktree 任务 → 已知是 git repo，跳过
-      const key = normDir(mainTask.dir);
-      if (checkedDirsRef.current.has(key)) continue;
-      checkedDirsRef.current.add(key);
-      invoke<boolean>("git_is_repo", { path: mainTask.dir })
-        .then((result) => setGitRepos((prev) => ({ ...prev, [key]: result })))
-        .catch(() => {});
-    }
-  }, [groups]);
-
-  const doCreateWorktree = async () => {
-    if (!worktreeBranch.trim() || !worktreeRepoRoot) return;
-    setWorktreeLoading(true);
-    try {
-      await addWorktree(worktreeRepoRoot, worktreeBranch.trim(), worktreeCreate);
-      setWorktreeInputFor(null);
-      setWorktreeRepoRoot(null);
-      setWorktreeBranch("");
-    } catch (e) {
-      alert(tr("创建 worktree 失败: {e}", { e: String(e) }));
-    } finally {
-      setWorktreeLoading(false);
-    }
-  };
 
   // 把 from 组整体挪到 to 组之前，重建扁平 id 顺序后落盘。
   const moveGroup = (fromKey: string, toKey: string) => {
@@ -708,17 +671,9 @@ export function SessionList({ view = "chat", onView }: {
           </div>
         ) : (
           groups.map(([projKey, tasks]) => {
-            // 找主仓库任务（无 worktree_repo）和任意一个 worktree 任务
-            const nonWorktreeTask = tasks.find((t) => !t.worktree_repo);
-            const anyWorktreeTask = tasks.find((t) => !!t.worktree_repo);
-            // 用于显示项目名的 dir：优先主仓库 dir，其次从 worktree_repo 取
-            const projDisplayDir = nonWorktreeTask?.dir ?? anyWorktreeTask?.worktree_repo ?? tasks[0].dir;
+            // 同组会话共享同一 project（= 规范化 dir），项目名/落点直接用组内第一条的 dir。
+            const projDisplayDir = tasks[0].dir;
             const projName = projKey ? dirBasename(projDisplayDir) : tr("未绑定文件夹");
-            // 用于创建新 worktree 的 git 根目录
-            const repoRoot = nonWorktreeTask?.dir ?? anyWorktreeTask?.worktree_repo ?? null;
-            // 有 worktree 任务 → 已知是 git repo；否则查检测缓存
-            const isGitProject =
-              !!anyWorktreeTask || (repoRoot ? !!gitRepos[normDir(repoRoot)] : false);
 
             /**
              * 这个**文件夹**里有没有人在干活 / 有没有跑挂的。
@@ -739,7 +694,6 @@ export function SessionList({ view = "chat", onView }: {
             const mergeSingle =
               !!projKey &&
               tasks.length === 1 &&
-              !tasks[0].worktree_repo &&
               sessionLabel(tasks[0], projName) === projName;
 
             return (
@@ -802,32 +756,6 @@ export function SessionList({ view = "chat", onView }: {
                   >
                     <Trash2 size={12} />
                   </button>
-                  {/* worktree 按钮：仅 git 项目显示 */}
-                  {isGitProject && repoRoot && projKey && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (worktreeInputFor === projKey) {
-                          setWorktreeInputFor(null);
-                          setWorktreeRepoRoot(null);
-                        } else {
-                          setWorktreeInputFor(projKey);
-                          setWorktreeRepoRoot(repoRoot);
-                          setWorktreeBranch("");
-                          setWorktreeCreate(false);
-                        }
-                      }}
-                      className={
-                        "inline-flex items-center justify-center w-5 h-5 rounded shrink-0 transition-all " +
-                        (worktreeInputFor === projKey
-                          ? "opacity-100 text-accent-400 bg-accent/[0.12]"
-                          : "opacity-0 group-hover:opacity-100 text-ink-4 hover:text-accent-400 hover:bg-white/[0.06]")
-                      }
-                      title={tr("新建 worktree（并行在另一个分支上工作）")}
-                    >
-                      <GitBranch size={12} />
-                    </button>
-                  )}
                   {projKey && (
                     <div className="relative">
                       <button
@@ -859,13 +787,11 @@ export function SessionList({ view = "chat", onView }: {
                 )}
                 {/* 单会话项目并一行（2026-08-25，学 ChatGPT/Codex）：项目下只有一个会话、
                     且显示名跟项目名相同时，不再渲染「文件夹头 + 同名子行」两行堆叠 ——
-                    直接把会话行当项目行用。功能一个不少：组头那排操作按钮（归档/worktree/+）
-                    挂在会话行的 hover 区；「+ 新开 AI 会话」的弹出菜单照常渲染；
-                    worktree 输入行也不动。 */}
+                    直接把会话行当项目行用。功能一个不少：组头那排操作按钮（归档/+）
+                    挂在会话行的 hover 区；「+ 新开 AI 会话」的弹出菜单照常渲染。 */}
                 {(() => {
                   if (tasks.length !== 1 || !projKey) return null;
                   const only = tasks[0];
-                  if (only.worktree_repo) return null; // worktree 行有自己的 ⎇ 名字，不合
                   if (sessionLabel(only, projName) !== projName) return null;
                   const on = state.activeId === only.id;
                   const live = isLive(only);
@@ -921,7 +847,7 @@ export function SessionList({ view = "chat", onView }: {
                         </span>
                       )}
                       {/* 组头的整组归档按钮：单会话时归这一个就是归全部，语义相同。
-                          worktree / + 菜单原样挂上（+ 弹出菜单依赖 projDisplayDir）。 */}
+                          + 菜单原样挂上（+ 弹出菜单依赖 projDisplayDir）。 */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -932,31 +858,6 @@ export function SessionList({ view = "chat", onView }: {
                       >
                         <Trash2 size={12} />
                       </button>
-                      {isGitProject && repoRoot && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (worktreeInputFor === projKey) {
-                              setWorktreeInputFor(null);
-                              setWorktreeRepoRoot(null);
-                            } else {
-                              setWorktreeInputFor(projKey);
-                              setWorktreeRepoRoot(repoRoot);
-                              setWorktreeBranch("");
-                              setWorktreeCreate(false);
-                            }
-                          }}
-                          className={
-                            "inline-flex items-center justify-center w-5 h-5 rounded shrink-0 transition-all " +
-                            (worktreeInputFor === projKey
-                              ? "opacity-100 text-accent-400 bg-accent/[0.12]"
-                              : "opacity-0 group-hover:opacity-100 text-ink-4 hover:text-accent-400 hover:bg-white/[0.06]")
-                          }
-                          title={tr("新建 worktree（并行在另一个分支上工作）")}
-                        >
-                          <GitBranch size={12} />
-                        </button>
-                      )}
                       <div className="relative">
                         <button
                           onClick={(e) => {
@@ -989,48 +890,6 @@ export function SessionList({ view = "chat", onView }: {
                     </div>
                   );
                 })()}
-                {/* worktree 分支输入行（内联展开，不弹新窗口） */}
-                {worktreeInputFor === projKey && (
-                  <div className="mx-1.5 mb-1 flex items-center gap-1 px-2 py-1 rounded-card bg-white/[0.04] border border-white/[0.08]">
-                    <GitBranch size={11} className="shrink-0 text-accent-400" />
-                    <input
-                      autoFocus
-                      value={worktreeBranch}
-                      onChange={(e) => setWorktreeBranch(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void doCreateWorktree();
-                        if (e.key === "Escape") setWorktreeInputFor(null);
-                      }}
-                      placeholder={tr("分支名（回车确认）")}
-                      className="flex-1 min-w-0 bg-transparent text-[11.5px] text-ink-1 placeholder:text-ink-5 outline-none"
-                    />
-                    <label className="flex items-center gap-1 text-[10.5px] text-ink-4 shrink-0 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={worktreeCreate}
-                        onChange={(e) => setWorktreeCreate(e.target.checked)}
-                        className="accent-accent-400"
-                      />
-                      {tr("新建")}
-                    </label>
-                    <button
-                      onClick={() => void doCreateWorktree()}
-                      disabled={!worktreeBranch.trim() || worktreeLoading}
-                      className="text-[11px] px-1 text-accent-400 hover:text-accent-300 disabled:opacity-40 shrink-0"
-                    >
-                      {worktreeLoading ? "…" : "✓"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setWorktreeInputFor(null);
-                        setWorktreeRepoRoot(null);
-                      }}
-                      className="inline-flex items-center justify-center w-4 h-4 rounded text-ink-4 hover:text-ink-2 shrink-0"
-                    >
-                      <X size={10} />
-                    </button>
-                  </div>
-                )}
 
                 {/* 该项目的会话。单会话合并行时跳过 —— 它已经以项目行的样子渲染在上面 */}
                 {tasks.map((t) => {
@@ -1092,9 +951,7 @@ export function SessionList({ view = "chat", onView }: {
                           title={tr("双击可重命名")}
                           className={"flex-1 min-w-0 truncate text-[12.5px] " + (on ? "text-ink-0" : "text-ink-1")}
                         >
-                          {t.worktree_branch
-                            ? `⎇ ${t.worktree_branch}`
-                            : sessionLabel(t, projName)}
+                          {sessionLabel(t, projName)}
                         </span>
                       )}
                       {/* 跑了多久。**只在跑的时候占位**，闲下来就消失 —— 常驻一个 00s 会让

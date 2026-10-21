@@ -1,36 +1,30 @@
 /**
- * U-Workspace（AI 工作台）—— **直接复用 OpenCodex 的会话管理**（SessionList + store）+ 我们增强的对话（Chat）。
+ * U-Workspace（工作台）—— 复用基座的会话管理（SessionList + store）+ 我们增强的对话（Chat）。
  *
- * 架构（回答"copy 还是调用"）：`src/opencodex/` 是开源 OpenCodex 的 vendored 拷贝（工作台基座逐字同步）；
- * U-Workspace 不再自造会话列表，而是**调用**基座的 `WorkbenchProvider`(store,持久化 tasks.json)
- * + `SessionList`(项目分组 + **拖拽排序** + worktree) —— 白拿这些能力；每个任务(项目文件夹)渲染一个
- * 我们的 `Chat`（大脑选择器 U-King助手/Claude Code/Codex/Hermes + 作图 + 右侧预览/终端/文件/浏览器）。
- * 虾盘云那层只在 Chat 里，绝不进开源基座。删掉只动 App.tsx 一行。
+ * 2026-10-21 用户拍板**回到原样但做减法**：
+ * - 保留：左侧项目/会话列表 + 右侧 U-Chat（底座 Claude Code）+ 右侧可切终端。
+ * - 去掉：任务护照面板、文件树/预览/浏览器/创作等右侧入口（见 Chat.tsx 的 RIGHT_META 收敛），
+ *   这些在 10-19/10-20 两个批次里已经被判为冗余，不再回到界面。
+ * - 维护助手不在这一层：它退到维护场景（装机失败 / 体检异常 / 「更多」），见 App.tsx。
  *
- * ## 视图（借鉴 WorkBuddy 的左栏）
- * `chat`（默认，会话）/ `passports`（任务护照）。
- * 护照是**盖在会话之上的面板**，不是路由切换 —— 所有 Chat 实例照旧挂着、display 保活，
- * PTY 和对话一个都不掉；点任意会话就回到原处。（「自动化」视图 2026-10-04 随定时任务删除，
- * 「AI 专家」视图同日随专家墙删除。）
+ * 会话是 display 保活的：切会话不杀 PTY、不丢对话；切走再回来接着看。
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WorkbenchProvider, useWorkbench } from "./store";
-import { dirBasename, type Task, type WorkView, type Engine } from "./types";
+import { dirBasename, type Task, type Engine } from "./types";
 import { SessionList } from "./SessionList";
 import { Chat } from "./Chat";
-import { PassportBoard } from "./PassportBoard";
-import { queueHandoff, type Handoff } from "./handoff";
+import { queueHandoff } from "./handoff";
 import { useI18n } from "../i18n";
 
 export function UWorkspace({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, paneMode }: {
   onToast?: (m: string) => void;
-  /** 一条待投递的对话（DSH 插件页「让 AI 帮你挑」）—— 来了就开会话、把它发给 AI。 */
+  /** 一条待投递的对话（别的页面「让 AI 帮我…」）—— 来了就开会话、把它发给 AI。 */
   pendingChatPrompt?: { prompt: string; engine?: Engine; passportId?: string } | null;
   onConsumedChat?: () => void;
   onInstallClaude?: () => void;
-  /** 侧栏「对话工作台」vs「终端工作台」两个入口共用同一个 UWorkspace 实例，
-   *  区别只是每个 Chat 实例默认停在对话态还是终端态（同一批会话，不建第二份）。 */
+  /** 侧栏两个入口共用同一个 UWorkspace 实例时，决定每个 Chat 默认停在对话态还是终端态。 */
   paneMode?: "chat" | "cli";
 }) {
   return (
@@ -50,7 +44,6 @@ function Inner({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, pa
   const { t: tr } = useI18n();
   const { state, addTask, setTaskStatus, activate, renameTask } = useWorkbench();
   const autoCreated = useRef(false);
-  const [view, setView] = useState<WorkView>("chat");
 
   // 首次加载后一个会话都没有 → 用主目录自动建一个（不必先选文件夹就能聊，对齐 OpenCodex）
   useEffect(() => {
@@ -61,27 +54,8 @@ function Inner({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, pa
       .catch(() => {});
   }, [state.loaded, state.tasks.length, addTask]);
 
-  /**
-   * 护照交接的落点：在护照的工作目录里建/复用一个会话，把状态投进去。
-   *
-   * 为什么由宿主做而不是 `PassportBoard` 自己做：会话是 store 的东西，
-   * 护照页不该认识 store（同 `ChatPanel` 那条自律：模块只靠 props 通信）。
-   *
-   * `reuse=true`：同一个目录反复交接不该堆出一排重复会话 —— 交接的是**同一件事**。
-   * **不自动切视图**：用户点的是「交出去」，不是「我要去那边」。切走的话他就看不见
-   * 那句「已交给谁、落在哪个会话」的回执了 —— 而这正是这次要修的东西。
-   * 回执那一行自带「打开会话 →」，去不去他自己定。
-   */
-  const handoffToSession = async (dir: string, h: Handoff) => {
-    const sessionId = await addTask(dir, "manual", true);
-    queueHandoff(sessionId, h);
-    const name = state.tasks.find((t) => t.id === sessionId)?.name ?? dirBasename(dir);
-    return { sessionId, sessionName: name };
-  };
-
   // 「发一句话」handoff（AI 优化大师等页面的「让 AI 帮你…」）——
-  // 建一个会话 → 把提示词投进信箱 → 切到对话视图（Chat 挂载时自取并自动发给 AI）。
-  // 走 `addTask`（普通任务型会话）：没有 persona，就是一段任务提示词。
+  // 建一个会话 → 把提示词投进信箱 → 激活它（Chat 挂载时自取并自动发给 AI）。
   useEffect(() => {
     if (!state.loaded || !pendingChatPrompt) return;
     void (async () => {
@@ -94,7 +68,6 @@ function Inner({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, pa
         prompt: pendingChatPrompt.prompt,
       });
       activate(id);
-      setView("chat");
     })();
     onConsumedChat?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,9 +75,9 @@ function Inner({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, pa
 
   return (
     <div className="flex h-full min-h-[420px] rounded-card border border-white/[0.08] overflow-hidden bg-bg-2">
-      {/* 左：真 SessionList —— 项目分组 + 拖拽排序 + worktree（复用基座，不自造）+ 护照入口 */}
-      <SessionList view={view} onView={setView} />
-      {/* 右：每个任务(项目)一个 Chat 实例常驻，display 切换保活（切会话不杀 PTY / 不丢对话/预览） */}
+      {/* 左：SessionList（项目分组 + 会话）。护照/工作树入口已随本轮精简摘掉。 */}
+      <SessionList />
+      {/* 右：每个任务(项目)一个 Chat 实例常驻，display 切换保活（切会话不杀 PTY / 不丢对话） */}
       <div className="flex-1 min-w-0 min-h-0 relative">
         {state.tasks.length === 0 ? (
           <div className="absolute inset-0 grid place-items-center text-center px-8">
@@ -112,34 +85,17 @@ function Inner({ onToast, pendingChatPrompt, onConsumedChat, onInstallClaude, pa
           </div>
         ) : (
           state.tasks.map((t: Task) => (
-            <div key={t.id} className="absolute inset-0" style={{ display: view === "chat" && t.id === state.activeId ? "block" : "none" }}>
+            <div key={t.id} className="absolute inset-0" style={{ display: t.id === state.activeId ? "block" : "none" }}>
               {/* onStatus：会话跑起来/跑完/跑挂了都染左侧那个小圆点。
-                  会话是 display 保活的 —— 你在看会话 A 时 B 照样在跑，B 挂了以前**没有任何地方会说**
-                  （轻助手那侧只弹一条会自己消失的 toast，Claude 那侧只在它自己的对话里贴一句）。 */}
+                  会话是 display 保活的 —— 你在看会话 A 时 B 照样在跑。 */}
               {/* 🔴 常驻挂载的会话不该有导航权：不往 Chat 传任何「跳去别的页」的回调。 */}
               <Chat sessionId={t.id} initialWorkspace={t.dir} onToast={onToast} onInstallClaude={onInstallClaude} taskName={t.name}
                 paneMode={paneMode}
                 onStatus={(s) => setTaskStatus(t.id, s)}
-                /* 自动命名接线（2026-08-25）：Chat 首条消息会调 onTitle 当会话标题，
-                   此前一直没人传这个 prop → 满屏「新对话」（fable5 架构评审揪出的死代码）。
-                   只改首条：用户手动改过的名不覆盖（renameTask 内部按 id 落盘 tasks.json）。 */
+                /* 自动命名接线：Chat 首条消息会调 onTitle 当会话标题；只改首条，用户手动改过的不覆盖。 */
                 onTitle={(title) => { if (t.name === dirBasename(t.dir) || t.name === tr("新对话")) void renameTask(t.id, title); }} />
             </div>
           ))
-        )}
-
-        {/* 功能面板：盖在会话之上（会话没被卸载，只是不显示）。 */}
-        {view === "passports" && (
-          // 护照页自带内边距和滚动，不再套外层 px/py。
-          <div className="absolute inset-0 bg-bg-2">
-            <PassportBoard
-              onHandoff={handoffToSession}
-              onOpenSession={(id) => { activate(id); setView("chat"); }}
-              // 护照没写 scope 时的兜底：当前正开着的那个会话的目录。
-              // 仍然可能是空的 —— 那时护照页会问用户选一个，**不静默挑**。
-              fallbackDir={state.tasks.find((t) => t.id === state.activeId)?.dir}
-            />
-          </div>
         )}
       </div>
     </div>

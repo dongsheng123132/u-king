@@ -128,20 +128,9 @@ type Msg = {
 let nextId = 1;
 
 // 队列里的每一步都用 `t(TOOL_NAMES[tool])` 做文案，**漏一个就显示 "undefined 安装成功"**。
-// 所以这里必须覆盖所有可能进队列或被工具市场点进来的 id，不只是默认装的三件套。
+// 2026-10-21 目录收敛到 11 项（与 src-tauri/src/tools.rs 的 TOOL_SPECS 一致）：被删工具的
+// 文案一并摘掉 —— 留着就等于向导里还有入口，点下去清单里没有，只会报错。
 export const TOOL_NAMES: Record<string, string> = {
-  "mimo-code": "MiMo Code",
-  "codebuddy-code": "CodeBuddy Code",
-  "qoder-cn": "Qoder CN CLI",
-  "claude-app": "Claude 桌面版",
-  "kimi-code": "Kimi Code",
-  "qwen-code": "Qwen Code",
-  crush: "Crush",
-  "gemini-cli": "Gemini CLI",
-  "grok-build": "Grok Build",
-  "harness-doctor": "Harness Doctor",
-  cline: "Cline CLI",
-
   "claude-code": "Claude Code CLI",
   pi: "pi",
   hermes: "Hermes Agent",
@@ -150,6 +139,10 @@ export const TOOL_NAMES: Record<string, string> = {
   "codex-app": "Codex 桌面版",
   openclaw: "OpenClaw CLI（原版）",
   opencode: "OpenCode",
+  clawx: "ClawX",
+  magpie: "magpie",
+  workbuddy: "WorkBuddy",
+  "uu-remote": "UU 远程",
 };
 
 /** 写驱动配置的目标（apply_provider 的 targets）展示名。
@@ -207,6 +200,8 @@ export function Wizard({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [choices, setChoices] = useState<Choice[] | null>(null);
   const [busy, setBusy] = useState(false);
+  /** 「让 AI 来安装」：勾选后不跑自动安装，直接把脱敏安装任务交给维护助手（2026-10-21 用户口径）。 */
+  const [aiInstall, setAiInstall] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [showKeyInput, setShowKeyInput] = useState(false);
   // 当前选中驱动（渲染 Key 提示用），其余流程上下文都在 ctx
@@ -713,6 +708,25 @@ export function Wizard({
   }
 
   async function installQueue() {
+    // 「让 AI 来安装」：不跑自动安装，把队列压成脱敏任务包直接交给维护助手。
+    // 用户口径（2026-10-21）：安装这类事压力最大，程序搞不定就让轻助手兜底；
+    // 与其先失败再转交，不如让用户一开始就选这条路。
+    if (aiInstall) {
+      const names = ctx.current.queue.filter((t) => !t.startsWith("env:")).map((t) => TOOL_NAMES[t] ?? t);
+      if (names.length > 0) {
+        pushUser(t("让 AI 来安装"));
+        const pkg = buildMaintenanceTask({
+          target: `安装：${names.join("、")}`,
+          failure: "用户勾选「让 AI 来安装」，跳过自动安装流程。",
+          steps: ["装机向导已完成体检", "未执行自动安装（用户选择交给 AI）"],
+          verify: "命令行能打印版本号，或在「我的 AI」里显示已安装。",
+          rollback: "装坏了可重新运行装机向导，或从「我的 AI」里卸载重装。",
+        });
+        push({ role: "uking", text: t("好，安装任务已整理好（不含 Key），正在打开维护助手——看一眼没问题自己按发送即可。") });
+        onHandoffToAssistant?.(pkg);
+      }
+      return;
+    }
     for (const tool of ctx.current.queue) {
       // ★ `env:` 前缀 = 环境地基（Windows Terminal / PowerShell 7 / git），走工具箱的 winget 安装。
       // **单独一条短路径，不进下面那套「AI 诊断 → 修复 → 重试」循环**：这些是体验增强，
@@ -1370,7 +1384,15 @@ export function Wizard({
         </span>
         <span className="text-[14px] font-semibold text-ink-0">{t("对话式安装向导")}</span>
         <span className="text-[10px] font-mono text-ink-4 uppercase tracking-widest">AI Setup</span>
-        {busy && <Loader2 size={14} className="animate-spin text-accent ml-auto" />}
+        {/* 「让 AI 来安装」（2026-10-21）：勾上就跳过自动安装，把脱敏任务交给维护助手。 */}
+        <label
+          className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-ink-3 select-none cursor-pointer"
+          title={t("勾选后不跑自动安装，直接把脱敏的安装任务交给维护助手")}
+        >
+          <input type="checkbox" checked={aiInstall} onChange={(e) => setAiInstall(e.target.checked)} className="accent-accent" />
+          {t("让 AI 来安装")}
+        </label>
+        {busy && <Loader2 size={14} className="animate-spin text-accent ml-2" />}
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 max-h-[430px] min-h-[300px]">

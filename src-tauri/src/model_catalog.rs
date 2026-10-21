@@ -444,23 +444,17 @@ mod tests {
         assert!(!embedded().groups.is_empty(), "embedded() 退化成空目录了 —— 内嵌 JSON 其实没解析成功");
     }
 
-    /// 2026-10-03 逐个实测的结论，钉死在内嵌目录里。目录只收 7 个对话模型（glm-5.3-flash 10-04 下架）：
-    /// 收图的声明 image，deepseek-v4-pro 实测拒绝看图只声明 text；目录外的一律不声明。
+    /// 2026-10-03 逐个实测的结论，钉死在内嵌目录里。2026-10-21 起目录只收 3 个国产对话模型
+    /// （海外贵档按用户口径默认不列）：收图的声明 image，deepseek-v4-pro 实测拒绝看图只声明 text。
     #[test]
     fn embedded_encodes_the_2026_10_03_measurements() {
         let ids: Vec<&str> = embedded().groups.iter().flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
         assert_eq!(
             ids,
-            [
-                "deepseek-v4-flash", "deepseek-v4-pro", "kimi-k3",
-                "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol",
-            ],
-            "目录就是这 7 个对话模型，顺序即下拉顺序"
+            ["deepseek-v4-flash", "deepseek-v4-pro", "kimi-k3"],
+            "目录就是这 3 个国产对话模型（海外贵档 2026-10-21 起默认不列），顺序即下拉顺序"
         );
-        for id in [
-            "deepseek-v4-flash", "kimi-k3",
-            "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol",
-        ] {
+        for id in ["deepseek-v4-flash", "kimi-k3"] {
             assert!(accepts_image(id), "{id} 实测能看图，目录里必须声明 image");
         }
         assert!(!accepts_image("deepseek-v4-pro"), "deepseek-v4-pro 实测回答「无法查看图片」，不许声明 image");
@@ -468,17 +462,18 @@ mod tests {
         for id in [
             "deepseek-flash", "deepseek-chat", "qwen3.7-flash", "qwen3.7-plus", "claude-opus-4-8", "gpt-5.4",
             "gpt-5.5", "gemini-3.1-pro-preview", "MiniMax-M3", "claude-sonnet-5", "claude-opus-5", "gpt-5.6-sol",
+            "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol",
             // 实测不能看图的 / 已下线的
             "qwen3.7-max", "glm-5.3", "gemini-3.5-flash",
         ] {
-            assert!(!ids.contains(&id), "{id} 不在这 8 个里");
+            assert!(!ids.contains(&id), "{id} 不在这 3 个里");
             assert!(!accepts_image(id), "{id} 不在目录里，不许声明 image");
         }
         assert_eq!(embedded().default, "deepseek-v4-flash", "本次不改默认模型");
         assert_eq!(embedded().strong, "deepseek-v4-pro");
-        // 贵档（U-Chat 折进「更多」）就是海外那组
+        // 海外贵档整组下架后，目录里不该再有 pricey 组
         let pricey: Vec<&str> = embedded().groups.iter().filter(|g| g.pricey).flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
-        assert_eq!(pricey, ["claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"]);
+        assert!(pricey.is_empty(), "海外贵档 2026-10-21 起默认不列，目录里不该再有 pricey 组: {pricey:?}");
     }
 
     /// 作图清单独立于对话清单：只有两个，不参与 `accepts_image`。

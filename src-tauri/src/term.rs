@@ -743,7 +743,7 @@ fn sh_single_quote(path: &str) -> String {
 /// 这条「该走哪条路由」的判断本阶段未实现，留给后续 `runtime.tool.launch` 动作做，见该函数
 /// 附近注释，实现时不要漏掉这一条。
 pub fn validate_cmd(cmd: &str) -> bool {
-    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "claude", "codex", "openclaw", "hermes", "dsh", "opencode", "qwen", "crush", "gemini", "grok", "cline", "harness-doctor", "pi", "node", "npm", "git", "ollama"];
+    const ALLOWED_PROGRAMS: &[&str] = &["mimo", "codebuddy", "qodercn", "kimi", "claude", "codex", "openclaw", "hermes", "dsh", "magpie", "opencode", "qwen", "crush", "gemini", "grok", "cline", "harness-doctor", "pi", "node", "npm", "git", "ollama"];
     const MAX_LEN: usize = 512;
     if cmd.len() > MAX_LEN {
         return false;

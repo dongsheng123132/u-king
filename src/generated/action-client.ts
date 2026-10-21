@@ -136,7 +136,7 @@ export type ActionId = (typeof ACTION)[keyof typeof ACTION];
 export type ActionInputMap = {
   "media.image.describe": { expected_state_version?: string; image: string; mode?: "describe" | "ocr"; question?: string; request_id: string; };
   "runtime.ai_process.inspect": Record<string, never>;
-  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-app" | "claude-code" | "codebuddy-code" | "codex" | "codex-app" | "crush" | "dsh" | "grok-build" | "harness-doctor" | "hermes" | "kimi-code" | "magpie" | "mimo-code" | "muse-code" | "openclaw" | "opencode" | "pi" | "qoder-cn" | "qwen-code"; };
+  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-code" | "codex" | "codex-app" | "dsh" | "hermes" | "magpie" | "muse-code" | "openclaw" | "opencode" | "pi"; };
   "runtime.aitool.uninstall": { expected_state_version?: string; tool_id: string; };
   "runtime.browser.install": { expected_state_version?: string; };
   "runtime.chat.inspect": Record<string, never>;
@@ -153,7 +153,7 @@ export type ActionInputMap = {
   "runtime.device.wallet_reset_local": { expected_state_version?: string; };
   "runtime.diagnostics.collect": Record<string, never>;
   "runtime.driver.apply": { api_key: string; expected_state_version?: string; model?: string; provider_id: string; targets: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "qwen" | "crush" | "opencode" | "pi">; };
-  "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush">; };
+  "runtime.driver.apply_everywhere": { api_key?: string; expected_state_version?: string; model?: string; provider_id?: string; targets?: Array<"claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode">; };
   "runtime.driver.inspect": Record<string, never>;
   "runtime.env.install_tools": { expected_state_version?: string; };
   "runtime.footprint.inspect": Record<string, never>;
@@ -178,9 +178,9 @@ export type ActionInputMap = {
   "runtime.optimizer.inspect": Record<string, never>;
   "runtime.origin.inspect": { compiled?: boolean; task_id?: string; };
   "runtime.origin.save": { expected_state_version?: string; expected_version?: number; state: Record<string, unknown>; };
-  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush"; };
-  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush"; };
-  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode" | "qwen" | "crush"; };
+  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
   "runtime.provider.save": { expected_state_version?: string; provider: Record<string, unknown>; };
   "runtime.readiness.inspect": Record<string, never>;
   "runtime.skillpack.inspect": Record<string, never>;

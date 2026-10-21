@@ -4050,11 +4050,11 @@ mod managed_provider_identity_tests {
     }
 
     /// 「收不收图」问的是模型目录，不是某个写死的 id：目录里写了 image 的任何主模型
-    /// （kimi-k3 / claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）
+    /// （kimi-k3 / deepseek-v4-flash；海外贵档 2026-10-21 起默认不列）
     /// 都要声明 `input:["text","image"]`，且因为主模型自己能收图，不该再写 imageModel 兜底。
     #[test]
     fn xiapan_route_declares_image_for_every_catalog_vision_primary() {
-        for (n, id) in ["kimi-k3", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"]
+        for (n, id) in ["kimi-k3", "deepseek-v4-flash"]
             .into_iter()
             .enumerate()
         {
@@ -4928,8 +4928,7 @@ mod dsh_provider_tests {
         });
     }
 
-    /// 「收不收图」问模型目录：目录里写了 image 的（deepseek-v4-flash / kimi-k3 /
-    /// claude-sonnet-5-5 / claude-opus-5-5 / gpt-6-astra / gpt-6.1-sol）DSH 都要声明；写了 text 的
+    /// 「收不收图」问模型目录：目录里写了 image 的（deepseek-v4-flash / kimi-k3）DSH 都要声明；写了 text 的
     /// （deepseek-v4-pro）和压根不在目录里的（qwen3.7-max、glm-5.3、10-04 下架的 glm-5.3-flash、
     /// deepseek-flash、手填 id）一律不声明 —— 目录只回答它收录的 7 个，其余宁可不声明。
     #[test]
@@ -4938,7 +4937,7 @@ mod dsh_provider_tests {
             let settings_path = root.join(".dsh").join("settings.yaml");
             let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
             let image_input = Some(vec!["text".to_string(), "image".to_string()]);
-            for id in ["kimi-k3", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol", "deepseek-v4-flash"] {
+            for id in ["kimi-k3", "deepseek-v4-flash"] {
                 apply_dsh(&p, "sk-device-secret", id).unwrap();
                 let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
                 assert_eq!(models.len(), 1, "{id}: {models:?}");
@@ -6523,7 +6522,15 @@ pub const EXTRA_APPLY_TOOLS: &[&str] = &[];
 /// 一个工具从 `EXTRA_APPLY_TOOLS` 挪走 = **从弹窗里静默消失**（两处入口只剩一处）。
 /// pi 那次是在 `driver_status()` 里硬写了两行补上的；opencode 再来一次就会是第二份复制。
 /// 抽成数组之后，下一个工具升级只要在这里加一个词。
-pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode", "qwen", "crush"];
+pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode"];
+
+/// 2026-10-21：「我的 AI」工具目录收敛后从 `TOOL_SPECS` 删除、但存量客户机上可能还装着的工具。
+///
+/// 它们**不再**进 `LIST_TOOLS` / `APPLY_ALL_TARGETS`，也不再有独立的「AI 设置」Tab；
+/// 这里只保留 `driver_status()` 里 `active` / `extra_installed` 的回显记录，好让设备钱包
+/// 换 Key 时仍能同步到老配置 —— 目录收窄不该把已装用户的配置饿死。新装用户不会再有这两个
+/// 工具，也就不会有记录，这个兼容层对他们是空转。
+pub const LEGACY_RETIRED_TARGETS: &[&str] = &["qwen", "crush"];
 
 /// 🔴 **「一键配好全部」真正会配的全部目标 —— 动作契约 `targets` 那份 enum 的唯一真相源。**
 ///
@@ -6543,8 +6550,10 @@ pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode", "qwen", "crush"]
 /// 测试环境里 `pi` 本来就没装，`tool_installed` 判假就静默跳过——少配一个工具和「这个工具在这台
 /// 机器上没装」长得一模一样。这个用例只能挡「常量清单互相漂移」，挡不住「常量写对了、
 /// 循环体没跟着写」。缺一条断言分派表本身确实遍历了 `APPLY_ALL_TARGETS` 每一项（已记进需求榜）。
+/// 2026-10-21：「我的 AI」工具目录收敛到 11 项，qwen / crush 已随 TOOL_SPECS 删除，
+/// 所以这里也只剩 7 个目标（`list_tools_targets()` 自动派生，不再含 qwen/crush）。
 pub const APPLY_ALL_TARGETS: &[&str] = &[
-    "claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode", "qwen", "crush",
+    "claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode",
 ];
 
 /// 「我们写的配置，那个工具真的会照着跑吗」—— **回读工具自己的配置文件**，解析出它启动时
@@ -6959,7 +6968,7 @@ pub fn driver_status() -> DriverStatus {
     // provider 列表 Tab，但「一键配好全部」弹窗（`ApplyScopeDialog.tsx` 的 `EXTRA_TOOLS`
     // 列表）一直靠 `extra_installed`/`active` 判要不要列出它们——**两处入口都要保留**，
     // 少这一段它们就从弹窗里静默消失。清单见 `PROMOTED_TO_LIST_TOOLS`（原来是给 pi 硬写的两行）。
-    for tool in PROMOTED_TO_LIST_TOOLS {
+    for tool in PROMOTED_TO_LIST_TOOLS.iter().chain(LEGACY_RETIRED_TARGETS.iter()) {
         st.extra_installed
             .insert((*tool).to_string(), crate::installer::tool_installed(tool));
         if let Some(v) = recorded_of(tool) {

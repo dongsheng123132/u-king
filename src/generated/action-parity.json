@@ -1775,9 +1775,7 @@
                 "hermes",
                 "dsh",
                 "pi",
-                "opencode",
-                "qwen",
-                "crush"
+                "opencode"
               ],
               "type": "string"
             },
@@ -1895,9 +1893,7 @@
               "hermes",
               "dsh",
               "pi",
-              "opencode",
-              "qwen",
-              "crush"
+              "opencode"
             ],
             "type": "string"
           }
@@ -1958,9 +1954,7 @@
               "hermes",
               "dsh",
               "pi",
-              "opencode",
-              "qwen",
-              "crush"
+              "opencode"
             ],
             "type": "string"
           }
@@ -2013,9 +2007,7 @@
               "hermes",
               "dsh",
               "pi",
-              "opencode",
-              "qwen",
-              "crush"
+              "opencode"
             ],
             "type": "string"
           }
@@ -3033,25 +3025,16 @@
             "enum": [
               "agent-browser",
               "antigravity-cli",
-              "claude-app",
               "claude-code",
-              "codebuddy-code",
               "codex",
               "codex-app",
-              "crush",
               "dsh",
-              "grok-build",
-              "harness-doctor",
               "hermes",
-              "kimi-code",
               "magpie",
-              "mimo-code",
               "muse-code",
               "openclaw",
               "opencode",
-              "pi",
-              "qoder-cn",
-              "qwen-code"
+              "pi"
             ],
             "type": "string"
           }

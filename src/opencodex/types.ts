@@ -71,9 +71,6 @@ export interface Task {
   kind?: "task" | "tool"; // 默认 task
   // —— Phase 8：项目分组键（=规范化 dir）。同一文件夹可开多个会话，左侧按 project 分组 ——
   project?: string | null;
-  // —— worktree：此任务是 git worktree 时设置。worktree_repo = 主仓库路径；与主任务同一 project 分组 ——
-  worktree_repo?: string | null;
-  worktree_branch?: string | null;
   // —— 【已弃用，仅读兼容】AI 专家功能 2026-10-04 删除；老会话文件里还带这个字段，保留它是为了
   //    原样读写不丢键、反序列化不失败。**不再有任何代码读它**（会话按普通会话打开，persona 不再注入）——
   expert?: string | null;

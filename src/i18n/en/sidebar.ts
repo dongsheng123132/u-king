@@ -1,5 +1,8 @@
 /** 英文覆盖字典 · 左侧边栏（Sidebar.tsx）。key = 中文原文，value = English。 */
 export const sidebar: Record<string, string> = {
+  // ---- 侧栏页脚「设置」入口（2026-10-21）----
+  "设置": "Settings",
+  "设置：语言 / 主题 / 检查更新 / 技术支持": "Settings: language / theme / updates / support",
   // 品牌头
   "一键装好你的全部 AI": "Set up all your AI in one click",
   "收起侧栏（腾出空间给右侧终端/工作区）": "Collapse sidebar (free up space for the terminal / workspace)",
@@ -31,6 +34,7 @@ export const sidebar: Record<string, string> = {
   "对话 · 终端 · 作图出片，一站干活": "Chat · Terminal · Create, all in one place",
   // 2026-10-03 收敛方案 2a：「对话工作台」「终端工作台」合成一个「工作台」入口，
   // 旧的四条英文随入口一起删（恢复入口时要连这几条一起加回，见 Sidebar.tsx CORE 注释）。
+  "打开配置与模型管理应用": "Open configuration and model manager",
   "工作台": "Workbench",
   "对话 · 终端 · 会话": "Chat · Terminal · Sessions",
   "U-Chat 对话 · U-CLI 终端 · 作图，一站干活": "U-Chat · U-CLI terminal · image gen, all in one",

@@ -10,6 +10,9 @@
  *  +「AI 设置」出口（后者复用中央字典已有的「AI 设置」键，这里不重复翻）。
  *  「使用工具自带账号」这一条从此不再被引用，同上一条一起留着不删。 */
 export const toolhub: Record<string, string> = {
+  // ---- 升级失败 → 交维护助手（2026-10-21）----
+  "升级失败？让 AI 修": "Upgrade failed? Let AI fix it",
+  "升级失败时：把这台机器的脱敏现状交给维护助手，让 AI 接着排查（不含 Key）": "When an upgrade fails: hand a redacted snapshot of this machine to the Maintenance Assistant so AI can continue diagnosing (no keys included)",
   // 「正在启动…」= 工具中心启动按钮的行内状态（无工具名）；下面那条带 {tool} 的是终端里的
   // 「正在启动 mimo…」。两条文案不同、都要翻 —— 只加带 {tool} 的那条会让英文界面露出中文。
   "正在启动…": "Starting…",

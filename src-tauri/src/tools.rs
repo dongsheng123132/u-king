@@ -11,6 +11,34 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
+/// GUI shortcut 与工具中心 CLI 条目分开；无参数是 magpie 自己的窗口入口。
+fn magpie_gui_command(path: &str) -> Result<std::process::Command, String> {
+    // 不把脚本启动器交给 shell 重新解析。官方 Windows 包是原生 exe。
+    if cfg!(windows) && !path.to_ascii_lowercase().ends_with(".exe") {
+        return Err("magpie 图形快捷方式需要原生 magpie.exe，请确认已安装桌面版本".into());
+    }
+    let mut command = std::process::Command::new(path);
+    command.no_window()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    Ok(command)
+}
+
+fn launch_magpie_gui() -> Result<(), String> {
+    let path = crate::term::terminal_path_candidates("magpie").into_iter()
+        .find(|path| !cfg!(windows) || path.to_ascii_lowercase().ends_with(".exe"))
+        .ok_or("未找到 magpie，请先在「我的 AI」安装图形版本")?;
+    let mut child = magpie_gui_command(&path)?.spawn()
+        .map_err(|error| format!("启动 magpie 图形界面失败：{error}"))?;
+    // 独立应用继续运行；不宣称已看到窗口。快速非零退出应明确报错。
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    if let Some(status) = child.try_wait().map_err(|error| format!("检查 magpie 启动失败：{error}"))? {
+        if !status.success() { return Err(format!("magpie 启动失败，退出码 {:?}", status.code())); }
+    }
+    Ok(())
+}
+
 /// 一个可安装工具的元信息（回前端渲染卡片）。
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolInfo {
@@ -235,17 +263,7 @@ pub fn plan(
 /// 单个工具版本，`plan_all` 遍历 `TOOL_SPECS` 复用它。
 pub fn plan_for(tool_id: &str) -> Result<LaunchPlan, String> {
     let info = list_tools_matching(Some(tool_id));
-    #[allow(unused_mut)]
-    let mut p = plan_with_info(tool_id, info.first(), &crate::term::terminal_path_snapshot())?;
-    // Existing Cline installs can contain only an npm shim with no native binary.
-    // Check this restored legacy entry only when explicitly inspected/launched;
-    // the catalog and full inspection must not spawn every installed CLI.
-    #[cfg(windows)]
-    if tool_id == "cline" && p.status == LaunchStatus::Ready {
-        if let Some(path) = p.resolved_path.clone() {
-            apply_health(&mut p, probe_health(&path), || None);
-        }
-    }
+    let p = plan_with_info(tool_id, info.first(), &crate::term::terminal_path_snapshot())?;
     Ok(p)
 }
 
@@ -420,31 +438,6 @@ pub fn plan_all() -> Vec<LaunchPlan> {
 
 pub const TOOL_SPECS: &[ToolSpec] = &[
     ToolSpec {
-        id: "mimo-code", cmd: "mimo", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "codebuddy-code", cmd: "codebuddy", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "qoder-cn", cmd: "qodercn", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "claude-app", cmd: "", config_target: None,
-        in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::GuiApp, route_tab: None,
-    },
-    ToolSpec {
-        id: "kimi-code", cmd: "kimi", config_target: None,
-        in_list_tools: true, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
         id: "claude-code",
         cmd: "claude",
         config_target: Some("claude"),
@@ -466,22 +459,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         // apps.ts::TUI_APPS 专属 tab id 是 "codex-cli"（toolId: "codex"）—— 有内嵌终端。
         launch_mode: LaunchMode::EmbeddedPty,
         route_tab: None,
-    },
-    ToolSpec {
-        // CLI 版 OpenClaw：探测/装机走这条 id，但驱动配置跟桌面版 `clawx` 共用同一个
-        // target（见 `apps.ts` 里 `configTargets: ["clawx"]` 的同款注释）。
-        id: "openclaw",
-        cmd: "openclaw",
-        config_target: Some("clawx"),
-        in_list_tools: false,
-        in_checkup: None,
-        // 见上面 `probe_args` 字段文档：openclaw 没有可靠的一次性无头入口，
-        // 空切片 = 「在探测范围内，但测不了」，不是「不存在」。
-        probe_args: Some(&[]),
-        // App.tsx::launchTool 硬编码分支：`if (t.id === "openclaw") { setTab("openclaw"); return; }`
-        // —— 有自己的专属页（ToolAppView 走 gateway 起停 + WebUI 时序），不能当普通 EmbeddedPty。
-        launch_mode: LaunchMode::RouteTab,
-        route_tab: Some("openclaw"),
     },
     ToolSpec {
         // ClawX 桌面版：GUI，装没装走 `providers::clawx_app_installed()`（不是 `cmd` 探测），
@@ -562,43 +539,12 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         route_tab: None,
     },
     ToolSpec {
-        id: "qwen-code", cmd: "qwen", config_target: Some("qwen"),
-        in_list_tools: true, in_checkup: Some("Qwen Code"),
-        probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "crush", cmd: "crush", config_target: Some("crush"),
-        in_list_tools: true, in_checkup: Some("Crush"),
-        probe_args: Some(&["run", crate::toolprobe::PROMPT]),
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "gemini-cli", cmd: "gemini", config_target: None,
-        in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "grok-build", cmd: "grok", config_target: None,
-        in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        id: "harness-doctor", cmd: "harness-doctor", config_target: None,
-        in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::ExternalTerm, route_tab: None,
-    },
-    ToolSpec {
-        id: "cline", cmd: "cline", config_target: None,
-        in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
-    },
-    ToolSpec {
-        // magpie：配置委托 CLI，有内嵌终端（magpie ls / magpie <agent> <model> …）。
+        // magpie：GUI 程序（点开直接开窗，跟 DSH 一样），CLI 能力仍保留在工具中心。
         // config_target=None、in_list_tools=false —— 不进「AI 设置」页（providers.rs 不写它）。
+        // 2026-10-21 用户口径：magpie 太复杂、不主推，也不再上架（装机清单已摘）；已装的仍能检测/启动。
         id: "magpie", cmd: "magpie", config_target: None,
         in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::EmbeddedPty, route_tab: None,
+        launch_mode: LaunchMode::GuiApp, route_tab: None,
     },
     ToolSpec {
         id: "uu-remote",
@@ -637,26 +583,24 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: LaunchMode::GuiApp,
         route_tab: None,
     },
-    #[cfg(windows)]
-    ToolSpec {
-        // OpenCodex 桌面工作台（独立 Tauri 产品）：随包内嵌的 u-cli 替代。
-        // include_bytes! 打进 u-king-mini.exe，首启 opencodex_bundle::ensure_opencodex() 释放到
-        // ~/.uking/opencodex/。仅 Windows 随包（Mac 是 .app 目录，不能单文件内嵌，暂不随包）。
-        id: "opencodex",
-        cmd: "",
-        config_target: None,
-        in_list_tools: true,
-        in_checkup: None,
-        probe_args: None,
-        launch_mode: LaunchMode::GuiApp,
-        route_tab: None,
-    },
 ];
 
 #[cfg(test)]
 mod tool_specs_tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn magpie_gui_shortcut_uses_native_window_entry_and_preserves_cli() {
+        let path = if cfg!(windows) { "C:/demo/magpie.exe" } else { "/demo/magpie" };
+        let command = magpie_gui_command(path).expect("native launcher");
+        assert_eq!(command.get_program(), std::ffi::OsStr::new(path));
+        assert_eq!(command.get_args().count(), 0, "无参数才是窗口入口，不是 tui/PTY");
+        let spec = TOOL_SPECS.iter().find(|spec| spec.id == "magpie").unwrap();
+        assert_eq!(spec.launch_mode, LaunchMode::GuiApp, "GUI 程序点开直接开窗（2026-10-21 用户口径）");
+        assert!(crate::term::validate_cmd("magpie ls"));
+        if cfg!(windows) { assert!(magpie_gui_command("C:/demo/magpie.cmd").is_err()); }
+    }
 
     /// `TOOL_SPECS` 的 id 集合必须和 `list_tools()` 实际构造出的 `ToolInfo.id` 集合完全一致
     /// ——加/删一个工具，两边有一边忘了同步，这条测试就会红，而不是等到运行时才发现
@@ -711,7 +655,6 @@ mod tool_specs_tests {
         assert_eq!(target_of("opencode").as_deref(), Some("opencode"));
         assert_eq!(target_of("hermes").as_deref(), Some("hermes"));
         assert_eq!(target_of("uu-remote"), None);
-        assert_eq!(target_of("kimi-code"), None);
 
         let dsh = tools.iter().find(|t| t.id == "dsh").expect("list_tools() 里没有 dsh");
         let json = serde_json::to_value(dsh).expect("ToolInfo 应可序列化");
@@ -1040,20 +983,6 @@ pub fn clawx_download_url() -> String {
         .unwrap_or_else(|| CLAWX_FALLBACK_URL.to_string())
 }
 
-/// OpenClaw 是否已装（探测 ~/.uclaw 或 ~/.uking/tools/openclaw）。
-fn openclaw_installed() -> bool {
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_default();
-    let p1 = Path::new(&home)
-        .join(".uclaw")
-        .join("core")
-        .join("node_modules")
-        .join("openclaw");
-    let p2 = uking_home().join("tools").join("openclaw");
-    p1.exists() || p2.exists()
-}
-
 fn tool_dir_installed(sub: &str) -> bool {
     uking_home().join("tools").join(sub).exists()
 }
@@ -1093,66 +1022,6 @@ fn catalog_with_probes(
 ) -> Vec<ToolInfo> {
     let mut v = vec![
         ToolInfo {
-            id: "mimo-code".into(), name: "MiMo Code".into(), summary: "小米的终端 AI 编程助手。支持小米账号登录，也可在 /connect 中配置模型供应商。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "https://mimo.mi.com/docs/zh-CN/tokenplan/integration/mimo-code".into(), launch_cmd: "mimo".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "codebuddy-code".into(), name: "CodeBuddy Code".into(), summary: "腾讯的终端 AI 编程助手。首次启动登录国内账号；自定义模型可按官方配置说明接入。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "https://www.codebuddy.ai/docs/zh/cli/env-vars".into(), launch_cmd: "codebuddy".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "qoder-cn".into(), name: "Qoder CN CLI".into(), summary: "阿里的国内版终端 AI 助手，使用国内账号登录。Windows 暂仅支持 x64；模型与套餐由工具自身管理。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "https://docs.qoder.cn/cli/installation".into(), launch_cmd: "qodercn".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "kimi-code".into(), name: "Kimi Code".into(), summary: "月之暗面的命令行编程助手，国内可用；首次启动用 /login 登录。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "kimi".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "qwen-code".into(), name: "Qwen Code".into(), summary: "阿里通义开源的终端编程助手。支持使用自己的模型配置。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "qwen".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "crush".into(), name: "Crush".into(), summary: "Charm 出品的终端 AI 编程助手。支持使用自己的模型配置。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "crush".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "gemini-cli".into(), name: "Gemini CLI".into(), summary: "Google 的终端 AI 编程助手。登录和模型配置由工具自身管理。".into(),
-            kind: "standalone".into(), installed: false, action: "url".into(),
-            target: "https://github.com/google-gemini/gemini-cli".into(), launch_cmd: "gemini".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "grok-build".into(), name: "Grok Build".into(), summary: "xAI 官方命令行编程助手，使用工具自身的账号登录和模型配置。".into(),
-            kind: "standalone".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "grok".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "harness-doctor".into(), name: "Harness Doctor".into(), summary: "只读检查 AI 工具的版本、运行环境和配置。".into(),
-            kind: "utility".into(), installed: false, action: "install".into(),
-            target: "".into(), launch_cmd: "harness-doctor --target all --no-ports".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            id: "cline".into(), name: "Cline CLI".into(), summary: "识别现有 Cline CLI 安装；登录和配置由工具自身管理。".into(),
-            kind: "standalone".into(), installed: false, action: "url".into(),
-            target: "https://docs.cline.bot/cline-cli/overview".into(), launch_cmd: "cline".into(), launch_app: "".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
             // magpie（yetone/magpie，MIT，Go 单二进制）：配置委托层——把 AI 工具的
             // provider/模型配置交给 magpie 维护，U-King 只做下载/校验/落地/回滚与钱包计费。
             // 只装 CLI（机器可调面），桌面版会跟 U-King 抢工作台、不上。config_target=None：
@@ -1165,8 +1034,8 @@ fn catalog_with_probes(
             action: "install".into(),
             target: "".into(),
             launch_cmd: "magpie".into(),
-            launch_app: "".into(),
-            hidden: false,
+            launch_app: "magpie".into(),
+            hidden: true,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
@@ -1195,29 +1064,6 @@ fn catalog_with_probes(
             launch_cmd: "codex".into(),
             launch_app: "".into(),
             hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
-            // ★ 2026-08-03 复活（原 hidden=true，2026-07-07 定的「人类入口只留 ClawX 桌面版」）。
-            // 那条决策的前提是「GUI 优先」；现在主推反过来了 —— CLI 干活、U-Workspace 当壳、
-            // 抢工作台的 GUI 一律降级，于是 ClawX 桌面版让位，OpenClaw 的人类入口回到 CLI。
-            // 「双配置面」那个老坑没有消失，但它从来不是靠藏入口解决的：靠的是切驱动 target
-            // 统一写 "clawx"（providers.rs），两个入口读同一份配置。
-            id: "openclaw".into(),
-            name: "OpenClaw CLI（龙虾）".into(),
-            summary: "原版 OpenClaw 命令行（龙虾）。终端里直接对话干活，也能起网页版网关；切驱动与 ClawX 共用同一份配置，不会打架。".into(),
-            kind: "deep".into(),
-            installed: false,
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "openclaw".into(),
-            launch_app: "".into(),
-            // ★ 2026-08-05 隐藏 CLI 入口。**两条一起看**：ClawX 桌面版（另一条 id）
-            // 08-03 已降级隐藏，所以这一改之后 OpenClaw 生态在**主推面上不再出现**，
-            // 只在「进阶 / App 版」页仍可达。这是有意的收窄，不是漏了一处。
-            // 配置链一个字节没动（apps.ts 的 configTargets 仍指 "clawx"，apply/备份/
-            // gateway 全在），已装的客户照配照用。
-            hidden: true,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
@@ -1369,22 +1215,14 @@ fn catalog_with_probes(
             hidden: false,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
-        // 核心工具：Claude Code CLI / Hermes CLI（命令行）
-        // + Codex 桌面版 / ClawX 桌面版（图形）。Codex CLI、OpenClaw 官方 CLI 已标
-        // hidden=true（上面），后端检测/切驱动/装机能力全保留，仅不在市场露出。
+        // 核心工具：Claude Code CLI / Codex CLI / Hermes CLI（命令行）
+        // + Codex 桌面版 / ClawX 桌面版（图形）。
     ];
-    #[cfg(any(windows, target_os = "macos"))]
-    v.insert(1, ToolInfo {
-            id: "claude-app".into(), name: "Claude 桌面版".into(), summary: "Anthropic 官方桌面应用，含 Chat、Cowork 与 Code。可一键安装及启动；桌面版第三方模型需在应用中配置网关。".into(),
-            kind: "standalone".into(), installed: false, action: if cfg!(windows) { "install" } else { "url" }.into(),
-            target: "https://claude.com/download".into(), launch_cmd: "".into(), launch_app: "claude-app".into(),
-            hidden: false, config_target: None, version: None, launch_mode: LaunchMode::None,
-        });
     // Codex 桌面版：Windows 一键装（微软商店渠道 + 国内镜像 MSIX 兜底）；
     // macOS 露出检测/启动/手动教程入口，安装走官方 DMG（不做假静默）。
     #[cfg(any(windows, target_os = "macos"))]
     v.insert(
-        2,
+        1,
         ToolInfo {
             id: "codex-app".into(),
             name: "Codex 桌面版".into(),
@@ -1404,24 +1242,6 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
     );
-    // OpenCodex 桌面工作台：随包内嵌（首启释放），仅 Windows。点「打开应用」直接拉起。
-    #[cfg(windows)]
-    v.insert(
-        3,
-        ToolInfo {
-            id: "opencodex".into(),
-            name: "OpenCodex 工作台".into(),
-            summary: "随 U-King 打包的极简文件夹式 CLI 终端工作台（u-cli 的替代）。打开选个文件夹，就能在应用内终端跑 Claude Code / Codex 等 CLI；自带模型设置（Base URL / Key 自填），不改全局配置。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "".into(),
-            target: "".into(),
-            launch_cmd: "".into(),
-            launch_app: "opencodex".into(),
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-    );
     // `config_target` 的唯一来源：按 id 从 TOOL_SPECS 取（见字段文档）。TOOL_SPECS 里查不到的
     // id（理论上不会有，`tool_specs_ids_match_list_tools_ids` 单测守着）保持 None，
     // 也就是「不接驱动切换」，宁可少露一个换模型入口，也不编一个 target。
@@ -1429,9 +1249,6 @@ fn catalog_with_probes(
     for t in v.iter_mut() {
         t.launch_mode = TOOL_SPECS.iter().find(|s| s.id == t.id).map_or(LaunchMode::None, |s| s.launch_mode);
         t.installed = installed(&t.id);
-        // Cline's installer remains retired. Preserve access to existing installs
-        // without suggesting an unverified installation flow to new users.
-        if t.id == "cline" && !t.installed { t.hidden = true; }
         t.version = version(&t.id);
         t.config_target = TOOL_SPECS
             .iter()
@@ -1450,19 +1267,8 @@ fn catalog_with_probes(
 /// `catalog_probe_tests::tool_probe_branches_cover_every_spec` 单测盯着这张表不漏 id。
 fn probe_tool(id: &str) -> Option<bool> {
     Some(match id {
-        "mimo-code" => crate::installer::tool_installed("mimo"),
-        "codebuddy-code" => crate::installer::tool_installed("codebuddy"),
-        "qoder-cn" => crate::installer::tool_installed("qodercn"),
-        "kimi-code" => crate::installer::tool_installed("kimi"),
-        "qwen-code" => crate::installer::tool_installed("qwen"),
-        "crush" => crate::installer::tool_installed("crush"),
-        "gemini-cli" => crate::installer::tool_installed("gemini"),
-        "grok-build" => crate::installer::tool_installed("grok"),
-        "harness-doctor" => crate::installer::tool_installed("harness-doctor"),
-        "cline" => crate::installer::tool_installed("cline"),
         "claude-code" => crate::installer::tool_installed("claude"),
         "codex" => crate::installer::tool_installed("codex"),
-        "openclaw" => crate::installer::tool_installed("openclaw") || openclaw_installed(),
         "pi" => crate::installer::tool_installed("pi"),
         "opencode" => crate::installer::tool_installed("opencode"),
         "clawx" => crate::providers::clawx_app_installed(),
@@ -1473,11 +1279,9 @@ fn probe_tool(id: &str) -> Option<bool> {
                 crate::installer::tool_installed("dsh")
             },
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
-        "claude-app" => crate::installer::managed_desktop_installed("claude-app"),
         "codex-app" => crate::installer::codex_app_installed(),
         "magpie" => crate::installer::tool_installed("magpie"),
         "workbuddy" => crate::installer::managed_desktop_installed("workbuddy"),
-        "opencodex" => crate::opencodex_bundle::ensure_opencodex().is_ok(),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
         _ => return None,
     })
@@ -1497,13 +1301,13 @@ mod catalog_probe_tests {
     #[test]
     fn single_tool_does_not_probe_unrelated_apps() {
         let calls = RefCell::new(Vec::new());
-        let tools = catalog_with_probes(Some("kimi-code"), |id| {
+        let tools = catalog_with_probes(Some("pi"), |id| {
             calls.borrow_mut().push(id.to_string());
             true
         }, |_| None);
-        assert_eq!(*calls.borrow(), vec!["kimi-code"]);
+        assert_eq!(*calls.borrow(), vec!["pi"]);
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].launch_cmd, "kimi");
+        assert_eq!(tools[0].launch_cmd, "pi");
         assert_eq!(tools[0].launch_mode, LaunchMode::EmbeddedPty);
         assert!(tools[0].installed);
     }
@@ -1513,7 +1317,7 @@ mod catalog_probe_tests {
         let calls = RefCell::new(Vec::new());
         let tools = catalog_with_probes(None, |id| {
             calls.borrow_mut().push(id.to_string());
-            id == "kimi-code"
+            id == "pi"
         }, |_| None);
         let mut ids = calls.into_inner();
         let count = ids.len();
@@ -1525,23 +1329,23 @@ mod catalog_probe_tests {
             let spec = TOOL_SPECS.iter().find(|s| s.id == tool.id).unwrap();
             assert_eq!(tool.launch_mode, spec.launch_mode);
         }
-        assert_eq!(tools.iter().filter(|t| t.installed).map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["kimi-code"]);
+        assert_eq!(tools.iter().filter(|t| t.installed).map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["pi"]);
     }
 
     #[test]
     fn installed_agents_remain_visible_and_allowed_to_launch() {
         let catalog = catalog_with_probes(None, |_| true, |_| None);
-        for id in ["mimo-code", "codebuddy-code", "qoder-cn", "kimi-code", "qwen-code", "crush", "gemini-cli", "grok-build", "cline"] {
+        for id in ["claude-code", "codex", "pi", "opencode"] {
             let tool = catalog.iter().find(|tool| tool.id == id).expect("registered agent missing from catalog");
             assert!(tool.installed && !tool.hidden, "{id} must be visible after detection");
             assert_eq!(tool.launch_mode, LaunchMode::EmbeddedPty, "{id} needs a terminal launcher");
             assert!(crate::term::validate_cmd(&tool.launch_cmd), "{id} launcher is rejected by the terminal command guard");
         }
-        let gemini = catalog.iter().find(|tool| tool.id == "gemini-cli").unwrap();
-        assert_eq!(gemini.action, "url", "Gemini's installer is not verified; offer the official guide");
-        assert!(gemini.config_target.is_none(), "do not claim Gemini model configuration support");
+        let clawx = catalog.iter().find(|tool| tool.id == "clawx").unwrap();
+        assert_eq!(clawx.action, "url", "ClawX installer is not verified; offer the official download");
+        assert_eq!(clawx.config_target.as_deref(), Some("clawx"), "ClawX keeps its provider target");
         let empty = catalog_with_probes(None, |_| false, |_| None);
-        assert!(empty.iter().find(|tool| tool.id == "cline").unwrap().hidden);
+        assert!(!empty.iter().find(|tool| tool.id == "magpie").unwrap().installed, "uninstalled magpie still shows");
     }
 
     #[cfg(windows)]
@@ -1843,6 +1647,7 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
         // 万一漏拦走到这里，给条清楚指引而不是「未知应用」。
         "openclaw-webui" => Err("请在「我的 AI」点 OpenClaw 网页版打开".into()),
         "opencodex" => crate::opencodex_bundle::launch_opencodex(),
+        "magpie" => launch_magpie_gui(),
         other => Err(format!("未知应用 {other}")),
     }
 }

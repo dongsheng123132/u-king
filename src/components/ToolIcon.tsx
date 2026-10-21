@@ -1,17 +1,20 @@
 /** Brand artwork is bundled locally. Sources and trademark attribution are in NOTICE. */
 import claudeLogo from "../assets/logos/claude.svg";
 import openaiLogo from "../assets/logos/openai.svg";
-// Codex 改内联单色标记（CodexMark，fill=currentColor），不再用硬编码白 fill 的 svg 资源
-// —— 白图标在浅色主题浅底上发暗/看不见（客户反馈「codex 图标是暗的」）。
+// Codex（CLI / 桌面版）统一用 OpenAI 官方 blossom mark 的内联单色版（fill=currentColor）：
+// 官方 OpenAI/Codex 桌面版图标就是「黑色 app tile + 白色 blossom」，浅/深主题都清晰。
 import geminiLogo from "../assets/logos/gemini.svg";
 import deepseekLogo from "../assets/logos/deepseek.svg";
 import kimiLogo from "../assets/logos/kimi-code.png";
 import zhipuLogo from "../assets/logos/zhipu.svg";
 import minimaxLogo from "../assets/logos/minimax.svg";
-import hermesLogo from "../assets/logos/hermes.png"; // Nous Research 官方吉祥物头像
+import hermesLogo from "../assets/logos/hermes.png"; // Nous Research 官方 Nous girl 标记（Hermes Agent 官方 app icon master 白色版，配深色 tile）
+import dshLogo from "../assets/logos/dsh.svg"; // DeepSeek Harness 官方 favicon（deepseek.com/harness/favicon.svg）
 import piLogo from "../assets/logos/pi.svg"; // pi.dev 官方标记 + 深色圆角底块（官方原件跟系统主题走，直接用会在浅底上消失）
 import opencodeLogo from "../assets/logos/opencode.svg"; // 官方 mark，自带 #131010 方形深底（圆角由 ROUNDED_IMG 补）
-import uuRemoteLogo from "../assets/logos/uu-remote.png"; // 官网只有 64px 位图；2x 屏略糊，有矢量源再换
+import uuRemoteLogo from "../assets/logos/uu-remote.png"; // 网易官方 app icon（512 缩到 256、白底抠透明）
+import workbuddyLogo from "../assets/logos/workbuddy.png"; // WorkBuddy 官方 app icon（codebuddy.cn/work 页面 CDN 的 400px 原件）
+import magpieLogo from "../assets/logos/magpie.png"; // yetone/magpie 仓库自带官方 icon-256.png（UI 隐藏，备用）
 
 import mimoLogo from "../assets/logos/mimo.svg";
 import codebuddyLogo from "../assets/logos/codebuddy.svg";
@@ -36,9 +39,12 @@ const LOGO: Record<string, string> = {
   zhipu: zhipuLogo,
   minimax: minimaxLogo,
   hermes: hermesLogo,
+  dsh: dshLogo,
   pi: piLogo,
   opencode: opencodeLogo,
   "uu-remote": uuRemoteLogo,
+  workbuddy: workbuddyLogo,
+  magpie: magpieLogo,
 };
 
 /** 素材本身是直角方形底的 logo：用 CSS 补圆角，跟 Codex / pi 的 24% 圆角块保持一致。 */
@@ -47,13 +53,28 @@ const ROUNDED_IMG = new Set(["opencode"]);
 /** 首字母方块兜底色（仅未知 id 用；有专属图标/logo 的不会走到这里）。 */
 const FALLBACK_BG = "#5e6ad2";
 
-function CodexMark({ size }: { size: number }) {
-  // Codex 官方标记（LobeHub），单色 fill=currentColor —— 由父层 text-ink-1 上色，
-  // 浅色主题呈深色、深色主题呈浅色，两种主题都清晰可见（修「codex 图标发暗」）。
+/** 深色圆角 app tile 的底色 —— 跟官方 Codex / ChatGPT 桌面版图标同一个观感。 */
+const APP_TILE_BG = "#0d0d0f";
+
+function OpenAIMark({ size }: { size: number }) {
+  // OpenAI 官方 blossom mark（单色 fill=currentColor）：由父层文字色上色，
+  // 浅色主题呈深色、深色主题呈浅色 —— 官方 Codex/桌面版 app 图标里那枚就是它。
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" xmlns="http://www.w3.org/2000/svg">
-      <path clipRule="evenodd" d="M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21.55 10.004a5.416 5.416 0 00-.478-4.501c-1.217-2.09-3.662-3.166-6.05-2.66A5.59 5.59 0 0010.831 1C8.39.995 6.224 2.546 5.473 4.838A5.553 5.553 0 001.76 7.496a5.487 5.487 0 00.691 6.5 5.416 5.416 0 00.477 4.502c1.217 2.09 3.662 3.165 6.05 2.66A5.586 5.586 0 0013.168 23c2.443.006 4.61-1.546 5.361-3.84a5.553 5.553 0 003.715-2.66 5.488 5.488 0 00-.693-6.497v.001zm-8.381 11.558a4.199 4.199 0 01-2.675-.954c.034-.018.093-.05.132-.074l4.44-2.53a.71.71 0 00.364-.623v-6.176l1.877 1.069c.02.01.033.029.036.05v5.115c-.003 2.274-1.87 4.118-4.174 4.123zM4.192 17.78a4.059 4.059 0 01-.498-2.763c.032.02.09.055.131.078l4.44 2.53c.225.13.504.13.73 0l5.42-3.088v2.138a.068.068 0 01-.027.057L9.9 19.288c-1.999 1.136-4.552.46-5.707-1.51h-.001zM3.023 8.216A4.15 4.15 0 015.198 6.41l-.002.151v5.06a.711.711 0 00.364.624l5.42 3.087-1.876 1.07a.067.067 0 01-.063.005l-4.489-2.559c-1.995-1.14-2.679-3.658-1.53-5.63h.001zm15.417 3.54l-5.42-3.088L14.896 7.6a.067.067 0 01.063-.006l4.489 2.557c1.998 1.14 2.683 3.662 1.529 5.633a4.163 4.163 0 01-2.174 1.807V12.38a.71.71 0 00-.363-.623zm1.867-2.773a6.04 6.04 0 00-.132-.078l-4.44-2.53a.731.731 0 00-.729 0l-5.42 3.088V7.325a.068.068 0 01.027-.057L14.1 4.713c2-1.137 4.555-.46 5.707 1.513.487.833.664 1.809.499 2.757h.001zm-11.741 3.81l-1.877-1.068a.065.065 0 01-.036-.051V6.559c.001-2.277 1.873-4.122 4.181-4.12.976 0 1.92.338 2.671.954-.034.018-.092.05-.131.073l-4.44 2.53a.71.71 0 00-.365.623l-.003 6.173v.002zm1.02-2.168L12 9.25l2.414 1.375v2.75L12 14.75l-2.415-1.375v-2.75z" />
     </svg>
+  );
+}
+
+/** 深色 app tile + 白色官方 mark —— Codex 桌面版 / Hermes 用同一个外壳，跟官方桌面 app 图标同构。 */
+function AppTile({ size, children }: { size: number; children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded-[24%] text-white"
+      style={{ width: size, height: size, background: APP_TILE_BG }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -106,11 +127,16 @@ function XiapanDisk({ size }: { size: number }) {
 function normTool(tool: string): string {
   const t = tool.toLowerCase();
   if (t.includes("claude")) return "claude";
+  // Codex 桌面版单独一支：官方桌面 app 图标是「深色圆角 tile + 白色 OpenAI/Codex mark」，
+  // CLI 用同一枚 mark 但不加 tile，两个入口一眼能区分「命令行 / 桌面版」。
+  if (t === "codex-app") return "codex-app";
   if (t.includes("codex") || t === "openai") return "codex";
   if (t === "clawx") return "clawx";
   if (t.includes("openclaw") || t.includes("claw")) return "openclaw";
   if (t.includes("hermes")) return "hermes";
-  if (t === "dsh" || t.includes("deepseek-harness")) return "deepseek";
+  // DSH = DeepSeek Harness，用产品自己的官方 favicon（同一只鲸鱼、官方品牌蓝），
+  // 不再借用「DeepSeek 模型」那条 provider 图标（两者用途不同：dsh 是工具，deepseek 是供应商）。
+  if (t === "dsh" || t.includes("deepseek-harness")) return "dsh";
   if (t.includes("gemini")) return "gemini";
   if (t.includes("deepseek")) return "deepseek";
   if (t.includes("kimi") || t.includes("moonshot")) return "kimi";
@@ -133,15 +159,28 @@ export function ToolIcon({ tool, size = 24, active = true, className = "" }: Pro
   if (id === "openclaw") {
     inner = <OpenClawLobster size={size} />;
   } else if (id === "codex") {
-    // Codex/ChatGPT 桌面版本来就是「黑色圆角 app 图标 + 白色标记」的观感 —— 用深色圆角块托白 mark，
-    // 一看就是那个 app，品牌一致、浅/深主题都好看（之前纯黑 mark 直贴浅底显突兀，用户反馈「怎么是黑的」）。
+    // Codex CLI：官方 OpenAI/Codex mark 直接上色（fill=currentColor），浅/深主题都清晰。
+    inner = <OpenAIMark size={size} />;
+  } else if (id === "codex-app") {
+    // Codex 桌面版：深色圆角 app tile + 白色官方 mark（= 官方桌面 app 图标观感）。
     inner = (
-      <span
-        className="inline-flex items-center justify-center rounded-[24%] bg-[#0d0d0f] text-white"
-        style={{ width: size, height: size }}
-      >
-        <CodexMark size={Math.round(size * 0.6)} />
-      </span>
+      <AppTile size={size}>
+        <OpenAIMark size={Math.round(size * 0.6)} />
+      </AppTile>
+    );
+  } else if (id === "hermes") {
+    // Hermes：Nous Research 官方 Nous girl 标记（官方 app icon master 白色版）+ 深色 app tile，
+    // 不用「NOUS 外框徽章」（40px 下糊成一团），也不在浅底上直贴黑色头像。
+    inner = (
+      <AppTile size={size}>
+        <img
+          src={hermesLogo}
+          width={Math.round(size * 0.86)}
+          height={Math.round(size * 0.86)}
+          alt="hermes"
+          style={{ width: Math.round(size * 0.86), height: Math.round(size * 0.86), objectFit: "contain" }}
+        />
+      </AppTile>
     );
   } else if (id === "xiapan") {
     inner = <XiapanDisk size={size} />;
