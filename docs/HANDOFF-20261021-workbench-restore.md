@@ -167,3 +167,18 @@
   - 下载：`U-King.exe` 13,632,000 B、`U-King-Mac.zip` 10,035,822 B、`U-King-Setup.exe` 5,169,240 B、`U-King-Mac.dmg` 10,719,641 B（与本地产物逐字节一致）
   - 热下发：装机清单 **v66**、模型目录 **v3**（cn 与 singapore 均已是新版）
 - 发布产物与 manifest 留在 `shots/release-1.4.7/`（gitignore，不入库）。
+
+## 第十轮：1.4.8 发布（2026-10-21 晚）
+
+**用户口径**：官网加 GitHub 入口；「每次对话消耗有点大」要测；技能包做减法。
+
+| 项 | 落点 |
+| --- | --- |
+| 官网 GitHub | `website/index.html` 页脚新增「GitHub 开源仓库」→ github.com/dongsheng123132/u-king（线上已核验 1 处命中）；已 scp 到 guangzhou + singapore 两处站点目录（带 `.uking-backup/site-*` 备份） |
+| 官网动态 | `whats-new.json` / `whats-new.html` 置顶 1.4.8 说明；`version.json` 顶部 1.4.8、1.4.7 进 history |
+| 技能包减法 | 14 → 8：下线 vision / teamwork / web / mail / browse / pdf（`skillpack.rs` 删 const + PACKS 条目，新增 `RETIRED_PACKS` + `prune_retired()` 在启动同步时精确清理老机器；CAD 保留——`doc.rs` 的 CAD 动作直接调它的脚本）。实测本机清掉 **31 个**已下线包目录（~/.claude/skills 等 4+ 个落点），`~/.claude/skills` 里 6 个包已消失 |
+| 对话成本 | `historyTrim` 硬上界 12 万 → **4 万字符**（约 1/3）；`MaintenanceAssistant` 之前**全量重发**历史，现在也走 `trimHistoryForPayload`。技能包少 6 份 SKILL.md ≈ 每轮上下文少 **21,920 字符**（实测 skills/*/SKILL.md 累计 59,182 → 37,262） |
+| 工作台模板 | `workbenches/creator/workbench.json` 去掉已下线技能引用（否则校验不过） |
+| 发布 | 提交 `640d92a1b`、tag `v1.4.8`；Mac 由 GitHub Actions（run 39605243672）出包；`release-uking.mjs publish` 成功 |
+
+**线上核验**：`u-claw.org.cn/uking/version.json` = **1.4.8**（2026-10-21）；`U-King.exe` 13,534,720 B（比 1.4.7 小 ~97KB，删掉的技能包素材）；`index.html` GitHub 链接命中；`whats-new.json` 首条 = 1.4.8；装机清单 v66 / 模型目录 v3 保持。
