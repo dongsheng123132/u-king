@@ -35,6 +35,7 @@ import {
 import { cn } from "./lib/cn";
 import { copyToClipboard } from "./lib/clipboard";
 import { buildMaintenanceTask } from "./lib/maintenanceTask";
+import { trimHistoryForPayload } from "./opencodex/historyTrim";
 import type { Balance, DeviceKey } from "./lib/types";
 import { useI18n } from "./i18n";
 
@@ -319,9 +320,11 @@ export function MaintenanceAssistant({
     setItems(history);
     setInput("");
     setBusy(true);
-    const msgs = history
-      .filter((it): it is TextItem => it.type === "text")
-      .map((it) => ({ role: it.role, content: it.content }));
+    // 2026-10-21：维护对话也要按预算裁历史（此前**全量重发**，聊得越久每轮越贵）。
+    const msgs = trimHistoryForPayload(
+      history.filter((it): it is TextItem => it.type === "text").map((it) => ({ role: it.role, content: it.content })),
+      "",
+    );
 
     const ch = new Channel<any>();
     ch.onmessage = (ev: any) => {

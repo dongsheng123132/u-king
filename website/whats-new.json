@@ -2,6 +2,12 @@
   "_comment": "U-King「最新动态」清单 —— app 内原生列表(Feed.tsx)读这份 JSON 渲染卡片。改内容不必发版,经发布流程同步到官网服务器。每条: title(必) summary tag date slug(同源 .html,走 open_online_page) 或 url(完整外链)。无 slug/url = 纯公告卡(不可点)。海外AI动态=纯公告卡,改内容随时 scp 不发版。",
   "items": [
     {
+      "title": "U-King 1.4.8 发布：技能包精简到 8 个，对话更省",
+      "summary": "技能包从 14 个精简到 8 个（看图/协作/建站/邮件/读网页/导 PDF 下线，老机器升级会自动清理），每轮发送的历史从 12 万字符降到 4 万、维护助手也按同一规则裁剪；官网页脚新增 GitHub 开源仓库入口。工作台、11 个工具、AI 兜底等 1.4.7 的内容都在。",
+      "tag": "产品更新",
+      "date": "2026-10-21"
+    },
+    {
       "title": "Anthropic Claude Opus 4.8 发布：编程与深度推理再登顶",
       "summary": "Anthropic 最新旗舰 Claude Opus 4.8（及 Claude 5 系 Sonnet 5 / Haiku 4.5）在代码、长链推理、Agent 工具调用上进一步领先，是目前写代码最强的一档。U-King 里用 Claude Code 接虾盘云即可直接调用。",
       "tag": "海外AI",

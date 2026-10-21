@@ -55,41 +55,8 @@ const AIGC_GENERATORS: &[&str] = &[
     "scripts/gen-asr.mjs",
 ];
 
-/// 看图包：给「只会文字」的模型（DeepSeek 等）当眼睛 —— 图片 OCR + 图像理解 + 定位。
-/// 默认走 **DeepSeek 原生视觉（deepseek-v4-flash）**（2026-09-24 产品决定：主力对话模型本来就是
-/// DeepSeek，识图也走自家模型）；2026-09-16 跑道实测它合计 62%（长截图 4 次全 0，已靠长图分块缓解），
-/// 比旧默认 `qwen3.7-flash`（95%）弱，`qwen3.7-flash` 仍可用 `--model` 显式切回。
-/// 更早的历史：`qwen3.7-flash` 曾取代 MiniMax-M3——后者在宽截图上不是漏读而是**整页编造**
-/// （泛问三遍全 0/7，编出不存在的按钮和账号），confidently wrong 比读不出来更危险。
-/// 脚本自读 `~/.uking/device.json` 的 Key，**不改工具的对话模型**——省钱路由不动，只在遇图时调一下。
-/// 文件夹名 = `uking-vision`。
-const VISION: Pack = Pack {
-    name: "uking-vision",
-    files: &[
-        ("SKILL.md", include_str!("../skills/vision/SKILL.md")),
-        ("scripts/see-image.mjs", include_str!("../skills/vision/scripts/see-image.mjs")),
-        // 读 PDF -> Markdown：数字 PDF 直取文字（快准免费）且**表格按行列还原**
-        // （压平成一维文本流会让下游拿邻格的数当答案：稀疏表实测 50% → 100%）；
-        // 扫描页才渲染成图走 qwen3-vl-flash OCR。PyMuPDF 单 wheel 依赖，缺了自动 pip 装。
-        ("scripts/read-pdf.py", include_str!("../skills/vision/scripts/read-pdf.py")),
-    ],
-};
 
-/// 多 AI 协同包：让本机各 AI（claude/codex/openclaw/hermes）互相调用分工。文件夹名 = `uking-teamwork`。
-const TEAMWORK: Pack = Pack {
-    name: "uking-teamwork",
-    files: &[
-        ("SKILL.md", include_str!("../skills/teamwork/SKILL.md")),
-        ("README.md", include_str!("../skills/teamwork/README.md")),
-        ("scripts/call-agent.mjs", include_str!("../skills/teamwork/scripts/call-agent.mjs")),
-    ],
-};
 
-/// 网站建站包（单文件 HTML+Tailwind 建站法，纯方法论无脚本）。给「网站设计专家」用。文件夹名 = `uking-web`。
-const WEB: Pack = Pack {
-    name: "uking-web",
-    files: &[("SKILL.md", include_str!("../skills/web/SKILL.md"))],
-};
 
 /// PPT/幻灯片包：`gen-pptx.mjs` 纯 std 出**真 .pptx**（零 npm 依赖，客户机便携 Node 直接跑）
 /// + SKILL.md 教「先大纲后填充」+ HTML 预览兜底。给「PPT·文档专家」用。文件夹名 = `uking-ppt`。
@@ -155,62 +122,9 @@ const OFFICE_EDIT: Pack = Pack {
     ],
 };
 
-/// CAD 图纸包：`gen-dxf.mjs` 纯 std 出**真 .dxf**（R12/AC1009，AutoCAD/浩辰/中望/CAD看图王/LibreCAD
-/// 都认）**外加一张同源预览 SVG** —— 客户机上装了 CAD 的是少数，只给 dxf 等于「做完了但看不见」，
-/// 跟 PPT 出同源 `.预览.html` 是同一条道理。
-///
-/// 为什么不用 ezdxf：那是 Python 库，客户机只有便携 Node。DXF R12 是纯文本格式，手搓反而最稳。
-/// 文件**一律 UTF-8 写**：早期为了「保持纯 ASCII」用 latin1 写盘，中文图层名当场被截成垃圾字节
-/// ——文字实体转义得再干净，图层名一样会毁掉整个文件。文件夹名 = `uking-cad`。
-const CAD: Pack = Pack {
-    name: "uking-cad",
-    files: &[
-        ("SKILL.md", include_str!("../skills/cad/SKILL.md")),
-        ("scripts/gen-dxf.mjs", include_str!("../skills/cad/scripts/gen-dxf.mjs")),
-    ],
-};
 
-/// 邮件包：`gen-eml.mjs` 纯 std 出**真 .eml 草稿**（Outlook/Foxmail/邮箱大师双击即开，
-/// 收件人/主题/正文/附件全部预填，中文头按 RFC2047 编码）。
-///
-/// ★ **只写草稿、不发信**，`sent` 永远是 false：代发邮件是不可撤回的对外动作，
-/// 做错一次就是事故。发不发由客户在自己的客户端按下发送键决定。文件夹名 = `uking-mail`。
-const MAIL: Pack = Pack {
-    name: "uking-mail",
-    files: &[
-        ("SKILL.md", include_str!("../skills/mail/SKILL.md")),
-        ("scripts/gen-eml.mjs", include_str!("../skills/mail/scripts/gen-eml.mjs")),
-    ],
-};
 
-/// 开网页 / 读网页包。补的是办公链路上「AI 看不见互联网、也不会把做完的东西开给人看」这一格：
-/// - `open-url.mjs`：默认浏览器开网址、默认程序开本地产物（Windows 的 `start` 是 cmd 内建、
-///   第一个参数还会被当窗口标题吃掉，模型反复踩，封一层就不用它记）；
-/// - `fetch-page.mjs`：抓页面→本地剥壳→Markdown 正文（一个 200KB 页面通常只剩 3~8%，
-///   直接 `curl` 整页丢进上下文又贵又常常撑爆）。
-/// 文件夹名 = `uking-browse`。
-const BROWSE: Pack = Pack {
-    name: "uking-browse",
-    files: &[
-        ("SKILL.md", include_str!("../skills/browse/SKILL.md")),
-        ("scripts/fetch-page.mjs", include_str!("../skills/browse/scripts/fetch-page.mjs")),
-        ("scripts/open-url.mjs", include_str!("../skills/browse/scripts/open-url.mjs")),
-    ],
-};
 
-/// 导出 PDF 包：办公链路的**最终交付形态**（合同发出去、报价给甲方、报告存档）。
-/// 走本机 LibreOffice 保版式 —— 自己手搓只会出「字都在但版式全错」的东西，
-/// 而客户要 PDF 恰恰就是为了版式不变。
-///
-/// ★ **没装 LibreOffice 就诚实报装不了，绝不静默降级**成「抽文字重排一份 PDF」：
-/// 那种产物客户打开才发现版式没了，比直接说做不到坏得多。文件夹名 = `uking-pdf`。
-const PDF: Pack = Pack {
-    name: "uking-pdf",
-    files: &[
-        ("SKILL.md", include_str!("../skills/pdf/SKILL.md")),
-        ("scripts/to-pdf.mjs", include_str!("../skills/pdf/scripts/to-pdf.mjs")),
-    ],
-};
 
 /// 工作台包 —— **全仓唯一一个不带脚本的技能包，这是故意的**。
 ///
@@ -224,6 +138,13 @@ const PDF: Pack = Pack {
 ///
 /// 🔴 **闸门写在动作核心不写在这份 md 里**：提示词里写「别覆盖客户的文件」，
 /// 模型有一天就是会覆盖。文件夹名 = `uking-workbench`。
+const CAD: Pack = Pack {
+    name: "uking-cad",
+    files: &[
+        ("SKILL.md", include_str!("../skills/cad/SKILL.md")),
+        ("scripts/gen-dxf.mjs", include_str!("../skills/cad/scripts/gen-dxf.mjs")),
+    ],
+};
 const WORKBENCH: Pack = Pack {
     name: "uking-workbench",
     files: &[("SKILL.md", include_str!("../skills/workbench/SKILL.md"))],
@@ -233,18 +154,12 @@ const WORKBENCH: Pack = Pack {
 const PACKS: &[&Pack] = &[
     &WORKBENCH,
     &AIGC,
-    &VISION,
-    &TEAMWORK,
-    &WEB,
     &PPT,
     &DOCX,
     &XLSX,
     &OFFICE_READ,
     &OFFICE_EDIT,
     &CAD,
-    &MAIL,
-    &BROWSE,
-    &PDF,
 ];
 
 /// 本 U-King 版本会装进各工具的技能包文件夹名（`uking-aigc` 等）。给 cleanup 的「安全卸载」
@@ -641,6 +556,40 @@ pub fn uninstall_pack(name: &str) -> Result<Vec<String>, String> {
     Ok(removed)
 }
 
+/// 2026-10-21 做减法：这 6 个技能包已下线（客户口径「不要那些 skill，作减法」）。
+///
+/// 它们不再编进新版本、也不再铺进任何工具；但**老客户机上已经铺出去的副本必须清掉** ——
+/// 每个包的 SKILL.md 都会进 AI 的上下文，留着就是每轮多花钱。所以升级后由
+/// [`prune_retired`] 从各落点精确删除（只认这几个名字，绝不 `uking-*` 泛匹配）。
+pub const RETIRED_PACKS: &[&str] = &[
+    "uking-vision",
+    "uking-teamwork",
+    "uking-web",
+    "uking-mail",
+    "uking-browse",
+    "uking-pdf",
+];
+
+/// 把已下线技能包从本机各落点清掉，返回删掉的目录数。幂等，失败只记日志不拦启动。
+pub fn prune_retired() -> usize {
+    let mut removed = 0usize;
+    for parent in scan_parents() {
+        for name in RETIRED_PACKS {
+            let d = parent.join(name);
+            if !d.is_dir() {
+                continue;
+            }
+            match std::fs::remove_dir_all(&d) {
+                Ok(()) => {
+                    removed += 1;
+                    crate::ulog::write("skillpack", &format!("已下线技能包已清理: {}", d.display()));
+                }
+                Err(e) => crate::ulog::write("skillpack", &format!("清理已下线包 {} 失败: {e}", d.display())),
+            }
+        }
+    }
+    removed
+}
 /// **开箱默认铺的技能包**（其余的用户在「技能包」页那张清单上一键装）。
 ///
 /// 🔴 为什么从 16 个减到 4 个（客户 2026-08-18：「有人抱怨我们安装了太多预制 skill」）：
@@ -650,15 +599,14 @@ pub fn uninstall_pack(name: &str) -> Result<Vec<String>, String> {
 ///
 /// 留这 4 个的判据是「**不装就有明显缺口**」：
 ///  - `uking-aigc`        作图/视频 —— 产品的招牌能力，不装等于卖点没了
-///  - `uking-vision`      看图/读 PDF —— DeepSeek 这类纯文本模型的眼睛，缺了会**编答案**
 ///  - `uking-office-read` 读客户拿来的 Word/Excel/PDF —— 办公场景九成是「我有一份文件…」
 ///  - `uking-workbench`   搭工作台 —— 一次性动作，且让后面每件事都更好用
 ///
 /// 其余 12 个（ppt/docx/xlsx/cad/mail/browse/pdf/web/teamwork/office-edit/wechatmp/experts）
 /// 都是**要用时才用得上**的产出类技能，清单上一键就能装回来。
 ///
-/// 🔴 老客户升级后不会变少 —— 本函数只管「装」，不删已有的。
-const DEFAULT_PACKS: &[&str] = &["uking-aigc", "uking-vision", "uking-office-read", "uking-workbench"];
+/// 🔴 老客户升级后**会变少**：已下线的包由 [`prune_retired`] 清掉，其余非默认包保持原样。
+const DEFAULT_PACKS: &[&str] = &["uking-aigc", "uking-office-read", "uking-workbench"];
 
 /// 把技能包拷进**已装**的 AI 工具各自的 skills 目录。
 /// 这样客户「只点了复制说明、没手动拷文件夹」也能让 AI 直接发现脚本（治路径发现痛点）。
@@ -667,6 +615,10 @@ const DEFAULT_PACKS: &[&str] = &["uking-aigc", "uking-vision", "uking-office-rea
 /// 但尚未真机验证该工具是否认这个 skills 目录/SKILL.md 机制」——前端据此如实标注，不对客户假承诺。
 pub fn install_into_tools() -> Vec<(String, String, bool)> {
     let mut done = Vec::new();
+    let pruned = prune_retired();
+    if pruned > 0 {
+        crate::ulog::write("skillpack", &format!("启动同步：清掉 {pruned} 个已下线技能包目录"));
+    }
     crate::ulog::section("skillpack", "把 AI 技能包装进已装的工具");
     for t in skill_targets() {
         if !t.installed {
@@ -1056,7 +1008,7 @@ mod tests {
             assert!(pack_names().contains(name), "默认包 {name} 不在总表里 —— 拼错了");
         }
         assert!(
-            DEFAULT_PACKS.len() * 3 < pack_names().len(),
+            DEFAULT_PACKS.len() * 2 <= pack_names().len(),
             "默认铺的占比太高了，等于没减（默认 {} / 全部 {}）",
             DEFAULT_PACKS.len(),
             pack_names().len()

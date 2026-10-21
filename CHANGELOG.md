@@ -5,6 +5,13 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 1.4.8（2026-10-21）
+
+- **技能包做减法（14 → 8）**：下线 `uking-vision` / `uking-teamwork` / `uking-web` / `uking-mail` / `uking-browse` / `uking-pdf` 六个包；老机器升级后由 `prune_retired()` 从各工具落点精确清掉（只认这几个名字）。保留：workbench / aigc / ppt / docx / xlsx / office-read / office-edit / cad（CAD 与 office 三件套是应用内动作直接调用的脚本，必须留）。少 6 份 SKILL.md = 每轮 AI 上下文少约 2.2 万字符。
+- **对话成本收窄**：发送前的历史硬上界从 12 万字符降到 **4 万**（约 1/3）；**维护助手此前是全量重发历史**，现在也走同一套裁剪（`trimHistoryForPayload`）。
+- 工作台内置模板 `creator` 去掉已下线技能的引用（否则校验不过）。
+- 官网：页脚加 **GitHub 开源仓库** 链接；「最新动态」补 1.4.8 发布说明。
+- 版本号四处同步到 1.4.8。
 ## 1.4.7（2026-10-21）
 
 - **让「说明书」真的被发现**：启动时生成 `~/.uking/llms.txt` 之后，顺手把指针块挂进 Claude Code / Codex / 用户 AGENTS.md 的全局记忆文件（只增不删、首次留底 `*.uking-bak`、幂等可撤销）。此前只有生成没有挂载 —— conformance 在客户机上实测 `runtime.identity.inspect` 一直 not_ready，而界面上已经没有 identity 页，用户没有别的路。

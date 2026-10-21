@@ -27,7 +27,7 @@
       "label": "素材（原始证据层）",
       "purpose": "从外面收进来的原件：网页存档、PDF、图片、别人的稿子、截图。",
       "rule": "只进不改。想改就复制一份到 02-提炼 再改 —— 原件被改过，日后追不回「我当时看到的是什么」。",
-      "fed_by": ["uking-web", "uking-browse", "uking-office-read", "uking-pdf", "uking-vision"],
+      "fed_by": ["uking-office-read", "uking-aigc"],
       "naming": "YYYY-MM-DD-来源-标题.md（日期在前，Explorer 里天然按时间排）"
     },
     {
@@ -65,11 +65,7 @@
   ],
 
   "skills": [
-    { "id": "uking-web", "why": "给个网址就把正文存成 markdown 落进 01-素材（不是存网页快照，是存能读的正文）" },
-    { "id": "uking-browse", "why": "要点开、要翻页、要登录后才看得到的内容，用它" },
     { "id": "uking-office-read", "why": "别人发来的 Word / Excel / PPT / PDF，转成 markdown 再进素材（整份塞进上下文既贵又常常放不下）" },
-    { "id": "uking-pdf", "why": "PDF 单独一条：报告和白皮书是素材大头" },
-    { "id": "uking-vision", "why": "截图、海报、竞品图 —— 让 AI 真看得见图里写了什么" },
     { "id": "uking-aigc", "why": "配图 / 短视频 / 配音，出的文件直接落进那一稿的文件夹" },
     { "id": "uking-docx", "why": "要交 Word 版的时候用；平时正文就是 markdown" }
   ],
@@ -80,7 +76,7 @@
       "label": "收一篇素材",
       "hint": "把网址/文件丢给我，存进 01-素材",
       "prompt": "把这个收进 01-素材：{输入}。按 workbench 的命名规矩起名，顶部写清来源和收集日期。不要改写原文。",
-      "needs": ["uking-web"]
+      "needs": ["uking-office-read"]
     },
     {
       "id": "distill",

@@ -837,9 +837,8 @@ mod tests {
     /// 这台机器上「真有的技能」—— 校验用。测试里给一份固定的，
     /// 免得单测跟着 skillpack 增删包一起红（那不是这个模块的事）。
     fn skills() -> Vec<String> {
-        ["uking-web", "uking-browse", "uking-office-read", "uking-office-edit", "uking-pdf",
-         "uking-vision", "uking-aigc", "uking-docx", "uking-xlsx", "uking-ppt",
-         "uking-cad", "uking-mail", "uking-teamwork", "uking-workbench"]
+        ["uking-office-read", "uking-office-edit", "uking-aigc", "uking-docx", "uking-xlsx",
+         "uking-ppt", "uking-cad", "uking-workbench"]
             .iter().map(|s| s.to_string()).collect()
     }
 

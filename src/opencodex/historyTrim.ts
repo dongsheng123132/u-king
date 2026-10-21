@@ -14,7 +14,9 @@
  *   折叠说明是锦上添花，池子被 system 挤没了就不说。
  */
 
-export const CHAT_HISTORY_CHAR_BUDGET = 120_000;
+// 2026-10-21：用户口径「每次对话消耗有点大」——硬上界从 12 万字符收到 4 万（约 1/3）。
+// 中文按接近 1 token/字符，12 万字符的 payload 一轮就是十几万 token；4 万已是长任务够用的量。
+export const CHAT_HISTORY_CHAR_BUDGET = 40_000;
 
 /** 折叠说明最长这么多字符（全文约 85，留余量）。 */
 export const FOLD_NOTE_CAP = 160;
