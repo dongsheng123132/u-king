@@ -155,3 +155,15 @@
 **发现并修好**：`runtime.identity.inspect` 一直 `not_ready` —— 说明书 `~/.uking/llms.txt` 生成过，但**从来没在 Claude / Codex / 根 AGENTS.md 里挂指针**（10-04 删除 identity 页后就没有入口了）。1.4.7 起启动生成说明书后自动 `identity::link_in(home, &[])`：幂等、只增不删、首次留底 `*.uking-bak`。实测新构建启动后 `ready=true`、3/3 linked。
 
 **未修（非产品问题）**：`browser.snapshot` 首轮偶发失败（本机 Chrome 无沙箱环境，DevToolsActivePort 没写出来），复跑即过；`readiness` 的余额读数有一次显示 0（查询抖动，另一次读到 3997 万 token）。
+
+## 第九轮：1.4.7 正式发布（2026-10-21）
+
+- 提交：`d1eeb520a release: 1.4.7 —— 工作台回原样、工具目录收敛到 11 个、界面减法、官方 logo、交接兜底`（54 文件，+1255/−2077），已合入 `main` 并推送；tag `v1.4.7` 已推。
+- Mac 包：GitHub Actions `build-mac`（run 39586540453，headSha=d1eeb520a）成功，产物 `U-King-Mac.zip` + `U-King-Mac.dmg` + `mac-release-proof.json`（ad-hoc 签名，version 1.4.7）。
+- 发布：`node scripts/release-uking.mjs publish --config shots/release-147-config.json` 成功（中途两次因长途 scp "Connection reset" 失败，给 `~/.ssh/config` 的 singapore 段补了 `IPQoS 0x00 / Compression yes / ServerAliveInterval 15` 后一次通过；原配置备份在 `~/.ssh/config.bak-20261021-sg`）。
+- 线上核验：
+  - `https://u-claw.org.cn/uking/version.json` → **1.4.7**（2026-10-21）
+  - `https://u-claw-updates.oss-cn-shenzhen.aliyuncs.com/uking/version.json` → **1.4.7**
+  - 下载：`U-King.exe` 13,632,000 B、`U-King-Mac.zip` 10,035,822 B、`U-King-Setup.exe` 5,169,240 B、`U-King-Mac.dmg` 10,719,641 B（与本地产物逐字节一致）
+  - 热下发：装机清单 **v66**、模型目录 **v3**（cn 与 singapore 均已是新版）
+- 发布产物与 manifest 留在 `shots/release-1.4.7/`（gitignore，不入库）。
