@@ -186,6 +186,7 @@ export function Wizard({
   onFinished,
   onHandoffToAssistant,
   onGoToolhub,
+  onGoWorkbench,
 }: {
   /** 从工具市场点进来时预选的工具 id */
   preselect?: string | string[] | null;
@@ -195,6 +196,9 @@ export function Wizard({
   onHandoffToAssistant?: (prompt: string) => void;
   /** 装完落点：去「我的 AI」启动工具（不再指向已撤的 U-Workspace）。 */
   onGoToolhub?: () => void;
+  /** 2026-10-22 用户口径：一键全安装装完**直接落到「工作台」**并给一句起手提示，
+   *  不让小白自己在图标墙里猜「然后呢」。没传时退回老的「去我的 AI」。 */
+  onGoWorkbench?: () => void;
 }) {
   const { t } = useI18n();
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -1031,6 +1035,19 @@ export function Wizard({
     //    就是这个场景：形状全对、报告全绿，而客户开了两天一点没省。
     //    全绿只说一句；有问题就**逐条说清缺什么、怎么补**，别让他自己猜。
     await runReadinessCheck();
+    // 2026-10-22 用户口径：一键装完后直接落「工作台」，并给一句可以照着说的话 ——
+    // 小白不用再自己找入口、也不用想第一句该说什么。
+    push({
+      role: "uking",
+      text: t(
+        "装好了，我把你送到「工作台」。先跟它说一句试试：「你好，用中文简单介绍一下你能帮我做什么」——以后想回来点左边「我的 AI」就行。",
+      ),
+    });
+    onFinished?.();
+    if (onGoWorkbench) {
+      window.setTimeout(() => onGoWorkbench(), 1800);
+      return;
+    }
     return finish();
   }
 

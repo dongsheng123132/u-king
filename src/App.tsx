@@ -1097,13 +1097,32 @@ export function App() {
           style={{ display: tab === "workbench" ? undefined : "none" }}
         >
           <PanelBoundary name="U-Workspace">
-            <UWorkspace
-              onToast={flash}
-              pendingChatPrompt={pendingChatPrompt}
-              onConsumedChat={() => setPendingChatPrompt(null)}
-              onInstallClaude={startWizard}
-              paneMode="chat"
-            />
+            <div className="flex h-full min-h-0 flex-col gap-2">
+              {/* 2026-10-22 用户口径：余额 0 时在对话里直接给「去充值」按钮，不只闪一句提示。
+                  只在用内置钱包且没充值时出现；用自己的 Key 的用户不打扰。 */}
+              {deviceKey && !deviceKey.charged && !usingOwnKey && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2.5 rounded-card border border-warning-500/40 bg-warning-500/[0.12] px-3 py-2 text-[12.5px] text-warning-700 dark:text-warning-400">
+                  <span className="min-w-0 flex-1">
+                    {tr("内置额度还是 0：AI 现在不会回话。充值后立刻能用（¥20 起，¥1 = 50 万 tokens）。")}
+                  </span>
+                  <button
+                    onClick={() => openRechargeAndWatch(deviceKey.recharge_url)}
+                    className="inline-flex h-7 shrink-0 items-center rounded-lg bg-accent px-3 text-[12px] font-medium text-white hover:bg-accent-600"
+                  >
+                    {tr("去充值")}
+                  </button>
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <UWorkspace
+                  onToast={flash}
+                  pendingChatPrompt={pendingChatPrompt}
+                  onConsumedChat={() => setPendingChatPrompt(null)}
+                  onInstallClaude={startWizard}
+                  paneMode="chat"
+                />
+              </div>
+            </div>
           </PanelBoundary>
         </main>
 
@@ -1411,6 +1430,7 @@ export function App() {
                       setTab("maintenance");
                     }}
                     onGoToolhub={() => setTab("toolhub")}
+                    onGoWorkbench={() => setTab("workbench")}
                   />
                 )}
                 <ToolMarket tools={tools} onOpen={openTool} onLaunch={launchTool} />

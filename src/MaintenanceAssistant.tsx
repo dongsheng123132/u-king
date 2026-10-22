@@ -139,6 +139,8 @@ export function MaintenanceAssistant({
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 交接草稿「填好就自动发」的待办标记（2026-10-22，用户口径：小白不该再点第二次发送）。 */
+  const [autoSendArmed, setAutoSendArmed] = useState(false);
   const [key, setKey] = useState<string>("");
   // 页头的余额展示/按钮 2026-10-21 收起；门禁仍在发送前算一次，结果只用 toast 提示。
   const [, setBalanceGate] = useState<BalanceGate | null>(null);
@@ -228,13 +230,14 @@ export function MaintenanceAssistant({
   );
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // 草稿：来自深链/交接的提示词 —— 新开一条维护对话，并把提示词**预先填进输入框**，
-  // 等用户自己按发送（不加载页面就发消息/付费）。用户口径（2026-10-21）：
-  // 「点击这些让轻助手干活的时候，应该默认已经把提示词放进聊天框了」。
+  // 草稿：来自深链/交接的提示词 —— 新开一条维护对话，把提示词填进输入框并**自动发送**。
+  // 🔴 2026-10-22 用户口径：点「让 AI 来安装 / 让 AI 修」这类按钮本身就是明确同意，
+  // 不该让小白再点一次发送；发送前仍有余额门禁（`send` 里查，余额 0 会弹充值而不是静默花钱）。
   useEffect(() => {
     if (!pendingPrompt?.prompt) return;
     newSession();
     setInput(pendingPrompt.prompt);
+    setAutoSendArmed(true);
     onConsumedPrompt?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPrompt?.prompt]);
@@ -407,6 +410,13 @@ export function MaintenanceAssistant({
       onToast?.(t("对话启动失败: {e}", { e: String(e) }));
     }
   }, [items, input, busy, key, onToast, onRecharge, t]);
+
+  // 交接自动发送：输入框里已经是那条交接提示词时，直接发（等状态落定一帧再发，避免读到旧 input）。
+  useEffect(() => {
+    if (!autoSendArmed || busy || !input.trim()) return;
+    setAutoSendArmed(false);
+    void send();
+  }, [autoSendArmed, busy, input, send]);
 
   return (
     <div className="flex h-full min-h-0 bg-bg-0">

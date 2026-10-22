@@ -1,5 +1,8 @@
 /** 英文覆盖字典 · App 壳（App.tsx）。key = 中文原文，value = English。 */
 export const app: Record<string, string> = {
+  // 2026-10-22：工作台里余额为 0 时的充值提示条（不制造焦虑，只给动作）
+  "内置额度还是 0：AI 现在不会回话。充值后立刻能用（¥20 起，¥1 = 50 万 tokens）。":
+    "Built-in balance is still 0: the AI won't reply until you top up. It works right after (from ¥20; ¥1 = 500k tokens).",
   "发现新版本 v{ver}": "New version v{ver} found",
   "暂时检查不到更新（网络？稍后再试）": "Unable to check for updates right now (network?) — please try again later",
   // ---- App: toasts / flashes ----

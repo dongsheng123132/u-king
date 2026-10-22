@@ -385,4 +385,6 @@ export const onboarding: Record<string, string> = {
   // 2026-10-22 装机收尾文案：不再自动装技能包（用户口径「除非必要，不然不要安装」）
   "这些 AI 共用同一个 Key，可以互相调用：在任意终端里跑 claude -p / codex exec，把大任务拆开做再汇总。":
     "These AIs share one key and can call each other: run claude -p / codex exec in any terminal to split a big task and merge the results.",
+  "装好了，我把你送到「工作台」。先跟它说一句试试：「你好，用中文简单介绍一下你能帮我做什么」——以后想回来点左边「我的 AI」就行。":
+    "All set — taking you to the Workbench. Try saying: “Hi, briefly tell me in Chinese what you can help me with.” To come back later, click “My AI” on the left.",
 };
