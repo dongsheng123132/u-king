@@ -35,6 +35,7 @@
 | `src-tauri/src/lib.rs` | 删启动时自动 `identity::link_in`（说明书指针）；改为**一次性**摘掉旧指针（marker 文件防重复），动作 `runtime.identity.link` 仍可手动用 |
 | `src/opencodex/historyTrim.ts` | `CHAT_HISTORY_CHAR_BUDGET` 40,000 → **24,000**（长会话每轮重发再省四成） |
 | `src-tauri/src/context_bill.rs`、`tools.rs`（上一提交） | 只读每轮底座账单 + magpie 重新上架（`hidden=false`，安装项沿用装机清单 SHA-256 校验） |
+| `src-tauri/src/skillpack.rs`（补丁） | **修上一发布版 1.4.9 的两个技能包坑**：① 默认包卸载后被下次启动重新铺回（删不掉）；② 1.4.9 之前手装的包没有账本 → 被当「非默认」误删。现在只清 `LEGACY_DEFAULT_PACKS`（1.4.7–1.4.9 默认铺过的 3 个），盘上有但账本没有的包先「认领」成客户自装（写进 `skills-user.json`），不再误删 |
 | `CHANGELOG.md` + 版本号四处 | 1.4.10（未发布，仅本地测试） |
 
 ## 省 token：这三刀各砍在哪

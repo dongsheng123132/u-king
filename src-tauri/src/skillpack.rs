@@ -626,19 +626,46 @@ fn set_user_installed(list: &[String]) {
     }
 }
 
-/// 2026-10-21 做减法（客户口径「不需要那些乱七八糟的技能」）：
-/// **AI 工具目录里只留 DEFAULT_PACKS**；其余包只在 `~/.uking/skills` 里供程序自己的
-/// 动作（出 Word/PPT/Excel、CAD 出图…）调用 —— 那些动作不经过 AI 上下文，不花钱。
+/// 1.4.7–1.4.9 期间**开箱默认铺过**的包 —— 升级时必须从 AI 工具目录里清掉
+/// （客户从没点名要它们；每个包的 SKILL.md 都会进每轮上下文）。
 ///
-/// 判据：pack_names() 里、但不是默认包、也不是客户自己装过的 → 从这个落点删掉。
+/// 🔴 这是**历史事实清单**，不是「我们想删谁」；要动先想清楚后果。
+const LEGACY_DEFAULT_PACKS: &[&str] = &["uking-aigc", "uking-office-read", "uking-workbench"];
+
+/// 启动清理（2026-10-21 起）。
+///
+/// 🔴 2026-10-22 修正了 1.4.9 的两个坑（客户会踩）：
+///  ① **1.4.9 之前手装的包没有账本记录**（`skills-user.json` 是 1.4.9 才有的）——原来
+///     「非默认就删」会把它们当成我们铺的删掉，而 1.4.9 更新说明写的是「你自己手动装过的
+///     技能包不会被清理」。现在：**盘上有、账本没有、又不是历史默认包**的，先记进账本当
+///     客户自己装的保护起来（宁可不删，不可误删）。
+///  ② 只清 [`LEGACY_DEFAULT_PACKS`]（1.4.7–1.4.9 默认铺过的那 3 个）；其余一律保留。
+///
 /// 只删精确包名，绝不 `uking-*` 泛匹配（同 uninstall_pack 的纪律）。
 fn prune_non_default() -> usize {
-    let keep: Vec<&str> = DEFAULT_PACKS.to_vec();
-    let user = user_installed();
+    // ① 先「认领」：1.4.9 之前手装的包没有账本，按磁盘存在与否认作客户自己装的。
+    let mut user = user_installed();
+    let mut adopted = 0usize;
+    for name in pack_names() {
+        if user.iter().any(|u| u == name) || LEGACY_DEFAULT_PACKS.contains(&name) {
+            continue;
+        }
+        if pack_dirs_on_disk(name).is_empty() {
+            continue;
+        }
+        user.push(name.to_string());
+        adopted += 1;
+    }
+    if adopted > 0 {
+        set_user_installed(&user);
+        crate::ulog::write("skillpack", &format!("认领 {adopted} 个客户自装技能包（保护，不参与清理）"));
+    }
+
+    // ② 只清历史默认包（客户后来自己手装回来的跳过）。
     let mut removed = 0usize;
     for parent in scan_parents() {
-        for name in pack_names() {
-            if keep.contains(&name) || user.iter().any(|u| u == name) {
+        for name in LEGACY_DEFAULT_PACKS {
+            if user.iter().any(|u| u == *name) {
                 continue;
             }
             let d = parent.join(name);
@@ -648,9 +675,9 @@ fn prune_non_default() -> usize {
             match std::fs::remove_dir_all(&d) {
                 Ok(()) => {
                     removed += 1;
-                    crate::ulog::write("skillpack", &format!("非默认技能包已从 AI 目录清掉: {}", d.display()));
+                    crate::ulog::write("skillpack", &format!("历史默认技能包已从 AI 目录清掉: {}", d.display()));
                 }
-                Err(e) => crate::ulog::write("skillpack", &format!("清理非默认包 {} 失败: {e}", d.display())),
+                Err(e) => crate::ulog::write("skillpack", &format!("清理历史默认包 {} 失败: {e}", d.display())),
             }
         }
     }
@@ -669,7 +696,10 @@ pub fn install_into_tools() -> Vec<(String, String, bool)> {
     }
     let slimmed = prune_non_default();
     if slimmed > 0 {
-        crate::ulog::write("skillpack", &format!("启动同步：AI 目录只留默认包，清掉 {slimmed} 个非默认包目录"));
+        crate::ulog::write(
+            "skillpack",
+            &format!("启动同步：清掉 {slimmed} 个历史默认技能包目录（客户自装的已认领，不动）"),
+        );
     }
     crate::ulog::section("skillpack", "把 AI 技能包装进已装的工具");
     for t in skill_targets() {
@@ -1057,11 +1087,11 @@ mod tests {
 
     /// 开箱**一个技能包都不铺**（2026-10-22 用户口径：「把费 token 的地方删了」）。
     ///
-    /// 守两件事：
-    /// ① 真跑一遍 `install_into_tools` 之后，AI 工具目录里**一个我们的包都没有**
-    ///    —— 默认包的 SKILL.md 是客户每个会话都要背的固定开销，这次直接归零；
-    /// ② `pack_names()` 仍是全量、任意一个包仍装得回来 —— 否则「省上下文」会变成
-    ///    「以前会做 PPT 现在不会了」，那是比多装坏得多的退步。
+    /// 守三件事：
+    /// ① 真跑一遍 `install_into_tools` 之后，AI 工具目录里**不出现我们新铺的包**；
+    /// ② **历史默认包被清掉**（1.4.7–1.4.9 铺过的那 3 个），但**客户 1.4.9 之前手装的包
+    ///    不能被误删** —— 1.4.9 的「非默认就删」把没有账本的手装包一起删了，这里守着别复现；
+    /// ③ `pack_names()` 仍是全量、任意一个包仍装得回来。
     #[test]
     fn default_install_deploys_nothing_but_all_packs_stay_available() {
         let sb = crate::testsandbox::enter("skillpack-default", &[".claude"]);
@@ -1072,14 +1102,25 @@ mod tests {
         assert!(DEFAULT_PACKS.is_empty(), "开箱默认包必须是空的（省每轮上下文）");
         assert!(!pack_names().is_empty(), "技能包总表不能空 —— 装不回来才是真退步");
 
-        // 真跑一遍，数磁盘：一个都不该出现
+        // 造两个「旧版本留下的」目录：一个历史默认包（应清掉）、一个客户手装的包（应保留并记账）。
+        let legacy = claude.join("skills").join("uking-aigc");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("SKILL.md"), "旧默认包").unwrap();
+        let manual = claude.join("skills").join("uking-ppt");
+        std::fs::create_dir_all(&manual).unwrap();
+        std::fs::write(manual.join("SKILL.md"), "客户手装").unwrap();
+
         let _ = install_into_tools();
-        for name in pack_names() {
-            assert!(
-                pack_dirs_on_disk(name).is_empty(),
-                "开箱不该铺任何技能包，但 {name} 出现在 AI 工具目录里"
-            );
-        }
+        assert!(pack_dirs_on_disk("uking-aigc").is_empty(), "历史默认包没清掉 —— 每轮白背一份 SKILL.md");
+        assert_eq!(pack_dirs_on_disk("uking-ppt").len(), 1, "1.4.9 之前手装的包被误删了（1.4.9 的坑）");
+        assert!(
+            user_installed().iter().any(|u| u == "uking-ppt"),
+            "手装包应被认领进账本，下次启动才不会又删"
+        );
+
+        // 再启动一次也不能把它删掉（账本生效）
+        let _ = install_into_tools();
+        assert!(!pack_dirs_on_disk("uking-ppt").is_empty(), "第二次启动把客户手装的包删了");
 
         // 想用的仍装得回来（这半边不能丢）
         let optional = pack_names()[0];
