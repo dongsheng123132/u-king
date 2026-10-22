@@ -11,14 +11,15 @@
 ## 一句话
 
 **「我的 AI」回到 1.4.9 的瓷砖墙布局**（下午试过的极简首页 + 软件库页已整页删除）；只保留三样有实际
-价值的后台改动：**省 token 三刀**、**magpie 重新上架**、**1.4.9 的三个坑修复**。页头只多**一行**
-「每轮底座」只读提示，不做卡片区。版本 1.4.10（**未发布**，线上仍 1.4.9）。
+价值的后台改动：**省 token 三刀**、**magpie 重新上架**、**1.4.9 的三个坑修复**。
+**页头不加任何 token 提示**（用户当晚口径：「消耗多少 token 可以提示，但是不要制造焦虑」——
+用量仍只在对话每轮尾注与「AI 设置 → 用量」里自然出现）。版本 1.4.10（**未发布**，线上仍 1.4.9）。
 
 ## 落点
 
 | 文件 | 改动 |
 | --- | --- |
-| `src/toolhub/ToolHub.tsx` | 从 v1.4.9 整文件恢复（1375 行）；只在页头「已装 N 个工具」下面加**一行**「每轮底座约 X 万 tokens（技能 N 个）· 怎么省 →」，点击去「技能包」页 |
+| `src/toolhub/ToolHub.tsx` | 从 v1.4.9 整文件恢复；**页头不加 token 提示**（曾在页头试过一行「每轮底座」，用户要求删掉） |
 | `src/App.tsx` | `toolhub` tab 恢复渲染 `ToolHub`（删掉 HomePage 分支）；`library` 旧深链回退到首页；删 HomePage 懒加载 |
 | `src/components/Sidebar.tsx` | 核心仍是 4 项（工作台 / AI 创作 / 我的 AI / AI 设置），无「软件库」 |
 | 删除 | `src/home/HomePage.tsx`、`src/library/LibraryPage.tsx`、`src/lib/toolMeta.ts`、`src/lib/toolPrompt.ts`、`src/i18n/en/home.ts`、`scripts/shot-toolhub.mjs` |

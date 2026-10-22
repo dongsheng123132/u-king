@@ -199,7 +199,6 @@ export function ToolHub({
   onAskAiToFix,
   onGoSetup,
   onGoDoctor,
-  onGoSkillPack,
   onGoChat,
   // onGoTermWb —— 2026-10-19 起不再渲染「在工作台开终端」按钮（U-CLI 工作台已撤）。
   // prop 签名保留兼容旧调用方；解构时故意不用，避免 noUnusedLocals 报错。
@@ -249,8 +248,6 @@ export function ToolHub({
   /** 页头次要链接「体检 · 升级 →」、详情条「体检修复」→ App.tsx 的 `setTab("myai")`
    *  （体检 + 一键升级 + 装机漏斗；2026-10-03 起是本页的子页，不再有侧栏入口）。 */
   onGoDoctor: () => void;
-  /** 页头那行「每轮底座」的跳转：去「技能包」页按需装/卸（2026-10-22 加，只一行）。 */
-  onGoSkillPack?: () => void;
   /** 详情条「交给维护助手」→ App.tsx 的 `setTab("maintenance")`（2026-10-19 起，
    *  UChat/UCLI 工作台入口已收敛为维护助手；不再提供假的「在工作台开终端」按钮）。 */
   onGoChat: () => void;
@@ -268,20 +265,6 @@ export function ToolHub({
   const { t: tr } = useI18n();
   const [category, setCategory] = useState<Category>("all");
   const [refreshing, setRefreshing] = useState(false);
-  // 每轮底座（只读）：2026-10-22 用户要「省 token」，这里只放**一行**，且只报底座本体——
-  // 不再报「技能 N 个」（那是客户自己装的技能，报了反而让人以为是我们塞的）。
-  const [baseTokens, setBaseTokens] = useState<number | null>(null);
-  useEffect(() => {
-    let alive = true;
-    invoke<{ claude_base_tokens: number }>("context_bill")
-      .then((b) => {
-        if (alive) setBaseTokens(b.claude_base_tokens);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
   const resumableSessionCount = termSnapshot?.sessions.filter((session) => !!session.resumeHint).length ?? 0;
@@ -1015,16 +998,6 @@ export function ToolHub({
             {tr("我的 AI")}
           </h1>
           <p className="mt-0.5 text-[12px] text-ink-3">{tr("已装 {n} 个工具", { n: installed.length })}</p>
-          {baseTokens != null && onGoSkillPack && (
-            <button
-              onClick={onGoSkillPack}
-              className="mt-0.5 text-[11.5px] text-ink-4 hover:text-accent"
-            >
-              {tr("每轮底座约 {n} 万 tokens · 怎么省 →", {
-                n: (baseTokens / 10000).toFixed(2).replace(/\.?0+$/, ""),
-              })}
-            </button>
-          )}
         </div>
         <div className="flex items-center gap-2">
           <button
