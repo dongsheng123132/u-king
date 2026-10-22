@@ -70,6 +70,14 @@ export const home: Record<string, string> = {
   "这是「输入」里的固定开销：聊得越久，历史还会另外叠加（历史已压到 2.4 万字符）。":
     "This is the fixed cost inside the input; longer chats add more history (history is now capped at 24k chars).",
 
+  // ── 2026-10-22 装机收尾文案（1.4.8 下线 teamwork 包后不再空承诺）────
+  "🎨 作图/视频能力已装进 {tools}：直接对它说「画张图 / 生成一段视频」就行。":
+    "🎨 Image/video skills are installed into {tools}: just say “draw a picture / make a short video”.",
+  "🎨 作图/视频技能包已导出到 {dir}；如果没探测到已装 AI 工具，可到「AI 技能包」页手动装。":
+    "🎨 Image/video skill pack exported to {dir}; if no installed AI tool was detected, install it manually on the AI Skill Pack page.",
+  "这些 AI 共用同一个 Key，可以互相调用：在任意终端里跑 claude -p / codex exec，把大任务拆开做再汇总（不再依赖技能包）。":
+    "These AIs share one key and can call each other: run claude -p / codex exec in any terminal to split a big task and merge the results (no skill pack needed).",
+
   // ── 动态 key（t(变量)，闸门扫不到，手写在这里）────
   "Claude 全局记忆": "Claude global memory",
   "Codex 全局记忆": "Codex global memory",
