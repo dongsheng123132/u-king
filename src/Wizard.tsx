@@ -1005,11 +1005,10 @@ export function Wizard({
     // 一键配好全部：后端自己探测装了哪些工具（不信前端 installed 列表），把虾盘云 Key 一次
     // 写进全部。这是用户主动选「一键全安装」的收尾，属明确同意。
     await invoke("apply_xiapan_everywhere", { providerId: "xiapan", apiKey: null, model: null }).catch(() => {});
-    // 显式装「作图/视频」技能包（AIGC）。装好后任意 AI 在对话里就能直接出图/出片。
-    // 🔴 2026-10-22：1.4.8 已下线 uking-teamwork（AI 协同）包，这里不能再宣称「协同已打通」——
-    // 旧文案说「照着技能包（uking-teamwork）分工」，而那个包早没了，等于给新用户一个空承诺。
-    const skillpack = await invoke<{ default_dir: string; installed: { tool: string }[] }>("install_skill_pack")
-      .catch(() => null);
+    // 🔴 2026-10-22（用户口径「除非必要，不然不要安装」）：**不再自动装任何技能包**。
+    // 技能包要往 AI 工具目录里塞 SKILL.md/脚本，属于每轮都进上下文的非必要安装；
+    // 想要「让 AI 自己作图」的用户可到「AI 技能包」页手动装。
+    // （旧文案「已打通 AI 协同、照 uking-teamwork 分工」也一并撤掉：那个包 1.4.8 就下线了。）
     const dk = await invoke<DeviceKey>("get_device_key").catch(() => null);
     setBusy(false);
     if (dk) ctx.current.deviceKey = dk;
@@ -1021,25 +1020,10 @@ export function Wizard({
           ? t("（内置 Key 余额 {bal}）", { bal: dk.balance?.text ?? "" })
           : t("（内置 Key 余额为 0，首次使用前去「AI 设置」充值即可，¥20 起充，¥1=50 万 token）")),
     });
-    if (skillpack?.installed?.length) {
-      push({
-        role: "uking",
-        text: t("🎨 作图/视频能力已装进 {tools}：直接对它说「画张图 / 生成一段视频」就行。", {
-          tools: skillpack.installed.map((i) => i.tool).join(" / "),
-        }),
-      });
-    } else if (skillpack?.default_dir) {
-      push({
-        role: "uking",
-        text: t("🎨 作图/视频技能包已导出到 {dir}；如果没探测到已装 AI 工具，可到「AI 技能包」页手动装。", {
-          dir: skillpack.default_dir,
-        }),
-      });
-    }
     push({
       role: "uking",
       text: t(
-        "这些 AI 共用同一个 Key，可以互相调用：在任意终端里跑 claude -p / codex exec，把大任务拆开做再汇总（不再依赖技能包）。",
+        "这些 AI 共用同一个 Key，可以互相调用：在任意终端里跑 claude -p / codex exec，把大任务拆开做再汇总。",
       ),
     });
     // 🔴 **收尾自检**（2026-08-18 用户要的那一步）。装机链路到这里为止说的全是

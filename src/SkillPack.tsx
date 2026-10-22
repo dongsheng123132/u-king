@@ -200,6 +200,9 @@ export function SkillPack({
           {t("这是一个")}<span className="text-ink-0 font-medium">{t("通用技能包")}</span>{t("（SKILL.md + 能跑的脚本）。导出后把")}{" "}
           <span className="font-mono text-ink-1">uking-aigc</span> {t("文件夹拷进任意 AI 工具的技能目录，那个 AI 就能自己「画图 / 生成视频」。Key 已内置（脚本自动读本机设备 Key），对方无需再配。")}
         </p>
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-warning-700 dark:text-warning-400">
+          {t("除非必要，不然别装：装进 AI 工具后每个会话都会多读一份说明。软件自己的作图 / 出 Word / 出 PPT 不走这里，不装也能用。")}
+        </p>
       </section>
 
       {/* A 两个一键大动作 */}

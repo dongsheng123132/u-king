@@ -382,11 +382,7 @@ export const onboarding: Record<string, string> = {
   "🔎 自检发现 {n} 件事还没到位（其余都好了）：":
     "🔎 Self-check found {n} thing(s) not ready yet (everything else is fine):",
 
-  // 2026-10-22 装机收尾文案：1.4.8 下线 teamwork 包后不再空承诺
-  "🎨 作图/视频能力已装进 {tools}：直接对它说「画张图 / 生成一段视频」就行。":
-    "🎨 Image/video skills are installed into {tools}: just say “draw a picture / make a short video”.",
-  "🎨 作图/视频技能包已导出到 {dir}；如果没探测到已装 AI 工具，可到「AI 技能包」页手动装。":
-    "🎨 Image/video skill pack exported to {dir}; if no installed AI tool was detected, install it manually on the AI Skill Pack page.",
-  "这些 AI 共用同一个 Key，可以互相调用：在任意终端里跑 claude -p / codex exec，把大任务拆开做再汇总（不再依赖技能包）。":
-    "These AIs share one key and can call each other: run claude -p / codex exec in any terminal to split a big task and merge the results (no skill pack needed).",
+  // 2026-10-22 装机收尾文案：不再自动装技能包（用户口径「除非必要，不然不要安装」）
+  "这些 AI 共用同一个 Key，可以互相调用：在任意终端里跑 claude -p / codex exec，把大任务拆开做再汇总。":
+    "These AIs share one key and can call each other: run claude -p / codex exec in any terminal to split a big task and merge the results.",
 };

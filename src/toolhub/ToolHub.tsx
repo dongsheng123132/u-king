@@ -268,13 +268,14 @@ export function ToolHub({
   const { t: tr } = useI18n();
   const [category, setCategory] = useState<Category>("all");
   const [refreshing, setRefreshing] = useState(false);
-  // 每轮底座（只读）：2026-10-22 用户要「省 token」，这里只放**一行**，不再搞一整块卡片。
-  const [budget, setBudget] = useState<{ base: number; skills: number } | null>(null);
+  // 每轮底座（只读）：2026-10-22 用户要「省 token」，这里只放**一行**，且只报底座本体——
+  // 不再报「技能 N 个」（那是客户自己装的技能，报了反而让人以为是我们塞的）。
+  const [baseTokens, setBaseTokens] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    invoke<{ claude_base_tokens: number; claude_skills: { count: number }; uking_skills: { count: number } }>("context_bill")
+    invoke<{ claude_base_tokens: number }>("context_bill")
       .then((b) => {
-        if (alive) setBudget({ base: b.claude_base_tokens, skills: b.claude_skills.count + b.uking_skills.count });
+        if (alive) setBaseTokens(b.claude_base_tokens);
       })
       .catch(() => {});
     return () => {
@@ -1014,14 +1015,13 @@ export function ToolHub({
             {tr("我的 AI")}
           </h1>
           <p className="mt-0.5 text-[12px] text-ink-3">{tr("已装 {n} 个工具", { n: installed.length })}</p>
-          {budget && onGoSkillPack && (
+          {baseTokens != null && onGoSkillPack && (
             <button
               onClick={onGoSkillPack}
               className="mt-0.5 text-[11.5px] text-ink-4 hover:text-accent"
             >
-              {tr("每轮底座约 {n} 万 tokens（技能 {s} 个）· 怎么省 →", {
-                n: (budget.base / 10000).toFixed(2).replace(/\.?0+$/, ""),
-                s: budget.skills,
+              {tr("每轮底座约 {n} 万 tokens · 怎么省 →", {
+                n: (baseTokens / 10000).toFixed(2).replace(/\.?0+$/, ""),
               })}
             </button>
           )}

@@ -278,8 +278,6 @@ export function App() {
   const [clawxDismissed, setClawxDismissed] = useState(false);
   // 更新日志弹层（点侧栏版本号打开）。数据全来自已经拉好的 update，不额外请求。
   const [changelogOpen, setChangelogOpen] = useState(false);
-  // 「给 AI 装作图能力」推荐条：点「去装」或「不用了」后持久化，不再重复弹。
-  const [aigcDismissed, setAigcDismissed] = useState(() => localStorage.getItem("uking.aigcNudgeDone") === "1");
   const [updating, setUpdating] = useState(false);
   const [updatePct, setUpdatePct] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
@@ -899,23 +897,14 @@ export function App() {
   /** 用户在勾选框里点了确认 —— 只配他勾的那几个。 */
   const doApplyXiapan = useCallback(async (targets: string[]) => {
     setApplyScope(false);
-    // 一次把虾盘云内置 Key 写进选中的工具，并顺手释放 AIGC 技能包。只写 API 配置不等于会作图/视频：
-    // ClawX/OpenClaw 需要 SKILL.md + scripts 落到 skills 目录，才能稳定调用 gen-image/gen-video。
+    // 2026-10-22（用户口径「除非必要，不然不要安装」）：这里**不再顺手装作图技能包**。
+    // 只写 provider 配置；AI 自己会不会作图由用户按需去「技能包」页手动装 ——
+    // 自动往 AI 工具目录里塞文件 = 每轮加一份上下文，属于非必要安装。
     try {
       const r = await invoke<{ configured: string[]; skipped: string[]; clawx_needs_restart: boolean }>(
         "apply_xiapan_everywhere",
         { providerId: "xiapan", apiKey: null, model: null, targets },
       );
-      let skillMsg = "";
-      try {
-        const info = await invoke<{ default_dir: string; installed: { tool: string; path: string }[] }>("install_skill_pack");
-        const tools = info.installed.map((i) => i.tool);
-        skillMsg = tools.length
-          ? tr("；作图/视频技能包已装进 {tools}", { tools: tools.join(" / ") })
-          : tr("；作图/视频技能包已导出到 {dir}", { dir: info.default_dir });
-      } catch {
-        skillMsg = tr("；作图/视频技能包可到「AI 技能包」页一键安装");
-      }
       // 🔴 **跳过的必须报出来**（后端 `skipped` 里本来就带着原因，之前被整条丢掉了）：
       // 用户勾了 6 个、实际配上 4 个，只报那 4 个，读起来就是「全配好了」——
       // 而没配上的那两个恰恰是他等会儿要撞墙的地方（如 Codex 挂着自己的 ChatGPT 登录）。
@@ -926,7 +915,6 @@ export function App() {
         (r.configured.length
           ? tr("已接入虾盘云：{who} 现在国内直连", { who })
           : tr("一个都没配上 —— 详情见下")) +
-          skillMsg +
           (r.clawx_needs_restart ? tr("，ClawX 请重启生效") : "") +
           skipped,
       );
@@ -1243,22 +1231,8 @@ export function App() {
               }}
               onDismissClawx={() => setClawxDismissed(true)}
               clawxDismissed={clawxDismissed}
-              // 全流程走完（装了工具+配了驱动+已充值）才推荐装作图能力；正在用作图/视频/技能包/浏览页时不弹，
-              // 不打断当下的事。升级/装机/驱动/充值/ClawX 横幅优先级更高（StatusLine 里靠 next_step=done 天然让位）。
-              aigcNudge={
-                setupState?.next_step === "done" &&
-                !aigcDismissed &&
-                !["skillpack"].includes(tab)
-              }
-              onGoAigc={() => {
-                localStorage.setItem("uking.aigcNudgeDone", "1");
-                setAigcDismissed(true);
-                setTab("skillpack");
-              }}
-              onDismissAigc={() => {
-                localStorage.setItem("uking.aigcNudgeDone", "1");
-                setAigcDismissed(true);
-              }}
+              // 2026-10-22（用户口径「除非必要，不然不要安装」）：撤掉「装作图能力」这条推荐横幅 ——
+              // 技能包是要往 AI 工具目录里塞文件的非必要安装，不再主动劝；需要的人自己去技能包页装。
             />
             </PanelBoundary>
 
@@ -1597,10 +1571,11 @@ function StatusLine({
   onConnectClawx: () => void;
   onDismissClawx: () => void;
   clawxDismissed: boolean;
-  /** 已装好工具+驱动+充值（next_step=done）后，主动推荐「给 AI 装作图/视频能力」。治「很多人不知道有技能包按钮」。 */
+  /** @deprecated 2026-10-22：用户口径「除非必要，不然不要安装」——「装作图能力」推荐条已撤，
+   *  本组件里的分支保留但不再有任何调用方传 true。 */
   aigcNudge?: boolean;
-  onGoAigc: () => void;
-  onDismissAigc: () => void;
+  onGoAigc?: () => void;
+  onDismissAigc?: () => void;
 }) {
   const { t } = useI18n();
   // 优先级：有新版（最重要，升级即修 bug）> 装机引导 > 右键打开的目录。

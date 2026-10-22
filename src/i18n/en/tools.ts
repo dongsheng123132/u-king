@@ -5,6 +5,8 @@ export const tools: Record<string, string> = {
   "安装中…": "Installing…",
 
   // ── SkillPack.tsx ──────────────────────────────────────────────
+  "除非必要，不然别装：装进 AI 工具后每个会话都会多读一份说明。软件自己的作图 / 出 Word / 出 PPT 不走这里，不装也能用。":
+    "Don't install unless you need it: each installed skill pack adds one more doc for the AI to read every session. U-King's own image / Word / PPT actions don't go through it, so they work without it.",
   "已复制": "Copied",
   "复制失败": "Copy failed",
   "复制": "Copy",

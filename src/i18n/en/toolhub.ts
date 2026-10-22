@@ -11,8 +11,8 @@
  *  「使用工具自带账号」这一条从此不再被引用，同上一条一起留着不删。 */
 export const toolhub: Record<string, string> = {
   // ---- 2026-10-22：页头一行「每轮底座」（只读账单，点它去技能包页）----
-  "每轮底座约 {n} 万 tokens（技能 {s} 个）· 怎么省 →":
-    "Baseline ≈ {n} ×10k tokens per turn ({s} skills) · how to save →",
+  "每轮底座约 {n} 万 tokens · 怎么省 →":
+    "Baseline ≈ {n} ×10k tokens per turn · how to save →",
   // ---- 升级失败 → 交维护助手（2026-10-21）----
   "升级失败？让 AI 修": "Upgrade failed? Let AI fix it",
   "升级失败时：把这台机器的脱敏现状交给维护助手，让 AI 接着排查（不含 Key）": "When an upgrade fails: hand a redacted snapshot of this machine to the Maintenance Assistant so AI can continue diagnosing (no keys included)",
