@@ -541,7 +541,8 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
     ToolSpec {
         // magpie：GUI 程序（点开直接开窗，跟 DSH 一样），CLI 能力仍保留在工具中心。
         // config_target=None、in_list_tools=false —— 不进「AI 设置」页（providers.rs 不写它）。
-        // 2026-10-21 用户口径：magpie 太复杂、不主推，也不再上架（装机清单已摘）；已装的仍能检测/启动。
+        // 2026-10-22 重新上架：装机清单 v65 恢复 magpie CLI（含 SHA-256 校验），
+        // `list_tools()` 里 hidden=false 露出；检测/启动能力不变。
         id: "magpie", cmd: "magpie", config_target: None,
         in_list_tools: false, in_checkup: None, probe_args: None,
         launch_mode: LaunchMode::GuiApp, route_tab: None,
@@ -1026,6 +1027,7 @@ fn catalog_with_probes(
             // provider/模型配置交给 magpie 维护，U-King 只做下载/校验/落地/回滚与钱包计费。
             // 只装 CLI（机器可调面），桌面版会跟 U-King 抢工作台、不上。config_target=None：
             // magpie 不是 U-King 的驱动配置目标（providers.rs 不认识它，也不写它的配置）。
+            // ★ 2026-10-22 重新上架（撤销 10-21 的 hidden=true 下架）：装不装都必须露出。
             id: "magpie".into(),
             name: "magpie".into(),
             summary: "一个命令接管所有 AI 工具的模型与供应商配置。把易变的配置格式交给 magpie 维护，U-King 只负责装好它；维护助手遇到配置类难题可复制提示词给它。".into(),
@@ -1035,7 +1037,7 @@ fn catalog_with_probes(
             target: "".into(),
             launch_cmd: "magpie".into(),
             launch_app: "magpie".into(),
-            hidden: true,
+            hidden: false,
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
@@ -1344,8 +1346,14 @@ mod catalog_probe_tests {
         let clawx = catalog.iter().find(|tool| tool.id == "clawx").unwrap();
         assert_eq!(clawx.action, "url", "ClawX installer is not verified; offer the official download");
         assert_eq!(clawx.config_target.as_deref(), Some("clawx"), "ClawX keeps its provider target");
+        // 2026-10-22 magpie 重新上架：装没装都必须露出。前端是 `raw.filter(x => !x.hidden)`
+        // 全局过滤，hidden=true 等于装完一个像素都看不到、连卸载入口都没有（opencode 08-24 的旧账）。
+        let magpie = catalog.iter().find(|tool| tool.id == "magpie").expect("magpie 必须还在目录里");
+        assert!(magpie.installed && !magpie.hidden, "magpie 装完必须可见");
         let empty = catalog_with_probes(None, |_| false, |_| None);
-        assert!(!empty.iter().find(|tool| tool.id == "magpie").unwrap().installed, "uninstalled magpie still shows");
+        let magpie = empty.iter().find(|tool| tool.id == "magpie").expect("uninstalled magpie still shows");
+        assert!(!magpie.installed, "uninstalled magpie still shows");
+        assert!(!magpie.hidden, "magpie 上架后未装也要露出，才能引导安装");
     }
 
     #[cfg(windows)]

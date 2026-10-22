@@ -18,6 +18,8 @@ mod clawx;
 mod claude_proxy;
 mod codex;
 mod codex_proxy;
+/// 「每轮底座账单」：只读扫描本机 skills 目录与记忆文件，给前端展示上下文成本。
+mod context_bill;
 mod context_menu;
 mod crashlog;
 /// 本地优先创作画布的项目权威存储；浏览器缓存只是预览缓存。
@@ -8369,6 +8371,8 @@ pub fn run() {
             get_setup_state,
             ai_checkup,
             doctor_report,
+            // 每轮底座账单（只读扫描，不写任何文件）
+            context_bill::context_bill,
             upgrade_cli_tool,
             open_recharge,
             term_open,

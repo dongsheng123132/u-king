@@ -79,7 +79,11 @@ const Feedback = lazy(() => import("./Feedback").then((m) => ({ default: m.Feedb
 const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
-const ToolHub = lazy(() => import("./toolhub/ToolHub").then((m) => ({ default: m.ToolHub })));
+// 2026-10-22 B 极简改版：首页（我的 AI）与软件库拆成两个独立页面。
+// 旧 `toolhub/ToolHub.tsx`（瓷砖墙 + 详情条）不再被引用，文件先留着（回退成本 = 改这三行），
+// 等真机验过一轮再删——「先藏后摘」，不给用户看到两套并列的入口。
+const HomePage = lazy(() => import("./home/HomePage").then((m) => ({ default: m.HomePage })));
+const LibraryPage = lazy(() => import("./library/LibraryPage").then((m) => ({ default: m.LibraryPage })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
 import { cn } from "./lib/cn";
@@ -1349,37 +1353,29 @@ export function App() {
                 onToast={flash}
               />
             ) : tab === "toolhub" ? (
-              // 「我的 AI」（2026-09-29 首页改版前叫「AI 工具中心」）——已装工具卡片网格，
-              // 换模型、一键启动，也是全站默认落地页。跟 myai（改版前就叫「我的 AI」，2026-10-03 起
-              // 改名「体检 · 升级」、降为本页的子页）不是同一页：myai 是装机漏斗（大卡引导 + 体检 +
-              // 已装/可装两段网格），toolhub 是给已经装过工具的人用的日常启动台，两者共用同一批
-              // tools/driver 数据源，互不重实现（同一个 launchTool/openTool/apply_provider 路径）。
-              <ToolHub
+              // 「我的 AI」首页（2026-10-22 B 极简改版）：一句话状态 + 四个动作块 + 已装细线列表
+              // + 推荐装 + 每轮底座账单。所有动作复用 App.tsx 既有回调（launchTool / uninstallTool /
+              // apply_provider / 装机向导），页面不新开业务通路；旧 ToolHub 瓷砖墙不再被引用。
+              <HomePage
                 tools={tools}
-                driver={driver}
-                deviceKey={deviceKey}
                 onLaunch={launchTool}
-                onOpen={openTool}
                 onInstallSelection={(ids) => {
                   setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: ids }));
                   setTab("setup");
                 }}
                 onUninstall={uninstallTool}
-                onGoManage={() => setTab("manage")}
                 onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
+                onGoDoctor={() => setTab("myai")}
+                onGoLibrary={() => setTab("library")}
+                onGoManage={() => setTab("manage")}
+                onGoSkillPack={() => setTab("skillpack")}
+                onGoSetup={startInstallAll}
                 onRefreshTools={refresh}
-                onToast={flash}
-                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onAskAiToFix={(prompt) => {
-                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair" });
+                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "home-repair" });
                   setTab("maintenance");
                 }}
-                onGoSetup={startInstallAll}
-                onGoDoctor={() => setTab("myai")}
-                onGoChat={() => setTab("maintenance")}
-                onGoTermWb={() => setTab("maintenance")}
-                // 终端快照「一键重开」条 2026-10-03（收敛 2b）从 myai 搬到这里：toolhub 是默认落地页，
-                // 放在 myai 等于大多数人看不到。回调原样沿用，MyAI 那份已去掉（同一个条只在一处出现）。
+                // 终端快照「一键重开」条：自升级是硬退出、旧 PTY 活不过去，保留在默认落地页。
                 termSnapshot={termSnapshot}
                 recoveringTermSnapshot={recoveringTermSnapshot}
                 failedTermRestoreCount={failedTermRestores?.length ?? 0}
@@ -1397,6 +1393,23 @@ export function App() {
                   setFailedTermRestores(null);
                   setTermSnapshot(null);
                 }}
+              />
+            ) : tab === "library" ? (
+              // 「软件库」（2026-10-22 新增）：分类 + 搜索 + 一键安装；装不上的走「让 AI 装」，
+              // 把脱敏任务包填进轻助手（不自动发送）。安装本体仍走装机向导，不在页面里另写一份。
+              <LibraryPage
+                tools={tools}
+                onLaunch={launchTool}
+                onOpen={openTool}
+                onInstallSelection={(ids) => {
+                  setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: ids }));
+                  setTab("setup");
+                }}
+                onAskAiToFix={(prompt) => {
+                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "library-install" });
+                  setTab("maintenance");
+                }}
+                onRefreshTools={refresh}
               />
             ) : tab === "myai" ? (
               <MyAI

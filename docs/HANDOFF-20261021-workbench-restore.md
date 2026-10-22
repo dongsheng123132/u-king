@@ -192,7 +192,7 @@
 | AI 目录只剩 3 个默认包 | 新增 `prune_non_default()`：启动同步把 `pack_names()` 里**非默认、非客户手装**的包从各 AI 工具目录精确清掉。默认 3 个 = aigc / office-read / workbench |
 | 手装包不被误删 | 新增 `~/.uking/skills-user.json` 记录「技能包」页手动装的包；`install_pack` 写入、`uninstall_pack` 移除、清理时跳过 |
 | 其余技能不占上下文 | ppt / docx / xlsx / cad / office-edit 仍编进安装包、仍导出到 `~/.uking/skills` —— 软件自己的「出 PPT/Word/Excel/CAD」动作直接调脚本，不经过 AI 上下文、不花 token |
-| 实测清理 | 本机启动后日志：`AI 目录只留默认包，清掉 25 个非默认包目录`；`~/.claude/skills` 里 U-King 包只剩 3 个，客户自己的 `uking-bug-patrol` / `uking-verify` 等一个没动 |
+| 实测清理 | 本机启动后日志：`AI 目录只留默认包，清掉 25 个非默认包目录`；`~/.claude/skills` 里 U-King 包只剩 3 个，客户自己装的巡检 / 验证类包（`uking-verify` 等）一个没动 |
 | 上下文体积 | AI 每轮要读的技能说明：14 包时代 58,712 字符 → 1.4.8 的 8 包 36,939 → **现在 3 包 25,484**（较最初 -57%）；叠加 1.4.8 的历史裁剪（12 万→4 万字符） |
 | 发布 | 提交 `b41923b82`、tag `v1.4.9`；Mac CI run 39621368393；`release-uking.mjs publish` 成功 |
 
