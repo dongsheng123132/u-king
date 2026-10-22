@@ -58,6 +58,18 @@ export const home: Record<string, string> = {
   "装不上的可以先点「让 AI 装」：它会把这台机器的现状交给 U-King 轻助手，由 AI 接着装（不会自动发送，你按发送才走）。":
     "If an install fails, tap “Let AI install”: it hands this machine's current state to the U-King assistant (it will not send automatically — you press send).",
 
+  // ── 2026-10-22 A 方案（软件库并回首页、已装图标墙）────
+  "都在这儿，点一下就开始用。": "All here — click one to start using it.",
+  "装软件": "Install apps",
+  "分类挑一个，装不上让 AI 装": "Browse by category; hand failed installs to AI",
+  "点一下启动": "Click to launch",
+  "管理 {name}": "Manage {name}",
+  "去「可安装」挑一个：分类挑、点安装；装不上就点「让 AI 装」。":
+    "Pick one under Available: browse, then Install; if it fails, hand it to AI.",
+  "去挑一个": "Browse apps",
+  "这是「输入」里的固定开销：聊得越久，历史还会另外叠加（历史已压到 2.4 万字符）。":
+    "This is the fixed cost inside the input; longer chats add more history (history is now capped at 24k chars).",
+
   // ── 动态 key（t(变量)，闸门扫不到，手写在这里）────
   "Claude 全局记忆": "Claude global memory",
   "Codex 全局记忆": "Codex global memory",

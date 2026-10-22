@@ -83,7 +83,6 @@ const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ 
 // 旧 `toolhub/ToolHub.tsx`（瓷砖墙 + 详情条）不再被引用，文件先留着（回退成本 = 改这三行），
 // 等真机验过一轮再删——「先藏后摘」，不给用户看到两套并列的入口。
 const HomePage = lazy(() => import("./home/HomePage").then((m) => ({ default: m.HomePage })));
-const LibraryPage = lazy(() => import("./library/LibraryPage").then((m) => ({ default: m.LibraryPage })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
 import { cn } from "./lib/cn";
@@ -193,6 +192,8 @@ export function App() {
       maintenance: "maintenance",
       advanced: "toolhub",
       usbgenie: "toolhub",
+      // 2026-10-22：软件库不再单开栏目（已并进「我的 AI」的「可安装」），旧深链落回首页。
+      library: "toolhub",
     };
     const next = LEGACY_TAB_FALLBACK[tab];
     if (next) setTab(next);
@@ -1366,7 +1367,6 @@ export function App() {
                 onUninstall={uninstallTool}
                 onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
                 onGoDoctor={() => setTab("myai")}
-                onGoLibrary={() => setTab("library")}
                 onGoManage={() => setTab("manage")}
                 onGoSkillPack={() => setTab("skillpack")}
                 onGoSetup={startInstallAll}
@@ -1393,23 +1393,6 @@ export function App() {
                   setFailedTermRestores(null);
                   setTermSnapshot(null);
                 }}
-              />
-            ) : tab === "library" ? (
-              // 「软件库」（2026-10-22 新增）：分类 + 搜索 + 一键安装；装不上的走「让 AI 装」，
-              // 把脱敏任务包填进轻助手（不自动发送）。安装本体仍走装机向导，不在页面里另写一份。
-              <LibraryPage
-                tools={tools}
-                onLaunch={launchTool}
-                onOpen={openTool}
-                onInstallSelection={(ids) => {
-                  setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: ids }));
-                  setTab("setup");
-                }}
-                onAskAiToFix={(prompt) => {
-                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "library-install" });
-                  setTab("maintenance");
-                }}
-                onRefreshTools={refresh}
               />
             ) : tab === "myai" ? (
               <MyAI

@@ -2612,16 +2612,28 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             &[],
             &["default_dir", "installed"],
             |_, input, _| {
-                // 带 name = 只装这一个（按包卸载的反面）；不带 = 老行为，全量同步
+                // 带 name = 只装这一个（按包卸载的反面）；不带 = 老按钮「一键装进已装的 AI 工具」。
                 if let Some(name) = input.get("name").and_then(|v| v.as_str()) {
                     let dirs = skillpack::install_pack(name)?;
                     return Ok(serde_json::json!({ "default_dir": dirs.first().cloned().unwrap_or_default(), "installed": dirs }));
                 }
+                // 🔴 2026-10-22：开箱默认包已归零（DEFAULT_PACKS 为空），**不能再走
+                // `install_into_tools()`** —— 那会「说装好了、实际一个都没铺」。这个按钮的业务
+                // 含义本来就是「显式装 AIGC 包（作图/视频）」；显式安装走 `install_pack`，
+                // 会记进 `skills-user.json`，启动清理时不删。
+                let dirs = skillpack::install_pack("uking-aigc")?;
                 let default_dir = skillpack::export_to(None)?;
-                let installed: Vec<serde_json::Value> = skillpack::install_into_tools()
+                let targets = skillpack::skill_targets();
+                let installed: Vec<serde_json::Value> = dirs
                     .into_iter()
-                    .map(|(tool, path, experimental)| {
-                        serde_json::json!({ "tool": tool, "path": path, "experimental": experimental })
+                    .map(|path| {
+                        let parent = std::path::Path::new(&path).parent().map(|p| p.to_path_buf());
+                        let tool = targets
+                            .iter()
+                            .find(|t| Some(t.parent.clone()) == parent)
+                            .map(|t| t.label.to_string())
+                            .unwrap_or_else(|| "~/.uking/skills".to_string());
+                        serde_json::json!({ "tool": tool, "path": path, "experimental": false })
                     })
                     .collect();
                 // 技能装进 OpenClaw/ClawX 了，顺手把 commands.text 打开——否则聊天框里打
@@ -8066,15 +8078,24 @@ pub fn run() {
                         // 失败不致命：说明书没了只是 AI 发现不了我们，app 本身照跑。
                         Err(e) => ulog::write("identity", &format!("说明书生成失败: {e}")),
                     }
-                    // ★ 2026-10-21：生成完顺手把「指针」挂进各家 AI 的全局记忆文件。
-                    // 只 publish 不 link，说明书就锁在抽屉里 —— conformance 在客户机上实测
-                    // `runtime.identity.inspect` 一直 not_ready（3 个落点都没指针），而界面上
-                    // 已经没有 identity 页了，用户没有别的路可走。幂等、只增不删、首次留底。
+                    // 2026-10-22（用户口径「把费 token 的地方删了」）：**不再自动挂指针**。
+                    // 那段指针会进客户每一个会话的上下文（约 350 字符/轮），1.4.7 挂上它只是
+                    // 为了「让别家 AI 发现我们」，但大多数客户根本不走这条路，成本却每轮都付。
+                    // 改为：这次升级**一次性摘掉**以前自动挂的那块（只动带标记的块，客户自己写的
+                    // 内容一个字节不碰 —— `identity::unlink_in` 有单测守着），之后不再自动挂。
+                    // 需要它的高级用户仍可显式调动作 `runtime.identity.link`。
                     let home = identity::home_dir();
-                    match identity::link_in(&home, &[]) {
-                        Ok(paths) if paths.is_empty() => {}
-                        Ok(paths) => ulog::write("identity", &format!("指针已挂上: {}", paths.join(" | "))),
-                        Err(e) => ulog::write("identity", &format!("指针挂载失败（不致命）: {e}")),
+                    let pruned_marker = identity::uking_dir().join("identity-link-pruned");
+                    if !pruned_marker.exists() {
+                        match identity::unlink_in(&home) {
+                            Ok(changed) if changed.is_empty() => {}
+                            Ok(changed) => ulog::write(
+                                "identity",
+                                &format!("已摘掉 {} 处旧指针（省每轮上下文）", changed.len()),
+                            ),
+                            Err(e) => ulog::write("identity", &format!("摘旧指针失败（不致命）: {e}")),
+                        }
+                        let _ = std::fs::write(&pruned_marker, b"1");
                     }
                 });
             }

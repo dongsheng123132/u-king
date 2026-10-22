@@ -9,7 +9,7 @@ import { useState } from "react";
 // 2026-10-03 同理：Hammer（装机向导）/ Wrench（厨具工具箱，页面 2026-10-04 已删）/ SquareTerminal（终端工作台）/
 // Sparkles（装机 · 体检）/ Wallet（虾盘云 · 充值）/ Gauge（Token 水电表）随入口撤下一并去掉，
 // 恢复入口时连同对应图标加回 import（见 CORE / MORE / LAB 里被注释的行）。
-import { ArrowUpCircle, Boxes, ChevronDown, CodeXml, Cpu, FlaskConical, Globe, History, LayoutGrid, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Settings, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, CodeXml, Cpu, FlaskConical, Globe, History, LayoutGrid, MessageSquare, Moon, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, PanelTopClose, RefreshCw, Settings, Sun, Terminal as TerminalIcon, Wand2 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "../lib/cn";
 import { useViewport } from "../lib/useViewport";
@@ -25,7 +25,6 @@ export type TabId =
   | TuiAppId
   | "workbench"
   | "toolhub"
-  | "library"
   | "terminal"
   | "setup"
   | "maintenance"
@@ -114,18 +113,16 @@ const CORE: NavItem[] = [
   { id: "workbench", label: "工作台", sub: "对话 · 终端 · 会话", icon: MessageSquare },
   // 「AI 创作」独立页：作图 / 视频 / 海报二维码。工作台里不再嵌创作面板。
   { id: "create", label: "AI 创作", sub: "作图 · 视频 · 海报二维码", icon: Palette },
-  // 「我的 AI」（2026-09-29 改名，2026-10-22 换成 B 极简首页）：一句话状态 + 四个动作块
-  // （体检 / 软件库 / 省额度 / 换模型）+ 已装列表 + 推荐装 + 每轮底座账单。
-  // 旧 TileGrid 瓷砖墙与详情条已下线（代码保留一轮后删，回退见 git）。
+  // 「我的 AI」（2026-09-29 改名；2026-10-22 换成 B 极简首页，按用户拍板**不单开软件库栏目**）：
+  // 一句话状态 + 四个动作块（体检 / 装软件 / 省额度 / 换模型·余额）+ 已装图标墙（点一下启动，
+  // 右上角 ⋯ 展开管理）+ 「已装 / 可安装」切换（装与管同一页）+ 每轮底座账单。
+  // 旧 ToolHub 瓷砖墙已删除（回退见 git）。
   //
   // 🔴 2026-10-03 收敛方案 §5 第 2b 步：「装机 · 体检」(myai) / 「装机向导」(setup) 的侧栏入口都撤了，
   // 由这一项兜住（§3.4）：myai 页保留，改名「体检 · 升级」，从本页动作块进、页内有「← 返回我的 AI」；
   // 装机向导是点安装后进的流程页。两者激活时侧栏照样高亮本项（见 NAV_ALIAS）。
   // 页面渲染分支一个没删，两页数据源仍是同一份 tools/driver，互不重实现。
-  { id: "toolhub", label: "我的 AI", sub: "已装 · 体检 · 省额度", icon: LayoutGrid },
-  // 「软件库」（2026-10-22 新增，用户口径：「软件要能加，能分类」）：分类 + 搜索 + 一键安装；
-  // 每个可装工具带「让 AI 装」兜底（把脱敏任务包填进轻助手）。
-  { id: "library", label: "软件库", sub: "分类找 · 一键装 · 让 AI 装", icon: Boxes },
+  { id: "toolhub", label: "我的 AI", sub: "装好的 · 点一下用 · 省额度", icon: LayoutGrid },
   // 「AI 设置」2026-08-31 升回核心第 4 位（用户拍板，见上方 CORE 组注释）。
   // 体检/升级 2026-09-04 按动词分家搬去「我的 AI」，这里的牌子 09-06 才跟上——
   // 副标题只写这页真有的东西：配模型、看余额（用户反馈「体检在有些地方冒出来」）。

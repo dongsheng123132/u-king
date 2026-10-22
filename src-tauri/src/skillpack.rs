@@ -595,23 +595,16 @@ pub fn prune_retired() -> usize {
     }
     removed
 }
-/// **开箱默认铺的技能包**（其余的用户在「技能包」页那张清单上一键装）。
+/// **开箱默认铺的技能包 —— 现在是空的（2026-10-22 用户口径：「把费 token 的地方删了」）。**
 ///
-/// 🔴 为什么从 16 个减到 4 个（客户 2026-08-18：「有人抱怨我们安装了太多预制 skill」）：
-/// 16 个包一次性铺进 `~/.claude/skills` 等 4~6 个落点 = 客户机上凭空多出五六十个目录，
-/// 而它们**每一个的 SKILL.md 都会进 AI 的上下文**（同一天记过的 context-bloat 那条：
-/// 43 个是别人铺的、我们又铺一批，两边叠起来把上下文撑爆）。
+/// 历史：16 → 4 → 3（1.4.9）→ **0**。每一次减的依据都一样：这些包的 `SKILL.md` 会进
+/// AI 每一个会话的上下文，是客户看不见的固定开销；而它们提供的产出能力（PPT / Word /
+/// Excel / CAD…）软件自己的动作本来就直接调 `~/.uking/skills` 里的脚本，**不经过 AI、不花 token**。
 ///
-/// 留这 4 个的判据是「**不装就有明显缺口**」：
-///  - `uking-aigc`        作图/视频 —— 产品的招牌能力，不装等于卖点没了
-///  - `uking-office-read` 读客户拿来的 Word/Excel/PDF —— 办公场景九成是「我有一份文件…」
-///  - `uking-workbench`   搭工作台 —— 一次性动作，且让后面每件事都更好用
-///
-/// 其余 12 个（ppt/docx/xlsx/cad/mail/browse/pdf/web/teamwork/office-edit/wechatmp/experts）
-/// 都是**要用时才用得上**的产出类技能，清单上一键就能装回来。
-///
-/// 🔴 老客户升级后**会变少**：已下线的包由 [`prune_retired`] 清掉，其余非默认包保持原样。
-const DEFAULT_PACKS: &[&str] = &["uking-aigc", "uking-office-read", "uking-workbench"];
+/// [`prune_non_default`] 会照这张表把**以前铺过、客户没手装过**的包从各工具目录里清掉；
+/// 想用的客户仍可在「技能包」页按需装（[`install_pack`]，会记进 `skills-user.json`，
+/// 启动清理时跳过）。
+const DEFAULT_PACKS: &[&str] = &[];
 
 /// 用户手动装过的包（「技能包」页点装）。启动同步时**不能把它们删掉** ——
 /// 客户自己装的东西被我们每次启动清掉，比多装坏得多。
@@ -683,10 +676,16 @@ pub fn install_into_tools() -> Vec<(String, String, bool)> {
         if !t.installed {
             continue;
         }
+        // 2026-10-22：开箱**不再铺任何包**（DEFAULT_PACKS 为空）—— 这里只剩清理职责。
+        // 一个包都不铺 = 客户每个会话的上下文里少掉我们这几份 SKILL.md。
+        if DEFAULT_PACKS.is_empty() {
+            crate::ulog::write("skillpack", &format!("{} · 开箱不铺技能包（省上下文）", t.label));
+            continue;
+        }
         // 成败都记：装进去了才是真装了。此前这里**失败是静默吞掉的**（`if let Ok` 没有 else），
         // 客户说「AI 找不到技能包」时根本查不到是没装还是装错地方。
         // 只铺 DEFAULT_PACKS —— 全量同步请走 `export_to`（那是 ~/.uking/skills 的源目录），
-        // 或让用户在清单上按需装。**这里少铺 12 个，就是客户上下文里少 12 份 SKILL.md。**
+        // 或让用户在清单上按需装。**这里少铺的每一份，就是客户上下文里少的每一份 SKILL.md。**
         let mut ok = 0usize;
         for name in DEFAULT_PACKS {
             let Some(pack) = PACKS.iter().find(|p| p.name == *name) else { continue };
@@ -1056,47 +1055,35 @@ mod tests {
         assert!(skills.join(theirs).is_dir(), "顺手把不是我们的删了");
     }
 
-    /// 开箱默认只铺 4 个，其余 12 个仍在表里、能按需装。
+    /// 开箱**一个技能包都不铺**（2026-10-22 用户口径：「把费 token 的地方删了」）。
     ///
-    /// 🔴 这条守的是客户 2026-08-18 那句「安装了太多预制 skill」。
-    /// 判据不是「DEFAULT_PACKS 长度等于 4」——那只是把常量抄一遍，改错了照样绿；
-    /// 而是**真跑一遍 install_into_tools 之后磁盘上有几个目录**。
-    ///
-    /// 反向那半边同样要钉：`pack_names()` 必须仍是全量，否则「默认少装」会变成
-    /// 「其余的永远装不回来」——那比多装坏得多（客户会说"以前会做 PPT 现在不会了"）。
+    /// 守两件事：
+    /// ① 真跑一遍 `install_into_tools` 之后，AI 工具目录里**一个我们的包都没有**
+    ///    —— 默认包的 SKILL.md 是客户每个会话都要背的固定开销，这次直接归零；
+    /// ② `pack_names()` 仍是全量、任意一个包仍装得回来 —— 否则「省上下文」会变成
+    ///    「以前会做 PPT 现在不会了」，那是比多装坏得多的退步。
     #[test]
-    fn default_install_is_a_small_subset_but_all_packs_stay_available() {
+    fn default_install_deploys_nothing_but_all_packs_stay_available() {
         let sb = crate::testsandbox::enter("skillpack-default", &[".claude"]);
         // 让 skill_targets 认为 Claude 装了：造出它的 skills 父目录的上级
         let claude = sb.root().join(".claude");
         std::fs::create_dir_all(claude.join("skills")).unwrap();
 
-        for name in DEFAULT_PACKS {
-            assert!(pack_names().contains(name), "默认包 {name} 不在总表里 —— 拼错了");
-        }
-        assert!(
-            DEFAULT_PACKS.len() * 2 <= pack_names().len(),
-            "默认铺的占比太高了，等于没减（默认 {} / 全部 {}）",
-            DEFAULT_PACKS.len(),
-            pack_names().len()
-        );
+        assert!(DEFAULT_PACKS.is_empty(), "开箱默认包必须是空的（省每轮上下文）");
+        assert!(!pack_names().is_empty(), "技能包总表不能空 —— 装不回来才是真退步");
 
-        // 真跑一遍，数磁盘
+        // 真跑一遍，数磁盘：一个都不该出现
         let _ = install_into_tools();
-        let on_disk: Vec<String> = pack_names()
-            .into_iter()
-            .filter(|n| !pack_dirs_on_disk(n).is_empty())
-            .map(str::to_string)
-            .collect();
-        for name in DEFAULT_PACKS {
-            assert!(on_disk.iter().any(|x| x == name), "默认包 {name} 没铺上：{on_disk:?}");
+        for name in pack_names() {
+            assert!(
+                pack_dirs_on_disk(name).is_empty(),
+                "开箱不该铺任何技能包，但 {name} 出现在 AI 工具目录里"
+            );
         }
-        let extra: Vec<&String> = on_disk.iter().filter(|n| !DEFAULT_PACKS.contains(&n.as_str())).collect();
-        assert!(extra.is_empty(), "开箱铺了不该铺的：{extra:?}");
 
-        // 其余的仍装得回来（这半边不能丢）
-        let optional = pack_names().into_iter().find(|n| !DEFAULT_PACKS.contains(n)).unwrap();
-        assert!(!install_pack(optional).unwrap().is_empty(), "非默认包装不回来了：{optional}");
+        // 想用的仍装得回来（这半边不能丢）
+        let optional = pack_names()[0];
+        assert!(!install_pack(optional).unwrap().is_empty(), "技能包装不回来了：{optional}");
         assert!(!pack_dirs_on_disk(optional).is_empty(), "说装上了但磁盘上没有：{optional}");
     }
 }
