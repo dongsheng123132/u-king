@@ -9,7 +9,7 @@
   --gold:#c9a227; --gold-hi:#f2d479; --gold-deep:#8a6d18;
   --cinnabar:#b13a2e; --jade:#3c9b6e;
   --line:rgba(201,162,39,.16); --line-2:rgba(201,162,39,.28);
-  --serif:"Noto Serif SC",serif; --mono:"JetBrains Mono",monospace;
+  --serif:"Songti SC","SimSun","Noto Serif SC",serif; --mono:"JetBrains Mono",Consolas,"Courier New",monospace;
   --nav-bg:rgba(10,9,7,.82); --code-bg:#07060a;
   /* toc.js 兼容别名 */
   --ink:var(--ink-0); --ink2:var(--ink-1); --ink3:var(--ink-2);

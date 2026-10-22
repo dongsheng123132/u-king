@@ -28,6 +28,8 @@
       else b.classList.remove('on');
     }
     document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
+    // 让 CSS 接管显隐；在此之前中文正文默认可见，避免脚本失效时整页空白
+    document.documentElement.classList.add('lang-ready');
   }
 
   function set(lang) {

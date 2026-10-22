@@ -3,30 +3,44 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>U-King AI Assistant · One-click setup for Codex / Claude Code</title>
-<meta name="description" content="U-King is an AI setup assistant and workbench built for mainland China users. Install Codex, Claude Code, OpenClaw and more with a conversational one-click wizard, auto-configured with China-accessible model drivers, ready to use immediately." />
-<link rel="canonical" href="https://www.u-king.org/en/" />
-<link rel="alternate" hreflang="zh-CN" href="https://www.u-king.org/" />
-<link rel="alternate" hreflang="en" href="https://www.u-king.org/en/" />
-<link rel="alternate" hreflang="x-default" href="https://www.u-king.org/" />
+<title>U-King AI Assistant · One-click setup for Codex / Claude Code (open source)</title>
+<meta name="description" content="U-King is an open-source (Apache-2.0) AI setup assistant and workbench for mainland China users. Install Claude Code, Codex, ClawX (OpenClaw), Hermes and more with a conversational one-click wizard, auto-configured with China-accessible model drivers. Free download for Windows and macOS." />
+<link rel="canonical" href="https://u-claw.org.cn/uking/en/" />
+<link rel="alternate" hreflang="zh-CN" href="https://u-claw.org.cn/uking/" />
+<link rel="alternate" hreflang="en" href="https://u-claw.org.cn/uking/en/" />
+<link rel="alternate" hreflang="x-default" href="https://u-claw.org.cn/uking/" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="U-King" />
 <meta property="og:title" content="U-King AI Assistant — AI tools that just work" />
-<meta property="og:description" content="One-click install of Codex, Claude Code, OpenClaw, and Hermes, auto-configured with China-accessible model drivers, verified connectivity after setup. Free download." />
-<meta property="og:url" content="https://www.u-king.org/en/" />
+<meta property="og:description" content="One-click install of Claude Code, Codex, ClawX (OpenClaw) and Hermes, auto-configured with China-accessible model drivers. Open source (Apache-2.0), free download." />
+<meta property="og:url" content="https://u-claw.org.cn/uking/en/" />
+<meta property="og:image" content="https://u-claw.org.cn/uking/og-cover.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="U-King AI setup assistant: AI tools that just work. Open source, Apache-2.0." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="U-King AI Assistant — AI tools that just work" />
+<meta name="twitter:description" content="One-click install of Claude Code, Codex, ClawX (OpenClaw) and Hermes, auto-configured with China-accessible model drivers. Open source (Apache-2.0)." />
+<meta name="twitter:image" content="https://u-claw.org.cn/uking/og-cover.png" />
+<meta name="theme-color" content="#ffffff" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z' fill='%23e2a93b'/%3E%3C/svg%3E" />
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"火火的(深圳)科技有限公司","alternateName":"U-King","url":"https://www.u-king.org/"}</script>
+<link rel="apple-touch-icon" href="../apple-touch-icon.png" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"火火的(深圳)科技有限公司","alternateName":"U-King","url":"https://u-claw.org.cn/uking/en/","sameAs":["https://github.com/dongsheng123132/u-king"]},{"@type":"WebSite","name":"U-King","url":"https://u-claw.org.cn/uking/en/","inLanguage":"en"},{"@type":"SoftwareApplication","name":"U-King","applicationCategory":"DeveloperApplication","operatingSystem":"Windows 10, Windows 11, macOS 12+","downloadUrl":"https://u-claw.org.cn/download/U-King-Setup.exe","license":"https://www.apache.org/licenses/LICENSE-2.0","codeRepository":"https://github.com/dongsheng123132/u-king","offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"description":"Open-source AI setup assistant: install Claude Code, Codex, ClawX (OpenClaw) and Hermes with one conversation, auto-configured with China-accessible model drivers."}]}</script>
 <style>
   :root{
     --ink:#1d1d1f;
     --body:#494c50;
     --gray:#6e6e73;
-    --faint:#86868b;
+    --faint:#6e6e73;
     --bg:#ffffff;
     --bg-alt:#f5f5f7;
     --line:rgba(0,0,0,.09);
     --blue:#0071e3;
     --blue-hover:#0077ed;
     --gold:#e2a93b;
+    --gold-text:#8a5a00;
     --green:#34c759;
+    --green-text:#1b7f3a;
     --radius-card:22px;
     --sans:-apple-system,BlinkMacSystemFont,"SF Pro SC","SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI","Microsoft YaHei",sans-serif;
     --mono:"SF Mono",SFMono-Regular,ui-monospace,Consolas,"Liberation Mono",Menlo,monospace;
@@ -46,6 +60,16 @@
   ::selection{background:rgba(0,113,227,.16)}
   a{color:var(--blue); text-decoration:none}
   a:hover{text-decoration:underline}
+  .skip{
+    position:absolute; left:-9999px; top:0; z-index:100;
+    padding:10px 16px; border-radius:10px; background:var(--ink); color:#fff; font-size:14px;
+  }
+  .skip:focus{left:14px; top:14px}
+  :focus-visible{outline:2px solid var(--blue); outline-offset:3px}
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+  }
   .wrap{width:min(1080px, calc(100% - 44px)); margin:0 auto}
   .mono{font-family:var(--mono)}
   section{scroll-margin-top:60px}
@@ -70,6 +94,30 @@
   .nav-links a{color:rgba(29,29,31,.82)}
   .nav-links a:hover{color:var(--ink); text-decoration:none}
   .nav-lang{font-size:13px; padding:4px 10px; border:1px solid var(--line); border-radius:980px}
+  .nav-gh{
+    display:inline-flex; align-items:center; gap:6px;
+    color:rgba(29,29,31,.82); font-weight:600;
+  }
+  .nav-gh svg{width:15px; height:15px; flex:none}
+  .nav-gh:hover{color:var(--ink)}
+  /* Collapsible mobile menu (native details, no JS dependency) */
+  .nav-menu{display:none; position:relative}
+  .nav-menu summary{
+    cursor:pointer; list-style:none; padding:5px 12px;
+    border:1px solid var(--line); border-radius:980px;
+    font-size:13px; color:var(--ink); background:#fff;
+  }
+  .nav-menu summary::-webkit-details-marker{display:none}
+  .nav-menu[open] summary{background:var(--bg-alt)}
+  .nav-menu-panel{
+    position:absolute; right:0; top:calc(100% + 8px); z-index:60;
+    width:210px; padding:8px; border-radius:14px;
+    background:#fff; border:1px solid var(--line);
+    box-shadow:0 18px 44px rgba(0,0,0,.14);
+    display:flex; flex-direction:column;
+  }
+  .nav-menu-panel a{padding:9px 10px; border-radius:8px; color:var(--ink); font-size:14px}
+  .nav-menu-panel a:hover{background:var(--bg-alt); text-decoration:none}
   .nav-dl{
     padding:5px 14px; border-radius:980px;
     background:var(--blue); color:#fff !important; font-weight:600;
@@ -80,7 +128,7 @@
   /* ---------- Hero ---------- */
   .hero{padding:88px 0 0; text-align:center}
   .eyebrow{
-    margin:0 0 14px; font-size:15px; font-weight:600; color:var(--gold);
+    margin:0 0 14px; font-size:15px; font-weight:600; color:var(--gold-text);
     letter-spacing:.04em;
   }
   h1{
@@ -109,7 +157,25 @@
   .dl-caption{margin:14px 0 0; color:var(--faint); font-size:13px}
   .alt-links{margin:8px 0 0; font-size:14px}
   .alt-links .sep{margin:0 12px; color:rgba(0,0,0,.18)}
-  .dl-status{min-height:20px; margin:10px 0 0; color:var(--green); font-size:13px; font-family:var(--mono)}
+  .dl-status{min-height:20px; margin:10px 0 0; color:var(--green-text); font-size:13px; font-family:var(--mono)}
+
+  /* Open-source row under the primary CTA */
+  .oss-line{
+    margin:14px 0 0; display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+    gap:6px 8px; color:var(--gray); font-size:13.5px;
+  }
+  .oss-line svg{width:15px; height:15px; flex:none; color:var(--ink)}
+  .oss-line a{color:var(--ink); font-weight:600; text-decoration:underline; text-underline-offset:2px}
+  .oss-line .dot{color:rgba(0,0,0,.22)}
+  .oss-line .lic{font-family:var(--mono); font-size:12.5px}
+  .nb{white-space:nowrap}
+
+  /* Download help accordions: two columns on desktop */
+  .dl-helps{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px;
+    max-width:760px; margin:14px auto 0;
+  }
+  .dl-helps .dl-help{max-width:none; margin:0}
 
   /* 老系统（Win7/8/8.1/XP）告警：这些机器下下来也跑不了，下载前就拦一道 */
   .oldwin-alert{
@@ -136,10 +202,15 @@
     border:1px solid var(--line); border-radius:14px; background:var(--bg-alt);
   }
   .dl-help summary{
-    cursor:pointer; list-style:none; padding:13px 18px;
+    cursor:pointer; list-style:none; padding:13px 18px; position:relative;
     color:var(--ink); font-weight:600; font-size:14px; text-align:center;
   }
   .dl-help summary::-webkit-details-marker{display:none}
+  .dl-help summary::after{
+    content:"+"; position:absolute; right:14px; top:50%; transform:translateY(-50%);
+    font-size:18px; font-weight:400; color:var(--faint); transition:transform .2s ease;
+  }
+  .dl-help[open] summary::after{transform:translateY(-50%) rotate(45deg)}
   .dl-help-body{padding:0 18px 16px}
   .dl-help-body p{margin:0 0 10px}
   .dl-help-body .warn{color:#b25000}
@@ -233,7 +304,7 @@
   .band{padding:96px 0}
   .band.alt{background:var(--bg-alt)}
   .band-head{max-width:760px; margin:0 auto 52px; text-align:center}
-  .kicker{margin:0 0 10px; font-size:14px; font-weight:600; color:var(--gold); letter-spacing:.06em; text-transform:uppercase}
+  .kicker{margin:0 0 10px; font-size:14px; font-weight:600; color:var(--gold-text); letter-spacing:.06em; text-transform:uppercase}
   h2{
     margin:0; font-size:clamp(32px, 4.6vw, 52px);
     line-height:1.12; letter-spacing:-.012em; font-weight:700;
@@ -333,7 +404,7 @@
   .list li{position:relative; padding:7px 0 7px 26px}
   .list li::before{
     content:"✓"; position:absolute; left:2px; top:7px;
-    color:var(--green); font-weight:800;
+    color:var(--green-text); font-weight:800;
   }
 
   /* ---------- Mac ---------- */
@@ -347,8 +418,13 @@
   .mac-panel h3{margin:0 0 10px; font-size:24px; letter-spacing:-.01em}
   .mac-panel p{margin:0; color:var(--body); font-size:15px}
   .mac-panel details{margin-top:16px; border:1px solid var(--line); border-radius:12px}
-  .mac-panel summary{cursor:pointer; list-style:none; padding:13px 16px; font-weight:600; font-size:14px}
+  .mac-panel summary{cursor:pointer; list-style:none; padding:13px 16px; font-weight:600; font-size:14px; position:relative}
   .mac-panel summary::-webkit-details-marker{display:none}
+  .mac-panel summary::after{
+    content:"+"; position:absolute; right:14px; top:50%; transform:translateY(-50%);
+    font-size:18px; font-weight:400; color:var(--faint); transition:transform .2s ease;
+  }
+  .mac-panel details[open] summary::after{transform:translateY(-50%) rotate(45deg)}
   .mac-panel ol{margin:0; padding:0 18px 14px 36px; color:var(--body); font-size:14px}
   .mac-panel li{margin:7px 0}
   .mac-panel .warn{margin:0 16px 14px; color:#b25000; font-size:13px}
@@ -409,7 +485,47 @@
   footer .cols{display:flex; justify-content:space-between; gap:18px; flex-wrap:wrap}
   footer a{color:var(--gray); margin-right:18px}
   footer a:hover{color:var(--ink)}
+  footer .gh-link{
+    display:inline-flex; align-items:center; gap:6px;
+    color:var(--ink); font-weight:600;
+  }
+  footer .gh-link svg{width:15px; height:15px; flex:none}
   footer .fine{margin-top:14px; color:var(--faint)}
+
+  /* ---------- Open source ---------- */
+  .oss-card{
+    display:grid; grid-template-columns:1.45fr .8fr; gap:34px; align-items:center;
+    padding:38px 40px; border-radius:28px;
+    background:var(--bg-alt); border:1px solid var(--line);
+  }
+  .oss-repo{display:flex; align-items:center; gap:14px}
+  .oss-repo svg{width:38px; height:38px; flex:none; color:var(--ink)}
+  .oss-repo strong{display:block; font-size:19px; letter-spacing:-.01em}
+  .oss-repo span{display:block; margin-top:3px; color:var(--gray); font-size:13.5px}
+  .oss-list{margin:22px 0 0; padding:0; list-style:none; color:var(--body); font-size:15px}
+  .oss-list li{position:relative; padding:8px 0 8px 28px}
+  .oss-list li::before{
+    content:""; position:absolute; left:0; top:16px;
+    width:14px; height:14px; border-radius:50%; background:var(--green);
+  }
+  .oss-list li b{color:var(--ink); font-weight:700}
+  .oss-actions{display:flex; flex-direction:column; gap:12px}
+  .btn-gh{
+    display:inline-flex; align-items:center; justify-content:center; gap:9px;
+    padding:15px 26px; border-radius:980px;
+    background:var(--ink); color:#fff !important; font-size:15.5px; font-weight:600;
+    transition:transform .2s ease, background .2s ease;
+  }
+  .btn-gh:hover{background:#000; transform:translateY(-1px); text-decoration:none}
+  .btn-gh svg{width:18px; height:18px; flex:none}
+  .btn-gh .arrow{font-size:14px; opacity:.7}
+  .btn-gh-ghost{
+    display:block; text-align:center; padding:12px 18px;
+    border:1px solid var(--line); border-radius:980px;
+    color:var(--body); font-size:13.5px; font-weight:600; background:#fff;
+  }
+  .btn-gh-ghost:hover{color:var(--ink); border-color:rgba(0,0,0,.22); text-decoration:none}
+  .oss-note{margin:12px 0 0; text-align:center; color:var(--faint); font-size:12.5px}
 
   /* ---------- 进场动画 ---------- */
   .reveal{opacity:0; transform:translateY(26px); transition:opacity .7s ease, transform .7s cubic-bezier(.2,.6,.2,1)}
@@ -421,6 +537,8 @@
 
   /* ---------- 响应式 ---------- */
   @media(max-width:980px){
+    .nav-links{gap:18px}
+    .nav-links .nav-opt{display:none}
     .tools-grid{grid-template-columns:1fr 1fr}
     .tiles{grid-template-columns:1fr}
     .steps{grid-template-columns:1fr}
@@ -428,14 +546,24 @@
     .mac-panel{grid-template-columns:1fr; gap:20px}
     .stats{grid-template-columns:1fr 1fr; gap:18px 0}
     .stats .item:nth-child(3){border-left:0}
+    .oss-card{grid-template-columns:1fr; gap:24px}
+    .oss-actions{flex-direction:row; flex-wrap:wrap}
+    .btn-gh{flex:1 1 240px}
+    .btn-gh-ghost{flex:1 1 200px; display:flex; align-items:center; justify-content:center}
   }
   @media(max-width:700px){
     .wrap,.nav{width:min(100% - 32px, 1080px)}
     .nav{height:48px}
-    .nav-links a:not(.nav-dl){display:none}
+    .nav-links{gap:14px}
+    .nav-links a:not(.nav-dl):not(.nav-gh){display:none}
+    .nav-menu{display:block}
+    .nav-gh .gh-text{display:none}
+    .nav-gh{padding:4px 5px}
+    .nav-gh{font-size:13px}
     .hero{padding-top:56px}
     .hero .sub{font-size:16.5px}
     .btn-primary{width:100%; min-width:0}
+    .dl-helps{grid-template-columns:1fr}
     .band{padding:64px 0}
     .band-head{margin-bottom:34px}
     .tools-grid{grid-template-columns:1fr}
@@ -450,13 +578,18 @@
     .closing{padding:72px 0 80px}
     .dockbar{left:14px; right:14px; transform:translate(0,140%); justify-content:space-between}
     .dockbar.show{transform:translate(0,0)}
+    .oss-card{padding:28px 22px}
+    .oss-actions{flex-direction:column}
+    .btn-gh,.btn-gh-ghost{flex:none}
     footer .cols{display:block}
     footer a{display:inline-block; margin-bottom:8px}
   }
 </style>
+<noscript><style>.reveal{opacity:1;transform:none}.nav-menu{display:none}</style></noscript>
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to main content</a>
 <header>
   <nav class="nav" aria-label="Main navigation">
     <a class="logo" href="#">
@@ -471,23 +604,43 @@
       <a href="#mac">Mac</a>
       <a href="#faq">FAQ</a>
       <a href="../changelog.html">Changelog (中文)</a>
-      <a href="../xueyuan/index.html">AI Academy (中文)</a>
-      <a href="../cad-ai-audit.html">CAD Audit (中文)</a>
+      <a class="nav-opt" href="../xueyuan/index.html">AI Academy (中文)</a>
+      <a class="nav-opt" href="../cad-ai-audit.html">CAD Audit (中文)</a>
+      <details class="nav-menu">
+        <summary aria-label="Open navigation menu">Menu</summary>
+        <div class="nav-menu-panel">
+          <a href="#tools">AI Tools</a>
+          <a href="#what">Capabilities</a>
+          <a href="#how">Get Started</a>
+          <a href="#price">Pricing</a>
+          <a href="#opensource">Open Source</a>
+          <a href="#faq">FAQ</a>
+          <a href="../changelog.html">Changelog (中文)</a>
+          <a href="../xueyuan/index.html">AI Academy (中文)</a>
+          <a href="../cad-ai-audit.html">CAD Audit (中文)</a>
+          <a href="../index.html" hreflang="zh-CN">中文</a>
+        </div>
+      </details>
+      <a class="nav-gh" href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener" aria-label="U-King source code on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span class="gh-text">GitHub</span>
+      </a>
       <a class="nav-lang" href="../index.html" hreflang="zh-CN">中文</a>
       <a class="nav-dl" href="#download">Download</a>
     </div>
   </nav>
 </header>
 
-<main>
+<main id="main">
+<span class="sr-only" id="copyLive" role="status" aria-live="polite"></span>
   <!-- ============ Hero ============ -->
   <section class="hero">
     <div class="wrap">
       <p class="eyebrow">U-King · AI Setup Assistant</p>
       <h1>AI tools that<br>just work.</h1>
       <p class="sub">
-        Conversational one-click setup for <b>Codex, Claude Code, OpenClaw, and Hermes</b> —
-        verified connectivity out of the box.<br class="pc-br">No command line needed.
+        Conversational one-click setup for <b>OpenClaw, Claude Code, Codex, and Hermes</b> —
+        <span class="nb">11 AI tools</span> in total, auto-configured with China-accessible drivers and verified after install.<br class="pc-br">No command line needed.
       </p>
 
       <div class="cta-stack" id="download">
@@ -501,7 +654,7 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 19h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span id="primaryLabel">Free Download for Windows</span>
         </a>
-        <p class="dl-caption"><span data-ver>V0.9.31</span> · <span id="capMeta">Windows 10 / 11 · installer only 2 MB · free, no registration</span></p>
+        <p class="dl-caption"><span data-ver>Latest</span> · <span id="capMeta">Windows 10 / 11 · ~5 MB installer · free, no registration</span></p>
         <p class="alt-links" id="altLinks">
           <a href="https://u-claw.org.cn/download/U-King.exe" data-file="U-King.exe">Portable Windows version (USB-friendly)</a>
           <span class="sep">|</span>
@@ -509,6 +662,16 @@
         </p>
         <p class="dl-status" id="dlStatus" role="status"></p>
 
+        <p class="oss-line">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          <a href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">Source code on GitHub</a>
+          <span class="dot">·</span>
+          <span class="lic">Apache-2.0</span>
+          <span class="dot">·</span>
+          <span>build it yourself, audit it yourself</span>
+        </p>
+
+        <div class="dl-helps">
         <details class="dl-help stable-download">
           <summary>Having trouble with the latest version? Download the verified stable version</summary>
           <div class="dl-help-body">
@@ -556,10 +719,11 @@
             <p>If antivirus flags interrupt installation, you can also whitelist the install folder up front: Windows Security → Virus & threat protection → <b>Manage settings</b> under "Virus & threat protection settings" → scroll down to <b>Add or remove exclusions</b> → add the folder <code>%USERPROFILE%\.uking</code>.</p>
           </div>
         </details>
+        </div>
       </div>
 
       <!-- 产品视觉 -->
-      <div class="hero-visual reveal" aria-label="U-King product interface preview">
+      <div class="hero-visual reveal" aria-hidden="true">
         <div class="app-shot">
           <div class="shot-top">
             <span class="win-dot"></span><span class="win-dot"></span><span class="win-dot"></span>
@@ -568,11 +732,10 @@
           <div class="shot-body">
             <aside class="shot-side">
               <div class="side-title">U-KING</div>
-              <div class="side-item active"><span class="side-dot"></span>Setup Wizard</div>
-              <div class="side-item"><span class="side-dot"></span>My AI</div>
-              <div class="side-item"><span class="side-dot"></span>Codex Workspace</div>
-              <div class="side-item"><span class="side-dot"></span>AI Image</div>
-              <div class="side-item"><span class="side-dot"></span>Terminal</div>
+              <div class="side-item active"><span class="side-dot"></span>My AI</div>
+              <div class="side-item"><span class="side-dot"></span>Workbench</div>
+              <div class="side-item"><span class="side-dot"></span>AI Create</div>
+              <div class="side-item"><span class="side-dot"></span>AI Settings</div>
               <div class="side-title">TOOLS</div>
               <div class="side-item" data-c="claude"><span class="side-dot"></span>Claude Code</div>
               <div class="side-item" data-c="codex"><span class="side-dot"></span>Codex</div>
@@ -581,7 +744,7 @@
             </aside>
             <div class="shot-main">
               <div class="shot-bar">
-                <strong>Setup Wizard</strong>
+                <strong>My AI</strong>
                 <span class="pill">XiaPan Cloud · deepseek-v4-pro · Connected</span>
               </div>
               <div class="mock-card">
@@ -608,7 +771,7 @@
       <div class="stats reveal" aria-label="Product highlights">
         <div class="item"><strong>5 min</strong><span>from download to AI chat</span></div>
         <div class="item"><strong>0 config</strong><span>Node · PATH · Key, fully automatic</span></div>
-        <div class="item"><strong>4 tools</strong><span>installed once, ready instantly</span></div>
+        <div class="item"><strong>11 tools</strong><span>4 main + 7 on demand</span></div>
         <div class="item"><strong>¥0</strong><span>the assistant itself is forever free</span></div>
       </div>
       <div class="hero-end"></div>
@@ -620,13 +783,13 @@
     <div class="wrap">
       <div class="band-head reveal">
         <p class="kicker">AI Tools</p>
-        <h2>One download, four AI tools installed.</h2>
-        <p>U-King's conversational wizard installs OpenClaw, Claude Code, Codex, and Hermes, auto-configured with China-accessible model drivers, verified and ready to use out of the box.</p>
+        <h2>One download, <span class="nb">11 AI tools</span> installed.</h2>
+        <p>U-King's conversational wizard installs Claude Code, Codex, ClawX (OpenClaw) and Hermes, auto-configured with China-accessible model drivers and verified. The tool catalog also has 7 more — Codex Desktop, DSH, pi, OpenCode, UU Remote, WorkBuddy, magpie — install them whenever you need.</p>
       </div>
       <div class="tools-grid reveal">
         <article class="tool-card" style="--brand:#ff5a5a">
-          <span class="tool-logo"><img src="../logos/openclaw.svg" alt="OpenClaw" loading="lazy" /></span>
-          <h3>OpenClaw</h3>
+          <span class="tool-logo"><img src="../logos/openclaw.svg" alt="OpenClaw" width="32" height="32" loading="lazy" /></span>
+          <h3>OpenClaw (ClawX)</h3>
           <p class="tool-sub">Localized AI ecosystem &amp; smart assistant</p>
           <ul class="tool-list">
             <li>A stronger, safer localized AI assistant</li>
@@ -636,7 +799,7 @@
           </ul>
         </article>
         <article class="tool-card" style="--brand:#d97757">
-          <span class="tool-logo"><img src="../logos/claude.svg" alt="Claude" loading="lazy" /></span>
+          <span class="tool-logo"><img src="../logos/claude.svg" alt="Claude" width="32" height="32" loading="lazy" /></span>
           <h3>Claude Code</h3>
           <p class="tool-sub">Coding assistant by Anthropic</p>
           <ul class="tool-list">
@@ -647,7 +810,7 @@
           </ul>
         </article>
         <article class="tool-card" style="--brand:#4d8cf0">
-          <span class="tool-logo"><img src="../logos/codex.svg" alt="Codex" loading="lazy" /></span>
+          <span class="tool-logo"><img src="../logos/codex.svg" alt="Codex" width="32" height="32" loading="lazy" /></span>
           <h3>Codex</h3>
           <p class="tool-sub">Coding agent by OpenAI</p>
           <ul class="tool-list">
@@ -658,14 +821,14 @@
           </ul>
         </article>
         <article class="tool-card" style="--brand:#e6a23c">
-          <span class="tool-logo"><img src="../logos/hermes.png" alt="Hermes Agent" loading="lazy" /></span>
+          <span class="tool-logo"><img src="../logos/hermes.png" alt="Hermes Agent" width="32" height="32" loading="lazy" /></span>
           <h3>Hermes Agent</h3>
           <p class="tool-sub">Context engineering for foundation models</p>
           <ul class="tool-list">
             <li>Strong memory + task planning + Skills</li>
             <li>Flexible workflow and strategy orchestration</li>
-            <li>Web console, beginner-friendly</li>
-            <li>One-click web console setup, ready to use</li>
+            <li>Opens straight into a terminal chat — type in Chinese</li>
+            <li>Installed and configured with the China-accessible driver</li>
           </ul>
         </article>
       </div>
@@ -693,13 +856,13 @@
         </article>
         <article class="tile">
           <div class="ticon" style="background:#ff6b5e"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12a7 7 0 0 1 12-5M19 12a7 7 0 0 1-12 5M17 4v5h-5M7 20v-5h5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <h3>AI auto-repair</h3>
-          <p>When installation fails, the logs go to AI for diagnosis and a fix command is proposed; dangerous commands are always blocked and only run after you confirm, then it auto-reinstalls and re-verifies.</p>
+          <h3>Ask AI when install fails</h3>
+          <p>If setup or an upgrade gets stuck, hand the redacted task to the maintenance assistant with one click and AI walks you through the fix; anything that changes your machine needs your explicit confirmation at each step.</p>
         </article>
         <article class="tile">
           <div class="ticon" style="background:#e2a93b"><svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16v12H4zM8 21h8M12 17v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <h3>Codex workspace</h3>
-          <p>Chat, terminal, files, and browser collaborate on one screen, with AI work sessions saved per project. No need to know prompt engineering — a task generator helps you phrase what you need clearly.</p>
+          <h3>Workbench</h3>
+          <p>Chat, terminal, and your project/session list on one page — describe the task and watch it run commands. Switching pages keeps terminals and conversations alive, and you can pick up tomorrow where you left off.</p>
         </article>
       </div>
     </div>
@@ -714,7 +877,7 @@
         <p>No need to learn a pile of concepts on the website. Download, run the wizard, pick a driver, then let AI start handling your work.</p>
       </div>
       <div class="steps reveal">
-        <article class="step"><h3>Download U-King</h3><p>The 2 MB installer is recommended for Windows; the portable version is great for carrying on a USB drive. Mac installs with a single command that avoids unsigned-app blocking.</p></article>
+        <article class="step"><h3>Download U-King</h3><p>The ~5 MB installer is recommended for Windows; the ~13 MB portable version is great for carrying on a USB drive. Mac installs with a single command that avoids unsigned-app blocking.</p></article>
         <article class="step"><h3>Run the setup wizard</h3><p>Auto-detects Node, npm, Codex, Claude Code, Git, and more, fills in whatever is missing, with the whole process visible.</p></article>
         <article class="step"><h3>Pick a driver, start working</h3><p>Choose XiaPan Cloud or fill in your own API Key. Setup isn't considered complete until the model actually replies with a real message.</p></article>
       </div>
@@ -747,11 +910,46 @@
           <p class="token">Already have your own API Key? You can just enter it</p>
           <ul class="list">
             <li>Conversational setup wizard + automatic verification</li>
-            <li>AI auto-repairs failed installs</li>
-            <li>Entry points for Codex / Claude Code / OpenClaw / Hermes</li>
+            <li>Ask AI to help when an install fails</li>
+            <li>11 AI tools under one roof (Claude Code / Codex / ClawX / Hermes / DSH …)</li>
             <li>Switch anytime between DeepSeek, Zhipu, Kimi, or official config</li>
           </ul>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Open Source ============ -->
+  <section id="opensource" class="band">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <p class="kicker">Open Source</p>
+        <h2>The source is on GitHub.</h2>
+        <p>U-King is open-source software under Apache-2.0: the desktop code, install manifests, and driver configuration are all public. What it installs, what it writes, and which service it talks to — you can check the code yourself.</p>
+      </div>
+      <div class="oss-card reveal">
+        <div>
+          <div class="oss-repo">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            <div>
+              <strong>dongsheng123132/u-king</strong>
+              <span>Tauri 2 · Rust · React · TypeScript</span>
+            </div>
+          </div>
+          <ul class="oss-list">
+            <li><b>Auditable</b>: install scripts, driver writes, and terminal calls are all in the repo.</li>
+            <li><b>Build it yourself</b>: compile locally without relying on our servers.</li>
+            <li><b>Contributions welcome</b>: open an Issue, send a PR.</li>
+          </ul>
+          <p class="oss-note">Only XiaPan Cloud model credits are paid; the assistant and its source are free forever.</p>
+        </div>
+        <div class="oss-actions">
+          <a class="btn-gh" href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            Open the GitHub repository <span class="arrow" aria-hidden="true">↗</span>
+          </a>
+          <a class="btn-gh-ghost" href="https://github.com/dongsheng123132/u-king/blob/main/LICENSE" target="_blank" rel="noopener">Read the Apache-2.0 license</a>
+        </div>
       </div>
     </div>
   </section>
@@ -801,7 +999,7 @@
         <details><summary>How does top-up work? Will it overcharge me?</summary><div class="ans"><code>¥1 = 500,000 tokens</code>, with a ¥20 minimum through the U-King channel. Tokens are only consumed when calling a model; the assistant itself is free.</div></details>
         <details><summary>What is the device-specific Key?</summary><div class="ans">U-King generates a stable Key based on your computer, used for balance and top-ups. It's recommended to back it up before reinstalling your OS; if lost, you can recover it via support with your order info.</div></details>
         <details><summary>I already have a DeepSeek / Zhipu / Kimi API Key</summary><div class="ans">You can enter your own Key directly and still enjoy one-click install, auto-repair, and the workspace.</div></details>
-        <details><summary>Can I carry it on a USB drive?</summary><div class="ans">Yes. The Windows portable version is a single file, ideal for a USB drive; it can also be one-click copied to a local folder.</div></details>
+        <details><summary>Can I carry it on a USB drive?</summary><div class="ans">Yes. The Windows portable version is a single file — drop it on a USB drive and double-click; no reinstall needed when you switch computers.</div></details>
         <details><summary>What if the download says the connection was reset?</summary><div class="ans">The download button automatically picks a mirror. On Windows you can run <code>irm https://u-claw.org.cn/uking/dl.ps1 | iex</code> in PowerShell; on Mac run <code>curl -fsSL https://u-claw.org.cn/uking/install-mac.sh | sh</code> in Terminal. Both scripts try backup mirrors, and prompt for a manual download if all of them fail.</div></details>
         <details><summary>What if I get a blank white screen after opening it?</summary><div class="ans">This is usually a missing Microsoft Edge WebView2 runtime. The installer fills it in automatically; for the portable version, install the official Microsoft WebView2 runtime and try again.</div></details>
         <details><summary>Does it work on Windows 7 / 8? What about "The procedure entry point ProcessPrng could not be located"?</summary><div class="ans"><b>No, Windows 10 or 11 is required.</b> On Win7 / 8 / 8.1, double-clicking will show "The procedure entry point <code>ProcessPrng</code> could not be located in the dynamic link library <code>bcryptprimitives.dll</code>" — this happens because the system is missing an API that only exists on Win10, <b>it's not a corrupted file or a virus</b>, and re-downloading, switching mirrors, or disabling antivirus won't help. The installer will complete on older systems, but launching it from the icon afterward shows the same error. Press <b>Win + R</b> and type <code>winver</code> to check your system version; it will work normally after upgrading to Win10 / 11.</div></details>
@@ -818,7 +1016,7 @@
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 19h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span id="closingLabel">Free Download for Windows</span>
       </a>
-      <p class="dl-caption"><span data-ver>V0.9.31</span> · Windows 10 / 11 · macOS 12+</p>
+      <p class="dl-caption"><span data-ver>Latest</span> · Windows 10 / 11 · macOS 12+</p>
     </div>
   </section>
 </main>
@@ -827,13 +1025,18 @@
   <div class="wrap">
     <div class="cols">
       <div>
-        <a href="https://cloud.u-claw.org/#recharge">XiaPan Cloud top-up</a>
-        <a href="https://u-claw.org">U-Claw Suite</a>
+        <a class="gh-link" href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub repository
+        </a>
         <a href="../xueyuan/index.html">AI Academy (中文)</a>
         <a href="../changelog.html">Changelog (中文)</a>
         <a href="../whats-new.html">What's New (中文)</a>
         <a href="../cad-ai-audit.html">CAD AI Audit (中文)</a>
+        <a href="https://cloud.u-claw.org/#recharge">XiaPan Cloud top-up</a>
+        <a href="https://u-claw.org">U-Claw Suite</a>
         <a href="../skills/install-windows.json">Install manifest</a>
+        <a href="https://github.com/dongsheng123132/u-king/blob/main/LICENSE" target="_blank" rel="noopener">Apache-2.0 license</a>
       </div>
       <div>
         <a href="../terms.html">Terms of Service</a>
@@ -844,15 +1047,15 @@
         <span style="opacity:.75">U-King is a product operated by 火火的(深圳)科技有限公司 (Huohuode (Shenzhen) Technology Co., Ltd.)</span>
       </div>
     </div>
-    <p class="fine">Windows 10/11 · macOS 12+ · no admin rights required · download automatically picks the fastest mirror</p>
+    <p class="fine">Windows 10/11 · macOS 12+ · no admin rights needed for the app itself (installing some tools may ask for approval once) · download automatically picks the fastest mirror · open source Apache-2.0</p>
   </div>
 </footer>
 
 <!-- 底部悬浮下载条 -->
-<div class="dockbar" id="dockbar" aria-hidden="true">
+<div class="dockbar" id="dockbar" aria-hidden="true" inert>
   <span class="dname">
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 17.5h16l-1.4-9-4.4 3.6L12 5.5l-2.2 6.6-4.4-3.6L4 17.5Z" fill="#e2a93b" stroke="#1d1d1f" stroke-width="1.1" stroke-linejoin="round"/></svg>
-    U-King <span class="dver" data-ver>V0.9.31</span>
+    U-King <span class="dver" data-ver>Latest</span>
   </span>
   <a class="dock-btn" id="dockBtn" data-file="U-King-Setup.exe" href="https://u-claw.org.cn/download/U-King-Setup.exe">Free Download</a>
 </div>
@@ -881,13 +1084,17 @@
       setBtn('closingBtn','closingLabel','One-click install for macOS','#mac',null);
       var dockBtn = document.getElementById('dockBtn');
       if(dockBtn){ dockBtn.textContent='One-click install'; dockBtn.setAttribute('href','#mac'); dockBtn.removeAttribute('data-file'); }
-      if(capMeta) capMeta.textContent = 'macOS 12+ · ~6 MB · Free, no registration';
+      if(capMeta) capMeta.textContent = 'macOS 12+ · ~10 MB · Free, no registration';
       if(altLinks) altLinks.innerHTML =
         '<a href="https://u-claw.org.cn/download/U-King-Setup.exe" data-file="U-King-Setup.exe">Windows installer</a>' +
         '<span class="sep">|</span>' +
         '<a href="https://u-claw.org.cn/download/U-King.exe" data-file="U-King.exe">Windows portable (USB-friendly)</a>';
     }else if(isMobile){
       if(capMeta) capMeta.textContent = 'U-King is a desktop app — open this page on a Windows or Mac computer to download';
+      setBtn('primaryBtn','primaryLabel','Download Windows version on a computer', 'https://u-claw.org.cn/download/U-King-Setup.exe', 'U-King-Setup.exe');
+      setBtn('closingBtn','closingLabel','Download Windows version on a computer', 'https://u-claw.org.cn/download/U-King-Setup.exe', 'U-King-Setup.exe');
+      var dockBtnMobile = document.getElementById('dockBtn');
+      if(dockBtnMobile) dockBtnMobile.textContent = 'Download on a PC';
     }else if(/Windows NT (5\.[12]|6\.[0123])(;|\))/.test(ua)){
       // Win XP(5.1) / Vista(6.0) / 7(6.1) / 8(6.2) / 8.1(6.3)：exe 依赖 Win10+ 的
       // ProcessPrng，下下来必然启动失败，下载前就拦住并解释清楚。
@@ -964,15 +1171,39 @@
 
   // ---------- Copy command ----------
   (function(){
+    var live = document.getElementById('copyLive');
+    function say(msg){ if(live) live.textContent = msg; }
+    function flash(btn){
+      var old = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      setTimeout(function(){ btn.textContent = old; }, 1600);
+    }
+    function fallbackCopy(text){
+      try{
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly','');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      }catch(e){ return false; }
+    }
     document.querySelectorAll('[data-copy]').forEach(function(btn){
       btn.addEventListener('click', function(){
-        var el=document.getElementById(btn.getAttribute('data-copy'));
+        var el = document.getElementById(btn.getAttribute('data-copy'));
         if(!el) return;
-        navigator.clipboard.writeText(el.textContent).then(function(){
-          var old=btn.textContent;
-          btn.textContent='Copied ✓';
-          setTimeout(function(){btn.textContent=old;},1600);
-        });
+        var text = el.textContent;
+        function done(){ flash(btn); say('Command copied to clipboard'); }
+        function fail(){ say('Copy failed — select the command and press Ctrl+C'); }
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text).then(done, function(){ (fallbackCopy(text) ? done : fail)(); });
+        }else{
+          (fallbackCopy(text) ? done : fail)();
+        }
       });
     });
   })();
@@ -1016,6 +1247,8 @@
       var show = pastHero && !nearBottom();
       bar.classList.toggle('show', show);
       bar.setAttribute('aria-hidden', show ? 'false' : 'true');
+      if(show) bar.removeAttribute('inert');
+      else bar.setAttribute('inert', '');
     }
     var ticking=false;
     window.addEventListener('scroll', function(){

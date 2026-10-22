@@ -4,6 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>最新动态 · U-King</title>
+<meta name="description" content="U-King 最新动态：版本更新、活动与公告，内容随时更新，不用升级软件也能看到。" />
+<link rel="canonical" href="https://u-claw.org.cn/uking/whats-new.html" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="U-King 最新动态" />
+<meta property="og:description" content="版本更新、活动与公告，随时更新。" />
+<meta property="og:url" content="https://u-claw.org.cn/uking/whats-new.html" />
+<meta property="og:image" content="https://u-claw.org.cn/uking/og-cover.png" />
 <style>
   :root { --bg:#0d0d0f; --card:#16161a; --line:rgba(255,255,255,.08); --ink:#f7f8f8; --ink2:#c4c6cc; --ink3:#9598a1; --gold:#d4a64a; --accent:#5e6ad2; --ok:#3ecf8e; }
   * { box-sizing:border-box; }
@@ -38,11 +45,19 @@
   <div class="card">
     <div class="date">2026-10-21 <span class="tag new">新版本</span></div>
     <h2>U-King 1.4.9 发布：AI 只读 3 份技能说明，其余改软件内部调用</h2>
-    <p>这版把「工作台」改回大家熟悉的样子：<b>对话（Claude Code 底座）+ 终端 + 左侧项目/会话</b>，切页不丢终端和对话；维护助手只负责装机/故障兜底，<b>每次进去都是全新对话</b>，左边保留历史记录。</p>
+    <p>这版继续省钱：AI 工具里默认只留 <b>3 份技能说明</b>（作图视频 / 读文档 / 搭工作台），其余技能收进软件自己用，不再占每一轮对话的上下文。</p>
+    <p>出 PPT、出 Word、出 Excel、出 CAD 图纸这些能力<b>都还在</b>，只是改成软件内部直接调用，不经过 AI 上下文、也不花 token；相比最初，AI 每轮要读的技能说明少了约六成。</p>
+    <p>你自己<b>手动装过的技能包不会被清理</b>（升级时点名跳过）；看图默认走 DeepSeek 原生，不再依赖单独的识图技能包。</p>
+    <p>源码开源：<a href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">github.com/dongsheng123132/u-king</a>（Apache-2.0）</p>
+  </div>
+
+  <div class="card">
+    <div class="date">2026-10-21 <span class="tag">版本回顾</span></div>
+    <h2>U-King 1.4.7 / 1.4.8 回顾：工作台回原样，工具目录收敛到 11 个</h2>
+    <p>工作台改回大家熟悉的样子：<b>对话（Claude Code 底座）+ 终端 + 左侧项目/会话</b>，切页不丢终端和对话；维护助手只负责装机/故障兜底，每次进去都是全新对话，左边保留历史记录。</p>
     <p>「我的 AI」精简到 <b>11 个工具</b>（Claude Code、Codex、Codex 桌面版、ClawX、Hermes、DSH、pi、OpenCode、UU 远程、WorkBuddy、magpie），图形工具点开直接开窗；文件树、预览面板、任务护照、git 工作树等不常用入口撤掉。</p>
     <p>装机/升级搞不定时可以交给 AI：向导里勾「让 AI 来安装」，或工具卡点「升级失败？让 AI 修」，会自动新开一条维护对话并把脱敏后的任务填好。</p>
-    <p>模型列表默认只留 3 个国产（DeepSeek V4 Flash / V4 Pro / Kimi K3）；技能包精简到 8 个、每条对话发送的历史也收窄到 1/3，<b>长聊更省钱</b>。</p>
-    <p>源码开源：<a href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">github.com/dongsheng123132/u-king</a></p>
+    <p>模型列表默认只留 3 个国产（DeepSeek V4 Flash / V4 Pro / Kimi K3）；1.4.8 把技能包从 14 个精简到 8 个、每条对话发送的历史收窄到 1/3，<b>长聊更省钱</b>，官网页脚也从这一版起加上 GitHub 开源入口。</p>
   </div>
 
   <div class="card">
@@ -55,7 +70,7 @@
     <p style="color:var(--ink3)">更多动态陆续更新中…</p>
   </div>
 
-  <footer>U-King · 让 AI 装机像插 U 盘一样简单</footer>
+  <footer>U-King · 让 AI 装机像插 U 盘一样简单 · <a href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">GitHub 开源仓库</a></footer>
 </div>
 </body>
 </html>

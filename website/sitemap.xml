@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- U-King 官网站点地图。
+     部署位置：https://u-claw.org.cn/uking/sitemap.xml
+     注意：robots.txt 只认主机根目录，/uking/ 下不放 robots.txt；
+     根 sitemap 收录 /uking/ 需要运维在主站根 sitemap 里补一条。 -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://u-claw.org.cn/uking/</loc><lastmod>2026-10-22</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/en/</loc><lastmod>2026-10-22</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/xueyuan/</loc><lastmod>2026-10-22</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/changelog.html</loc><lastmod>2026-10-22</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/whats-new.html</loc><lastmod>2026-10-22</lastmod><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/cad-ai-audit.html</loc><lastmod>2026-10-22</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/terms.html</loc><lastmod>2026-10-22</lastmod><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/privacy.html</loc><lastmod>2026-10-22</lastmod><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://u-claw.org.cn/uking/refund.html</loc><lastmod>2026-10-22</lastmod><changefreq>yearly</changefreq><priority>0.2</priority></url>
+</urlset>

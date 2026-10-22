@@ -8,7 +8,7 @@
 <meta name="keywords" content="CAD AI,AI审图,CAD图纸审核,门窗统计,图纸审查,DWG,DXF,美国图纸审核,本象协议">
 <meta property="og:title" content="能看图，不等于能审图：本象 CAD 对象级审计案例">
 <meta property="og:description" content="截图式 AI 回答 7/5；对象级审计交付 168/22、190/190 定位与可追溯证据。">
-<link rel="canonical" href="https://www.u-king.org/cad-ai-audit.html">
+<link rel="canonical" href="https://u-claw.org.cn/uking/cad-ai-audit.html">
 <link rel="stylesheet" href="cad-ai-audit/site.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111113'/%3E%3Ccircle cx='22' cy='10' r='5' fill='%23c9a227'/%3E%3C/svg%3E">
 <style>
@@ -38,27 +38,27 @@ html,body{overflow-x:hidden;max-width:100%}.cad-wrap,.article-grid,.audit-metric
 <pre><code>194 = 4 个块定义模板 + 190 个实际放置对象
 190 = 168 个窗 + 22 个门 + 0 个未分类</code></pre>
 <p>本象没有把 168 压成一行日志。每个门窗保留稳定 handle、分类依据、载荷指纹和位置证据。客户质疑“这樘窗为什么算进去”，可以直接定位对象，而不是重新问一次 AI。</p>
-<img class="evidence-img" src="cad-ai-audit/03-object-map.png" alt="190个实际门窗对象落回脱敏CAD基础几何">
+<img class="evidence-img" src="cad-ai-audit/03-object-map.png" width="1504" height="444" loading="lazy" decoding="async" alt="190个实际门窗对象落回脱敏CAD基础几何">
 <p class="caption">图 2 · 190/190 个模型空间门窗对象恢复位置锚点，可按对象 ID 查询。</p>
-<img class="evidence-img" src="cad-ai-audit/04-single-object.png" alt="单个CAD门窗对象的坐标、证据和查询命令">
+<img class="evidence-img" src="cad-ai-audit/04-single-object.png" width="1504" height="795" loading="lazy" decoding="async" alt="单个CAD门窗对象的坐标、证据和查询命令">
 <p class="caption">图 3 · 单对象 opening:38A：坐标、写入事务、解码依据和复核命令同时保留。</p>
 <blockquote>截图式 AI 给答案；对象级审计交对象。答案可以复制，对象可以继续查。</blockquote>
 <p>边界也写进交付包：168 是窗樘/窗洞对象，不是玻璃片；LibreDWG 独立确认的是总数 194，不是 168/22 分类；精确轮廓、朝向与 bbox 尚未恢复。</p>
 
 <h2 id="delivery">项目交付的不是聊天记录</h2>
 <div class="scope-grid"><div class="scope"><b>源文件身份</b><span>版本、格式、SHA-256。图换了，旧结论不冒充新结论。</span></div><div class="scope"><b>对象清单</b><span>稳定 ID、分类、关系和统计成员。</span></div><div class="scope"><b>回图证据</b><span>位置、客户可读截图和交互查询。</span></div><div class="scope"><b>机器判据</b><span>统计、缺失、命名、图签与跨图一致性。</span></div><div class="scope"><b>派生历史</b><span>谁在什么时候，凭什么写入结果。</span></div><div class="scope"><b>能力边界</b><span>未恢复、未覆盖和必须由专业人员判断的部分。</span></div></div>
-<img class="evidence-img" src="cad-ai-audit/02-deliverables.png" alt="CAD对象级审计包的六类交付内容">
+<img class="evidence-img" src="cad-ai-audit/02-deliverables.png" width="1080" height="1080" loading="lazy" decoding="async" alt="CAD对象级审计包的六类交付内容">
 
 <h2 id="us">国外图纸：已经验证到哪里</h2>
 <p>美国案例来自 <a href="https://www.sandiego.gov/development-services/forms-publications/design-guidelines-templates" target="_blank" rel="noopener">City of San Diego 官方 DS-3179 Construction Plan DXF 模板</a>。导入后得到 187 个对象、319 条关系、10/10 条可判定约束，并识别 inch 单位、9 个页索引、7 项引用标准和待填写字段。</p>
-<img class="evidence-img" src="cad-ai-audit/05-us-certificate.png" alt="圣迭戈市官方DXF完整原图与本象对象级验真证据同屏">
+<img class="evidence-img" src="cad-ai-audit/05-us-certificate.png" width="1080" height="1350" loading="lazy" decoding="async" alt="圣迭戈市官方DXF完整原图与本象对象级验真证据同屏">
 <p class="caption">图 4 · 左侧是官方 DXF 源实体和块参照的完整渲染，右侧是同一源文件的对象、关系、语义和能力边界。</p>
 <p>更正：上一版可视投影没有展开 DXF 块参照，又把多行 CAD 文字按单行 SVG 排版，因此看上去只剩重叠英文。源文件没有拿错，错的是渲染层。新版可见完整图框、Vicinity Map 区、Sheet Index、施工变更表、Street Data Table 与官方图签。</p>
 <p class="proof-note">这证明美国官方 DXF 的对象化和模板语义预检能力，不等于全美法规审查。本象工程验真不是 AHJ 批准，也不替代持证建筑师、工程师或 PE 的责任与签章。</p>
 
 <h2 id="scope">现在可以承接哪些 CAD AI 任务</h2>
 <ul><li>门窗、设备、构件等对象统计与逐项回图；</li><li>图层、命名、图签、页索引、待填字段检查；</li><li>平面图、门窗表、编号和说明之间的一致性预检；</li><li>两版图纸的新增、删除、分类变化和影响范围审查；</li><li>业主或辖区 CAD 标准的机器预检，与专业人员联合复核；</li><li>客户图纸不外传场景下的本地处理与脱敏证据交付。</li></ul>
-<img class="evidence-img" src="cad-ai-audit/06-service-scope.png" alt="国内外CAD AI图纸审核的服务范围与能力边界">
+<img class="evidence-img" src="cad-ai-audit/06-service-scope.png" width="1080" height="1520" loading="lazy" decoding="async" alt="国内外CAD AI图纸审核的服务范围与能力边界">
 
 <div class="cta-panel" id="pilot"><h2>带一张图和一个问题来，先做小样</h2><p>告诉我们：最想查什么、怎样算通过、哪些信息不能外传。我们先交对象清单、回图证据、问题样例、规则口径和能力边界；有用，再扩到整套图集。</p><p><strong>微信：</strong>hecare888　<strong>邮箱：</strong><a href="mailto:hefangsheng@gmail.com">hefangsheng@gmail.com</a></p><p>可承接门窗/设备统计、表图核对、图签检查、版本差异、规则预检及其他边界明确的 CAD AI 任务。作者团队还提供 U-King 多 AI 安装与使用工具，可一键安装和使用 Claude Code、Codex、Hermes。</p><a class="btn btn-primary" href="mailto:hefangsheng@gmail.com?subject=CAD%20AI%20图纸审计小样">邮件提交 CAD 小样需求</a></div>
 
@@ -67,5 +67,5 @@ html,body{overflow-x:hidden;max-width:100%}.cad-wrap,.article-grid,.audit-metric
 
 <aside class="article-side"><h3>本文证据</h3><a href="#baseline">截图基线：7 / 5</a><a href="#objects">对象审计：168 / 22</a><a href="#delivery">客户收到什么</a><a href="#us">美国官方 DXF</a><a href="#scope">可承接任务</a><a href="#pilot">一张图先试点</a></aside></main>
 
-<footer class="footer"><div class="footer-inner"><div><div class="brand-line">U-King × <span class="zh">本象协议</span></div><p>AI 图纸任务，先做对象级小样，再扩整套图集。</p></div><div><h4>案例</h4><a href="cad-ai-audit.html">CAD AI 图纸审计</a><a href="index.html">U-King 首页</a></div><div><h4>联系</h4><a href="mailto:hefangsheng@gmail.com">hefangsheng@gmail.com</a><a href="https://github.com/dongsheng123132/2origin" target="_blank" rel="noopener">GitHub 证据 ↗</a></div></div><div class="footer-bottom"><div class="in"><span>© 2026 U-King · 2Origin</span><span>CAD AI Audit · Evidence before claims</span></div></div></footer>
+<footer class="footer"><div class="footer-inner"><div><div class="brand-line">U-King × <span class="zh">本象协议</span></div><p>AI 图纸任务，先做对象级小样，再扩整套图集。</p></div><div><h4>案例</h4><a href="cad-ai-audit.html">CAD AI 图纸审计</a><a href="index.html">U-King 首页</a></div><div><h4>联系</h4><a href="mailto:hefangsheng@gmail.com">hefangsheng@gmail.com</a><a href="https://github.com/dongsheng123132/2origin" target="_blank" rel="noopener">GitHub 证据 ↗</a><a href="https://github.com/dongsheng123132/u-king" target="_blank" rel="noopener">U-King 源码（Apache-2.0）↗</a></div></div><div class="footer-bottom"><div class="in"><span>© 2026 U-King · 2Origin</span><span>CAD AI Audit · Evidence before claims</span></div></div></footer>
 </body></html>

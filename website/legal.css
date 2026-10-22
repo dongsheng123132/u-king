@@ -82,8 +82,9 @@ footer{border-top:1px solid var(--line); padding:28px 0 44px; color:var(--faint)
 footer .links{display:flex; gap:18px; flex-wrap:wrap; margin-bottom:12px}
 footer a{color:var(--gray)}
 
-/* 语言切换 */
+/* 语言切换：默认（无 JS）显示中文正文，JS 就绪后按浏览器语言/记忆切换 */
 [data-lang]{display:none}
+html:not(.lang-ready) [data-lang="zh"]{display:block}
 [data-lang].show{display:block}
 li[data-lang].show, span[data-lang].show{display:list-item}
 span[data-lang].show{display:inline}
