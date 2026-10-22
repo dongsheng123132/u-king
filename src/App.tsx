@@ -79,10 +79,9 @@ const Feedback = lazy(() => import("./Feedback").then((m) => ({ default: m.Feedb
 const Guide = lazy(() => import("./Guide").then((m) => ({ default: m.Guide })));
 const TerminalPage = lazy(() => import("./TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const ToolAppView = lazy(() => import("./opencodex/ToolAppView").then((m) => ({ default: m.ToolAppView })));
-// 2026-10-22 B 极简改版：首页（我的 AI）与软件库拆成两个独立页面。
-// 旧 `toolhub/ToolHub.tsx`（瓷砖墙 + 详情条）不再被引用，文件先留着（回退成本 = 改这三行），
-// 等真机验过一轮再删——「先藏后摘」，不给用户看到两套并列的入口。
-const HomePage = lazy(() => import("./home/HomePage").then((m) => ({ default: m.HomePage })));
+// 2026-10-22 晚：新版「B 极简首页」已按用户口径撤掉（原话「之前的我的 AI 布局就不错」），
+// 恢复 1.4.9 的 ToolHub 瓷砖墙；本页只多一行「每轮底座」提示，其余不动。
+const ToolHub = lazy(() => import("./toolhub/ToolHub").then((m) => ({ default: m.ToolHub })));
 import { APP_VERSION } from "./version";
 import Changelog from "./Changelog";
 import { cn } from "./lib/cn";
@@ -1354,28 +1353,35 @@ export function App() {
                 onToast={flash}
               />
             ) : tab === "toolhub" ? (
-              // 「我的 AI」首页（2026-10-22 B 极简改版）：一句话状态 + 四个动作块 + 已装细线列表
-              // + 推荐装 + 每轮底座账单。所有动作复用 App.tsx 既有回调（launchTool / uninstallTool /
-              // apply_provider / 装机向导），页面不新开业务通路；旧 ToolHub 瓷砖墙不再被引用。
-              <HomePage
+              // 「我的 AI」——2026-10-22 晚用户拍板：**恢复 1.4.9 这套瓷砖墙布局**（他原话
+              // 「之前的我的 AI 布局就不错，没看到你现在的好在哪里」）。新版那一页已删除；
+              // 只保留三样有实际价值的后台改动：省 token 三刀（默认技能包 0 / 摘旧指针 /
+              // 历史 2.4 万）、magpie 可装、技能包清理安全修复。本页新增的只有一行底座账单。
+              <ToolHub
                 tools={tools}
+                driver={driver}
+                deviceKey={deviceKey}
                 onLaunch={launchTool}
+                onOpen={openTool}
                 onInstallSelection={(ids) => {
                   setWizard((w) => ({ runId: (w?.runId ?? 0) + 1, preselect: ids }));
                   setTab("setup");
                 }}
                 onUninstall={uninstallTool}
-                onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
-                onGoDoctor={() => setTab("myai")}
                 onGoManage={() => setTab("manage")}
-                onGoSkillPack={() => setTab("skillpack")}
-                onGoSetup={startInstallAll}
+                onManageProviders={(editId, tool) => setProviderMgr({ editId, tool })}
                 onRefreshTools={refresh}
+                onToast={flash}
+                onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onAskAiToFix={(prompt) => {
-                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "home-repair" });
+                  setPendingChatPrompt({ prompt, engine: "uking", passportId: "toolhub-repair" });
                   setTab("maintenance");
                 }}
-                // 终端快照「一键重开」条：自升级是硬退出、旧 PTY 活不过去，保留在默认落地页。
+                onGoSetup={startInstallAll}
+                onGoDoctor={() => setTab("myai")}
+                onGoSkillPack={() => setTab("skillpack")}
+                onGoChat={() => setTab("maintenance")}
+                onGoTermWb={() => setTab("maintenance")}
                 termSnapshot={termSnapshot}
                 recoveringTermSnapshot={recoveringTermSnapshot}
                 failedTermRestoreCount={failedTermRestores?.length ?? 0}

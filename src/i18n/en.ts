@@ -24,7 +24,6 @@ import { deviceWallet } from "./en/device-wallet";
 import { englishUi } from "./en/english-ui";
 import { toolhub } from "./en/toolhub";
 import { maintenance } from "./en/maintenance";
-import { home } from "./en/home";
 
 export const EN: Record<string, string> = {
   // 🔴 backfill 必须**第一个** spread：它是机器批量补的历史欠账，
@@ -47,8 +46,6 @@ export const EN: Record<string, string> = {
   ...deviceWallet,
   ...toolhub,
   ...maintenance,
-  // 2026-10-22 B 极简改版：新首页 + 软件库（后 spread，同名 key 以本模块为准）。
-  ...home,
 
   // Dynamic data-table strings and compact English copy intentionally win last.
   ...englishUi,
