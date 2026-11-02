@@ -2220,7 +2220,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             15_000,
             serde_json::json!({
                 "id": { "type": "string", "description": "Provider id (built-in or custom)." },
-                "tool": { "type": "string", "enum": providers::list_tools_targets(), "description": "Only remove it from this AI's list. Omit to remove from every AI's list (and delete custom definitions)." }
+                "tool": { "type": "string", "enum": providers::ui_provider_targets(), "description": "Only remove it from this AI's list. Omit to remove from every AI's list (and delete custom definitions)." }
             }),
             &["id"],
             &["removed"],
@@ -2242,7 +2242,7 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             "required",
             serde_json::json!({
                 "id": { "type": "string", "description": "Provider id to restore (must still have a definition)." },
-                "tool": { "type": "string", "enum": providers::list_tools_targets(), "description": "Only restore it into this AI's list. Omit to restore into every AI's list." }
+                "tool": { "type": "string", "enum": providers::ui_provider_targets(), "description": "Only restore it into this AI's list. Omit to restore into every AI's list." }
             }),
             &["id"],
             &["restored"],
@@ -2272,14 +2272,14 @@ pub(crate) fn action_table() -> Vec<actions::Action> {
             serde_json::json!({
                 "target": {
                     "type": "string",
-                    "enum": providers::list_tools_targets(),
+                    "enum": providers::ui_provider_targets(),
                     "description": "Only read back this one target. Omit to read them all."
                 }
             }),
             &["targets"],
             |_, input, _| {
                 let one = input["target"].as_str();
-                let list: Vec<serde_json::Value> = providers::list_tools_targets()
+                let list: Vec<serde_json::Value> = providers::ui_provider_targets()
                     .iter()
                     .filter(|t| one.is_none_or(|w| w == **t))
                     .map(|t| serde_json::to_value(providers::effective_config(t)).unwrap_or_default())

@@ -11,34 +11,6 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-/// GUI shortcut 与工具中心 CLI 条目分开；无参数是 magpie 自己的窗口入口。
-fn magpie_gui_command(path: &str) -> Result<std::process::Command, String> {
-    // 不把脚本启动器交给 shell 重新解析。官方 Windows 包是原生 exe。
-    if cfg!(windows) && !path.to_ascii_lowercase().ends_with(".exe") {
-        return Err("magpie 图形快捷方式需要原生 magpie.exe，请确认已安装桌面版本".into());
-    }
-    let mut command = std::process::Command::new(path);
-    command.no_window()
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    Ok(command)
-}
-
-fn launch_magpie_gui() -> Result<(), String> {
-    let path = crate::term::terminal_path_candidates("magpie").into_iter()
-        .find(|path| !cfg!(windows) || path.to_ascii_lowercase().ends_with(".exe"))
-        .ok_or("未找到 magpie，请先在「我的 AI」安装图形版本")?;
-    let mut child = magpie_gui_command(&path)?.spawn()
-        .map_err(|error| format!("启动 magpie 图形界面失败：{error}"))?;
-    // 独立应用继续运行；不宣称已看到窗口。快速非零退出应明确报错。
-    std::thread::sleep(std::time::Duration::from_millis(250));
-    if let Some(status) = child.try_wait().map_err(|error| format!("检查 magpie 启动失败：{error}"))? {
-        if !status.success() { return Err(format!("magpie 启动失败，退出码 {:?}", status.code())); }
-    }
-    Ok(())
-}
-
 /// 一个可安装工具的元信息（回前端渲染卡片）。
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolInfo {
@@ -541,8 +513,7 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
     ToolSpec {
         // magpie：GUI 程序（点开直接开窗，跟 DSH 一样），CLI 能力仍保留在工具中心。
         // config_target=None、in_list_tools=false —— 不进「AI 设置」页（providers.rs 不写它）。
-        // 2026-10-22 重新上架：装机清单 v65 恢复 magpie CLI（含 SHA-256 校验），
-        // `list_tools()` 里 hidden=false 露出；检测/启动能力不变。
+        // 桌面版按专用落点探测；旧 CLI 不算已安装 GUI。
         id: "magpie", cmd: "magpie", config_target: None,
         in_list_tools: false, in_checkup: None, probe_args: None,
         launch_mode: LaunchMode::GuiApp, route_tab: None,
@@ -593,14 +564,9 @@ mod tool_specs_tests {
 
     #[test]
     fn magpie_gui_shortcut_uses_native_window_entry_and_preserves_cli() {
-        let path = if cfg!(windows) { "C:/demo/magpie.exe" } else { "/demo/magpie" };
-        let command = magpie_gui_command(path).expect("native launcher");
-        assert_eq!(command.get_program(), std::ffi::OsStr::new(path));
-        assert_eq!(command.get_args().count(), 0, "无参数才是窗口入口，不是 tui/PTY");
         let spec = TOOL_SPECS.iter().find(|spec| spec.id == "magpie").unwrap();
         assert_eq!(spec.launch_mode, LaunchMode::GuiApp, "GUI 程序点开直接开窗（2026-10-21 用户口径）");
         assert!(crate::term::validate_cmd("magpie ls"));
-        if cfg!(windows) { assert!(magpie_gui_command("C:/demo/magpie.cmd").is_err()); }
     }
 
     /// `TOOL_SPECS` 的 id 集合必须和 `list_tools()` 实际构造出的 `ToolInfo.id` 集合完全一致
@@ -1025,12 +991,12 @@ fn catalog_with_probes(
         ToolInfo {
             // magpie（yetone/magpie，MIT，Go 单二进制）：配置委托层——把 AI 工具的
             // provider/模型配置交给 magpie 维护，U-King 只做下载/校验/落地/回滚与钱包计费。
-            // 只装 CLI（机器可调面），桌面版会跟 U-King 抢工作台、不上。config_target=None：
+            // 安装官方桌面发行物。config_target=None：
             // magpie 不是 U-King 的驱动配置目标（providers.rs 不认识它，也不写它的配置）。
             // ★ 2026-10-22 重新上架（撤销 10-21 的 hidden=true 下架）：装不装都必须露出。
             id: "magpie".into(),
             name: "magpie".into(),
-            summary: "一个命令接管所有 AI 工具的模型与供应商配置。把易变的配置格式交给 magpie 维护，U-King 只负责装好它；维护助手遇到配置类难题可复制提示词给它。".into(),
+            summary: "AI 模型与供应商配置、用量和路由管理。安装官方桌面版后直接打开独立窗口；模型和账号由 magpie 管理。".into(),
             kind: "utility".into(),
             installed: false,
             action: "install".into(),
@@ -1282,7 +1248,7 @@ fn probe_tool(id: &str) -> Option<bool> {
             },
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
         "codex-app" => crate::installer::codex_app_installed(),
-        "magpie" => crate::installer::tool_installed("magpie"),
+        "magpie" => crate::installer::managed_desktop_installed("magpie"),
         "workbuddy" => crate::installer::managed_desktop_installed("workbuddy"),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
         _ => return None,
@@ -1655,7 +1621,6 @@ fn launch_app_inner(app: &str) -> Result<(), String> {
         // 万一漏拦走到这里，给条清楚指引而不是「未知应用」。
         "openclaw-webui" => Err("请在「我的 AI」点 OpenClaw 网页版打开".into()),
         "opencodex" => crate::opencodex_bundle::launch_opencodex(),
-        "magpie" => launch_magpie_gui(),
         other => Err(format!("未知应用 {other}")),
     }
 }

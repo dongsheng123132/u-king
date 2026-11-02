@@ -2436,7 +2436,7 @@ pub fn install_tool(
     tool_id: &str,
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> InstallToolResult {
-    if tool_id == "claude-app" && sandboxed() {
+    if matches!(tool_id, "claude-app" | "magpie") && sandboxed() {
         return fail(tool_id, 0, "沙箱禁止安装系统桌面应用；请在隔离测试机验证。".into());
     }
     // DeepSeek Harness（Windows）：不再用 npm 全局包，走官方桌面版静默安装（见 `dshdesk.rs`
@@ -3767,6 +3767,26 @@ fn output_gate(out: &str, expect: Option<&str>, reject: Option<&str>) -> Result<
 }
 
 fn verify(tool_id: &str, spec: &ToolSpec, on_log: &(dyn Fn(&str, &str) + Send + Sync)) -> Result<String, String> {
+    if tool_id == "magpie" {
+        crate::desktop_app::invalidate();
+        let app = crate::desktop_app::find("magpie")
+            .ok_or_else(|| "未找到 magpie 桌面版主程序；仅有 CLI 不算安装成功".to_string())?;
+        let mut command = std::process::Command::new(&app.exe);
+        command.arg("--version");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        let out = output_with_timeout(command, 15)
+            .ok_or_else(|| "magpie 桌面版版本验证超时或无法启动".to_string())?;
+        let text = decode_console_by_line(&out.stdout);
+        if !out.status.success() || text.trim().is_empty() {
+            return Err("magpie 桌面版主程序无法返回版本，请检查系统兼容性".into());
+        }
+        on_log("verify", &format!("已找到桌面主程序并验证版本：{}", text.trim()));
+        return Ok(text.trim().to_string());
+    }
     if tool_id == "claude-app" {
         crate::desktop_app::invalidate();
         return crate::desktop_app::find("claude-app")

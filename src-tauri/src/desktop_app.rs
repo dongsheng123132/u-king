@@ -65,6 +65,16 @@ pub struct AppRule {
 
 pub const RULES: &[AppRule] = &[
     AppRule {
+        id: "magpie",
+        label: "magpie 桌面版",
+        key_names: &[],
+        display_names: &["magpie"],
+        display_prefixes: &[],
+        exe_names: &["magpie.exe"],
+        // 专用桌面版落点；绝不把旧 ~/bin/magpie.exe（CLI）当成窗口程序。
+        fallback_exes: &["%USERPROFILE%\\.uking\\apps\\magpie\\magpie.exe"],
+    },
+    AppRule {
         id: "claude-app",
         label: "Claude 桌面版",
         key_names: &["AnthropicClaude"],
@@ -510,12 +520,15 @@ pub fn find(id: &str) -> Option<FoundApp> {
     #[cfg(target_os = "macos")]
     {
         let (bundle, binary) = match id {
+            "magpie" => ("Magpie.app", "magpie"),
             "claude-app" => ("Claude.app", "Claude"),
             "obsidian" => ("Obsidian.app", "Obsidian"),
             "uu-remote" => ("UURemote.app", "UURemote"),
             _ => return None,
         };
-        let roots = [PathBuf::from("/Applications"), crate::installer::user_home_dir().join("Applications")];
+        let user_apps = crate::installer::user_home_dir().join("Applications");
+        let roots = if id == "magpie" { [user_apps, PathBuf::from("/Applications")] }
+            else { [PathBuf::from("/Applications"), user_apps] };
         roots.into_iter().map(|root| root.join(bundle).join("Contents/MacOS").join(binary))
             .find(|exe| exe.is_file()).map(|exe| FoundApp { exe, version: None })
     }
@@ -571,6 +584,7 @@ pub fn launch(id: &str) -> Result<(), String> {
     if let Some(d) = &dir {
         c.current_dir(d);
     }
+    if id == "magpie" { c.arg("app"); }
     c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     match c.spawn() {
         Ok(_) => Ok(()),
@@ -680,6 +694,15 @@ HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Som
     /// 假的磁盘：只有列出来的路径「存在」（忽略大小写）。
     fn disk<'a>(files: &'a [&'a str]) -> impl Fn(&str) -> bool + 'a {
         move |p: &str| files.iter().any(|f| f.eq_ignore_ascii_case(p))
+    }
+
+    #[test]
+    fn magpie_cli_is_not_a_desktop_install() {
+        let cli = [r"C:\Users\demo\bin\magpie.exe"];
+        assert!(find_in(rule("magpie"), &[], &no_expand, &disk(&cli)).is_none());
+        let expand = |s: &str| s.replace("%USERPROFILE%", r"C:\Users\demo");
+        let gui = [r"C:\Users\demo\.uking\apps\magpie\magpie.exe"];
+        assert_eq!(find_in(rule("magpie"), &[], &expand, &disk(&gui)).unwrap().0, gui[0]);
     }
 
     #[test]

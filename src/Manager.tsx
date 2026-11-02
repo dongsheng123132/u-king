@@ -151,6 +151,9 @@ const DRAW_BUILTIN_ID = "xiapan";
  *  （只能靠「一键配好全部」顺带碰一下）。两个都走通用 apply_provider 路径，不需要
  *  clawx 那种托管重启。 */
 const TOOL_TABS: { target: string; label: string; icon: string }[] = [
+  // U-Chat 是工作台里的对话框，不是一个新 CLI；它复用 Claude Code 的配置文件，
+  // 但有自己的入口，用户不必理解「工作台 = Claude Code」这层实现关系。
+  { target: "workbench", label: "对话工作台", icon: "claude" },
   { target: "claude", label: "Claude Code", icon: "claude" },
   { target: "codex", label: "Codex", icon: "codex" },
   { target: "clawx", label: "ClawX", icon: "clawx" },
@@ -169,6 +172,7 @@ const TOOL_TABS: { target: string; label: string; icon: string }[] = [
  *  2026-09-04：装/启动改到「我的 AI」页后，App.tsx 里原来同名的对照表
  *  （`MANAGER_TARGET_TOOL_ID`）随它的唯一消费者一起删了，这张表不再有姊妹表。 */
 const TARGET_TOOL_ID: Record<string, string> = {
+  workbench: "claude-code",
   claude: "claude-code",
   codex: "codex",
   clawx: "clawx",
@@ -315,14 +319,21 @@ function shortPath(p: string): string {
   return parts.slice(-2).join("/");
 }
 
+function syncWorkbenchModelOverride(model: string) {
+  try { localStorage.setItem("uking.chatpanel.model.claude", model); } catch { /* 无存储权限也照常配置 */ }
+  window.dispatchEvent(new CustomEvent("uking:workbench-model", { detail: { model } }));
+}
+
 function toolActiveOf(driver: DriverStatus | null, target: string): string | null {
-  return driver?.active?.[target] ?? null;
+  // 对话工作台与 Claude Code 共用同一份 ~/.claude 配置；入口不同，生效路由相同。
+  return driver?.active?.[target === "workbench" ? "claude" : target] ?? null;
 }
 
 /** 某工具当前生效的模型（per-tool）。 */
 function toolModelOf(driver: DriverStatus | null, target: string): string | null {
   if (!driver) return null;
   switch (target) {
+    case "workbench":
     case "claude":
       return driver.claude_model;
     case "codex":
@@ -344,6 +355,7 @@ function toolModelOf(driver: DriverStatus | null, target: string): string | null
 function toolInstalledOf(driver: DriverStatus | null, target: string): boolean {
   if (!driver) return target === "claude";
   switch (target) {
+    case "workbench":
     case "claude":
       return true;
     case "codex":
@@ -867,17 +879,20 @@ export function Manager({
    */
   async function switchOneTool(target: string, providerId: string, model: string | null, viaBridge = false, providerOverride?: ProviderPreset): Promise<boolean> {
     if (busy) return false;
+    // 「对话工作台」是用户视角的目标，底层仍由 Claude Code 配置承载。
+    const configTarget = target === "workbench" ? "claude" : target;
     const p = providerOverride ?? providers.find((x) => x.id === providerId);
     if (!p) return false;
 
     // 还原官方时，如果当前正走桥，必须**顺手把桥停掉**。
     // 只改配置不停桥 = 留一个客户看不见的常驻进程；只停桥不改配置 = Claude Code
     // 还指着一个没人监听的本地端口，下次用它撞一个莫名其妙的连接错误。两件事必须一起做。
-    if (target === "claude" && providerId === "official" && driver?.claude_via_bridge) {
+    if (configTarget === "claude" && providerId === "official" && driver?.claude_via_bridge) {
       setBusy(`${target}:${providerId}`);
       try {
         await invoke("claude_bridge_disable");
         flash(t("已关掉本地翻译桥，Claude Code 还原为官方直连"));
+        if (target === "workbench") syncWorkbenchModelOverride("");
         setSelected(null);
         await refresh();
         return true;
@@ -922,7 +937,7 @@ export function Manager({
     try {
       const effModel = providerId === "official" ? null : model?.trim() || null;
       let restartHint = "";
-      if (target === "clawx") {
+      if (configTarget === "clawx") {
         // ClawX 必须走托管命令（关进程→写配置→自动重启）——运行中的 ClawX 退出时会用
         // 内存副本覆写磁盘配置，裸 apply_provider 写完就被吞（「切了没反应」头号根因）。
         await invoke("apply_clawx_managed", { providerId, apiKey: key, model: effModel });
@@ -934,14 +949,19 @@ export function Manager({
           // 模型对所有供应商生效（不再只限虾盘云）：override 走后端 effective_model；
           // official 还原不带模型。
           model: effModel,
-          targets: [target],
+          targets: [configTarget],
         });
         // Codex + 虾盘云 + 没显式选海外模型 → 后端已自动开 DeepSeek 省钱路由（2026-07-20 默认）
-        if (target === "codex" && providerId === "xiapan" && (!effModel || effModel.toLowerCase().startsWith("deepseek"))) {
+        if (configTarget === "codex" && providerId === "xiapan" && (!effModel || effModel.toLowerCase().startsWith("deepseek"))) {
           restartHint = t("（已走 DeepSeek 省钱路由）");
         }
         // DSH：U-King 写 ~/.dsh/settings.yaml，DSH 只在启动时导入，开着切要重启才生效（同 ProviderSwitch 的 dshHint）。
-        if (target === "dsh") restartHint = t("，重启 DSH 后生效");
+        if (configTarget === "dsh") restartHint = t("，重启 DSH 后生效");
+      }
+      if (target === "workbench") {
+        // 旧版工作台把模型覆盖留在 localStorage，之后换驱动也不会自动失效。
+        // 这里以刚刚保存的驱动模型为准，并通知常驻挂载的 U-Chat 立即刷新。
+        syncWorkbenchModelOverride(effModel ?? "");
       }
       const modelPart = model ? `（${model}）` : "";
       flash(
@@ -978,7 +998,7 @@ export function Manager({
     try {
       // 测当前工具实际会走的协议，不能因为供应商“也有 Anthropic 端点”就拿它替 Codex/
       // OpenCode/DSH 的 OpenAI 链路报绿。否则客户切完才在真实工具里遇到 /responses 或 chat 失败。
-      const api = activeTab === "claude" && p.anthropic_base
+      const api = (activeTab === "claude" || activeTab === "workbench") && p.anthropic_base
         ? "anthropic"
         : activeTab === "codex"
           ? "openai"
@@ -2065,6 +2085,12 @@ export function Manager({
           </div>
         </div>
 
+        {activeTab === "workbench" && (
+          <p className="mb-2 text-[11px] text-ink-3 leading-snug">
+            {t("这是工作台里的 U-Chat 对话框，与 Claude Code 共用驱动。这里保存后，对话框的模型覆盖会同步更新；U-CLI 里的其它 AI 仍在各自页签配置。")}
+          </p>
+        )}
+
         {/* Codex 桌面版：**这里切一次，桌面版一起生效** —— 两者共用 `~/.codex/config.toml`
             （后端 `providers.rs::apply_provider` 那条 `tool_installed("codex") || codex_app_installed()`
             就是专门为此写的：只装桌面版没装 CLI 也照写）。
@@ -2979,9 +3005,9 @@ function ToolProviderList({
         // Claude Code 只说 Anthropic 协议：没有 Anthropic 端点的供应商（火山方舟等纯 OpenAI
         // 兼容中转）在这个 tab 下是配不上的。**点了才报错**等于让客户自己撞 —— 提前说清楚
         // （issue #359/#322 的另一半：向导那条路已修，per-tool 这条路也别留成暗坑）。
-        const capMismatch = target === "claude" && p.id !== "official" && !p.anthropic_base?.trim();
+        const capMismatch = (target === "claude" || target === "workbench") && p.id !== "official" && !p.anthropic_base?.trim();
         // 这一行正走本机翻译桥：链路里多了 U-King 自己，必须一直显示出来（不是开的时候提一次就完）。
-        const viaBridge = target === "claude" && active && !!driver?.claude_via_bridge;
+        const viaBridge = (target === "claude" || target === "workbench") && active && !!driver?.claude_via_bridge;
         const subtitle =
           p.id === "official"
             ? t("还原官方直连")

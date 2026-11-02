@@ -134,7 +134,7 @@ async function getJson(path, key, timeoutMs) {
 function download(url, key, outPath, timeoutMs) {
   if (!CURL) throw new Error("下载图片需要系统 curl（本机无 curl）。请改用 gpt-image-2（直接回图、无需下载），或按 SKILL.md 手动下载。");
   const u = url.replace("://api.u-claw.org/", "://api.u-claw.org.cn/");
-  const args = ["-sS", "-m", String(Math.ceil(timeoutMs / 1000)), "-L", "--ssl-no-revoke"];
+  const args = ["-sS", "-m", String(Math.ceil(timeoutMs / 1000)), "-L", "--ssl-no-revoke", "--http1.1", "--noproxy", "*"];
   if (key) args.push("-H", `Authorization: Bearer ${key}`);
   args.push("-o", outPath, u);
   const r = spawnSync("curl", args, { timeout: timeoutMs + 5000 });

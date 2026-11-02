@@ -329,7 +329,7 @@ function curlDownload(url, key, outPath, minBytes) {
   const part = outPath + ".part";
   let own = false;
   try { own = new URL(url).hostname === new URL(BASE).hostname; } catch {}
-  const args = ["-sS", "-m", "180", "-L", "--ssl-no-revoke"]; // --ssl-no-revoke：Windows 上 CDN 吊销检查常超时
+  const args = ["-sS", "-m", "180", "-L", "--ssl-no-revoke", "--http1.1", "--noproxy", "*"]; // --ssl-no-revoke：Windows 上 CDN 吊销检查常超时；国内 CDN 不走代理、HTTP/1.1 避 HTTP/2 流断
   if (own && key) args.push("-H", `Authorization: Bearer ${key}`);
   args.push("-o", part, "-w", "%{http_code}\n%{content_type}", url);
   const r = spawnSync("curl", args, { timeout: 185000, encoding: "utf8" });

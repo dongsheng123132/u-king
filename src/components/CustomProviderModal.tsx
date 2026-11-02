@@ -39,6 +39,7 @@ export const IPT =
   "w-full h-9 rounded-lg border border-white/[0.10] bg-bg-1 px-3 text-[12px] text-ink-1 outline-none focus:border-accent/50 placeholder:text-ink-4";
 
 export const TOOL_LABELS: Record<string, string> = {
+  workbench: "对话工作台",
   claude: "Claude Code",
   codex: "Codex",
   clawx: "ClawX / OpenClaw",

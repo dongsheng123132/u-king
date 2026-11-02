@@ -251,6 +251,8 @@ export const settings: Record<string, string> = {
   未接管: "Not set",
   配置中: "Editing",
   "选择要配置的 AI": "Choose an AI to configure",
+  "这是工作台里的 U-Chat 对话框，与 Claude Code 共用驱动。这里保存后，对话框的模型覆盖会同步更新；U-CLI 里的其它 AI 仍在各自页签配置。":
+    "This is the U-Chat dialog in the workspace, sharing its driver with Claude Code. Saving here also updates the dialog's model override. Other AIs in U-CLI are still configured in their own tabs.",
   // 「左装右选 → 合并启动」（2026-08-20）
   "未安装": "Not installed",
   "装好 {name} 并启动": "Install {name} and launch",

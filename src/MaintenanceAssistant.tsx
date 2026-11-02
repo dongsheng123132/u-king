@@ -38,6 +38,9 @@ import { buildMaintenanceTask } from "./lib/maintenanceTask";
 import { trimHistoryForPayload } from "./opencodex/historyTrim";
 import type { Balance, DeviceKey } from "./lib/types";
 import { useI18n } from "./i18n";
+/** 图片粘贴与识图工具（与 U-Chat Chat.tsx 同一套，维护助手接入复用） */
+import { describeImages, fileLabel, ImageDescribeError, visionErrorText } from "./lib/vision";
+import { PendingImageChips, usePendingImages } from "./opencodex/PendingImages";
 
 /** 与 providers.rs 虾盘云 preset 的 `model` 一致（客户装好在用的就是它）。 */
 const DEFAULT_MODEL = "deepseek-v4-flash";
@@ -151,6 +154,12 @@ export function MaintenanceAssistant({
   /** 读历史时跳过「写回 archive」，否则会把刚加载的列表覆盖成空。 */
   const loadingRef = useRef(false);
   const persistTimer = useRef<number | null>(null);
+  /** 发送/识图/余额查询期间防重复发送：busy 是异步 state，挡不住 await 里的连点。 */
+  const sendingRef = useRef(false);
+  /** 正在跑的那次任务的 taskId（=发起时所在会话 id）。切会话/删除/卸载都用它来中断。 */
+  const activeTaskIdRef = useRef<string | null>(null);
+  /** 会话代际：每次切会话/新发任务都自增，旧任务 onmessage 只认自己那一代，老事件一律丢弃。 */
+  const epochRef = useRef(0);
 
   // 当前会话必须出现在左侧列表里（挂载那一刻登记一条）
   useEffect(() => {
@@ -183,8 +192,22 @@ export function MaintenanceAssistant({
     setSessions((prev) => prev.map((s) => (s.id === sessionId && (!s.title || s.title === NEW_CHAT_TITLE) ? { ...s, title, ts: Date.now() } : s)));
   }, [items, sessionId]);
 
+  /** 中断正在跑的任务并作废其后续事件：切会话/删除/卸载/手动中断共用。 */
+  const resetTask = useCallback(() => {
+    epochRef.current += 1; // 旧任务的 onmessage 从此全部丢弃
+    const taskId = activeTaskIdRef.current;
+    activeTaskIdRef.current = null;
+    sendingRef.current = false;
+    if (taskId) invoke("chat_interrupt", { taskId }).catch(() => {});
+  }, []);
+
+  /** 卸载：中断正在跑的任务，别让它在组件销毁后继续跑或写 state。 */
+  useEffect(() => () => resetTask(), [resetTask]);
+
   /** 新开一条对话（左侧留记录，旧的不删）。 */
   const newSession = useCallback(() => {
+    resetTask();
+    loadingRef.current = false;
     const id = `maint-${Date.now().toString(36)}`;
     setSessionId(id);
     setItems([]);
@@ -192,41 +215,49 @@ export function MaintenanceAssistant({
     setBusy(false);
     setBalanceGate(null);
     setSessions((prev) => [{ id, title: NEW_CHAT_TITLE, ts: Date.now() }, ...prev].slice(0, 50));
-  }, []);
+  }, [resetTask]);
 
   /** 点左侧历史记录 → 读回那次对话。 */
   const openSession = useCallback(
     async (id: string) => {
       if (id === sessionId) return;
+      resetTask();
+      setBusy(false);
       loadingRef.current = true;
       setSessionId(id);
       setItems([]);
-      setBusy(false);
+      setInput("");
+      // resetTask 已自增一代；本次加载独占这一代，期间再切走就作废。
+      const epoch = epochRef.current;
       try {
         const loaded = await invoke<Item[]>("chat_archive_load", { sessionId: id });
+        if (epochRef.current !== epoch) return;
         setItems(Array.isArray(loaded) ? loaded : []);
       } catch {
+        if (epochRef.current !== epoch) return;
         setItems([]);
+      } finally {
+        if (epochRef.current === epoch) loadingRef.current = false;
       }
-      loadingRef.current = false;
     },
-    [sessionId],
+    [sessionId, resetTask],
   );
 
   const deleteSession = useCallback(
     (id: string) => {
       invoke("chat_archive_delete", { sessionId: id }).catch(() => {});
-      setSessions((prev) => {
-        const rest = prev.filter((s) => s.id !== id);
-        if (id === sessionId) {
-          const next = rest[0]?.id ?? `maint-${Date.now().toString(36)}`;
-          setSessionId(next);
-          setItems([]);
-        }
-        return rest;
-      });
+      const rest = sessions.filter((s) => s.id !== id);
+      setSessions(rest);
+      if (id === sessionId) {
+        resetTask();
+        setBusy(false);
+        loadingRef.current = false;
+        const next = rest[0]?.id ?? `maint-${Date.now().toString(36)}`;
+        setSessionId(next);
+        setItems([]);
+      }
     },
-    [sessionId],
+    [sessions, sessionId, resetTask],
   );
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -249,11 +280,48 @@ export function MaintenanceAssistant({
       .catch(() => {});
   }, []);
 
+  // 输入框上方：待发图片小标签（与 U-Chat 一套，共用同一份逻辑）
+  const { images: pendingImages, addImages, remove: removeImage, take: takeImages, restore: restoreImages } = usePendingImages({
+    setInput,
+    onStageError: (name, e) => onToast?.(t("⚠️ 图片「{name}」没能附上：{e}", { name, e })),
+  });
+
+  // 粘贴图片（Ctrl+V 截图）：先 `save_pasted_image` 落盘成自家副本，再走 addImages 进同一套
+  // pendingImages/识图流程（stageImage 对 paste 副本原样放行，不会二次复制）。
+  // 🔴 文本优先：剪贴板有文本就不拦，交给 textarea 默认文本粘贴（Excel/网页复制常同时带一张渲染位图）。
+  const handleComposerPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (text.trim()) return; // 有文本：不拦，文本粘贴赢（即使剪贴板里还带了张位图）
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItems = items.filter((it) => it.kind === "file" && it.type.startsWith("image/"));
+      if (!imageItems.length) return; // 没图片：不拦，让文本粘贴照常走
+      e.preventDefault();
+      void (async () => {
+        const paths: string[] = [];
+        for (const it of imageItems) {
+          const file = it.getAsFile();
+          if (!file) continue;
+          try {
+            const buf = new Uint8Array(await file.arrayBuffer());
+            const mime = (file.type.split("/")[1] || "png").toLowerCase();
+            const ext = mime === "jpeg" ? "jpg" : ["png", "jpg", "gif", "webp", "bmp"].includes(mime) ? mime : "png";
+            const path = await invoke<string>("save_pasted_image", { bytes: Array.from(buf), ext });
+            paths.push(path);
+          } catch (err) {
+            onToast?.(t("粘贴图片失败: {e}", { e: String(err) }));
+          }
+        }
+        if (paths.length) addImages(paths);
+      })();
+    },
+    [addImages, onToast, t],
+  );
+
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [items]);
-
 
   const approve = useCallback((id: string, ok: boolean) => {
     invoke("chat_approve", { approvalId: id, approved: ok }).catch(() => {});
@@ -263,9 +331,9 @@ export function MaintenanceAssistant({
   }, []);
 
   const stop = useCallback(() => {
-    invoke("chat_interrupt", { taskId: sessionId }).catch(() => {});
+    resetTask();
     setBusy(false);
-  }, []);
+  }, [resetTask]);
 
   const copyTask = useCallback(async () => {
     // 交接包只收目标/失败原文/最近几条对话摘要，不复制全量历史；密钥集中脱敏。
@@ -287,13 +355,20 @@ export function MaintenanceAssistant({
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || busy) return;
+    // busy 是异步 state，await（查余额/识图）里连点拦不住；sendingRef 同步置位才能真正防重复发送。
+    if (busy || sendingRef.current || loadingRef.current) return;
+    if (!text && pendingImages.length === 0) return;
+    sendingRef.current = true;
+    const epoch = ++epochRef.current;
     // 发起 AI 任务前查余额 —— 只在这一步做，普通安装不被门禁。
     let dk: DeviceKey | null = null;
     try {
       dk = await invoke<DeviceKey>("get_device_key");
+      if (epochRef.current !== epoch) return;
       setKey(dk?.key ?? "");
     } catch (e) {
+      if (epochRef.current !== epoch) return;
+      sendingRef.current = false;
       setBalanceGate({ state: "error", message: String(e) });
       onToast?.(t("余额查询失败，请重查后再发（不是没余额）"));
       return;
@@ -301,10 +376,12 @@ export function MaintenanceAssistant({
     const gate = judgeBalance(dk);
     setBalanceGate(gate);
     if (gate.state === "error") {
+      sendingRef.current = false;
       onToast?.(t("余额查询失败，请重查后再发（不是没余额）"));
       return;
     }
     if (gate.state === "empty") {
+      sendingRef.current = false;
       onToast?.(t("余额不足，请先充值"));
       onRecharge?.();
       return;
@@ -315,13 +392,33 @@ export function MaintenanceAssistant({
     }
     const apiKey = dk?.key ?? key;
     if (!apiKey) {
+      sendingRef.current = false;
       onToast?.(t("还没拿到设备 Key，稍等一下再试"));
       return;
     }
 
-    const history: Item[] = [...items, { type: "text", role: "user", content: text }];
-    setItems(history);
+    // 图片粘贴：取走待发图片，识图成文字拼进正文；发送后标签随输入框一起清空。
+    const images = takeImages();
     setInput("");
+    let prepared = text;
+    try {
+      if (images.length) prepared += `\n\n${await describeImages(images.map((i) => i.path), text)}`;
+      if (epochRef.current !== epoch) return;
+    } catch (e) {
+      if (epochRef.current !== epoch) return;
+      if (e instanceof ImageDescribeError && e.code === "image_missing") {
+        restoreImages(text, images, e.image);
+        onToast?.(t("⚠️ 图片「{name}」已经不在原来的位置了（被移走或删除），已从附件里去掉。重新拖入这张图再发送就行。", { name: fileLabel(e.image) }));
+      } else {
+        restoreImages(text, images);
+        onToast?.(t("图片识别失败: {e}", { e: visionErrorText(e) }));
+      }
+      sendingRef.current = false;
+      return;
+    }
+
+    const history: Item[] = [...items, { type: "text", role: "user", content: prepared }];
+    setItems(history);
     setBusy(true);
     // 2026-10-21：维护对话也要按预算裁历史（此前**全量重发**，聊得越久每轮越贵）。
     const msgs = trimHistoryForPayload(
@@ -329,8 +426,13 @@ export function MaintenanceAssistant({
       "",
     );
 
+    // 记录这次任务属于哪个会话 + 开新一代：旧任务/旧会话的后续事件一律按代际丢弃。
+    const taskId = sessionId;
+    activeTaskIdRef.current = taskId;
+
     const ch = new Channel<any>();
     ch.onmessage = (ev: any) => {
+      if (epochRef.current !== epoch) return; // 已切会话/已中断，老事件不再写进当前视图
       if (ev.kind === "delta" && ev.text) {
         setItems((prev) => {
           const n = [...prev];
@@ -391,12 +493,14 @@ export function MaintenanceAssistant({
         ]);
       } else if (ev.kind === "done") {
         setBusy(false);
+        sendingRef.current = false;
+        activeTaskIdRef.current = null;
         if (ev.status === "error") onToast?.(ev.message || t("对话失败"));
       }
     };
     try {
       await invoke("chat_send", {
-        taskId: sessionId,
+        taskId,
         messages: msgs,
         model: DEFAULT_MODEL,
         apiKey,
@@ -406,10 +510,13 @@ export function MaintenanceAssistant({
         onEvent: ch,
       });
     } catch (e) {
+      if (epochRef.current !== epoch) return; // 已切会话/已中断：不是启动失败，忽略
       setBusy(false);
+      sendingRef.current = false;
+      activeTaskIdRef.current = null;
       onToast?.(t("对话启动失败: {e}", { e: String(e) }));
     }
-  }, [items, input, busy, key, onToast, onRecharge, t]);
+  }, [items, input, busy, key, pendingImages, sessionId, takeImages, restoreImages, onToast, onRecharge, t]);
 
   // 交接自动发送：输入框里已经是那条交接提示词时，直接发（等状态落定一帧再发，避免读到旧 input）。
   useEffect(() => {
@@ -577,23 +684,27 @@ export function MaintenanceAssistant({
       {/* 输入区 */}
       <div className="border-t border-white/[0.08] px-4 py-3">
         <div className="flex items-end gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            rows={3}
-            placeholder={t("描述装机失败/工具故障现象，粘贴报错原文…（Enter 发送，Shift+Enter 换行）")}
-            className="min-h-[64px] flex-1 resize-none rounded-card border border-white/[0.10] bg-bg-1/50 px-3 py-2 text-[12.5px] leading-relaxed text-ink-1 outline-none placeholder:text-ink-4 focus:border-accent/40"
-          />
+          <div className="min-w-0 flex-1 flex flex-col">
+            <PendingImageChips images={pendingImages} onRemove={removeImage} />
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onPaste={handleComposerPaste}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={3}
+              placeholder={t("描述装机失败/工具故障现象，粘贴报错原文…（Enter 发送，Shift+Enter 换行）")}
+              className="min-h-[64px] flex-1 resize-none rounded-card border border-white/[0.10] bg-bg-1/50 px-3 py-2 text-[12.5px] leading-relaxed text-ink-1 outline-none placeholder:text-ink-4 focus:border-accent/40"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <button
               onClick={() => void send()}
-              disabled={busy || !input.trim()}
+              disabled={busy || (!input.trim() && pendingImages.length === 0)}
               className="inline-flex items-center gap-1 rounded-md bg-accent px-3 h-8 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-40"
             >
               <Send size={13} /> {t("发送")}

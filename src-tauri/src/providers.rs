@@ -208,6 +208,14 @@ pub fn list_tools_targets() -> &'static [&'static str] {
     })
 }
 
+/// 「AI 设置」左侧可配置的对象。工作台是用户入口而非新 CLI：
+/// 它有独立列表偏好/回读，但不进入「一键配置全部 CLI」的目标清单。
+pub fn ui_provider_targets() -> Vec<&'static str> {
+    std::iter::once("workbench")
+        .chain(list_tools_targets().iter().copied())
+        .collect()
+}
+
 /// 用户**看得到**的 provider 列表 = （默认内置 − 被移除的 + 被加回的 + 在用的）+ 用户自定义，
 /// 按用户排的序。
 ///
@@ -319,7 +327,20 @@ pub fn delegation_env(api_key: &str) -> Vec<(String, String)> {
     if !claude_owns_config() {
         v.push(("ANTHROPIC_BASE_URL".into(), anthropic));
         v.push(("ANTHROPIC_AUTH_TOKEN".into(), api_key.to_string()));
-        v.push(("ANTHROPIC_MODEL".into(), model));
+        // Claude Code 的进程环境优先级高于 settings.json。旧驱动留在 Windows
+        // 用户环境里的 API_KEY / BASE_URL 会把已切换的工作台又带回旧站。
+        // 这是「工作台这一轮」的子进程覆盖，不修改用户 persistent env，也不碰自持配置分支。
+        v.push(("ANTHROPIC_API_KEY".into(), api_key.to_string()));
+        for role in [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_REASONING_MODEL",
+        ] {
+            v.push((role.into(), model.clone()));
+        }
         v.push(("ANTHROPIC_SMALL_FAST_MODEL".into(), small));
         v.push(("API_TIMEOUT_MS".into(), "600000".into()));
         // 这一支按定义就是虾盘云 DeepSeek 路由，与 apply_claude_to 的 200K 默认对齐
@@ -789,12 +810,12 @@ fn tool_slot<'a>(prefs: &'a mut ListPrefs, tool: &str) -> &'a mut ToolListPrefs 
 
 /// 工具 id 合法性 —— 打错一个字就该当场报错，不能静默去改另一份偏好。
 fn check_tool(tool: &str) -> Result<(), String> {
-    if list_tools_targets().contains(&tool) {
+    if ui_provider_targets().contains(&tool) {
         Ok(())
     } else {
         Err(format!(
             "未知的 AI 工具「{tool}」（只认 {}）",
-            list_tools_targets().join(" / ")
+            ui_provider_targets().join(" / ")
         ))
     }
 }
@@ -979,6 +1000,12 @@ fn config_home() -> PathBuf {
 
 fn claude_settings_path() -> PathBuf {
     config_home().join(".claude").join("settings.json")
+}
+
+/// Claude Code 的用户级状态文件。旧驱动曾把 env 写在这里；它的路由优先级
+/// 高于 settings.json，切换供应商时必须一并处理，不能只看 settings。
+fn claude_state_path() -> PathBuf {
+    config_home().join(".claude.json")
 }
 
 fn codex_dir() -> PathBuf {
@@ -2023,6 +2050,42 @@ fn apply_claude_to(
     if let Some(prov) = defer_prov {
         write_window_provenance(&prov)?;
     }
+    clean_legacy_claude_state_route()?;
+    Ok(())
+}
+
+/// 清除 `~/.claude.json` 里会压过 settings.json 的旧路由字段。
+/// 只动 Claude 的端点/凭据/模型键，projects、登录态、界面偏好等全部原样保留。
+/// 这是用户显式切换驱动后的同步清理，不在启动或自检时擅自改写。
+fn clean_legacy_claude_state_route() -> Result<(), String> {
+    let path = claude_state_path();
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut root = read_json_object_or_reject(&path)?;
+    let Some(env) = root.get_mut("env").and_then(Value::as_object_mut) else {
+        return Ok(());
+    };
+    let route_keys = [
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_SMALL_FAST_MODEL",
+        "ANTHROPIC_DEFAULT_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_REASONING_MODEL",
+    ];
+    let before = env.len();
+    env.retain(|k, _| !route_keys.contains(&k.as_str()));
+    if env.len() == before {
+        return Ok(());
+    }
+    backup_once(&path);
+    atomic_write(&path, serde_json::to_string_pretty(&root).unwrap().as_bytes())
+        .map_err(|e| format!("清理 ~/.claude.json 旧路由失败: {e}"))?;
     Ok(())
 }
 
@@ -6600,7 +6663,7 @@ impl EffectiveConfig {
 pub fn effective_config(target: &str) -> EffectiveConfig {
     let mut r = EffectiveConfig { target: target.into(), readable: true, ..Default::default() };
     match target {
-        "claude" => {
+        "workbench" | "claude" => {
             let Ok(s) = std::fs::read_to_string(claude_settings_path()) else {
                 return r; // 文件不存在 = 读得到「没配」，仍算 readable
             };
@@ -7307,8 +7370,8 @@ fn discover_tools_from(
 ///
 /// 判据（任一成立即为真；拿不准一律当「是自己的」—— 宁可不推虾盘云，也绝不抢用户 Key）：
 ///  ① `~/.claude/.credentials.json` 存在且非空 → 官方 OAuth 登录（用户自己的 Claude 账号）
-///  ② settings.json 的 env 有非空 `ANTHROPIC_AUTH_TOKEN`，且 base 不含 `u-claw.org`
-///     → 自备 Key / 自己的中转（DeepSeek / GLM / 自建代理都算）
+///  ② settings.json 的 env 有端点、AUTH_TOKEN 或 API_KEY，且端点不是虾盘云
+///     → 用户自选路由（包括保留官方登录、只写端点的网关）
 fn claude_owns_config() -> bool {
     // ① 官方 OAuth 登录：Claude Code 的凭据文件（>8 字节才算真有内容，空 `{}` 不算）
     let cred = config_home().join(".claude").join(".credentials.json");
@@ -7327,7 +7390,25 @@ fn claude_owns_config() -> bool {
                 .and_then(|e| e.get("ANTHROPIC_BASE_URL"))
                 .and_then(|x| x.as_str())
                 .unwrap_or("");
-            if !token.trim().is_empty() && !is_xiapan_endpoint(&base) {
+            // A gateway may keep Claude's own sign-in and set only the endpoint.
+            // magpie supports this shape; no token is required to own the route.
+            let api_key = env.and_then(|e| e.get("ANTHROPIC_API_KEY"))
+                .and_then(Value::as_str).unwrap_or("");
+            if (!base.trim().is_empty() || !token.trim().is_empty() || !api_key.trim().is_empty())
+                && !is_xiapan_endpoint(base) {
+                return true;
+            }
+        }
+    }
+    // ③ ~/.claude.json 的旧 env 优先级更高，也必须纳入「用户自有路由」判断。
+    if let Ok(s) = std::fs::read_to_string(claude_state_path()) {
+        if let Ok(v) = serde_json::from_str::<Value>(&s) {
+            let env = v.get("env");
+            let base = env.and_then(|e| e.get("ANTHROPIC_BASE_URL")).and_then(Value::as_str).unwrap_or("");
+            let has_credential = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"].iter().any(|k| {
+                env.and_then(|e| e.get(*k)).and_then(Value::as_str).map(|v| !v.trim().is_empty()).unwrap_or(false)
+            });
+            if (!base.trim().is_empty() || has_credential) && !is_xiapan_endpoint(base) {
                 return true;
             }
         }
@@ -7339,12 +7420,25 @@ fn claude_owns_config() -> bool {
 ///
 /// 判据（任一成立即为真）：
 ///  ① `~/.codex/config.toml` 存在、非空，且**没有** `managed by U-King` 标记 → 用户自己写的配置
-///  ② `~/.codex/auth.json` 里有 OAuth `tokens`（官方 ChatGPT 登录，不是我们写的裸 OPENAI_API_KEY）
+///  ② 显式 openai_base_url 非虾盘云，或选择 magpie provider（旧注释仍在也尊重）
+///  ③ `~/.codex/auth.json` 里有 OAuth `tokens`（官方 ChatGPT 登录，不是我们写的裸 OPENAI_API_KEY）
 fn codex_owns_config() -> bool {
     let dir = codex_dir();
     if let Ok(s) = std::fs::read_to_string(dir.join("config.toml")) {
         if !s.trim().is_empty() && !s.contains("managed by U-King") {
             return true;
+        }
+        // Editors preserve comments. A former U-King marker doesn't own a route
+        // the user has since moved (magpie uses either openai_base_url or a
+        // model_providers.magpie table, depending on the Codex sign-in).
+        if toml_top_level_string(&s, "openai_base_url")
+            .is_some_and(|base| !base.trim().is_empty() && !is_xiapan_endpoint(&base)) {
+            return true;
+        }
+        if let Some(provider) = toml_top_level_string(&s, "model_provider") {
+            if provider.trim_matches(['\'', '"']) == "magpie" {
+                return true;
+            }
         }
     }
     if let Ok(s) = std::fs::read_to_string(dir.join("auth.json")) {
@@ -11217,6 +11311,18 @@ mod delegation_env_tests {
             .expect("虾盘云 preset 必须存在");
         assert_eq!(get("ANTHROPIC_MODEL"), xiapan.model, "委派模型和 preset 漂移了");
         assert_ne!(get("ANTHROPIC_MODEL"), "deepseek-v4-pro", "委派默认不该是 pro（满血档留给主会话）");
+        // 旧 Windows 用户环境可能同时留着 API_KEY 和按角色拆分的模型。
+        // 工作台子进程必须统一覆盖，否则 settings.json 已切虾盘云也会被旧值接管。
+        assert_eq!(get("ANTHROPIC_API_KEY"), "sk-test-key");
+        for role in [
+            "ANTHROPIC_DEFAULT_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_REASONING_MODEL",
+        ] {
+            assert_eq!(get(role), xiapan.model, "{role} 不得保留旧驱动的角色模型");
+        }
         });
     }
 
@@ -11277,6 +11383,65 @@ mod delegation_env_tests {
             // 免配置直连我们（这不是「抢」，是他本来就没有别的可用配置）。
             assert!(keys.contains(&"OPENAI_API_KEY"), "不该殃及 Codex 那半边：{keys:?}");
             assert!(keys.contains(&"OPENAI_BASE_URL"), "不该殃及 Codex 那半边：{keys:?}");
+        });
+    }
+
+    #[test]
+    fn gateway_endpoint_without_token_is_owned() {
+        with_sandbox("gateway-no-token", || {
+            let p = claude_settings_path();
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            for settings in [
+                r#"{"model":"group/demo","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:3425"}}"#,
+                r#"{"env":{"ANTHROPIC_API_KEY":"sk-demo"}}"#,
+            ] {
+                std::fs::write(&p, settings).unwrap();
+                assert!(!claude_delegated());
+                assert!(!delegation_env("sk-demo-wallet").iter().any(|(k, _)| k.starts_with("ANTHROPIC_")));
+            }
+        });
+    }
+
+    #[test]
+    fn codex_gateway_preserves_route_despite_old_managed_comment() {
+        with_sandbox("codex-gateway", || {
+            let dir = codex_dir();
+            std::fs::create_dir_all(&dir).unwrap();
+            for config in [
+                "# managed by U-King\nmodel = \"group/demo\"\nopenai_base_url = \"http://127.0.0.1:3425/backend-api/codex\"\n",
+                "# managed by U-King\nmodel_provider = \"magpie\"\n[model_providers.magpie]\nbase_url = \"http://127.0.0.1:3425/v1\"\nexperimental_bearer_token = \"demo\"\n",
+            ] {
+                std::fs::write(dir.join("config.toml"), config).unwrap();
+                assert!(!codex_delegated());
+                assert!(!delegation_env("sk-demo-wallet").iter().any(|(k, _)| k.starts_with("OPENAI_")));
+            }
+            std::fs::write(dir.join("config.toml"), "# managed by U-King\nmodel_provider = \"xiapan\"\n").unwrap();
+            assert!(codex_delegated());
+        });
+    }
+
+    #[test]
+    fn legacy_state_route_is_cleaned_without_touching_user_state() {
+        with_sandbox("legacy-state-route", || {
+            let path = claude_state_path();
+            std::fs::write(&path, r#"{
+              "userID":"demo-user",
+              "projects":{"D:\\\\demo":{"history":[]}},
+              "env":{
+                "ANTHROPIC_BASE_URL":"https://old-relay.example",
+                "ANTHROPIC_API_KEY":"sk-old",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL":"old-model",
+                "UNRELATED":"keep-me"
+              }
+            }"#).unwrap();
+            clean_legacy_claude_state_route().unwrap();
+            let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(v["userID"], "demo-user");
+            assert!(v["projects"].is_object());
+            assert_eq!(v["env"]["UNRELATED"], "keep-me");
+            for k in ["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_DEFAULT_OPUS_MODEL"] {
+                assert!(v["env"].get(k).is_none(), "{k} 必须清掉，否则会压过新驱动");
+            }
         });
     }
 

@@ -178,9 +178,9 @@ export type ActionInputMap = {
   "runtime.optimizer.inspect": Record<string, never>;
   "runtime.origin.inspect": { compiled?: boolean; task_id?: string; };
   "runtime.origin.save": { expected_state_version?: string; expected_version?: number; state: Record<string, unknown>; };
-  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
-  "runtime.provider.effective": { target?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
-  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.delete": { expected_state_version?: string; id: string; tool?: "workbench" | "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.effective": { target?: "workbench" | "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
+  "runtime.provider.restore": { expected_state_version?: string; id: string; tool?: "workbench" | "claude" | "codex" | "clawx" | "hermes" | "dsh" | "pi" | "opencode"; };
   "runtime.provider.save": { expected_state_version?: string; provider: Record<string, unknown>; };
   "runtime.readiness.inspect": Record<string, never>;
   "runtime.skillpack.inspect": Record<string, never>;

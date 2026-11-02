@@ -108,6 +108,7 @@ function synthesize({ key, model, input, voice, out }) {
   try {
     writeFileSync(body, JSON.stringify({ model, input, voice }));
     const r = spawnSync("curl", ["-sS", "-L", "-m", String(Math.ceil(GEN_TIMEOUT_MS / 1000)),
+      "--http1.1", "--noproxy", "*",
       "-X", "POST", SPEECH_URL, "-H", `Authorization: Bearer ${key}`, "-H", "Content-Type: application/json",
       "--data", `@${body}`, "-o", out, "-w", "%{http_code}\n%{content_type}"],
     { timeout: GEN_TIMEOUT_MS + 5000, encoding: "utf8" });

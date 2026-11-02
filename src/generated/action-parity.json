@@ -1887,6 +1887,7 @@
           "tool": {
             "description": "Only remove it from this AI's list. Omit to remove from every AI's list (and delete custom definitions).",
             "enum": [
+              "workbench",
               "claude",
               "codex",
               "clawx",
@@ -1948,6 +1949,7 @@
           "tool": {
             "description": "Only restore it into this AI's list. Omit to restore into every AI's list.",
             "enum": [
+              "workbench",
               "claude",
               "codex",
               "clawx",
@@ -2001,6 +2003,7 @@
           "target": {
             "description": "Only read back this one target. Omit to read them all.",
             "enum": [
+              "workbench",
               "claude",
               "codex",
               "clawx",
