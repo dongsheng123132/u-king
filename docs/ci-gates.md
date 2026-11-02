@@ -11,7 +11,7 @@
 | `frontend` | ubuntu | `pnpm install --frozen-lockfile` → `pnpm exec tsc --noEmit` → `pnpm build` | lockfile 与 package.json 漂移、TS 类型错、静态自检/vite 构建失败 |
 | `rust` | ubuntu | `cargo check`、`cargo clippy`（只报错误不卡 warning）、action-parity 清单未漂移 | 编译失败 / 影核生成文件漂移 |
 | `clippy-baseline` | ubuntu | `cargo clippy --all-targets` → 与 `clippy-baseline.json` 比对；并断言 baseline 这次改动只减不增 | **新代码引入了新 warning**，或有人把 baseline 抬高 |
-| `rust-tests` | windows | `cargo test --lib`（614 条 `#[test]`，全在 lib；跳过 1 条 locale 依赖用例，见下） | Rust 单元测试红 |
+| `rust-tests` | windows | `cargo test --lib`（614 条 `#[test]`，全在 lib；跳过 1 条 locale 依赖用例，见下；1 条 loopback 用例对传输层重置做最多 3 次原地重试，见「已知不稳定用例与处理方式」） | Rust 单元测试红 |
 
 **为什么测试跑 Windows**：这批测试写的是 Windows 语义——`discover_tools_from` 在非 Windows
 只找无扩展名文件、`unwrap_shim` 解的是 `.cmd` 壳、用例里直接写 `%APPDATA%\npm` 和
@@ -39,6 +39,37 @@ node scripts/clippy-baseline.mjs check --input clippy.json            # 门禁�
 node scripts/clippy-baseline.mjs verify-shrink --base-ref origin/main # 断言 baseline 只减不增
 cargo test --lib                    # 在 src-tauri 里跑：Windows 上 606 条可跑（605 过 + 1 条 locale 依赖）；macOS/Linux 有 9 条 Windows 语义用例必红
 ```
+
+## 已知不稳定用例与处理方式
+
+原则：**环境性偶发只许对「能证明是环境」的那一类错误做有限重试，不许 skip / ignore / 删断言。**
+认定要同时满足三条：① 失败点在传输层（起服务、连端口、读响应），不是断言；② 同一 commit 重跑即绿
+（或换机器复现不出来）；③ 重试白名单窄到只剩那个错误码 + 措辞，**扩表必须有新日志证据**。
+
+| 用例 | 症状与证据 | 根因判定 | 现在的处理 |
+|---|---|---|---|
+| `agent::chat::tests::curl_config_streams_sse_and_sends_body_over_loopback` | 共享 Windows runner 上偶发 `curl: (56) Recv failure: Connection was reset`，挂在 `chat.rs` 的 `assert!(error.is_none())`；2026-11-02 一个下午 4 次：run `41432777937` attempt 1、`41432369550`、`41431690667`、`41425879032`（都是 attempt 1 红、attempt 2 绿，`604 passed; 1 failed; 3 ignored`） | **测试环境**：用例真起 `curl` 子进程 + 进程内 loopback 服务端，端点是 `127.0.0.1`；连接在 SYN 之后被 RST（共享 runner 上的安全软件/网络栈）。产品侧 `stream_once` 只是把 curl 的 stderr 原样上报（它本来就该上报），而请求头/请求体/SSE 的断言都在服务端线程里**先于**这条错误执行 | 只认 `curl: (56)` + `Recv failure` + `reset`（覆盖 Windows `Connection was reset` / macOS·Linux `Connection reset by peer`）**原地重试最多 3 次**；每次重新 bind 端口、重跑完整往返。断言失败、`(7) Failed to connect`、`(55) Send failure`、`(52) Empty reply from server` 一律立即失败；重试时打 `[loopback-curl] 第 n/3 次…` 到 stderr |
+
+**为什么这不算掩盖**
+
+- 断言一条都没删：Authorization 头、请求体内容、两段 delta 的流式顺序、`tools` 为空、`error` 为空，全在。
+  变的只是「允许再跑一次网络往返」。
+- 重试的是**往返**，不是断言：服务端线程里的断言 panic 会被 `resume_unwind` 原样抛出，一次都不重试。
+- 有上界：3 次都撞上照样红，并把最后一次原文带出来
+  （`连续 3 次都因 loopback 传输被重置而失败（环境性问题，不是断言被跳过）：…`）。
+- 留痕：重试会打一行 stderr，以后 CI 里再看到这条用例，日志能直接区分「重试救回来了」和「真的坏了」。
+
+**下次它再红怎么判**
+
+1. 日志里有 `[loopback-curl] 第 1/3 次…` 且最终 `ok` → 环境噪声，重试已生效，不用管；
+2. 三次全红 → 先看同一 PR 重跑是否仍红（runner 网络策略变了），再看服务端线程的断言 panic（那才是产品回归）；
+3. 冒出新错误码（例如 `(55) Send failure: Connection was reset`）→ **不要顺手扩白名单**，
+   先留证据（日志 + 复现频率），再带着证据在 PR 里扩表。
+
+**重试分支怎么验的**（本地 macOS，临时补丁，未进仓库）：先让服务端在第 1 次往返用 `SO_LINGER(0)`
+把连接 RST 掉 —— curl 真报 `curl: (56) Recv failure: Connection reset by peer`，于是自动重试、第 2 次通过；
+再让每次往返都 RST —— 第 3 次之后按上面那句话红。负向验两遍：注入 `curl: (7) Failed to connect…`
+和 `curl: (52) Empty reply from server` 时**第一次就失败**（不重试），确认白名单没放宽。
 
 ## clippy 存量账：本机 315 条 / CI 334 条（2026-11-02，rustc 1.93.1）
 
