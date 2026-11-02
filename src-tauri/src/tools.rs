@@ -955,6 +955,15 @@ fn tool_dir_installed(sub: &str) -> bool {
 }
 
 /// 给 Command 加「不弹黑窗」（Windows CREATE_NO_WINDOW），其他平台原样。
+///
+/// 🔴 为什么带 `cfg_attr(not(windows), allow(dead_code))`（2026-11-02）：
+/// 三处调用点（编辑器启动 / `launch_codex_app` / `launch_clawx_app`）**全部落在
+/// `#[cfg(windows)]` 的函数里**，所以非 Windows 构建下这个 trait 一个使用者都没有 ——
+/// clippy 报的 dead_code 是真的，但那是平台分支的必然结果，不是代码坏了。
+///
+/// 用 `cfg_attr` 而不是无条件 `allow`：Windows 构建上仍然照常检查，
+/// 哪天真的没人用了会在 Windows 的 clippy 里被抓到，而不是被这里永久掩盖。
+#[cfg_attr(not(windows), allow(dead_code))]
 trait NoWindow {
     fn no_window(&mut self) -> &mut Self;
 }
