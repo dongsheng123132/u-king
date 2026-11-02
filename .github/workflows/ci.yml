@@ -106,11 +106,62 @@ jobs:
         working-directory: src-tauri
         run: cargo check
       # 保持原样（只报错误，不卡 warning）：存量 334 条 clippy warning（lib 171 + lib test 163）
-      # 一天清不掉，直接 `-D warnings` 会让 main 长红。收口走 baseline 冻结方案
-      # （冻结存量、禁止新增），拆分款清理与闸门切换，见 docs/ci-gates.md「clippy 为什么还没上闸」。
+      # 一天清不掉，直接 `-D warnings` 会让 main 长红。真正的收紧在下面的 `clippy-baseline`
+      # job（冻结存量、禁止新增），存量清完后这个 job 的 clippy 步骤与本 job 一起收口。
       - name: clippy（只报错误，不卡 warning）
         working-directory: src-tauri
         run: cargo clippy -- -D warnings || cargo clippy
+
+  # clippy 收口第一阶段：baseline 冻结 —— 存量放行、**新增即失败**。
+  # 为什么不是直接 `cargo clippy --all-targets -- -D warnings`：存量 334 条一次清不掉，
+  # 硬卡会让 main 长红（这就是上一版被撤回的原因）。这里把存量截图冻结进 clippy-baseline.json，
+  # 只断言「不许比 baseline 多」，存量在 B1~B3 的清理 PR 里一路往下掉。
+  # 硬截止 2026-12-31：存量归零（B4）后撤掉本 job 与 baseline 文件，换回 `-D warnings`。
+  # 指纹 = lint 名 + 相对路径 + item 名（**不含行号**）；清理顺序、allow 上限见 docs/ci-gates.md。
+  clippy-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 —— verify-shrink 要 `git show <base>:clippy-baseline.json` 读旧账本。
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: 装 Tauri 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      # baseline 只允许变小：拿 base 分支上的旧账本按 JSON 语义比，
+      # 出现「新增条目 / 计数上涨 / 总数上涨」直接失败。
+      # 这等价于「git diff 里 clippy-baseline.json 只能有删除行」，但不会被重排或格式化绕过。
+      - name: baseline 只减不增（对比 base 分支）
+        env:
+          PR_BASE: ${{ github.base_ref }}
+        run: |
+          set -eu
+          base="${PR_BASE:-${{ github.event.repository.default_branch }}}"
+          git rev-parse --verify -q "origin/$base" >/dev/null || git fetch --no-tags --depth=50 origin "$base"
+          echo "base = origin/$base"
+          node scripts/clippy-baseline.mjs verify-shrink --base-ref "origin/$base"
+      # 不加 `-D warnings`：有 warning 时退出码仍是 0，所以这一步失败=真编译错误，
+      # 与「warning 质量」分开归因。诊断全量落 JSON，供下一步比对与失败留档。
+      - name: cargo clippy（全目标，JSON 留证）
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --message-format=json > ../clippy.json
+      - name: baseline 门禁（新增即失败，存量放行）
+        run: node scripts/clippy-baseline.mjs check --input clippy.json
+      # 红了要能直接拿到全量诊断，不用重跑。保留 14 天。
+      - name: 失败时留存诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-json
+          path: clippy.json
+          retention-days: 14
 
   # Rust 单元测试（614 条 #[test]，全部在 lib 里；仓库无独立 tests/ 目录）。
   # 放 windows-latest 而不是 ubuntu：这批测试写的是 Windows 语义——
