@@ -1166,20 +1166,71 @@ mod tests {
         }
     }
 
-    #[test]
-    fn curl_config_streams_sse_and_sends_body_over_loopback() {
-        use std::net::TcpListener;
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let endpoint = format!("http://{}/chat", listener.local_addr().unwrap());
-        let server = std::thread::spawn(move || {
-            let (mut socket, _) = listener.accept().unwrap();
-            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-            let mut reader = BufReader::new(socket.try_clone().unwrap());
+    use std::net::{TcpListener, TcpStream};
+
+    /// 只认「curl 在 recv 阶段被 RST」这一类：退出码 56 + `Recv failure` + `reset`。
+    ///
+    /// 三家平台的真 curl 原话不同（Windows `Connection was reset` / macOS、Linux
+    /// `Connection reset by peer`），所以按词判而不是整串相等；但**故意收得很窄**：
+    /// `curl: (7) Failed to connect`（端口真没起）、`curl: (55) Send failure`（请求发不出去）、
+    /// `curl: (52) Empty reply from server`（服务端没回响应）都不匹配 ——
+    /// 那些是"该红"的信号，不能靠重试糊过去。
+    fn is_transient_loopback_reset(error: &str) -> bool {
+        let text = error.to_ascii_lowercase();
+        text.contains("curl: (56)") && text.contains("recv failure") && text.contains("reset")
+    }
+
+    /// 单次往返的结论：只有 `Transport` 允许重试。
+    enum RoundTrip {
+        /// 传输层被重置/提前断开 —— 环境噪声，可重试。
+        Transport(String),
+        /// 断言不符、端口绑不上、curl 起不来 —— 立即失败，一次都不重试。
+        Fatal(String),
+    }
+
+    /// 等 curl 连进来。阻塞 `accept()` 在"curl 压根没连上"时会一直挂着，
+    /// 而那种情况已经注定要重跑，没必要把测试卡死；改用非阻塞轮询 + 5s 上限。
+    fn accept_within(listener: &TcpListener, timeout: Duration) -> std::io::Result<TcpStream> {
+        listener.set_nonblocking(true)?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            match listener.accept() {
+                Ok((socket, _)) => {
+                    socket.set_nonblocking(false)?;
+                    return Ok(socket);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if Instant::now() >= deadline {
+                        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "5s 内没有 curl 连进来"));
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    /// 一次完整的往返：起 loopback 服务端 → 真 curl 走 `stream_once` → 校验。
+    ///
+    /// 服务端线程里**保留原来那三条断言**（Authorization 头 / body 内容 / SSE 两段 delta）。
+    /// 断言失败 = 产品回归：`join` 出来的 panic 原样抛回，不重试。
+    /// 只有 accept/read/write 的 `std::io::Error`（连接被 RST、客户端早退）才算 `Transport`。
+    fn loopback_curl_round_trip() -> Result<(), RoundTrip> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .map_err(|error| RoundTrip::Fatal(format!("绑定 loopback 端口失败：{error}")))?;
+        let endpoint = format!(
+            "http://{}/chat",
+            listener.local_addr().map_err(|error| RoundTrip::Fatal(format!("读取 loopback 端口失败：{error}")))?,
+        );
+        let server = std::thread::spawn(move || -> std::io::Result<()> {
+            let mut socket = accept_within(&listener, Duration::from_secs(5))?;
+            socket.set_read_timeout(Some(Duration::from_secs(5)))?;
+            let mut reader = BufReader::new(socket.try_clone()?);
             let mut headers = String::new();
             let mut content_length = 0;
             loop {
                 let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
+                reader.read_line(&mut line)?;
                 if line == "\r\n" { break; }
                 if line.to_ascii_lowercase().starts_with("content-length:") {
                     content_length = line.split(':').nth(1).unwrap().trim().parse::<usize>().unwrap();
@@ -1187,22 +1238,65 @@ mod tests {
                 headers.push_str(&line);
             }
             let mut body = vec![0; content_length];
-            reader.read_exact(&mut body).unwrap();
+            reader.read_exact(&mut body)?;
             assert!(headers.contains("Authorization: Bearer demo-secret"));
             let body: Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(body["messages"][0]["content"], "hello");
-            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n").unwrap();
-            socket.flush().unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n")?;
+            socket.flush()?;
             std::thread::sleep(Duration::from_millis(40));
-            socket.write_all(b"data: {\"choices\":[{\"delta\":{\"content\":\"second\"}}]}\n\ndata: [DONE]\n\n").unwrap();
+            socket.write_all(b"data: {\"choices\":[{\"delta\":{\"content\":\"second\"}}]}\n\ndata: [DONE]\n\n")?;
+            Ok(())
         });
         let mut events = Vec::new();
         let output = Mutex::new(&mut events);
         let (tools, error) = stream_once(&json!([{"role":"user","content":"hello"}]), &json!([]), "demo", "demo-secret", &endpoint, "curl-loopback-demo", &|event| output.lock().unwrap().push(event)).unwrap();
-        server.join().unwrap();
-        assert!(tools.is_empty());
+        // 先看服务端：断言 panic 原样冒上去（产品回归），IO 错误才归到环境。
+        match server.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(io_error)) => return Err(RoundTrip::Transport(format!("loopback 服务端 IO 失败：{io_error}"))),
+            Err(panicked) => std::panic::resume_unwind(panicked),
+        }
+        // 这条断言原样保留：非传输层错误（含产品逻辑问题）照旧当场红，不重试。
+        if let Some(detail) = &error {
+            if is_transient_loopback_reset(detail) {
+                return Err(RoundTrip::Transport(detail.clone()));
+            }
+        }
         assert!(error.is_none(), "{error:?}");
+        assert!(tools.is_empty());
         assert_eq!(events.iter().map(|event| event["text"].as_str().unwrap_or("")).collect::<Vec<_>>(), ["first", "second"]);
+        Ok(())
+    }
+
+    /// 真起 loopback HTTP 服务 + 真 curl 子进程：证明 ① 鉴权头/请求体真的发出去了，
+    /// ② SSE 真的被流式读成两段 delta。
+    ///
+    /// **已知环境性偶发**（2026-11-02 一个下午在共享 Windows runner 上红了 4 次，
+    /// 证据与判据见 `docs/ci-gates.md`「已知不稳定用例与处理方式」）：服务端就在测试进程内、
+    /// 端点是 `127.0.0.1`，curl 却报 `curl: (56) Recv failure: Connection was reset` ——
+    /// 连接在 SYN 之后被 RST。产品侧 `stream_once` 只是把 curl 的 stderr 原样上报（它就该上报），
+    /// 请求头/请求体/SSE 的断言又都在服务端线程里先跑，所以这不是产品逻辑。
+    ///
+    /// 处理：**只重试传输层重置**，最多 3 次；断言失败 / curl 起不来 / 端口连不上一律立即失败。
+    /// 重试的是「再跑一次网络往返」，不是「重试断言」——三次都撞上就照样红（循环末尾的 panic）。
+    #[test]
+    fn curl_config_streams_sse_and_sends_body_over_loopback() {
+        const MAX_ATTEMPTS: usize = 3;
+        let mut last_environmental = String::new();
+        for attempt in 1..=MAX_ATTEMPTS {
+            match loopback_curl_round_trip() {
+                Ok(()) => return,
+                Err(RoundTrip::Fatal(detail)) => panic!("{detail}"),
+                Err(RoundTrip::Transport(detail)) => {
+                    // 留一行日志：以后再偶发，CI 日志能一眼分清「重试救回来了」和「真的坏了」。
+                    eprintln!("[loopback-curl] 第 {attempt}/{MAX_ATTEMPTS} 次尝试遇到环境性传输错误，重试：{detail}");
+                    last_environmental = detail;
+                }
+            }
+            if attempt < MAX_ATTEMPTS { std::thread::sleep(Duration::from_millis(100)); }
+        }
+        panic!("连续 {MAX_ATTEMPTS} 次都因 loopback 传输被重置而失败（环境性问题，不是断言被跳过）：{last_environmental}");
     }
 
     #[test]
