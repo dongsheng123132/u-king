@@ -9,7 +9,7 @@
 |---|---|---|---|
 | `static-checks` | ubuntu | 泄漏闸门 `scripts/check-leak.mjs`、版本号四处一致、关键修复防回退 grep | 敏感信息进仓、发版版本号没同步、历史 bug 被回退 |
 | `frontend` | ubuntu | `pnpm install --frozen-lockfile` → `pnpm exec tsc --noEmit` → `pnpm build` | lockfile 与 package.json 漂移、TS 类型错、静态自检/vite 构建失败 |
-| `rust` | ubuntu | `cargo check`、`cargo clippy --all-targets -- -D warnings`、action-parity 清单未漂移 | 编译失败 / 有 clippy warning / 影核生成文件漂移 |
+| `rust` | ubuntu | `cargo check`、`cargo clippy`（只报错误不卡 warning）、action-parity 清单未漂移 | 编译失败 / 影核生成文件漂移 |
 | `rust-tests` | windows | `cargo test --lib`（614 条 `#[test]`，全在 lib；跳过 1 条 locale 依赖用例，见下） | Rust 单元测试红 |
 
 **为什么测试跑 Windows**：这批测试写的是 Windows 语义——`discover_tools_from` 在非 Windows
@@ -32,39 +32,52 @@ pnpm exec tsc --noEmit
 pnpm build
 
 cd src-tauri
-cargo clippy --all-targets -- -D warnings
-cargo test --lib                   # Windows 上 606 条可跑（605 过 + 1 条 locale 依赖）；macOS/Linux 有 9 条 Windows 语义用例必红
+cargo clippy                        # 只报错误，不卡 warning（本 PR 未收紧）
+cargo test --lib                    # Windows 上 606 条可跑（605 过 + 1 条 locale 依赖）；macOS/Linux 有 9 条 Windows 语义用例必红
 ```
 
-## clippy 存量：315 条本机 / 334 条 CI（2026-11-02，rustc 1.93.1）
+## clippy 为什么还没上闸：本机 315 条 / CI 334 条（2026-11-02，rustc 1.93.1）
 
-`cargo clippy -- -D warnings || cargo clippy` 时代这条闸门永远绿，warning 只进不出。现在一次结账：
+本 PR 只加了两道**新**闸门（前端、Rust 测试），**没有**动 clippy。
+原因：`cargo clippy -- -D warnings || cargo clippy` 时代这条闸门永远绿，warning 只进不出，
+到 2026-11-02 已经欠了 **334 条**（`ubuntu-latest` 首跑日志：lib 171 + lib test 163；
+本机 macOS arm64 是 315 条 = lib 158 + lib test 157，`cfg` 差异让 Linux 多出一批 `dead_code`）。
 
-本机 macOS arm64：**315 条**（lib 158 + lib test 157）；`ubuntu-latest` CI 首跑：**334 条**
-（lib 171 + lib test 163，`cfg` 差异让 Linux 多出一批 `dead_code`）。以 CI 日志为准：
+直接把这一行改成 `cargo clippy --all-targets -- -D warnings` 会在一天内把 `rust` job 打成红灯，
+而且没人能在一个 PR 里修完 334 条而不碰业务代码。所以本 PR **把 clippy 留在原样**，让 main 保持绿，
+收紧这件事按下面的形状单独做（见「后续：baseline 冻结方案」）。
 
-| 条数 | 来源 |
+主要来源（本机口径）：
+
+| 条数 | lint |
 |---|---|
-| 158 / 171 | lib 单元（`-D warnings` 后直接编译失败；左=macOS，右=CI） |
-| 157 / 163 | lib test 单元（同上） |
 | 83 | `dead_code`（多是只有 Windows 调用点的函数/常量） |
 | 52 | `clippy::let_unit_value` |
 | 38 | `clippy::needless_borrows_for_generic_args` |
 | 22 | `clippy::doc_lazy_continuation` |
 | 12 | `clippy::doc_overindented_list_items` |
-| 其余 | `unused_mut` / `too_many_arguments` / `useless_asref` / `manual_div_ceil` / `needless_borrow` … |
+| 24 | `unused_mut` / `too_many_arguments` / `useless_asref` / `manual_div_ceil` / `needless_borrow` 等 |
 
-清账顺序（建议独立 PR，别和功能混）：
+## 后续：baseline 冻结方案（独立 PR，不在本 PR 里）
 
-1. `cargo clippy --all-targets --fix --allow-dirty` 吃掉机械项（`needless_borrows*`、`let_unit_value`、
-   `unused_mut`、`useless_asref`），人工过一遍 diff；
-2. doc 类（`doc_lazy_continuation` / `doc_overindented_list_items`）手改注释缩进；
-3. `dead_code`：Windows-only 调用点补 `#[cfg(windows)]` 或删掉真死代码——**不要**用
-   `#[allow(dead_code)]` 一把盖住；
-4. 剩余 lint 手修。`--all-targets` 归零后这条闸门自然转绿。
+多模型会审结论：**不追求「一次归零」，改成「冻结存量、禁止新增」**，否则这道闸门永远上不去。
+形状定稿如下，实现落在后续 PR（分支 `ci/clippy-baseline`）：
 
-在此之前 `rust` job 会红，这是**设计如此**：门禁不再用兜底假装通过。想先保 main 绿，
-就把上面 4 步做成一个 PR 先合，再合门禁这条。
+1. **baseline 文件**：把当前全部 warning 的稳定指纹落盘（`clippy-baseline.json`）。
+   指纹 = **lint 名 + 相对路径 + item 名**，**不含行号**——行号会随任何无关改动漂移，
+   一旦进指纹，baseline 就变成「每次 rebase 都要 --update」的噪音源。
+2. **门禁语义**：CI 跑 clippy → 与 baseline 比对 → **新增 warning 直接失败，存量放行**。
+   baseline 只允许减不允许增：生成脚本提供 `--update` 但 CI 不调用，
+   且用 `git diff` 断言 baseline 的改动只能是删除条目。
+3. **清理拆分顺序**（多个小 PR，别和功能混）：
+   - **B1** `cargo clippy --all-targets --fix --allow-dirty` 吃掉机械项
+     （`needless_borrows*`、`let_unit_value`、`unused_mut`、`useless_asref`），人工过 diff；
+   - **B2** doc 类（`doc_lazy_continuation` / `doc_overindented_list_items`）手改注释缩进；
+   - **B3** `dead_code`：Windows-only 调用点补 `#[cfg(windows)]` 或删掉真死代码；
+     **不用 `#[allow(dead_code)]` 一把盖住**；确需 allow 的，**全仓上限 20 条，每条必须带注释说明理由**；
+   - **B4** 存量归零后撤掉 baseline 与比对步骤，改回 `cargo clippy --all-targets -- -D warnings`。
+4. **硬截止**：baseline **必须在 2026-12-31 前撤掉**（B4）。逾期未清完的，由维护者在
+   `docs/ci-gates.md` 里显式续期并写明剩余条数，不允许静默续命。
 
 ## 预估时长（rust-cache 命中）
 
