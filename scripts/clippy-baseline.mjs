@@ -40,7 +40,8 @@ const DEFAULT_BASELINE = path.join(REPO_ROOT, 'clippy-baseline.json');
 
 // ── 命令行 ──────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const [cmd, ...rest] = argv;
+  const [raw, ...rest] = argv;
+  const cmd = raw === '-h' || raw === '--help' ? 'help' : raw;
   const opts = { cmd, input: null, out: DEFAULT_BASELINE, baseRef: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
