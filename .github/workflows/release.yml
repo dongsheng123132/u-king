@@ -1,0 +1,161 @@
+# release —— 打 tag 就出 Windows 安装包，并把产物 + SHA256SUMS 传到该 tag 的 Release。
+#
+# 为什么需要它：ci.yml 管门禁、build-mac.yml 出 Mac 包，Windows 一直是本地 `pnpm tauri build`
+# 再手工传 release。手工那步一漏，就出现「tag 已经到 v1.4.9，Releases 还停在 v1.3.6，README 让
+# 用户从 Releases 下载」——用户拿到的就是旧版。这个 workflow 把那一步搬进 CI：tag 是唯一开关。
+#
+# 触发：push tag（v*）；或手动重跑 `gh workflow run release.yml -f tag=v1.4.10`。
+# 产物：U-King-Setup.exe（NSIS 安装包）、U-King.exe（便携单文件）、SHA256SUMS。
+#
+# 注意：只加发布链，不改业务代码；本 workflow 是全仓唯一带 `contents: write` 的，其他 workflow 不动。
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 v1.4.10，必须已存在且版本号对得上）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+# 同一个 tag 的发布排队执行、不互相取消：中途被 cancel 会留下半成品 release。
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows 安装包（NSIS）
+    runs-on: windows-latest
+    # windows runner 默认 shell 是 pwsh；统一 bash（runner 自带 Git Bash）才能直接用
+    # sha256sum/find/grep，和 README、本地脚本里写的命令一致。
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # push tag 时 github.ref 就是 refs/tags/<tag>；手动触发时用输入 tag。
+          ref: ${{ inputs.tag || github.ref }}
+          # 自动生成 release notes 要能反查到上一个 tag，所以不要浅克隆。
+          fetch-depth: 0
+
+      # 与 ci.yml / build-mac.yml 对齐：node 22 + pnpm 9 + stable Rust + 同一份 rust-cache 配置。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # tag 与四处版本号必须一致（src/version.ts 那处由 pnpm build 的自检覆盖，这里查三个可读的）。
+      # 「v1.4.10 的 tag 造出 1.4.9 的安装包」正是本次要修的故障模式，所以在最前面就拦住。
+      - name: tag 与版本号一致
+        id: vers
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          v_pkg=$(node -p "require('./package.json').version")
+          v_tauri=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          v_cargo=$(grep -oE '^version = "[^"]+"' src-tauri/Cargo.toml | grep -oE '[0-9.]+')
+          echo "tag=$RELEASE_TAG package.json=$v_pkg tauri.conf=$v_tauri Cargo.toml=$v_cargo"
+          if [ "$RELEASE_TAG" != "v$v_pkg" ] || [ "$v_pkg" != "$v_tauri" ] || [ "$v_tauri" != "$v_cargo" ]; then
+            echo "::error::tag 必须等于 v<package.json version>，且 tauri.conf.json / Cargo.toml 同步"
+            exit 1
+          fi
+          echo "version=$v_pkg" >> "$GITHUB_OUTPUT"
+          echo "✓ $RELEASE_TAG 与四处版本号一致"
+
+      - name: 装前端依赖（lockfile 冻结）
+        run: |
+          npm install --global pnpm@9
+          pnpm install --frozen-lockfile
+
+      # 单独跑一次 pnpm build：它含 tsc + 一串静态自检（模块耦合/主题/i18n/技能包/模型目录…），
+      # 失败时日志单独成段，不会埋进 tauri 的长输出里。tauri.conf 的 beforeBuildCommand 也是
+      # `pnpm build`，所以 `pnpm tauri build` 会再跑一遍；多花约 1 分钟换归因清晰，值得。
+      - name: 前端构建（pnpm build）
+        run: pnpm build
+
+      # 打包命令为何是 `pnpm tauri build`：
+      #  - package.json scripts.tauri = "tauri"，用的是 devDependencies 里的 @tauri-apps/cli 2.11。
+      #  - src-tauri/tauri.conf.json: bundle.active=true，bundle.targets=["nsis"] → Windows 只出
+      #    NSIS 安装包（bundle/nsis/U-King_<version>_x64-setup.exe），**不产 .msi**（要 msi 得另加 target）。
+      #  - bundle.windows.nsis.installMode="currentUser" → 装到当前用户，不需要管理员权限。
+      #  - bundle.windows.webviewInstallMode.type="downloadBootstrapper" → 用户机没 WebView2 时
+      #    安装器自己去下，所以不需要在这里预装/内嵌 WebView2。
+      #  - 没有 bundle.windows.certificateThumbprint / signCommand / timestampUrl，仓库也没存任何
+      #    Windows 签名 secret → 本 workflow 不需要配置签名凭据（未签名包会有 SmartScreen 提示，见 PR 遗留）。
+      - name: Tauri 打包（NSIS 安装包）
+        run: pnpm tauri build
+
+      - name: 收集产物 + 生成 SHA256SUMS
+        run: |
+          set -euo pipefail
+          BUNDLE=src-tauri/target/release/bundle
+          NSIS_DIR="$BUNDLE/nsis"
+          PORTABLE=src-tauri/target/release/u-king-mini.exe
+          echo "=== bundle 目录 ==="
+          find "$BUNDLE" -maxdepth 2 -type f 2>/dev/null | sort || true
+          mkdir -p dist-windows
+
+          # NSIS 安装包：bundle/nsis/U-King_<version>_x64-setup.exe（bundle.targets=["nsis"] 的产物名）
+          if [ ! -d "$NSIS_DIR" ]; then
+            echo "::error::$NSIS_DIR 不存在 —— tauri.conf.json 的 bundle.targets 是否仍是 nsis？"
+            exit 1
+          fi
+          setup=""
+          for f in "$NSIS_DIR"/*.exe; do
+            if [ -f "$f" ]; then setup="$f"; break; fi
+          done
+          if [ -z "$setup" ]; then
+            echo "::error::$NSIS_DIR 下没有 .exe —— 打包没有产出 NSIS 安装包"
+            exit 1
+          fi
+          echo "安装包：$setup"
+          # 换成不带版本号的固定名：≤1.3.6 的 release、官网下载页、scripts/release-uking.mjs
+          # 认的都是 U-King-Setup.exe，README 就不用跟着版本号改。
+          cp "$setup" dist-windows/U-King-Setup.exe
+
+          # 便携（绿色）单文件版：就是 release 编出来的那个二进制，改名沿用既有发行文件名
+          # （scripts/pack-usb.sh 里 `cp "$EXE" "$OUT/U-King.exe"` 是同一套做法；
+          #  技能包/代理脚本都是 include_str!/include_bytes! 编进 exe 的，所以单文件能独立跑）。
+          if [ ! -f "$PORTABLE" ]; then
+            echo "::error::找不到 $PORTABLE —— 这次构建是不是只打了 bundle 没编主程序？"
+            exit 1
+          fi
+          cp "$PORTABLE" dist-windows/U-King.exe
+
+          cd dist-windows
+          # sha256sum 格式：`<hash>  <filename>`，Linux/macOS/Git Bash 都能 `sha256sum -c` 校验。
+          sha256sum U-King-Setup.exe U-King.exe > SHA256SUMS
+          cat SHA256SUMS
+
+      # 先存 artifact：即使发布那步失败（例如权限/token 问题），产物也能从 run 里下载回来。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist-windows/*
+          retention-days: 14
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: U-King ${{ steps.vers.outputs.version }}
+          files: |
+            dist-windows/U-King-Setup.exe
+            dist-windows/U-King.exe
+            dist-windows/SHA256SUMS
+          # 少传一个文件当场失败，而不是悄悄发布一个缺件的 release。
+          fail_on_unmatched_files: true
+          # 用户看的是 Releases 页面顶部的 "Latest"；不显式指定，旧版本会一直占着那个位置。
+          make_latest: 'true'
+          generate_release_notes: true

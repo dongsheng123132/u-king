@@ -22,11 +22,19 @@ AI CLI 的第一步常常卡在 Node、PATH、镜像、配置文件和模型连�
 
 ## 30 秒开始
 
-从 [GitHub Releases](https://github.com/dongsheng123132/u-king/releases/latest) 或 [官网](https://www.u-king.org) 下载对应平台的版本。
+安装包从 [最新 Release](https://github.com/dongsheng123132/u-king/releases/latest) 下载——这个链接永远指向最新版本，不用记版本号；历史版本在 [Releases 列表](https://github.com/dongsheng123132/u-king/releases) 里，也可以走 [官网](https://www.u-king.org)。
 
-- Windows：绿色版双击即用，无需管理员权限；也提供安装版。
+- Windows：`U-King-Setup.exe` 是安装版（装到当前用户，不需要管理员权限）；`U-King.exe` 是绿色版单文件，双击即用。
 - macOS：提供 dmg / zip。
-- 发布页附有 SHA-256；下载后可按 [安全校验说明](SECURITY.md#构建产物校验) 核对。
+
+每个 release 都附一份 `SHA256SUMS`（`sha256sum` 格式：`<哈希>  <文件名>`）。下载后先核对再安装：
+
+```bash
+sha256sum -c SHA256SUMS        # Linux / WSL / Windows Git Bash
+shasum -a 256 -c SHA256SUMS    # macOS
+```
+
+逐条比对的说明与 PowerShell 等价写法见 [安全校验说明](SECURITY.md#构建产物校验)。
 
 打开 U-King 后，按向导选择要安装的工具和模型供应商即可。已有 Node、CLI 或配置不会被静默删除；安装失败会给出过程反馈并尝试修复。
 
@@ -79,6 +87,18 @@ pnpm build
 ```bash
 pnpm run action-parity:verify
 ```
+
+## 发版
+
+发布是「打 tag 即出包」：`.github/workflows/release.yml` 在 `windows-latest` 上构建 NSIS 安装包与绿色版单文件 exe，生成 `SHA256SUMS`，传成该 tag 的 GitHub Release 并标为 Latest——所以用户点「最新 Release」拿到的就是新版本。
+
+```bash
+# 先同步四处版本号（src/version.ts / package.json / tauri.conf.json / Cargo.toml），
+# ci.yml 与 release.yml 都会校验 tag 与版本号是否一致
+git tag v1.4.10 && git push origin v1.4.10    # 触发 release.yml
+```
+
+打错了或要重跑某个 tag：`gh workflow run release.yml -f tag=v1.4.10`。产物同时留作 `windows-installer` artifact（Actions 页面保留 14 天）。Mac 包仍走 `.github/workflows/build-mac.yml`（手动触发，产物在 artifacts 与官网），尚未接入这条自动发布链。
 
 ## 参与贡献
 
