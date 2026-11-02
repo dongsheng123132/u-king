@@ -10,12 +10,18 @@
 | `static-checks` | ubuntu | 泄漏闸门 `scripts/check-leak.mjs`、版本号四处一致、关键修复防回退 grep | 敏感信息进仓、发版版本号没同步、历史 bug 被回退 |
 | `frontend` | ubuntu | `pnpm install --frozen-lockfile` → `pnpm exec tsc --noEmit` → `pnpm build` | lockfile 与 package.json 漂移、TS 类型错、静态自检/vite 构建失败 |
 | `rust` | ubuntu | `cargo check`、`cargo clippy --all-targets -- -D warnings`、action-parity 清单未漂移 | 编译失败 / 有 clippy warning / 影核生成文件漂移 |
-| `rust-tests` | windows | `cargo test --lib`（614 条 `#[test]`，全在 lib） | Rust 单元测试红 |
+| `rust-tests` | windows | `cargo test --lib`（614 条 `#[test]`，全在 lib；跳过 1 条 locale 依赖用例，见下） | Rust 单元测试红 |
 
 **为什么测试跑 Windows**：这批测试写的是 Windows 语义——`discover_tools_from` 在非 Windows
 只找无扩展名文件、`unwrap_shim` 解的是 `.cmd` 壳、用例里直接写 `%APPDATA%\npm` 和
 `C:\Users\...`。同一个 HEAD 在 macOS 上是 561 passed / 9 failed（9 条全是上述语义），Linux 同理；
 产品主战场也是 Windows。哪天测试改成跨平台可跑，再挪到 ubuntu。
+
+`rust-tests` 唯一跳过的是 `agent::chat::tests::run_shell_chinese_output_not_mojibake`：
+它跑真 cmd 的 `chcp 65001 >nul & echo 中文测试OK`，断言中文不乱码——只有**中文 Windows**
+（ACP=936）成立；GitHub 的 Windows runner 是 en-US（ACP=437），cmd 在写管道前就把中文变成 `?`，
+解码器还没轮到。这是 runner locale 差异，不是产品回归：本地中文 Windows 仍要跑这条，
+别把它从测试里删掉（2026-11-02 首跑实测：605 passed / 3 ignored / 1 failed 就是它）。
 
 ## 本地复现（与 CI 同口径）
 
@@ -27,25 +33,26 @@ pnpm build
 
 cd src-tauri
 cargo clippy --all-targets -- -D warnings
-cargo test --lib                   # Windows 上全绿；macOS/Linux 会有上面那 9 条 Windows 语义用例
+cargo test --lib                   # Windows 上 606 条可跑（605 过 + 1 条 locale 依赖）；macOS/Linux 有 9 条 Windows 语义用例必红
 ```
 
-## clippy 存量：315 条（2026-11-02，macOS arm64 + rustc 1.93.1）
+## clippy 存量：315 条本机 / 334 条 CI（2026-11-02，rustc 1.93.1）
 
 `cargo clippy -- -D warnings || cargo clippy` 时代这条闸门永远绿，warning 只进不出。现在一次结账：
 
+本机 macOS arm64：**315 条**（lib 158 + lib test 157）；`ubuntu-latest` CI 首跑：**334 条**
+（lib 171 + lib test 163，`cfg` 差异让 Linux 多出一批 `dead_code`）。以 CI 日志为准：
+
 | 条数 | 来源 |
 |---|---|
-| 158 | lib 单元（`-D warnings` 后直接编译失败） |
-| 157 | lib test 单元（同一批，含测试代码） |
+| 158 / 171 | lib 单元（`-D warnings` 后直接编译失败；左=macOS，右=CI） |
+| 157 / 163 | lib test 单元（同上） |
 | 83 | `dead_code`（多是只有 Windows 调用点的函数/常量） |
 | 52 | `clippy::let_unit_value` |
 | 38 | `clippy::needless_borrows_for_generic_args` |
 | 22 | `clippy::doc_lazy_continuation` |
 | 12 | `clippy::doc_overindented_list_items` |
 | 其余 | `unused_mut` / `too_many_arguments` / `useless_asref` / `manual_div_ceil` / `needless_borrow` … |
-
-Linux runner 上的条数会因 `cfg` 差异略有出入，以 CI 日志为准。
 
 清账顺序（建议独立 PR，别和功能混）：
 
@@ -64,5 +71,5 @@ Linux runner 上的条数会因 `cfg` 差异略有出入，以 CI 日志为准�
 - `static-checks` ≈ 40s
 - `frontend` ≈ 1.5 min（install 20s + tsc 10s + build 40s）
 - `rust` ≈ 3~4 min（冷缓存 +2~3 min）
-- `rust-tests` ≈ 2~3 min（热）/ 8~10 min（冷；Windows 首次编译 Tauri 依赖最贵）
-- 墙钟合计 ≈ 4~5 min（热）/ 10~12 min（冷），四个 job 并行
+- `rust-tests` ≈ 5 min（冷，2026-11-02 首跑实测 4m50s，其中测试本身 59s）
+- 墙钟合计 ≈ 5 min，四个 job 并行（首跑实测：static-checks 5s / frontend 45s / rust 2m42s / rust-tests 4m50s）

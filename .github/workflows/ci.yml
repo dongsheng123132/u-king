@@ -124,6 +124,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - name: cargo test --lib
+      # 605 条真跑；只跳过 `run_shell_chinese_output_not_mojibake` 一条——
+      # 它断言中文 Windows（ACP=936）下 `cmd /C "chcp 65001 >nul & echo 中文测试OK"` 的输出，
+      # 而 GitHub 的 Windows runner 是 en-US（ACP=437）：cmd 在写管道**之前**就把中文变成 "?"，
+      # 我们的解码器还没轮到。这是 runner locale 差异，不是产品回归；开发机（中文 Windows）
+      # 仍要跑这条，别把它从测试里删掉。
+      - name: cargo test --lib（跳过 1 条 locale 依赖用例）
         working-directory: src-tauri
-        run: cargo test --lib
+        run: cargo test --lib -- --skip run_shell_chinese_output_not_mojibake
