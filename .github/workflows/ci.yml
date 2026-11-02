@@ -1,7 +1,11 @@
-# CI —— 每次 push/PR 自动跑的最便宜的网（静态检查 + 编译，不构建不联网）。
+# CI —— 每次 push/PR 自动跑的门禁：静态检查 + 前端类型/构建 + Rust 单元测试 + cargo check/clippy。
 # 设计依据：测试金字塔最底层最便宜。CI runner 无沙箱 exe/无内网/无代理，
-# 所以这里只跑"不依赖产物和外网"的部分（版本同步、源码防回退、cargo check、clippy）。
+# 所以这里只跑"不依赖产物和外网"的部分（版本同步、源码防回退、前端 tsc/build、
+# cargo test --lib、cargo check、clippy）。
 # 完整的沙箱配置/余额实测/真装 Hermes 回归留给本地 `bash scripts/regression.sh`。
+# 门禁清单、各 job 为什么区分平台、clippy 存量 warning 余额：见 docs/ci-gates.md。
+# clippy 这一步仍是「只报错误、不卡 warning」的老写法：存量 334 条 warning 一次清零不现实，
+# 改成严格失败会让 main 长红。收口方案见 docs/ci-gates.md「clippy 为什么还没上闸」。
 name: ci
 on:
   push:
@@ -53,6 +57,28 @@ jobs:
           fi
           echo "✓ providers.rs 全 cn 镜像"
 
+  # 前端门禁：README「提交改动前三道闸门」里的 pnpm build 从 2026-11-02 起真的进 CI。
+  # 单独成 job 是为了和 rust 并行（前端 1~2 分钟），失败时日志也干净。
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # 与 rust job 同一装法（pnpm 9 + frozen lockfile），
+      # 防 lockfile 与 package.json 漂移；兼容 pnpm@9 的 lockfileVersion 9.0。
+      - name: 装前端依赖（lockfile 冻结）
+        run: |
+          npm install --global pnpm@9
+          pnpm install --frozen-lockfile
+      # 单独跑一次 tsc：类型错误在日志里单独成段（pnpm build 里也含 tsc，两步都要求过）。
+      - name: 类型检查（tsc --noEmit）
+        run: pnpm exec tsc --noEmit
+      # pnpm build = 一串静态自检（模块耦合/主题/i18n/技能包/模型目录…）+ tsc + vite build + webkit 兼容。
+      - name: 前端构建（pnpm build）
+        run: pnpm build
+
   rust:
     runs-on: ubuntu-latest
     steps:
@@ -79,6 +105,31 @@ jobs:
       - name: cargo check
         working-directory: src-tauri
         run: cargo check
+      # 保持原样（只报错误，不卡 warning）：存量 334 条 clippy warning（lib 171 + lib test 163）
+      # 一天清不掉，直接 `-D warnings` 会让 main 长红。收口走 baseline 冻结方案
+      # （冻结存量、禁止新增），拆分款清理与闸门切换，见 docs/ci-gates.md「clippy 为什么还没上闸」。
       - name: clippy（只报错误，不卡 warning）
         working-directory: src-tauri
         run: cargo clippy -- -D warnings || cargo clippy
+
+  # Rust 单元测试（614 条 #[test]，全部在 lib 里；仓库无独立 tests/ 目录）。
+  # 放 windows-latest 而不是 ubuntu：这批测试写的是 Windows 语义——
+  # `discover_tools_from` 非 Windows 只找无扩展名文件、`unwrap_shim` 解 `.cmd`、
+  # 用例里直接写 `%APPDATA%\npm` / `C:\Users\...`。同一个 HEAD 在本机 macOS 上
+  # 561 passed / 9 failed（9 条全是上述 Windows 语义），在 Windows 才有意义。
+  rust-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # 605 条真跑；只跳过 `run_shell_chinese_output_not_mojibake` 一条——
+      # 它断言中文 Windows（ACP=936）下 `cmd /C "chcp 65001 >nul & echo 中文测试OK"` 的输出，
+      # 而 GitHub 的 Windows runner 是 en-US（ACP=437）：cmd 在写管道**之前**就把中文变成 "?"，
+      # 我们的解码器还没轮到。这是 runner locale 差异，不是产品回归；开发机（中文 Windows）
+      # 仍要跑这条，别把它从测试里删掉。
+      - name: cargo test --lib（跳过 1 条 locale 依赖用例）
+        working-directory: src-tauri
+        run: cargo test --lib -- --skip run_shell_chinese_output_not_mojibake
