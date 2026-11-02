@@ -32,14 +32,16 @@ U-King 及其管理的工具在本地写入以下位置（Windows/Mac 路径形�
 
 ## 构建产物校验
 
-发布的 exe 附带 SHA-256 校验值，发布页面会同时给出文件与哈希。下载后可自行校验：
+每个 release 都附带一个 `SHA256SUMS` 文件，逐行是 `<哈希>  <文件名>`（`sha256sum` 输出格式），覆盖该 release 里的 exe。下载后先校验、再安装：
 
 ```bash
-# Windows PowerShell
-Get-FileHash .\u-king.exe -Algorithm SHA256
+# macOS / Linux / WSL / Windows Git Bash：直接按清单校验
+shasum -a 256 -c SHA256SUMS      # macOS
+sha256sum -c SHA256SUMS          # Linux / WSL / Windows Git Bash
 
-# macOS / Linux
-shasum -a 256 u-king
+# Windows PowerShell：没有 -c 可用，逐个比对
+Get-FileHash .\U-King-Setup.exe -Algorithm SHA256
+Get-Content .\SHA256SUMS
 ```
 
-比对结果与发布页面公布的哈希一致，即可确认产物未被篡改。
+哈希与清单一致，即可确认产物在下载途中未被篡改（本 release 由 `.github/workflows/release.yml` 在 GitHub Actions 的 `windows-latest` 上构建并生成清单）。
