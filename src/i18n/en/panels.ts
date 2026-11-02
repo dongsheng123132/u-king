@@ -38,8 +38,29 @@ export const panels: Record<string, string> = {
 
   // 报错人话化（认得出才给准话；认不出的走下面那条「我没认出」）
   "⚠️ {what}\n\n**怎么办**：{how}": "⚠️ {what}\n\n**What to do**: {how}",
-  "⚠️ 这一轮没跑成，而且我没认出这是哪种问题。\n\n常见的两个方向：{agent} 没装好，或者驱动没配对 —— 可以点上方「去配驱动」一键修。还不行就用「技术支持」把下面这段发给我们。":
-    "⚠️ This turn failed, and I couldn't identify the cause.\n\nTwo common directions: {agent} isn't installed properly, or the provider isn't configured — try “Set up” above. If that doesn't help, send us the block below via Feedback.",
+  // 「完整功能在哪」的唯一一条引导：**只指路、不代跑**（会审判据：教客户用原版最多一条文案，不做交互）。
+  "要更全的功能（斜杠指令 / MCP / 跑长任务）？点顶栏「终端」切过去，敲 claude 回车就是原版。":
+    "Need the fuller feature set (slash commands, MCP, long-running tasks)? Switch to the terminal in the top bar and type `claude` — that's the original.",
+  "知道了": "Got it",
+  "⚠️ {agent} 这一轮没跑成，但**不是没装好，也不用重装**。\n\n可以按顺序试：\n1. 隔一会儿重发一次 —— 多半是上游一时没接住；\n2. 还不行就在顶栏「换模型」换成 DeepSeek Flash 再发；\n3. 都不行就点上方「技术支持」，把下面这段原文发给我们（**这段原文别删**，它是唯一能定位问题的东西）。":
+    "⚠️ {agent} failed this turn — but **nothing is misinstalled and a reinstall won't help**.\n\nTry in order:\n1. Wait a moment and resend — usually the upstream just didn't take it;\n2. If it still fails, switch models (top bar → DeepSeek Flash) and resend;\n3. Otherwise hit “Feedback” above and send us the block below (**keep it intact** — it's the only thing that can locate the problem).",
+
+  // 「起不来」和「跑起来又挂了」分开处置：只有前者才该去重装/重配驱动。
+  "这个 AI 起不来（装的时候没装完整，或者被系统拦了）":
+    "This AI can't start (the install is incomplete, or the system blocked it)",
+  "点上方「去配驱动」一键修；修不好就去「装 AI」页重装一次，装完会自动验证。这条跟余额、网络都无关。":
+    "Use “Set up” above to fix it; if that fails, reinstall from the “Install AI” page — it verifies itself afterwards. This has nothing to do with your balance or network.",
+  // 5xx 以前整类为空，全落「我没认出」（见 ChatPanel::humanizeError 注释）。
+  "上游服务器忙不过来（不是你操作的问题）": "The upstream server is overloaded (not your fault)",
+  "等一两分钟重发一次就好。连着三次以上还这样，就在顶栏「换模型」换成 DeepSeek Flash，或者点「技术支持」把下面这段原文发给我们。":
+    "Wait a minute or two and resend. If it keeps happening three times or more, switch to DeepSeek Flash in the top bar, or send us the block below via Feedback.",
+  "上游服务器这次没接住（不是你操作的问题）": "The upstream server failed to handle this turn (not your fault)",
+  "隔一会儿重发一次就行，不用重装、也不用重配驱动。连着三四次都这样，就点「技术支持」把下面这段原文发给我们。":
+    "Wait a bit and resend — no reinstall or provider reconfiguration needed. If it keeps happening three or four times, send us the block below via Feedback.",
+  // 只剩「退出码 N」= 原始报错没采到。
+  "这一轮跑挂了，但报错原文没拿到": "This turn failed, but the original error text wasn't captured",
+  "先重发一次（常见是上游一时没接住，重发就好）；还挂就点「技术支持」把下面这段发给我们 —— 带着退出码，我们能直接查到是哪一段断的。":
+    "Resend once first (usually the upstream just didn't take it). If it still fails, send us the block below via Feedback — the exit code lets us pinpoint where it broke.",
   "账户余额用完了": "Your account balance is used up",
   // 余额还有钱、却一条都发不出去：上游按「最多可能用掉多少」预扣，见底时会被 403 挡回。
   "余额不够发起这一次请求（不是没钱，是不够垫这一次）":
@@ -52,8 +73,7 @@ export const panels: Record<string, string> = {
   "密钥没对上": "API key doesn't match",
   "多半是驱动没配好或配到了别家。去「AI 设置」重新一键配虾盘云。":
     "Most likely the provider isn't configured, or points elsewhere. Reconfigure in AI Settings.",
-  "请求太频繁，被上游限流了": "Rate-limited upstream — too many requests",
-  "等一两分钟再发。反复出现就换个模型试试。": "Wait a minute or two. If it keeps happening, switch models.",
+  "请求太频繁，被上游限流了": "Rate-limited upstream — too many requests",  "等一两分钟再发。反复出现就换个模型试试。": "Wait a minute or two. If it keeps happening, switch models.",
   "连不上服务器": "Can't reach the server",
   "先看看这台电脑能不能上网；开了代理/VPN 的话先关掉再试。":
     "Check this machine's internet access; if a proxy/VPN is on, turn it off and retry.",
@@ -64,6 +84,9 @@ export const panels: Record<string, string> = {
     "No need to reinstall — this has nothing to do with the provider setup. Hit “New chat” next to the input box, then resend what you just asked; if you just switched models, switch back to continue the thread. If it still happens, send us the original text below via Feedback.",
   "在顶栏「换模型」里换一个（推荐 DeepSeek Flash），或去「AI 设置」重配驱动。":
     "Pick another in the top bar (DeepSeek Flash recommended), or reconfigure the provider in AI Settings.",
+  // 外挂工具（MCP）连不上：原文含 ENOENT / timed out，必须排在「找不到程序」「连不上网」之前。
+  "有个外挂工具（MCP）没连上": "An external tool (MCP) couldn't connect",  "这不是网络问题、也不是没装好：是那个 MCP 服务自己没起来（找不到命令 / 启动超时 / 连上就断）。它配在你自己机器的 Claude 配置里，可以让技术支持帮你看；对话框里其它事照常能用。":
+    "This isn't a network problem and nothing needs reinstalling: that MCP service never started (command not found / startup timeout / dropped on connect). It lives in your own machine's Claude config — support can help you adjust it; everything else in this chat keeps working.",
   "找不到这个程序": "Program not found",
   "多半是它没装好。去「装 AI」页重装一次，装完会自动验证。":
     "It's probably not installed correctly. Reinstall from the Install AI page — it verifies automatically.",

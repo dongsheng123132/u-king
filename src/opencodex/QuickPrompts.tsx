@@ -1,15 +1,20 @@
 /**
- * 起手词 —— 借鉴 WorkBuddy 首页那两排：**场景 tab（日常办公 / 代码开发 / 设计创意）+ 该场景下的快捷卡**。
+ * 起手词 —— 对话为空时给客户「我该问什么」的示范。
  *
- * **一份实现两处用**（宪法第 12 条）：轻助手（`Chat.tsx`）和 Claude/Codex（`panels/ChatPanel.tsx`）
- * 的输入框上方共用这一个组件 —— 以前只有轻助手那侧有 5 个扁平 chip，而**默认大脑是 Claude**，
- * 也就是绝大多数客户从来没见过起手词。
+ * # 2026-11-02：从「4 场景 × 27 条 + 场景 tab」砍到 **3 条扁平**
  *
- * 为什么要分两级：扁平一排的时候，写代码的人和做图的人各自只有一两个能用，其余全是噪声。
- * 分场景后每屏 7 条都跟你当下在干的事有关，且「原来还能干这个」的发现感留在了 tab 上。
+ * 会审判据（老板口径 U-King = 360 软件管家：帮装、帮充值、快速使用，不做复杂）：
+ * **教客户怎么用原版，最多一条引导文案，不做交互。** 起手词的场景 tab + 展开/收起
+ * 是一套小型引导系统，占两行高度、还要记 localStorage 上次选了哪个场景 ——
+ * 对一个「装完就想问一句」的客户，这是纯负担。
  *
- * 两条不许回退的约定：
- * 1. **只在对话为空时出现** —— 它是教学不是常驻工具条；聊起来了还占两行就纯干扰。
+ * 现在只留 3 条，覆盖管家最核心的三个动作：**装（装 AI 工具）/ 写（写周报）/ 做（做幻灯片）**。
+ * 词库本身**没删**（`SCENES` 仍在）—— 输入框 `/` 指令面板还从这里取全表，
+ * 那是客户主动去翻的地方，不算打扰。
+ *
+ * # 两条不许回退的约定
+ *
+ * 1. **只在对话为空时出现** —— 它是教学不是常驻工具条；聊起来了还占地方就纯干扰。
  * 2. **点了只填输入框，绝不自动发送** —— 每条都以「：」收尾，后半句必须由用户自己写完。
  *    替他发出去 = 替他编需求，出来的东西不是他要的，比不给更伤信任。
  *
@@ -17,11 +22,10 @@
  * 能力边界跟着这个对话框真有的工具走（画图 / 视频 / 文档 / 表格 / 网页 / 读写文件 / 跑命令），
  * **不许写超纲的活**（订机票、发微信、连第三方账号）——点了做不出来就是骗。
  */
-import { useEffect, useState } from "react";
 import {
   Bug, Code2, Film, FileCode, FileSearch, FileText, Languages, LayoutTemplate,
   Image as ImageIcon, PenLine, Presentation, Save, ScrollText, Smile, Sparkles,
-  Table, Terminal, Wand2, ListChecks, UserRound, ChevronDown,
+  Table, Terminal, Wand2, ListChecks, UserRound,
   Download, Wrench, Stethoscope, RefreshCw, HardDriveDownload,
 } from "lucide-react";
 import type { Engine } from "./types";
@@ -58,15 +62,19 @@ const BEST_OFFICE: Best = { engine: "claude", why: "装了 PPT/文档/表格技�
  * 而技能只装进 CLI 大脑的 skills 目录 —— 轻助手没有技能机制。
  * 落盘那一步两边其实都够得着（都是影核动作 `runtime.workbench.install`），差的是「怎么搭」那半边。
  */
-const BEST_WORKBENCH: Best = { engine: "claude", why: "装了搭工作台的技能，会先盘点你的文件夹再动手" };
+const BEST_WORKBENCH: Best = { engine: "claude", why: "装了 workbench 技能，会先只读盘点再问清楚，不乱建目录" };
 
+/**
+ * 词库全表 —— 场景分组仍然保留，但**不再有 tab UI**。
+ *
+ * 它现在的唯一消费者是输入框的 `/` 指令面板（`ALL_QUICK` 拍平后给它）：
+ * 客户主动敲 `/` 是在找「还能干什么」，那才是发现感的正确位置；
+ * 而空对话时铺一大堆，是把发现感变成了入场税。
+ */
 const SCENES: { scene: string; items: Quick[] }[] = [
   {
     scene: "日常办公",
     items: [
-      // ★ 「搭工作台」= 按客户自己的活给他配一套目录约定 + 说明书，之后任何 AI 进那个文件夹
-      //   都知道该干什么。摆在第一条是因为它是**一次性的、且让后面每一条都变好用**的那件事。
-      //   模板照旧以「：」收尾 —— 后半句（他那个文件夹在哪）必须他自己写，替他填就是替他编需求。
       {
         label: "搭我的工作台",
         template: "帮我搭一个我自己的工作台。先只读盘点一下这个文件夹再问我几句，别急着建目录：",
@@ -128,10 +136,19 @@ export const ALL_QUICK: { scene: string; label: string; template: string; best?:
   s.items.map(({ label, template, best }) => ({ scene: s.scene, label, template, best })),
 );
 
-/** 默认铺开几个起手词。5 个在 1280 宽上正好一行不换行（实测），再多就开始吃第二行。 */
-const FIRST_ROW = 5;
-
-const SCENE_KEY = "uking.chat.quickscene";
+/**
+ * 空对话时铺出来的 3 条。**只有 3 条，且不分组、不折叠、不记忆上次选择。**
+ *
+ * 挑法是按「管家最核心的三个动作」：装 / 写 / 做 ——
+ * 装（装 AI 工具）：这是 U-King 存在的第一理由；
+ * 写（写周报）：不知道问什么的人，第一次最常问的就是这个；
+ * 做（做幻灯片）：能拿到真文件，是「这软件值不值」最直观的一次交付。
+ */
+const PICKED: Quick[] = [
+  { label: "装 AI 工具", template: "帮我安装这个 AI 工具：", icon: Download },
+  { label: "写周报", template: "帮我写这周的周报，我的工作是：", icon: FileText },
+  { label: "做幻灯片", template: "把这份内容做成幻灯片：", icon: Presentation, best: BEST_OFFICE },
+];
 
 export function QuickPrompts({ onPick, className }: {
   /** 点了填哪句话；`best` = 这活哪个大脑拿手（没有就是「当前这个就行」）。 */
@@ -139,53 +156,15 @@ export function QuickPrompts({ onPick, className }: {
   className?: string;
 }) {
   const { t } = useI18n();
-  // 矮屏（见 lib/useViewport.ts）：这两排在 1366×768 上要占掉 ~72px 的对话高度。
-  // **只收尺寸，一条词都不减** —— 起手词是教学，砍掉几条等于对这台机器上的客户说
-  // 「你的电脑不配知道还能干这个」。
+  // 矮屏（见 lib/useViewport.ts）：这三个胶囊在 1366×768 上也不是零成本，跟着收高度。
   const { short } = useViewport();
-  // 记住上次选的场景：会用这个工作台的人多半长期在同一个场景里，每次回到「日常办公」是白让他多点一下
-  const [scene, setScene] = useState(() => {
-    const saved = localStorage.getItem(SCENE_KEY);
-    return SCENES.some((s) => s.scene === saved) ? saved! : SCENES[0].scene;
-  });
-  const pickScene = (s: string) => {
-    setScene(s);
-    localStorage.setItem(SCENE_KEY, s);
-  };
-  const items = SCENES.find((s) => s.scene === scene)?.items ?? SCENES[0].items;
-  // 换场景就收回一行 —— 不然点了「更多」之后再切场景，新场景也是摊开的，等于默认全铺
-  const [expanded, setExpanded] = useState(false);
-  useEffect(() => setExpanded(false), [scene]);
 
   return (
     /* 靠左（2026-08-18 客户改口：「起手词还是靠左边吧」）。
-       我上一版按「和居中的输入框对齐」改成了居中 —— 但输入框本身是一整块卡片、
-       左边缘就是内容的起点，起手词靠左才跟它同一条基线；居中反而像浮在中间。 */
+       输入框本身是一整块卡片、左边缘就是内容起点，起手词靠左才跟它同一条基线。 */
     <div className={cn(short ? "space-y-1" : "space-y-2", className)}>
-      <div className="flex items-center gap-1.5">
-        {SCENES.map((s) => (
-          <button
-            key={s.scene}
-            onClick={() => pickScene(s.scene)}
-            className={cn(
-              "px-3 rounded-full text-[12px] transition-colors",
-              short ? "h-6" : "h-7",
-              scene === s.scene
-                ? "bg-accent text-white"
-                : "bg-bg-1 border border-white/[0.08] text-ink-3 hover:text-ink-1 hover:border-accent/30",
-            )}
-          >
-            {t(s.scene)}
-          </button>
-        ))}
-      </div>
-      {/* 🔴 默认**只铺一行**，其余折进「更多」。
-          这不违反本文件开头那条「只收尺寸，一条词都不减」—— **一条都没删**，
-          全部仍在一次点击之内。改的是默认铺开的量：原来 3 行（场景 tab + 8 个胶囊换行）
-          在中间占掉近 90px，而 dsh / ClawX 那类工具这块是 0。
-          用户 2026-08-18：「起手词的上面字太多了」+「专家可以替代起手词」。 */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        {(expanded ? items : items.slice(0, FIRST_ROW)).map(({ label, template, icon: Icon, best }) => (
+        {PICKED.map(({ label, template, icon: Icon, best }) => (
           <button
             key={label}
             onClick={() => onPick(t(template), best)}
@@ -198,17 +177,6 @@ export function QuickPrompts({ onPick, className }: {
             <Icon size={12} className="text-accent/80" /> {t(label)}
           </button>
         ))}
-        {!expanded && items.length > FIRST_ROW && (
-          <button
-            onClick={() => setExpanded(true)}
-            className={cn(
-              "inline-flex items-center gap-0.5 px-2 rounded-full text-[11px] text-ink-4 hover:text-ink-1",
-              short ? "h-6" : "h-7",
-            )}
-          >
-            {t("还有 {n} 个", { n: items.length - FIRST_ROW })} <ChevronDown size={11} />
-          </button>
-        )}
       </div>
     </div>
   );

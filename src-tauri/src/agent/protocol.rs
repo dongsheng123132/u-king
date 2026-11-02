@@ -82,7 +82,24 @@ impl ProtocolState {
     }
 
     fn on_system(&mut self, v: &Value) -> Vec<Value> {
-        if v.get("subtype").and_then(|s| s.as_str()) != Some("init") {
+        let subtype = v.get("subtype").and_then(|s| s.as_str()).unwrap_or("");
+        // 🔴 上游重试（`api_retry`）以前被这里整条丢掉 —— 而它是**唯一**能解释
+        // 「界面一动不动好几分钟」的事件：claude 在内部退避重试，stdout 除了这一行
+        // 什么都不吐。丢掉它的后果全都落在客户身上：
+        //   1. 界面从第一分钟到第 N 分钟没有任何反馈，客户以为软件死了 —— 2026-11-02
+        //      客户实拍「咋老跳出这个 多开了几个窗口」，干等期间他去点了一堆窗口；
+        //   2. 这一行仍然会给看门狗打卡（见 `claude.rs` 的 `wd.beat()`），
+        //      于是「5 分钟静默即挂」的保护被重试日志骗过去，一直等到上游自己放弃
+        //      （实测 `max_retries:10`，15 分钟仍无 result 事件）。
+        // 现在把它翻成 `notice`：前端 ChatPanel 早有这种瞬时提示（不进消息流、轮末自动清），
+        // 客户至少能看到「它在重试，不是我卡了」。
+        if subtype == "api_retry" {
+            // 🔴 只报「在重试」，**不报第几次**（2026-11-02 会审）：`3/10` 是我们的内部计数，
+            // 小白看到只会多一个「为什么是 10？谁定的？」的疑问 —— 一句他不知道怎么处理的信息
+            // 就是负担。真要排查，`chat.log` 里有全量原文和 attempt 计数。
+            return vec![json!({ "kind": "notice", "text": "上游没接住，正在自动重试…" })];
+        }
+        if subtype != "init" {
             return vec![];
         }
         let first = !self.seen_first_init;

@@ -139,19 +139,50 @@ const GUI_ONLY_FLAGS: &[&str] = &[
 ///
 /// 真实 argv 一字不差地既执行又展示（同一事实只有一份，宪法第 8 条）；teach 故意**不带**
 /// 上面 `GUI_ONLY_FLAGS` 里的东西，也不带 persona（太长，贴进终端没法看）。
+/// 客户自己在 Claude Code 里设的默认权限模式（`~/.claude/settings.json` 的
+/// `permissions.defaultMode`）。没设过 = `None`，那时候才由我们给免审批。
+///
+/// 🔴 为什么必须读它（2026-11-02 老板口径）：U-King 只负责**装、配、启动、充值**，
+/// 不替客户决定他软件里的策略。客户在 Claude Code 里选了「逐条问我」或「先给计划」，
+/// 那是他的选择，管家不该在对话面板里把它悄悄改成全放行 —— 反过来也一样。
+///
+/// 也不能干脆不传：不传 = 走 Claude Code 的默认（逐条审批），而这个面板对面多半是
+/// 不看命令行的人，每条命令点一次「允许」等于没法用。所以口径是**跟随**：
+/// 客户设过就听他的，没设过才由我们给 `bypassPermissions`。
+///
+/// 只认 Claude Code 自己那四档 —— 别的字符串透传过去会让 claude 直接报错退出
+/// （客户看到的是「这一轮没跑成」，比不跟随更糟）。
+fn user_permission_mode() -> Option<String> {
+    let home = std::env::var("USERPROFILE")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("HOME").ok())?;
+    let p = std::path::Path::new(&home).join(".claude").join("settings.json");
+    let raw = std::fs::read_to_string(p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let m = v.get("permissions")?.get("defaultMode")?.as_str()?.trim().to_string();
+    matches!(m.as_str(), "default" | "acceptEdits" | "plan" | "bypassPermissions").then_some(m)
+}
+
 fn build_args(
     prompt: &str,
     model: Option<&str>,
     system: Option<&str>,
     resume: Option<&str>,
+    permission_mode: Option<&str>,
 ) -> (Vec<String>, Vec<String>, bool) {
     let model = model.filter(|m| !m.trim().is_empty());
     let mut args: Vec<String> = vec![
         "--output-format".into(), "stream-json".into(),
         "--include-partial-messages".into(),
         "--verbose".into(),
-        "--permission-mode".into(), "bypassPermissions".into(), // MVP 先免审批
     ];
+    // 🔴 权限模式**跟随客户自己配的**（见 `user_permission_mode`）；没配过才由我们给免审批。
+    // 以前这里写死 `bypassPermissions`，后果是客户在 Claude Code 里配的
+    // `default`（逐条问我）/ `plan`（先给计划、我批了再动）进对话面板**当场失效**，
+    // 而且界面上没有任何地方能看出被覆盖了 —— 那是「管家替主人改了他软件的设置」。
+    args.push("--permission-mode".into());
+    args.push(permission_mode.unwrap_or("bypassPermissions").to_string());
     // 运行环境约束 + 专家 persona：append 到 Claude 自己的系统提示后（不覆盖 Claude Code 默认行为）。
     // GUARD 是**无条件**的 —— 没选专家的裸对话才是绝大多数客户走的那条路，防死锁的规矩正是他们最需要的。
     let sys = match system.map(str::trim).filter(|s| !s.is_empty()) {
@@ -283,7 +314,8 @@ fn run_turn(
         }
         None => system,
     };
-    let (args, teach, inlined) = build_args(&prompt, model.as_deref(), system.as_deref(), resume.as_deref());
+    let perm = user_permission_mode();
+    let (args, teach, inlined) = build_args(&prompt, model.as_deref(), system.as_deref(), resume.as_deref(), perm.as_deref());
     c.args(&args);
 
     // 「看命令」：真实命令 + 终端交互式等价写法，**在 spawn 之前**发 —— claude 没装时进程起不来，
@@ -299,8 +331,14 @@ fn run_turn(
     // 给 claude 自己的 Bash 工具设硬上限：**让它自己超时**，把「命令超时了」当成工具错误回给模型，
     // 模型会换个方式接着干，对话不断。这比等我们从外面把整个 claude 杀掉温和得多 ——
     // 外部 kill 是兜底（见 STALL_SECS），这里才是第一道闸。
-    c.env("BASH_DEFAULT_TIMEOUT_MS", "120000"); // 常规命令 2 分钟
-    c.env("BASH_MAX_TIMEOUT_MS", "180000"); // 模型主动加长也不许超过 3 分钟
+    //
+    // 🔴 这两个数**回官方默认**（2026-11-02，老板口径：U-King 是 360 软件管家，装上去的软件
+    // 必须是全功能原版，不许削它自带的能力）。原来 `BASH_MAX_TIMEOUT_MS` 被压到 3 分钟，
+    // 后果是客户让 AI 跑一个装依赖 / 建索引 / 跑数据这类正当的长命令时，第三分钟就被我们
+    // 从底下掐断 —— 那不是"防卡死"，那是替客户把他的能力砍了一半。
+    // 真正的防卡死是 `STALL_SECS` 那层（静默才杀），跟命令最长能跑多久是两件事。
+    c.env("BASH_DEFAULT_TIMEOUT_MS", "120000"); // 常规命令 2 分钟（官方默认）
+    c.env("BASH_MAX_TIMEOUT_MS", "600000"); // 模型主动加长可以到 10 分钟（官方默认）
     c.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
 
     let mut child = c.spawn().map_err(|e| {
@@ -342,8 +380,15 @@ fn run_turn(
     let mut state = ProtocolState::new(resume.is_some());
     if let Some(so) = stdout {
         for line in BufReader::new(so).lines().map_while(Result::ok) {
-            wd.beat(); // 有一行就算「还活着」——空行/非 JSON 行也算
             let line = line.trim();
+            // 🔴 `api_retry` 不算「还活着」—— 它证明的恰恰是**上游没接住**。
+            // 在这里给它打卡的代价，是「5 分钟静默即挂」的保护当场失效：一次重试把死线
+            // 往后推一次，`max_retries:10` 就能把它推成十几二十分钟（2026-11-02 客户那轮
+            // 实测 26 分 11 秒、0 token，界面从头到尾一动不动，最后还只得到一句「我没认出」）。
+            // 其余行（含空行 / 非 JSON）照旧算活着 —— 它们才是「那头还在干活」的证据。
+            if !line.contains("api_retry") {
+                wd.beat();
+            }
             if line.is_empty() {
                 continue;
             }
@@ -403,6 +448,29 @@ fn run_turn(
         let from_stderr = err_buf.lock().map(|g| g.clone()).unwrap_or_default();
         failure_text(&from_stderr, state.result_error())
     };
+    // 🔴 失败原文落盘（2026-11-02 客户「咋老跳出这个」）。
+    //
+    // 客户截图里只剩半句「我没认出这是哪种问题」，原始报错被截掉了 —— 而我们手里唯一的
+    // 证据原本就是客户那张截图。客户**拿不到**：他得先找回那个会话、还得保证窗口没关。
+    // 所以把正文写进 `~/.uking/logs/chat.log`（「技术支持」整包会带上它），
+    // 排障不必再回头求客户重新截图。
+    //
+    // 脱敏边界：**只写报错正文**（上游错误 / CLI 诊断），不写提示词、不写工具入参 ——
+    // 跟 `TurnLog` 既有规矩一致（这份日志会随技术支持整份上传）。
+    // 截尾 400 字：关键信息通常在最后，跟界面上折进代码块的口径一致。
+    // 成功轮一个字都不写 —— 日志不是聊天记录。
+    let will_fail = !wd.stalled() && !interrupted && code != Some(0);
+    if will_fail && !err_text.trim().is_empty() {
+        let tail: String = err_text
+            .chars()
+            .rev()
+            .take(400)
+            .collect::<Vec<char>>()
+            .into_iter()
+            .rev()
+            .collect();
+        crate::ulog::write("chat", &format!("turn err={tail}"));
+    }
     // 收尾事件：卡死/成功/中断/错误。
     // **卡死判定必须排在 interrupted 前面** —— 看门狗是靠杀进程收场的，进程状态上跟「人按了停止」
     // 长得一模一样。谁在前面谁定性，摆错顺序就会把「它挂了」报成「你停了它」，客户再也不会告诉我们。
@@ -513,7 +581,7 @@ mod tests {
             ("写个脚本", Some("  "), Some(persona.as_str()), Some("sess-2")), // 空白 model 要当没传
             ("第一行\n第二行", None, Some(persona.as_str()), None),
         ] {
-            let (args, teach, _) = build_args(prompt, model, system, resume);
+            let (args, teach, _) = build_args(prompt, model, system, resume, None);
             for flag in GUI_ONLY_FLAGS {
                 assert!(!teach.iter().any(|a| a == flag), "teach 混进了 GUI 专用参数 {flag}: {teach:?}");
             }
@@ -532,18 +600,38 @@ mod tests {
     #[test]
     fn guard_prompt_always_appended_never_taught() {
         for system in [None, Some("你是一个建站专家"), Some("   ")] {
-            let (args, teach, _) = build_args("帮我调试一下这个软件", None, system, None);
+            let (args, teach, _) = build_args("帮我调试一下这个软件", None, system, None, None);
             let i = args
                 .iter()
                 .position(|a| a == "--append-system-prompt")
                 .expect("运行环境约束必须无条件带上");
             let sys = &args[i + 1];
-            assert!(sys.contains("不会自己结束的命令"), "防死锁那条规矩没进系统提示");
+            // 规矩在 2026-11-02 换了口径：从「绝不跑不会结束的命令」改成「永不返回的进程要用后台起」。
+            // 判据跟着换成新那句 —— 承重的事实不变（无头面板没人按 Ctrl+C，卡住的就是常驻进程），
+            // 变的只是它不再顺手把「三分钟以上的长活」一起禁掉。
+            assert!(sys.contains("永远不返回"), "「永不返回的进程要用后台起」这条规矩没进系统提示");
+            assert!(!sys.contains("两分钟内结束"), "「两分钟内结束」已经撤掉，它把 Claude Code 的长活砍了一半");
             if let Some(s) = system.map(str::trim).filter(|s| !s.is_empty()) {
                 assert!(sys.contains(s), "专家 persona 被 GUARD 顶掉了");
             }
             assert!(!teach.iter().any(|a| a.contains("运行环境")), "GUARD 漏进 teach: {teach:?}");
         }
+    }
+
+    /// 权限模式：**客户自己配了就听他的**，没配过才由我们给免审批。
+    ///
+    /// 承重的是第一条 —— 以前这里写死 `bypassPermissions`，客户在 Claude Code 里
+    /// 选「逐条问我 / 先给计划」进对话面板当场失效。反过来也不能「不传」：
+    /// 不传 = 逐条审批，这个无头面板等于没法用。
+    #[test]
+    fn permission_mode_follows_caller_and_defaults_to_bypass() {
+        let (args, _, _) = build_args("p", None, None, None, Some("plan"));
+        let i = args.iter().position(|a| a == "--permission-mode").expect("缺 --permission-mode");
+        assert_eq!(args.get(i + 1).map(String::as_str), Some("plan"), "客户配过的档位必须原样透传");
+
+        let (args, _, _) = build_args("p", None, None, None, None);
+        let i = args.iter().position(|a| a == "--permission-mode").expect("缺 --permission-mode");
+        assert_eq!(args.get(i + 1).map(String::as_str), Some("bypassPermissions"), "没配过才用免审批");
     }
 
     /// 失败卡片的原因文：stderr 里只有 `unrecognized_model` 诊断行时，必须让位给 stdout 上真正的 API 错误。
@@ -589,11 +677,11 @@ mod tests {
     /// 多行提示词不许内联进 teach（粘进 shell 会断在半路），且要如实报告没内联。
     #[test]
     fn multiline_prompt_reported_as_not_inlined() {
-        let (_, teach, inlined) = build_args("第一行\n第二行", None, None, None);
+        let (_, teach, inlined) = build_args("第一行\n第二行", None, None, None, None);
         assert!(!inlined);
         assert!(teach.is_empty());
 
-        let (_, teach, inlined) = build_args("写个脚本", None, None, Some("s1"));
+        let (_, teach, inlined) = build_args("写个脚本", None, None, Some("s1"), None);
         assert!(inlined);
         assert_eq!(teach, vec!["--resume", "s1", "写个脚本"]);
     }
@@ -740,7 +828,7 @@ mod resume_guard_tests {
 
     #[test]
     fn build_args_keeps_resume_in_each_surface_and_omits_blank_model() {
-        let (args, teach, _) = build_args("the prompt", Some("model-a"), None, Some("sid-123"));
+        let (args, teach, _) = build_args("the prompt", Some("model-a"), None, Some("sid-123"), None);
         let resume = args.iter().position(|a| a == "--resume").expect("argv 缺 --resume");
         let prompt = args.iter().position(|a| a == "-p").expect("argv 缺 -p");
         assert_eq!(args.get(resume + 1).map(String::as_str), Some("sid-123"));
@@ -750,14 +838,14 @@ mod resume_guard_tests {
         assert_eq!(teach.get(taught_resume + 1).map(String::as_str), Some("sid-123"));
         assert!(taught_resume < taught_prompt, "teach 的 --resume 必须在提示词之前: {teach:?}");
 
-        let (args, teach, _) = build_args("prompt", None, None, None);
+        let (args, teach, _) = build_args("prompt", None, None, None, None);
         assert!(!args.iter().any(|a| a == "--resume"));
         assert!(!teach.iter().any(|a| a == "--resume"));
-        let (args, teach, _) = build_args("prompt", Some("   "), None, None);
+        let (args, teach, _) = build_args("prompt", Some("   "), None, None, None);
         assert!(!args.iter().any(|a| a == "--model"));
         assert!(!teach.iter().any(|a| a == "--model"));
         // sol 建议：非空 model 也要被观察到——上面只钉了空白省略，没钉传入生效
-        let (args, teach, _) = build_args("prompt", Some("model-a"), None, None);
+        let (args, teach, _) = build_args("prompt", Some("model-a"), None, None, None);
         assert_eq!(args.iter().position(|a| a == "--model").map(|i| args.get(i + 1).map(String::as_str)), Some(Some("model-a")));
         assert!(teach.iter().any(|a| a == "model-a"), "teach 也要带非空 model: {teach:?}");
     }

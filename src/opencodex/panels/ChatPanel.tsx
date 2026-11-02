@@ -191,6 +191,24 @@ export function humanizeError(raw: string, ownAccount = false): Humanized | null
   const s = (raw || "").toLowerCase();
   const has = (...keys: string[]) => keys.some((k) => s.includes(k));
 
+  /* 「起都起不来」和「跑起来又挂了」是两件事，处置完全相反 —— 前者才该去重装/重配驱动。
+   *
+   * 这条以前不存在：spawn 失败的原文是**中文**「启动 claude 失败（是否已安装？）:
+   * 系统找不到指定的文件。 (os error 2)」，一个英文关键词都不含（`os error 2` 不在
+   * 旧词表的 `enoent` 里，中文 Windows 也不会打 `is not recognized`）→ 必落兜底，
+   * 兜底又把人支去「去配驱动」。那一次恰好对，但理由是猜的。
+   *
+   * 判据只收「进程没起来」的原文，**不拿它当通用兜底** —— 真正的上游 5xx 被这句话支去
+   * 重装，就是这个产品 2026-08-18 那次「老用户不能用了」的复刻。 */
+  if (
+    /启动\s*[a-zA-Z]+\s*失败/.test(raw) ||
+    has("是否已安装", "os error 2", "os error 193", "os error 5", "系统找不到指定的文件", "不是有效的 win32 应用")
+  )
+    return [
+      "这个 AI 起不来（装的时候没装完整，或者被系统拦了）",
+      "点上方「去配驱动」一键修；修不好就去「装 AI」页重装一次，装完会自动验证。这条跟余额、网络都无关。",
+    ];
+
   /* 🔴 「余额还有钱，却一条都发不出去」—— 必须排在 403 前面。
    *
    * 上游发请求前要**预扣**一笔（按模型价 × max_tokens 估的上限）。Claude Code 上下文大，
@@ -249,12 +267,43 @@ export function humanizeError(raw: string, ownAccount = false): Humanized | null
           "上游回了 403：认得出你是谁，但这一次不让用",
           "常见三种：这个模型你的档位用不了、上游渠道临时下架、或者出口 IP 被拦。先在顶栏「换模型」换成 DeepSeek Flash 重发一次；换了还是 403 就用「技术支持」把下面这段原文发给我们（里面有 request id，我们能直接查到是哪条渠道）。",
         ];
+  /* 🔴 5xx 以前**整类为空**（词表里只有 400/401/403/429）。上游 500/502/503/504/529 全都
+   * 落到「我没认出」，兜底又把人支去重装驱动 —— 重装对上游故障一次都不管用。
+   *
+   * 客户 2026-11-02 报的「咋老跳出这个」就是这一类：一轮跑了 26 分钟、0 token、
+   * 最后死在上游，界面却只给「我没认出」。
+   *
+   * 529 单列：它是 Anthropic 侧最常见的「过载」，重试基本就好，说得越具体越有用。 */
+  if (has("529", "overloaded"))
+    return [
+      "上游服务器忙不过来（不是你操作的问题）",
+      "等一两分钟重发一次就好。连着三次以上还这样，就在顶栏「换模型」换成 DeepSeek Flash，或者点「技术支持」把下面这段原文发给我们。",
+    ];
+  if (
+    has("500", "502", "503", "504", "internal server error", "bad gateway", "service unavailable", "gateway timeout")
+  )
+    return [
+      "上游服务器这次没接住（不是你操作的问题）",
+      "隔一会儿重发一次就行，不用重装、也不用重配驱动。连着三四次都这样，就点「技术支持」把下面这段原文发给我们。",
+    ];
   if (has("rate limit", "429", "too many requests"))
     return ["请求太频繁，被上游限流了", "等一两分钟再发。反复出现就换个模型试试。"];
   if (has("enotfound", "econnrefused", "etimedout", "connection error", "network", "getaddrinfo", "timed out"))
     return ["连不上服务器", "先看看这台电脑能不能上网；开了代理/VPN 的话先关掉再试。"];
   if (has("model not found", "does not exist", "unknown model", "no such model"))
     return ["这个模型现在用不了", "在顶栏「换模型」里换一个（推荐 DeepSeek Flash），或去「AI 设置」重配驱动。"];
+  /* 外挂工具（MCP）连不上 —— 它的原文几乎必然含 `ENOENT` / `timed out` / `Connection closed`，
+   * 会被下面「找不到这个程序」「连不上服务器」两条抢走，把客户支去重装 CLI 或关代理，
+   * 而两件事都不是原因。实测（claude 2.1.237）三种原文：
+   *   ENOENT: no such file or directory, posix_spawn '/…/mcp-server'
+   *   MCP server "dbtool" connection timed out after 30000ms
+   *   -32000: MCP error -32000: Connection closed
+   * 判据必须排在它们**之前**。 */
+  if (/\bmcp\b/i.test(raw))
+    return [
+      "有个外挂工具（MCP）没连上",
+      "这不是网络问题、也不是没装好：是那个 MCP 服务自己没起来（找不到命令 / 启动超时 / 连上就断）。它配在你自己机器的 Claude 配置里，可以让技术支持帮你看；对话框里其它事照常能用。",
+    ];
   if (has("command not found", "不是内部或外部命令", "enoent", "is not recognized"))
     return ["找不到这个程序", "多半是它没装好。去「装 AI」页重装一次，装完会自动验证。"];
   if (has("context", "too long", "maximum context", "token limit"))
@@ -274,6 +323,16 @@ export function humanizeError(raw: string, ownAccount = false): Humanized | null
     return [
       "上一轮的思考记录和当前通道没对上",
       "不用重装，这个跟驱动没关系。先点输入框旁边的「清空对话」，再把刚才那句话重发一次；如果刚换过模型，换回去能接上文。还出现就用「技术支持」把下面这段原文发给我们。",
+    ];
+  /* 只剩「<agent> 退出码 N」这一句 —— 说明原始报错压根没采到（stdout 的 result 是空的，
+   * stderr 也被吞了）。这条以前 100% 落兜底，而兜底把客户支去重装驱动。
+   *
+   * 现在明说「原因没拿到」，并给一条真有出路的动作 —— 退出码和日志就在「技术支持」包里，
+   * 单靠客户在键盘前点来点去是查不出来的。 */
+  if (/退出码\s*-?\d+\s*$/i.test(raw.trim()))
+    return [
+      "这一轮跑挂了，但报错原文没拿到",
+      "先重发一次（常见是上游一时没接住，重发就好）；还挂就点「技术支持」把下面这段发给我们 —— 带着退出码，我们能直接查到是哪一段断的。",
     ];
   return null;
 }
@@ -452,6 +511,28 @@ export function ChatPanel({
   const [cmd, setCmd] = useState<CmdInfo | null>(null);
   /** 瞬时状态提示（网络重连等）。一轮结束就清 —— 它不是对话内容，不进 items。 */
   const [notice, setNotice] = useState<string | null>(null);
+  /* 「终端在哪」的一次性引导（2026-11-02 会审建议第 2 条）。
+   *
+   * 客户原话：「终端藏的很深，很多人不会用」。真问题不是**没有入口**（顶栏就有），而是
+   * 新人不知道「什么时候需要它」—— 所以只在**空对话**露一次、点过就永久收起。
+   * 记在 localStorage 而不是后端：这是一次 UI 提示，不该为它多一次 IPC 和后端状态；
+   * 存储不可用（隐私模式）就当已经看过 —— 提示不显示不会坏，抛异常才会。 */
+  const [showTermHint, setShowTermHint] = useState(false);
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("uking.termHintSeen")) setShowTermHint(true);
+    } catch {
+      /* 存储不可用：不显示引导，不当故障 */
+    }
+  }, []);
+  const markTermHintSeen = useCallback(() => {
+    setShowTermHint(false);
+    try {
+      localStorage.setItem("uking.termHintSeen", "1");
+    } catch {
+      /* 同上 */
+    }
+  }, []);
   /* ---- 「它还活着没」------------------------------------------------------
    * 这一轮从什么时候开始跑、最后一次收到事件是什么时候。**以前这两个数字一个都没有**：
    * 界面上只有一个转圈，客户没有任何依据判断「还在跑」和「已经死了」——
@@ -615,7 +696,7 @@ export function ChatPanel({
           const detail = "\n\n```\n" + (raw.length > 600 ? "…" + raw.slice(-600) : raw) + "\n```";
           const text = known
             ? t("⚠️ {what}\n\n**怎么办**：{how}", { what: t(known[0]), how: t(known[1], known[2]) }) + detail
-            : t("⚠️ 这一轮没跑成，而且我没认出这是哪种问题。\n\n常见的两个方向：{agent} 没装好，或者驱动没配对 —— 可以点上方「去配驱动」一键修。还不行就用「技术支持」把下面这段发给我们。", { agent }) + detail;
+            : t("⚠️ {agent} 这一轮没跑成，但**不是没装好，也不用重装**。\n\n可以按顺序试：\n1. 隔一会儿重发一次 —— 多半是上游一时没接住；\n2. 还不行就在顶栏「换模型」换成 DeepSeek Flash 再发；\n3. 都不行就点上方「技术支持」，把下面这段原文发给我们（**这段原文别删**，它是唯一能定位问题的东西）。", { agent }) + detail;
           setItems((prev) => [...prev, { kind: "text", role: "assistant", text }]);
           void checkReady();
         }
@@ -646,13 +727,16 @@ export function ChatPanel({
     ch.onmessage = applyEvent;
     try {
       // model 空 = 不覆盖，跟着驱动配置里的默认走（虾盘云 preset）。
-      await invoke(`${agent}_send`, { taskId, prompt: text, cwd, model: model || null, system: system ?? null, onEvent: ch });
+      // 宿主传入合并选择器时必须用它的 value：本组件自己的 model 只服务独立使用场景。
+      // 否则界面显示新选择，真正发送仍读旧的 localStorage 副本。
+      const sendModel = modelPicker ? modelPicker.value : model;
+      await invoke(`${agent}_send`, { taskId, prompt: text, cwd, model: sendModel || null, system: system ?? null, onEvent: ch });
     } catch (e) {
       applyEvent({ kind: "text_done", text: t("\n[启动 {agent} 失败: {err}]", { agent, err: String(e) }) });
       setBusy(false);
       onStatus?.("error"); // 连起都没起来，同样是「跑挂了」
     }
-  }, [busy, taskId, cwd, applyEvent, scrollToEnd, agent, system, model, t, onStatus]);
+  }, [busy, taskId, cwd, applyEvent, scrollToEnd, agent, system, model, modelPicker, t, onStatus]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -661,7 +745,17 @@ export function ChatPanel({
     setInput("");
     let prepared = text;
     try {
-      if (images.length) prepared += `\n\n${await describeImages(images.map((i) => i.path), text)}`;
+      if (images.length) {
+        const described = await describeImages(images.map((i) => i.path), text);
+        // 🔴 **原生多模态优先**（2026-11-02，老板口径：360 软件管家装的必须是全功能原版）。
+        // 以前只把图片转成一段文字再喂模型 —— 那是把它自带的多模态降级成了"我们替它看图"。
+        // 现在把**真实路径**一并交过去（Claude Code 的 Read 工具能直接读图片文件，
+        // 自己裁切、自己看细节，比我们转述准得多）。
+        // 文字描述仍然保留在后面：模型不收图时（deepseek 这类纯文本模型）那份描述就是兜底，
+        // 两样都给，谁有用谁生效。
+        const paths = images.map((i) => `- ${i.path}`).join("\n");
+        prepared += `\n\n【附件图片的真实路径】\n${paths}\n（如果你是能读图的模型：请直接用 Read 工具打开这些文件看原图，比我下面转述的文字准。）\n\n${described}`;
+      }
     } catch (e) {
       const say = (msg: string) => setItems((prev) => [...prev, { kind: "text", role: "assistant", text: msg }]);
       if (e instanceof ImageDescribeError && e.code === "image_missing") {
@@ -951,6 +1045,18 @@ export function ChatPanel({
             right={
               <>
               {brainSlot}
+              {/* 🔴 这里**故意不放假按钮**（2026-11-02 会审定案，已删掉一版）。
+               *
+               * 曾经在这加过「一键开终端并贴好 claude」。四家会审全判它踩线，理由很硬：
+               * 按钮一旦存在，客户就会问「为什么贴进去还要我按回车？」—— 为了回答这一句，
+               * 下一步就是自动回车、自动执行、会话绑定……那就是 MCP 管理面板的老路
+               * （那个已经因为「U-King 参与太多」被老板撤掉了）。
+               *
+               * 判据（会审原话，值得贴在评审墙上）：
+               *   **让原版能正常用 → 留；替客户/替原版做决定 → 删；
+               *     教客户怎么用原版 → 最多一条引导文案，不做交互。**
+               *
+               * 所以这里只留下面那条一行字的引导，终端本身归宿主的面板管。 */}
               <button
                 onClick={reset}
                 title={t("清空对话（开新会话）")}
@@ -961,10 +1067,23 @@ export function ChatPanel({
               </>
             }
             hint={
-              // 「现金老虎」提醒：客户能在这儿选到最烧钱的一档，选中当场说，别等余额被打穿
+              // 「现金老虎」提醒优先（钱的事最急），其次才是「终端在哪」的一次性引导。
               priceyModelHint(model) ? (
                 <div className="mt-1.5 rounded-lg border border-danger-500/40 bg-danger-500/[0.10] px-2.5 py-1.5 text-[11px] leading-snug font-medium text-danger-700 dark:text-danger-400">
                   {t(priceyModelHint(model)!)}
+                </div>
+              ) : showTermHint && items.length === 0 ? (
+                /* 会审建议第 2 条：不新增一级导航，用一句话在空对话里教一次。
+                   只露一次、点过就永久收起；文案**只指路、不代跑**（会审判据：
+                   教客户怎么用原版最多一条引导文案，不做交互）。 */
+                <div className="mt-1.5 rounded-lg border border-accent/30 bg-accent/[0.08] px-2.5 py-1.5 text-[11px] leading-snug text-ink-2 flex items-start gap-2">
+                  <TermIcon size={12} className="shrink-0 mt-[2px] text-accent" />
+                  <span className="flex-1">
+                    {t("要更全的功能（斜杠指令 / MCP / 跑长任务）？点顶栏「终端」切过去，敲 claude 回车就是原版。")}
+                  </span>
+                  <button onClick={markTermHintSeen} title={t("知道了")} className="shrink-0 text-ink-4 hover:text-ink-1">
+                    <X size={12} />
+                  </button>
                 </div>
               ) : null
             }

@@ -178,6 +178,12 @@ export const workbench: Record<string, string> = {
 
   // Chat.tsx —— 引擎 / 模型 / 审批模式
   "Claude Code（推荐·最强·已免配）": "Claude Code (recommended · strongest · preconfigured)",
+  // 原味 TUI 这一档：以前有进无出，现在顶栏有身份说明 + 回切按钮（见 Chat.tsx 注释）
+  "Claude Code 原味终端 · 全功能（斜杠指令 / 计划模式 / MCP / 逐条审批）":
+    "Claude Code original terminal · full features (slash commands / plan mode / MCP / per-action approvals)",
+  "回到对话面板（终端留在原处，不会丢你已经跑出来的东西）":
+    "Back to the chat panel (the terminal stays where it is — nothing you already ran is lost)",
+  "回到对话": "Back to chat",
   "U-King 轻助手（省钱兜底·作图快）": "U-King Lite (budget fallback · fast image gen)",
   "Codex（贵·需单独配置）": "Codex (pricey · needs separate setup)",
   // 上游 403 的人话（两档：这一轮是走客户自己的账号，还是走虾盘云）

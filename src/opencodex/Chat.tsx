@@ -272,6 +272,16 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
     setPanelModelRaw((cur) => ({ ...cur, [agent]: m }));
     try { localStorage.setItem("uking.chatpanel.model." + agent, m); } catch { /* 配额满：不落盘也能用 */ }
   }, []);
+  // 「AI 设置 → 对话工作台」换模型时，工作台面板的常驻实例不会重挂载。
+  // 监听同一个窗口的同步事件，避免磁盘已切换、对话框仍拿旧覆盖发请求。
+  useEffect(() => {
+    const sync = (ev: Event) => {
+      const m = (ev as CustomEvent<{ model?: string }>).detail?.model ?? "";
+      setPanelModelRaw((cur) => ({ ...cur, claude: m }));
+    };
+    window.addEventListener("uking:workbench-model", sync);
+    return () => window.removeEventListener("uking:workbench-model", sync);
+  }, []);
 
   /**
    * 「大脑 + 模型」合成**一个**选择器（2026-08-18，客户：「claudecode 和 deepseek 模型选择，
@@ -1004,8 +1014,28 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
               /* claude-cli / hermes：不代驱动，直接在中间开 U-CLI 跑它本人的 TUI（需先一键配好）。
                  🔴 命令来自 ENGINE_TUI_CMD，**不是 engine id** —— `claude-cli` 不是命令名，
                  直接拿 id 当命令会开出一个「找不到 claude-cli」的空终端。 */
-              <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-white/[0.06]">
-                <TermPanel key={engine} cwd={workspace} active={true} initialCmd={tuiCmd} prompts={[{ label: tuiCmd, cmd: tuiCmd }]} onOpenFile={openProducedFile} onToast={onToast} />
+              <div className="flex-1 min-h-0 flex flex-col">
+                {/* 🔴 这一档以前**有进无出**（2026-11-02 排查发现）：全仓库只有
+                    `setEngine("claude-cli")` 一处切换、没有任何一处切回来 —— 客户在对话底部
+                    点那行 10px 小字切进 TUI 之后，只能重启应用才能回到对话。入口藏得深 + 单向门，
+                    等于这个能力对客户并不存在。
+                    顶栏这条既是身份说明（这就是原版 Claude Code，能力一个不少），也是那扇门。 */}
+                <div className="flex items-center gap-2 pb-1.5 shrink-0">
+                  <Terminal size={12} className="text-ink-4" />
+                  <span className="text-[11px] text-ink-3 truncate">
+                    {t("Claude Code 原味终端 · 全功能（斜杠指令 / 计划模式 / MCP / 逐条审批）")}
+                  </span>
+                  <button
+                    onClick={() => setEngine("claude")}
+                    title={t("回到对话面板（终端留在原处，不会丢你已经跑出来的东西）")}
+                    className="ml-auto shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded text-[12px] text-ink-3 hover:text-ink-1 hover:bg-white/[0.06]"
+                  >
+                    <MessageSquare size={12} /> {t("回到对话")}
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-white/[0.06]">
+                  <TermPanel key={engine} cwd={workspace} active={true} initialCmd={tuiCmd} prompts={[{ label: tuiCmd, cmd: tuiCmd }]} onOpenFile={openProducedFile} onToast={onToast} />
+                </div>
               </div>
             )
           ) : (
