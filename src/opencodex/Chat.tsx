@@ -411,7 +411,12 @@ export function Chat({ onToast, sessionId = "native-chat", initialWorkspace = ""
   const bumpFont = (d: number) =>
     setChatFont((f) => {
       const n = Math.min(22, Math.max(12, f + d));
-      localStorage.setItem("uking.chat.font", String(n));
+      // 🔴 必须吞掉配额错误（issue #238，1.4.9 客户机实证）：localStorage 被会话缓存塞满后，
+      // 连写一个两位数字符串都会抛 QuotaExceededError。原来这行裸写 → 抛进 React 事件处理 →
+      // 整个「U-Workspace」面板崩溃（客户看到的是面板不见了）。字号这次照样生效，只是不落盘。
+      try {
+        localStorage.setItem("uking.chat.font", String(n));
+      } catch { /* 配额满：本次字号照用，下次开页面回落默认值 */ }
       return n;
     });
   const bottomRef = useRef<HTMLDivElement>(null);

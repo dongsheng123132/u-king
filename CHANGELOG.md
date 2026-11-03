@@ -17,6 +17,9 @@
   boundary; it is inside '音'`），而 release 是 `panic=abort` → 整个应用当场消失。改成按**字符**
   截尾（`tail_chars`），并补多字节回归用例。同一族写法 `localllm.rs::quant_of` 按字节回退 15 位
   也加了字符边界判断（文件名带中文时同样会崩）。
+- **修「改字号把面板写崩」**（issue #238，1.4.9 客户机实证）：`Chat.tsx` 把字号写 localStorage
+  时裸写，配额被会话缓存塞满后 `setItem` 抛 `QuotaExceededError` → 抛进 React 事件处理 →
+  整个 U-Workspace 面板崩掉（客户看到面板消失）。改成 try/catch：本次字号照常生效，只是不落盘。
 
 ## 1.4.11（2026-11-03）
 
