@@ -11,8 +11,10 @@
       // 而不是让用户对着一片黑。React 一旦正常挂载会接管 #root、自动清掉本兜底，无副作用。
       //
       // 🔴 **这段代码必须在我们支持的最老引擎上跑得动** —— 它正是给「新语法把主包干掉了」兜底的，
-      //    自己用了新语法就一起死。所以：全程 ES5（var / function）、用 XMLHttpRequest 不用 fetch、
+      //    自己用了新语法就一起死。所以：全程 ES5（var / function）、不用 fetch、
       //    不碰 window.__TAURI__（withGlobalTauri 是关的，那个全局根本不存在）。
+      //    上报走宿主注入的 __TAURI_INTERNALS__.invoke（见 reportBootFailure）：CSP 的
+      //    connect-src 只放行 ipc:/asset:/data:，这里再直连 https 会被拦掉（2026-11-03 实测）。
       //
       // 2026-08-16 补上上报：0.9.99/0.9.100 的 Mac 版被两条正则 lookbehind 打白屏，
       // bug 库里**一条记录都没有** —— 因为「首屏起不来」恰好是唯一采集不到的崩溃类型：
@@ -54,46 +56,26 @@
           record(r && r.message ? r.message : String(r), r && r.stack, "(unhandled rejection)");
         });
 
-        // 走 report.rs 同一条链路（国内可达的 u-claw.org.cn 反代 → Vercel function → 建 Issue）。
-        // 契约照抄 report.rs::send：x-uking-version 头 + {app,version,os,kind,summary,detail,device}。
+        // 走 Rust 的 report_bug（crashlog 先落盘、再由 report.rs::send 用系统 curl 发网络）。
+        // 🔴 2026-11-03 实测：原来这里用 XMLHttpRequest 直连 https://u-claw.org.cn/uking/bug，
+        //    CSP 的 connect-src 不放行 https，这条请求被**静默拦掉** —— 恰好是「主包已死、
+        //    只剩宿主注入」的唯一上报通道。改走 IPC 后 CSP 不必为兜底页开任何 https 来源。
+        //    __TAURI_INTERNALS__ 由宿主注入，不经过已经加载失败的前端包，所以这条通道还在。
         function reportBootFailure(err) {
           try {
-            // device 只用于服务端按「kind|device|当天」去重：没有它，全世界的白屏一天只会并成一条，
-            // 我们就看不出是 1 台还是 50 台。这里存一个**本地随机串**，不是指纹，不含任何机器信息。
-            var KEY = "uking.boot-report-id";
-            var id = "";
-            try {
-              id = window.localStorage.getItem(KEY) || "";
-            } catch (e) {}
-            if (!id) {
-              id = "web-" + Math.random().toString(36).slice(2, 10);
-              try {
-                window.localStorage.setItem(KEY, id);
-              } catch (e) {}
-            }
+            var t = window.__TAURI_INTERNALS__;
+            if (!t || typeof t.invoke !== "function") return;
             var ua = navigator.userAgent || "";
-            var os = ua.indexOf("Mac") >= 0 ? "macos" : ua.indexOf("Windows") >= 0 ? "windows" : "unknown";
             // 脱敏：堆栈里常带 /Users/张三/ 或 C:\Users\张三\（对齐 feedback.rs::desensitize 的意图）
             var clean = String(err || "(no error captured — likely a native WebView render issue)")
               .replace(/([/\\][Uu]sers[/\\])[^/\\]+/g, "$1*")
               .slice(0, 2000);
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", "https://u-claw.org.cn/uking/bug", true);
-            xhr.timeout = 15000;
-            xhr.setRequestHeader("Content-Type", "application/json");
-            xhr.setRequestHeader("x-uking-version", VER);
-            xhr.send(
-              JSON.stringify({
-                app: "u-king-mini",
-                version: VER,
-                os: os,
-                kind: "ui_boot_failed",
-                summary: "首屏起不来：" + clean.split("\n")[0].slice(0, 160),
-                detail: "UA: " + ua + "\n\n" + clean,
-                device: id,
-                shots: [],
-              })
-            );
+            var head = clean.split("\n")[0] || "";
+            t.invoke("report_bug", {
+              kind: "ui_boot_failed",
+              summary: ("首屏起不来：" + head).slice(0, 160),
+              detail: ("UA: " + ua + " · engine: " + engineOf(ua) + " · v" + VER + "\n\n" + clean).slice(0, 4000),
+            });
           } catch (e) {
             /* 上报失败绝不能盖掉兜底界面本身 */
           }
@@ -143,9 +125,9 @@
               " · " +
               esc(engineOf(navigator.userAgent || "")) +
               "</div>" +
-              '<button onclick="location.reload()" style="background:#3b82f6;color:#fff;border:none;' +
+              '<button id="uking-reload-btn" style="background:#3b82f6;color:#fff;border:none;' +
               'border-radius:8px;padding:8px 16px;cursor:pointer;font-weight:600">重新加载 · Reload</button>' +
-              '<button id="uking-dl-btn" onclick="window.__ukingGetLatest()" style="margin-left:10px;' +
+              '<button id="uking-dl-btn" style="margin-left:10px;' +
               'background:transparent;color:#e6e8ef;border:1px solid #2a2f3e;border-radius:8px;' +
               'padding:8px 16px;cursor:pointer">下载最新版 · Get latest</button>' +
               // 明写地址：opener 和剪贴板万一都不通，照着敲仍然走得通 —— 这是最后一条路，不能再依赖任何东西
@@ -164,6 +146,21 @@
               esc(lastErr || "(no error captured — likely a native WebView render issue)") +
               esc("\n\nUA: " + (navigator.userAgent || "")) +
               "</pre></div></div>";
+            // 🔴 CSP 的 script-src 不放行内联事件处理器（script-src-attr 会拦），
+            //    而这两个按钮是白屏用户唯一的自救入口 —— 必须用 addEventListener 挂，
+            //    不能写成 innerHTML 里的 onclick（2026-11-03 真机实测：onclick 全程不触发）。
+            var reloadBtn = document.getElementById("uking-reload-btn");
+            if (reloadBtn) {
+              reloadBtn.addEventListener("click", function () {
+                location.reload();
+              });
+            }
+            var dlBtn = document.getElementById("uking-dl-btn");
+            if (dlBtn) {
+              dlBtn.addEventListener("click", function () {
+                window.__ukingGetLatest();
+              });
+            }
             // 界面先给出来，再上报 —— 顺序反了的话上报里任何意外都会让用户继续对着黑屏
             reportBootFailure(lastErr);
           }
