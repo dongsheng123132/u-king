@@ -12,6 +12,11 @@
   自带「下载 WorkBuddy」入口，所以「点开下载官网客户端」的语义不变；新用户从 U-King 这个入口
   注册即绑邀请关系（好友 2,000 积分新人礼包；邀请人 50 积分 + 好友活跃满 3 天再 100 积分）。
   活动期至 2026-11-30，活动下线后回退为不带 code 的 `https://www.workbuddy.cn/`。
+- **修「看中文报错反而闪退」的老崩**（issue #245，1.4.9 客户机实证）：`vision.rs::trim_error`
+  按**字节**取尾部 700 位，切点落在多字节字符中间就 panic（`byte index 126 is not a char
+  boundary; it is inside '音'`），而 release 是 `panic=abort` → 整个应用当场消失。改成按**字符**
+  截尾（`tail_chars`），并补多字节回归用例。同一族写法 `localllm.rs::quant_of` 按字节回退 15 位
+  也加了字符边界判断（文件名带中文时同样会崩）。
 
 ## 1.4.11（2026-11-03）
 

@@ -1403,10 +1403,14 @@ pub struct QuantOption {
 fn quant_of(file_name: &str, base: &str) -> (String, String) {
     let stem = file_name.trim_end_matches(".gguf").trim_end_matches(".GGUF");
     // 分片后缀 `-00001-of-00003`：手写扫描，不引正则 crate（体积红线）
+    //
+    // 🔴 按**字节**回退 15 位，必须先确认落点是字符边界：文件名带中文时切进多字节字符
+    // 中间会 panic（release 是 panic=abort，等于整应用消失；同 vision.rs 的 issue #245）。
+    // 不是边界就当作「没有分片后缀」，只损失一条文件名推断，不值得拿崩溃去换。
     let group_stem = {
         let b = stem.as_bytes();
         let mut cut = stem.len();
-        if b.len() > 15 {
+        if b.len() > 15 && stem.is_char_boundary(stem.len() - 15) {
             let tail = &stem[stem.len() - 15..];
             let t = tail.as_bytes();
             if t[0] == b'-'
@@ -1806,5 +1810,16 @@ mod tests {
         };
         hide_test_command(&mut command);
         assert!(capture_stdout_before(&mut command, Duration::from_secs(1)).is_none());
+    }
+
+    /// 文件名带中文时，按字节回退 15 位会切进多字节字符中间 —— 老写法直接 panic
+    /// （release 是 panic=abort，等于整应用消失）。只允许少认一个分片后缀，不许崩。
+    #[test]
+    fn quant_of_survives_multibyte_file_names() {
+        let (quant, _stem) = quant_of("模型-中文名-00001-of-00003.gguf", "模型");
+        assert!(!quant.is_empty());
+        // 正常分片名仍要能剥掉后缀（回归保护）
+        let (q2, _) = quant_of("Qwen3-8B-Q4_K_M-00001-of-00003.gguf", "Qwen3-8B");
+        assert_eq!(q2, "Q4_K_M");
     }
 }

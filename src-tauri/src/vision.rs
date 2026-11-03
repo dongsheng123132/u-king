@@ -209,9 +209,24 @@ fn temp_script_path() -> PathBuf {
     std::env::temp_dir().join(format!("uking-see-image-{}-{nonce}.mjs", std::process::id()))
 }
 
+/// 取尾部 `n` 个**字符**（不是字节）。
+///
+/// 🔴 老写法 `&text[text.len() - 700..]` 是**字节**切片。切点一旦落在多字节字符中间就 panic
+/// （客户机实证 issue #245：`byte index 126 is not a char boundary; it is inside '音'`），
+/// 而 release profile 是 `panic=abort` —— 这不是「记一条错误」，是**整个应用当场没了**。
+/// 更糟的是这条路径专门处理**中文报错**：越该让用户看清原因的时候，越必崩。
+fn tail_chars(text: &str, n: usize) -> String {
+    let count = text.chars().count();
+    if count <= n {
+        return text.to_string();
+    }
+    text.chars().skip(count - n).collect()
+}
+
 fn trim_error(raw: &str) -> String {
     let text = raw.trim();
-    let tail = if text.len() > 700 { &text[text.len() - 700..] } else { text };
+    // 尾部 700 个字符（不是字节；理由见 tail_chars 的注释）
+    let tail = tail_chars(text, 700);
     // 防止上游在诊断里把 Bearer/设备 key 回显给 UI、日志或 MCP 调用者。
     tail.split_whitespace()
         .map(|part| if part.starts_with("sk-") { "[已隐藏访问密钥]" } else { part })
@@ -329,6 +344,17 @@ mod tests {
     #[test]
     fn error_redacts_key_like_tokens() {
         assert!(!trim_error("bad sk-secret-value").contains("sk-secret-value"));
+    }
+
+    /// issue #245 客户机实证：400 个「音」= 1200 字节，老写法在 500 字节处切进字符中间
+    /// （`byte index 126 is not a char boundary`，因为原文更长）→ panic=abort → 整个应用消失。
+    /// 截尾必须按字符走，多字节内容一个都不能切坏。
+    #[test]
+    fn error_tail_cut_never_lands_inside_a_multibyte_char() {
+        let raw = "音".repeat(400);
+        let out = trim_error(&raw);
+        assert!(!out.is_empty(), "截尾不能把内容截空");
+        assert!(out.chars().all(|c| c == '音'), "多字节字符被切坏：{out}");
     }
 
     /// 测试用的唯一临时目录，Drop 时清理（断言失败也会清）。
