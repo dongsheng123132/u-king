@@ -5,6 +5,28 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 1.4.11（2026-11-03）
+
+- **WebView 基线 CSP（安全加固）**：`app.security.csp` 从 `null` 改成显式白名单
+  （`ipc:` / `asset:` / `data:` / 同源；无任何 `https:` 通配）。模型 API 全由 Rust 侧
+  `curl` 发出，WebView 不需要外连；逐条理由与 csp_evaluator 结果见 `docs/csp.md`。
+  真机（macOS WKWebView / Windows WebView2）实测：非预期违规 0 条。
+- **白屏兜底页修复**（CSP 真机实测抓到的两个真问题，PR #19 内）：
+  ① 兜底上报原用 XHR 直连 `u-claw.org.cn`，被 `connect-src` 拦 → 改走宿主注入的
+  `__TAURI_INTERNALS__.invoke("report_bug")`（Rust 先落 `crash.log` 再发网络）；
+  ② 兜底页「重新加载 / 下载最新版」原为 `innerHTML` 里的 `onclick`，被 `script-src-attr`
+  拦到点不动 → 改 `addEventListener`。两处都保持 ES5、不依赖前端包。
+- **「在线作图」改名「在线创作」**：该站外入口覆盖作图/视频/音乐，不再只叫作图（PR #21）。
+- **工作台成为独立配置目标**：「AI 设置」可单独给工作台对话换模型（与 Claude Code 共用驱动
+  文件但有自己的入口与回读）；magpie 由 CLI 换为官方桌面版，按 release asset 校验 SHA-256。
+- **对话面板不再「认不出」报错，也不再替客户做决定**：5 类上游/启动错误改人话；`api_retry`
+  事件显示「正在自动重试」且不再给静默看门狗打卡；失败原文脱敏落 `chat.log`；权限模式跟随
+  客户自己在 `settings.json` 的 `permissions.defaultMode`；Bash 超时恢复官方 600s；图片附件
+  把真实路径交给模型；原味 TUI 补「回到对话」；起手词 27 条 4 场景收敛为 3 条扁平。
+- **其它**：维护助手接入图片粘贴/识图；AI 创作脚本给 curl 加 `--noproxy *`（Windows 系统代理
+  不再拦本地 CDN）；`NoWindow` 在非 Windows 构建补 `cfg_attr allow`；loopback curl SSE 测试去抖。
+- 版本号四处同步到 1.4.11。
+
 ## 1.4.10（2026-10-22）
 
 - **「我的 AI」保持 1.4.9 的瓷砖墙布局**（当天下午曾试过极简首页 + 独立软件库，用户看过真机后拍板
