@@ -91,16 +91,17 @@ export function Create({
             </button>
           );
         })}
-        {/* 在线作图（2026-10-21 用户要求）：站外的图站入口，直接用浏览器打开。 */}
+        {/* 在线创作（2026-10-21 用户要求；2026-11-03 改名）：站外的创作站入口。
+            站上不只是作图 —— 还有视频/画布等创作能力，所以不许再叫「在线作图」。 */}
         <button
           onClick={() => {
             void openUrl("https://tu.u-claw.org.cn/").catch(() => {});
           }}
-          title={t("在线作图站：https://tu.u-claw.org.cn/（用浏览器打开）")}
+          title={t("在线创作站：https://tu.u-claw.org.cn/（作图 / 视频 / 音乐，用浏览器打开）")}
           className="inline-flex shrink-0 items-center gap-1.5 px-3.5 h-9 rounded-lg border border-white/[0.08] text-ink-2 hover:bg-white/[0.04] md:w-full"
         >
           <ExternalLink size={14} />
-          {t("在线作图")}
+          {t("在线创作")}
         </button>
       </nav>
 

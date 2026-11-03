@@ -3,8 +3,8 @@
 export const maintenance: Record<string, string> = {
   // ---- 维护助手左侧记录列表 + AI 创作用词（2026-10-21）----
   "删除这条记录": "Delete this record",
-  "在线作图": "Online image editor",
-  "在线作图站：https://tu.u-claw.org.cn/（用浏览器打开）": "Online image site: https://tu.u-claw.org.cn/ (opens in your browser)",
+  "在线创作": "Online creation studio",
+  "在线创作站：https://tu.u-claw.org.cn/（作图 / 视频 / 音乐，用浏览器打开）": "Online creation studio: https://tu.u-claw.org.cn/ (images, video and music — opens in your browser)",
   "聊天历史加载失败，请重新打开工作台后重试": "Could not load chat history. Reopen the workbench and try again.",
   "聊天记录保存失败，请保留当前会话并重试": "Could not save chat history. Keep this session open and try again.",
   "U-King 轻助手": "U-King Assistant",
