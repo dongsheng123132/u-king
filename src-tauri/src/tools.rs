@@ -1180,13 +1180,22 @@ fn catalog_with_probes(
             // WorkBuddy（腾讯云职场 AI 助手）：闭源桌面应用，U-King 只检测 + 启动，
             // 不装不配（用自家模型）。2026-10-04 零用量删减下架，本轮按用户要求
             // 重新进目录，但**不进推荐名单**（主推仍是 claude/codex/hermes/pi/dsh）。
+            //
+            // 🔴 2026-11-03 用户要求：跳转目标从官网下载页 `codebuddy.cn/work/` 换成
+            // **本人 WorkBuddy 邀请链接**（邀请活动页）。这不是随手改的推广位，是平台
+            // 发的分享链接：
+            //   - 页面本身带「下载 WorkBuddy」入口，所以「点开下载官网客户端」的语义不变；
+            //   - 新用户经此链接注册即绑邀请关系：好友得 2,000 积分新人礼包，邀请人得
+            //     50 积分（好友完成一次对话/任务）+ 100 积分（7 天内活跃满 3 天）；
+            //   - 活动期 即日起至 2026-11-30；活动下线或邀请码失效时，回退成不带 code 的
+            //     `https://www.workbuddy.cn/`（官网首页同样能下载，只是不绑邀请关系）。
             id: "workbuddy".into(),
             name: "WorkBuddy".into(),
-            summary: "腾讯云职场 AI 助手，订阅制付费。用自家模型，不走 U-King 的模型配置。点开下载官网客户端。".into(),
+            summary: "腾讯云职场 AI 助手，订阅制付费。用自家模型，不走 U-King 的模型配置。点开下载官网客户端（从本入口注册含新人积分礼包）。".into(),
             kind: "standalone".into(),
             installed: false,
             action: "url".into(),
-            target: "https://www.codebuddy.cn/work/".into(),
+            target: "https://www.workbuddy.cn/events/invite?inviteCode=hvcstmu62".into(),
             launch_cmd: "".into(),
             launch_app: "workbuddy".into(),
             hidden: false,

@@ -5,6 +5,14 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 未发布
+
+- **WorkBuddy 入口改走邀请链接**：`list_tools` 里 WorkBuddy 的 `target` 由官网下载页
+  `https://www.codebuddy.cn/work/` 换成邀请活动页（`/events/invite?inviteCode=…`）。活动页
+  自带「下载 WorkBuddy」入口，所以「点开下载官网客户端」的语义不变；新用户从 U-King 这个入口
+  注册即绑邀请关系（好友 2,000 积分新人礼包；邀请人 50 积分 + 好友活跃满 3 天再 100 积分）。
+  活动期至 2026-11-30，活动下线后回退为不带 code 的 `https://www.workbuddy.cn/`。
+
 ## 1.4.11（2026-11-03）
 
 - **WebView 基线 CSP（安全加固）**：`app.security.csp` 从 `null` 改成显式白名单
