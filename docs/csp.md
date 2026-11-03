@@ -38,6 +38,10 @@ frame-ancestors 'none'
 
 > 配置里是**一行**（JSON 字符串），换行只是给人看的，语义等价。
 
+> **2026-11-03 更新**：真机实测发现白屏兜底页有两处被这条策略误伤（见 §12.1），
+> 已改成 `addEventListener` + `__TAURI_INTERNALS__.invoke("report_bug", …)`。
+> 结论不变 —— 而且比原来更紧：`connect-src` 不需要为兜底页放行任何 https。
+
 ## 3. 调研：WebView 到底需要哪些来源
 
 先按「谁在发请求」分两桶，这一步决定了 CSP 能不能收紧——分错了就会写出一个看起来能用、
@@ -86,6 +90,8 @@ bytes 走 blob、有 `srcUrl` 时走 asset）。
 - `blob:`：`src/vendor/redline-core/viewers/util.ts` 在宿主没给 `srcUrl` 时用
   `URL.createObjectURL` 造预览 URL（图片 → `img-src`，HTML → `frame-src`）。
 - 内联样式：`style={{…}}` 共 60 处（React 动态宽度/颜色/进度），必须允许 `'unsafe-inline'`（见 §4.1）。
+- 内联事件处理器：**没有任何业务代码依赖**；只有白屏兜底页原先在 `innerHTML` 里写了
+  `onclick=`，已被 `script-src-attr` 拦掉（真机实测），现改为 `addEventListener`（见 §12.1）。
 - 外部字体 / 远程图片 / 远程脚本：**没有**。构建后的 CSS 里 `url()` 为 0 条，`index.html` 只有
   1 个内联脚本 + 1 个同源 module 脚本，`miniMd` 也不渲染 `![]()` 图片。
 
@@ -238,3 +244,35 @@ Windows / macOS 真机上启动一次，看 DevTools console：
 - Tauri 源码：`tauri-codegen/src/context.rs::inject_script_hashes`、
   `tauri/src/manager/mod.rs::set_csp` / `replace_csp_nonce`
 - 本仓：`src-tauri/tauri.conf.json`（唯一改动点）、`src-tauri/capabilities/default.json`（未改）
+
+## 12. 运行时验证结果（2026-11-03，macOS 真机）
+
+用「探针版」构建（`tauri.conf.json` 与 dist 与发布版**完全一致**，只额外注入一段监听
+`securitypolicyviolation` 并把事件写到系统临时目录的内联脚本；探针不进 main）在
+macOS / WKWebView 上启动验证：
+
+- **非预期违规 0 条**（启动 → 首屏渲染完成）。探针自己产生的 2 条反向对照不计入。
+- 正向能力全部通过：IPC 往返、`data:` fetch、`blob:` 图片解码、同源 fetch、`asset:` fetch
+  （`~/.uking/video` 夹具）、内联样式、`addEventListener`、PTY 分配。
+- 反向对照 2 条都按预期被拦：`connect-src` 拦 https 外连、`script-src-attr` 拦内联 `onclick`。
+
+### 12.1 这次实测发现并修掉的两个真问题（白屏兜底页）
+
+CSP 之前，`index.html` 的兜底页靠两样东西自救/上报，两者在这条策略下都会失效：
+
+1. `reportBootFailure()` 用 `XMLHttpRequest` 直连 `https://u-claw.org.cn/uking/bug`
+   → 被 `connect-src` 拦掉，**白屏上报静默丢失**（而且白屏恰恰是最需要上报的路径）。
+   修：改走宿主注入的 `__TAURI_INTERNALS__.invoke("report_bug", …)`；Rust 侧先落
+   `~/.uking/logs/crash.log`、再用系统 curl 发网络，CSP 不必放行任何 https 来源。
+2. 兜底页两个按钮写成 `innerHTML` 里的 `onclick=` → 被 `script-src-attr` 拦掉，
+   **「重新加载 / 下载最新版」点了没反应**（真机实测：handler 一次都没触发）。
+   修：改 `id` + `addEventListener`。内联**脚本**仍允许（Tauri 自动加 `sha256`），
+   只是不允许内联**事件处理器**。
+
+两处都保持 ES5、都不依赖前端包（`__TAURI_INTERNALS__` 由宿主注入，主包加载失败时仍在）。
+
+### 12.2 验证方法（可复现）
+
+探针构建启动后读取系统临时目录的 `uking-csp-probe.json`（macOS：`$(getconf
+DARWIN_USER_TEMP_DIR)uking-csp-probe.json`；Windows：`%TEMP%\uking-csp-probe.json`），
+`summary.unexpected` 应为 0，`checks` 全 `ok`。反向对照的 2 条违规带 `synthetic: true`。
