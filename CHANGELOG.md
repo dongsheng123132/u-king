@@ -5,8 +5,20 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
-## 未发布
+## 1.4.12（2026-11-05）
 
+- **AI 设置新增「路由」分区（magpie 路由选项）**：装过 magpie 的机器上，可以直接在 U-King 里把
+  Claude Code / Codex / DeepSeek Harness / Pi / Hermes 切到 magpie 的某一「路」——即它把多份订阅、
+  多个 Key 合成的一个路由组（`group/<id>`）或「同一模型多家兜底」的自动路由（`auto/<模型>`），
+  包括每个 AI 当前走哪一路、一键切过去、一键还原。切换由 magpie 自己写各工具的配置（U-King 只调用
+  `magpie <agent> group/<id>` / `magpie <agent> default`，不碰它的路由规则与数据库）。
+  写完全程**回读确认**：magpie 说成功但回读不是目标值就如实报「没生效」，读不到就说读不到，
+  不把「不知道」画成「没配置」。没装 magpie 时给「先去『我的 AI』安装」单一路径；装了但没运行时
+  明确提示「路由要它开着才生效」并给打开按钮。路由组来源：magpie 运行中的网关 `/v1/models`
+  （拿人话名与推理档）→ 退到它自己的 `providers.json`（离线也能看见组）；本机回环 HTTP 走系统
+  curl 并 `--noproxy *`，不被系统代理劫持。macOS 本机真机实测：53 条路由（6 组 + 47 自动）、
+  DSH 行如实显示 `group/smart-split`、apply→回读→reset 全链路通过（见
+  `docs/HANDOFF-20261105-magpie-route.md`）。
 - **WorkBuddy 入口改走邀请链接**：`list_tools` 里 WorkBuddy 的 `target` 由官网下载页
   `https://www.codebuddy.cn/work/` 换成邀请活动页（`/events/invite?inviteCode=…`）。活动页
   自带「下载 WorkBuddy」入口，所以「点开下载官网客户端」的语义不变；新用户从 U-King 这个入口
@@ -20,6 +32,7 @@
 - **修「改字号把面板写崩」**（issue #238，1.4.9 客户机实证）：`Chat.tsx` 把字号写 localStorage
   时裸写，配额被会话缓存塞满后 `setItem` 抛 `QuotaExceededError` → 抛进 React 事件处理 →
   整个 U-Workspace 面板崩掉（客户看到面板消失）。改成 try/catch：本次字号照常生效，只是不落盘。
+- 版本号四处同步到 1.4.12（`Cargo.lock` 里 `u-king-mini` 的 version 是第五处，一并改）。
 
 ## 1.4.11（2026-11-03）
 
