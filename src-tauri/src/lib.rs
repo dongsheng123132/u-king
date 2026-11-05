@@ -49,6 +49,9 @@ mod dshdesk;
 mod installer;
 mod journal;
 mod macopt;
+// AI 设置「路由」分区的后端：读写 magpie 的路由组（见 docs/HANDOFF-20261105-magpie-route.md）。
+// 全程走 magpie CLI 与它自己的 providers.json，不碰它的内部数据库。
+mod magpie_route;
 mod mcp;
 mod mcp_serve;
 mod officedoc;
@@ -5005,6 +5008,87 @@ async fn set_draw_route(provider_id: String, model: String) -> Result<providers:
     .map_err(|e| format!("保存作图路由异常: {e}"))?
 }
 
+// ============================================================
+// magpie 路由（AI 设置「路由」分区）
+// ============================================================
+//
+// 契约见 docs/HANDOFF-20261105-magpie-route.md §4。这里只是薄壳：
+// 真身全在 `magpie_route`，它按「模块独立四铁律」只认公共层，跨模块的数据由这里取好传进去。
+
+/// 兜底数据：每个工具自己配置里当前的 model / base_url，CLI 读不到时用。
+///
+/// **`readable=false` 一律传 None**：`effective_config` 的「读不到」意思是「不知道」，
+/// 在组合根边界上不许翻译成「没配」—— 那会让面板给客户一个假的「未配置」结论。
+fn magpie_route_cfg() -> Vec<(String, Option<String>, Option<String>)> {
+    magpie_route::AGENTS
+        .iter()
+        .map(|(target, _, _)| {
+            let e = providers::effective_config(target);
+            if e.readable {
+                ((*target).to_string(), e.model, e.base_url)
+            } else {
+                ((*target).to_string(), None, None)
+            }
+        })
+        .collect()
+}
+
+/// 路由分区一次读全（装没装 / 网关在不在 / 有哪些路由 / 五个 AI 各走哪一路）。
+///
+/// **必须 async + spawn_blocking**：里面要起子进程（最坏 25s）还要打网关 HTTP，
+/// 同步命令会占住 IPC 线程，设置页一切换就像假死。
+#[tauri::command]
+async fn magpie_route_state() -> magpie_route::RouteState {
+    tauri::async_runtime::spawn_blocking(|| magpie_route::state(&magpie_route_cfg()))
+        .await
+        .unwrap_or_else(|e| {
+            // 任务本身炸了也得给个能渲染的形状，不能让整个设置页空白。
+            magpie_route::assemble(
+                false,
+                false,
+                Vec::new(),
+                "none",
+                Vec::new(),
+                Some(format!("读取 magpie 路由状态异常：{e}")),
+            )
+        })
+}
+
+/// 把某个 AI 切到某一路。成功后直接回最新 `RouteState`（前端拿它顶替本地状态，
+/// 不再多发一次 state 调用）—— 回读确认在 `magpie_route::apply` 里做，没生效会 Err。
+#[tauri::command]
+async fn magpie_route_apply(target: String, model: String) -> Result<magpie_route::RouteState, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = magpie_route::agent_of(&target)
+            .ok_or_else(|| format!("暂不支持配置这个 AI 工具：{target}"))?;
+        magpie_route::apply(agent, &model)?;
+        Ok(magpie_route::state(&magpie_route_cfg()))
+    })
+    .await
+    .map_err(|e| format!("切换路由的任务异常：{e}"))?
+}
+
+/// 还原某个 AI（`magpie <agent> default`）。同 apply，回读确认后才算成功。
+#[tauri::command]
+async fn magpie_route_reset(target: String) -> Result<magpie_route::RouteState, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = magpie_route::agent_of(&target)
+            .ok_or_else(|| format!("暂不支持配置这个 AI 工具：{target}"))?;
+        magpie_route::reset(agent)?;
+        Ok(magpie_route::state(&magpie_route_cfg()))
+    })
+    .await
+    .map_err(|e| format!("还原路由的任务异常：{e}"))?
+}
+
+/// 拉起 magpie 窗口（建组/改组仍在 magpie 里做，本版不做）。
+#[tauri::command]
+async fn magpie_route_open() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(magpie_route::open_app)
+        .await
+        .map_err(|e| format!("打开 magpie 的任务异常：{e}"))?
+}
+
 /// 查虾盘云余额。
 #[tauri::command]
 async fn query_balance(api_key: String) -> Result<providers::Balance, String> {
@@ -8376,6 +8460,11 @@ pub fn run() {
             probe_endpoint,
             get_draw_route,
             set_draw_route,
+            // magpie 路由（AI 设置 → 路由）：不是影核动作，只是设置页的读写，所以不进 actions 清单
+            magpie_route_state,
+            magpie_route_apply,
+            magpie_route_reset,
+            magpie_route_open,
             query_balance,
             query_usage_breakdown,
             query_local_usage,

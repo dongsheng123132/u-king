@@ -32,6 +32,7 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Route,
   ClipboardList,
   Languages,
   LifeBuoy,
@@ -48,6 +49,7 @@ import {
 import { cn } from "./lib/cn";
 import { ToolIcon } from "./components/ToolIcon";
 import { ProviderLogo } from "./components/ProviderLogo";
+import { MagpieRoutePanel } from "./components/MagpieRoutePanel";
 import { resolveProviderPresentation } from "./lib/providerPresentation";
 import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult, type FreeRouteContext } from "./components/CustomProviderModal";
 import type { ProviderPreset } from "./Wizard";
@@ -65,8 +67,9 @@ import { ACTION, createTauriActionClient } from "./generated/action-client";
 const callAction = createTauriActionClient(invoke, { surface: "gui" });
 
 /** 「AI 设置」页内分区 id。导出给 App.tsx（`manageInitialTab` 深链 + `renderAccount` 的跳转回调）共用一份。
- *  2026-10-03 收敛 2c 新增 `account`（账号 · 充值）。 */
-export type SettingsTab = "tools" | "providers" | "free" | "account" | "usage" | "advanced";
+ *  2026-10-03 收敛 2c 新增 `account`（账号 · 充值）。
+ *  2026-11-05 1.4.12 新增 `route`（路由）—— magpie 路由选项，放在「工具分配」之后。 */
+export type SettingsTab = "tools" | "route" | "providers" | "free" | "account" | "usage" | "advanced";
 
 // `EffectiveConfig`（回验结论：`readable === false` 是「不知道」不是「没配置」）的定义搬到了
 // `lib/types.ts`——「我的 AI」(toolhub/ToolHub.tsx) 也要读它，同一份类型只留一处（宪法第 8 条）。
@@ -1569,6 +1572,7 @@ export function Manager({
       <div className="inline-flex flex-wrap max-w-full p-1 gap-0.5 rounded-xl border border-white/[0.08] bg-bg-1/60">
         {([
           ["tools", t("工具分配"), t("哪个 AI 用哪家、用什么模型"), Plug],
+          ["route", t("路由"), t("让 magpie 把多个订阅合成一路，按任务自动挑模型"), Route],
           ["providers", t("供应商库"), t("增删改各家 API，所有 AI 共用一份"), KeyRound],
           ["free", t("免费算力"), t("国内稳定额度 + 海外/第三方免费路线"), Gift],
           ["account", t("账号 · 充值"), t("余额 · 充值 · 内置 Key · 一键配好"), Wallet],
@@ -2262,6 +2266,11 @@ export function Manager({
         </div>
       </section>
       )}
+
+      {/* 路由（1.4.12）—— magpie 把多份订阅合成「路由组」，这里决定哪个 AI 走哪一路。
+          面板自己 invoke(`magpie_route_state`/`_apply`/`_reset`/`_open`)，本页只负责挂上它；
+          `tools` 只给未安装的工具画「未安装」徽章（知道才标，不知道不猜）。 */}
+      {settingsTab === "route" && <MagpieRoutePanel tools={tools} onGoPage={onGoPage} />}
 
       {/* 供应商库 —— **一家 API 只登记一次，四个 AI 都从这儿引用**。
           原来「添加供应商」只藏在「工具分配」右栏顶部：客户得先随便选中一个 AI，才够得着
