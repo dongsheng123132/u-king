@@ -4,7 +4,7 @@
 
 *An open-source AI installer and workspace for Windows and macOS.*
 
-作者 / Author：He Fangsheng (贺方升 / 贺去病; Dosen)· [hequbing.com](https://www.hequbing.com)
+作者 / Author：He Fangsheng (贺方升 / 贺去病; also known as Dosen)· [hequbing.com](https://www.hequbing.com)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/dongsheng123132/u-king?display_name=tag)](https://github.com/dongsheng123132/u-king/releases/latest)
