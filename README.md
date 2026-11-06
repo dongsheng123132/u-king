@@ -4,6 +4,8 @@
 
 *An open-source AI installer and workspace for Windows and macOS.*
 
+作者 / Author：贺去病（贺方升 / Dosen）· [hequbing.com](https://www.hequbing.com)
+
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/dongsheng123132/u-king?display_name=tag)](https://github.com/dongsheng123132/u-king/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-4c6ef5.svg)](https://github.com/dongsheng123132/u-king/releases)
