@@ -51,6 +51,7 @@ export type ProviderLogoKey =
   | "modelscope"
   | "bai"
   | "apimart"
+  | "magpie"
   | "unknown";
 
 export type ProviderGroup = "vendor" | "platform" | "unknown";
@@ -96,6 +97,7 @@ const HOST_RULES: HostRule[] = [
   { hosts: ["api-inference.modelscope.cn"], logo: "modelscope", group: "platform" },
   { hosts: ["api.b.ai"], logo: "bai", group: "platform" },
   { hosts: ["api.apimart.ai"], logo: "apimart", group: "platform" },
+  { hosts: ["127.0.0.1:3425"], logo: "magpie", group: "platform" },
 ];
 
 function extractHost(url?: string | null): string | null {

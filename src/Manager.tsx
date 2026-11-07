@@ -9,7 +9,7 @@
  *  - 每行可「测试连通」（让模型真回一句话）
  */
 
-import { Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openRecharge } from "./lib/recharge";
@@ -32,7 +32,6 @@ import {
   Plus,
   Power,
   RefreshCw,
-  Route,
   ClipboardList,
   Languages,
   LifeBuoy,
@@ -49,7 +48,6 @@ import {
 import { cn } from "./lib/cn";
 import { ToolIcon } from "./components/ToolIcon";
 import { ProviderLogo } from "./components/ProviderLogo";
-import { MagpieRoutePanel } from "./components/MagpieRoutePanel";
 import { resolveProviderPresentation } from "./lib/providerPresentation";
 import { CustomProviderModal, IPT, TOOL_LABELS, type TestResult, type FreeRouteContext } from "./components/CustomProviderModal";
 import type { ProviderPreset } from "./Wizard";
@@ -68,8 +66,9 @@ const callAction = createTauriActionClient(invoke, { surface: "gui" });
 
 /** 「AI 设置」页内分区 id。导出给 App.tsx（`manageInitialTab` 深链 + `renderAccount` 的跳转回调）共用一份。
  *  2026-10-03 收敛 2c 新增 `account`（账号 · 充值）。
- *  2026-11-05 1.4.12 新增 `route`（路由）—— magpie 路由选项，放在「工具分配」之后。 */
-export type SettingsTab = "tools" | "route" | "providers" | "free" | "account" | "usage" | "advanced";
+ *  2026-11-05 1.4.12 曾新增 `route`（路由）页签 —— 2026-11-07 撤掉：magpie 现在是
+ *  「供应商库」里的一家普通供应商（模型就是它的路由组），再单开一页等于同一件事摆两处。 */
+export type SettingsTab = "tools" | "providers" | "free" | "account" | "usage" | "advanced";
 
 // `EffectiveConfig`（回验结论：`readable === false` 是「不知道」不是「没配置」）的定义搬到了
 // `lib/types.ts`——「我的 AI」(toolhub/ToolHub.tsx) 也要读它，同一份类型只留一处（宪法第 8 条）。
@@ -681,6 +680,16 @@ export function Manager({
     try {
       const ids = await invoke<string[]>("list_remote_models", { providerId: p.id, apiKey: key });
       setRemoteModels((m) => ({ ...m, [p.id]: ids }));
+      // 拉到之后，这一行还没选模型就替他填一个：本机 Magpie 会返回两百多条，让客户在
+      // 两百条里手挑一个是最容易劝退的一步。优先 `group/`（他自己在 magpie 里建的组，
+      // 通常就是想要的那一路），没有组才退回清单第一条。
+      const slot = `${activeTab}:${p.id}`;
+      const list = Array.isArray(ids) ? ids : [];
+      setModelSel((prev) => {
+        if ((prev[slot] ?? "").trim()) return prev;
+        const pick = list.find((id) => id.startsWith("group/")) ?? list[0];
+        return pick ? { ...prev, [slot]: pick } : prev;
+      });
       flash(t("已拉取 {n} 个可用模型 —— 下拉里选，或直接手填", { n: ids.length }));
     } catch (e) {
       flash(t("拉取失败：{e} —— 可直接手填模型 id", { e: String(e) }), "error");
@@ -1341,9 +1350,9 @@ export function Manager({
    * 弹窗再点模板 chip，这里从外面的画廊卡片一步到位——省的是「点两次才到同一个地方」。
    * 只预填地址/模型/Key 提示，`api_key` 留空、`id` 留空（新增，后端生成 id）。
    */
-  function openAddTemplate(tpl: ProviderTemplate) {
+  function openAddTemplate(tpl: ProviderTemplate, addToCurrentTool = false) {
     setFreeRouteContext(null);
-    setAddNewToActiveTool(false);
+    setAddNewToActiveTool(addToCurrentTool);
     setEditing({
       id: "",
       name: tpl.name,
@@ -1357,7 +1366,7 @@ export function Manager({
       builtin_recharge: false,
       recommended: false,
       builtin: false,
-      api_key: "",
+      api_key: tpl.name === "Magpie" ? "magpie" : "",
     });
   }
 
@@ -1572,7 +1581,6 @@ export function Manager({
       <div className="inline-flex flex-wrap max-w-full p-1 gap-0.5 rounded-xl border border-white/[0.08] bg-bg-1/60">
         {([
           ["tools", t("工具分配"), t("哪个 AI 用哪家、用什么模型"), Plug],
-          ["route", t("路由"), t("让 magpie 把多个订阅合成一路，按任务自动挑模型"), Route],
           ["providers", t("供应商库"), t("增删改各家 API，所有 AI 共用一份"), KeyRound],
           ["free", t("免费算力"), t("国内稳定额度 + 海外/第三方免费路线"), Gift],
           ["account", t("账号 · 充值"), t("余额 · 充值 · 内置 Key · 一键配好"), Wallet],
@@ -2267,11 +2275,6 @@ export function Manager({
       </section>
       )}
 
-      {/* 路由（1.4.12）—— magpie 把多份订阅合成「路由组」，这里决定哪个 AI 走哪一路。
-          面板自己 invoke(`magpie_route_state`/`_apply`/`_reset`/`_open`)，本页只负责挂上它；
-          `tools` 只给未安装的工具画「未安装」徽章（知道才标，不知道不猜）。 */}
-      {settingsTab === "route" && <MagpieRoutePanel tools={tools} onGoPage={onGoPage} />}
-
       {/* 供应商库 —— **一家 API 只登记一次，四个 AI 都从这儿引用**。
           原来「添加供应商」只藏在「工具分配」右栏顶部：客户得先随便选中一个 AI，才够得着
           那颗按钮，于是「加一家自己的 API」看起来像是「给这个 AI 加一家」。实际上
@@ -2715,7 +2718,19 @@ export function Manager({
             .filter((p) => p.id !== "official")}
           addableIds={new Set(addable.map((p) => p.id))}
           tool={TOOL_LABELS[activeTab] ?? activeTab}
+          // Magpie 是本机已经装好、开着的供应商：客户在「工具分配」页就该能一步加进来，
+          // 不该先跑去「供应商库 → 模型平台 → 展开其余」里找。其它模板仍只留在供应商库，
+          // 免得把这个抽屉塞成第二个模板墙。
+          quickAddTemplates={
+            [...providers, ...addable].some((p) => (p.openai_base || "").includes("127.0.0.1:3425"))
+              ? []
+              : templates.filter((x) => x.name === "Magpie")
+          }
           onRestore={(p) => restoreProvider(p.id, p.name)}
+          onAddTemplate={(tpl) => {
+            setProviderPickerOpen(false);
+            openAddTemplate(tpl, true);
+          }}
           onNew={() => {
             setProviderPickerOpen(false);
             openNewCustomProvider(true);
@@ -2826,14 +2841,19 @@ function ProviderLibraryPicker({
   providers,
   addableIds,
   tool,
+  quickAddTemplates,
   onRestore,
+  onAddTemplate,
   onNew,
   onClose,
 }: {
   providers: ProviderPreset[];
   addableIds: Set<string>;
   tool: string;
+  /** 还没保存进供应商库、但客户十有八九想要的本机供应商（目前只有 Magpie）。 */
+  quickAddTemplates: ProviderTemplate[];
   onRestore: (p: ProviderPreset) => Promise<void>;
+  onAddTemplate: (tpl: ProviderTemplate) => void;
   onNew: () => void;
   onClose: () => void;
 }) {
@@ -2861,8 +2881,7 @@ function ProviderLibraryPicker({
         <div className="max-h-[55vh] overflow-y-auto p-3 space-y-1.5">
           {providers.length === 0 ? (
             <p className="px-2 py-6 text-center text-[12px] text-ink-4">{t("供应商库还没有供应商。先新建一家吧。")}</p>
-          ) : providers.map((p) => {
-            const alreadyVisible = !addableIds.has(p.id);
+          ) : providers.map((p) => {            const alreadyVisible = !addableIds.has(p.id);
             return (
               <button
                 key={p.id}
@@ -2892,6 +2911,31 @@ function ProviderLibraryPicker({
               </button>
             );
           })}
+          {quickAddTemplates.length > 0 && (
+            <div className="pt-2">
+              <div className="px-2 pb-1.5 text-[11px] text-ink-4">
+                {t("快速添加（还没保存进供应商库）")}
+              </div>
+              {quickAddTemplates.map((tpl) => (
+                <button
+                  key={`qa:${tpl.name}`}
+                  onClick={() => onAddTemplate(tpl)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-accent/25 bg-accent/[0.04] px-3 py-2.5 text-left transition-colors hover:border-accent/50 hover:bg-accent/[0.08]"
+                >
+                  <span className="grid place-items-center w-5 h-5 rounded-full border border-white/[0.25] text-accent shrink-0">
+                    <Plus size={12} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12px] font-medium text-ink-1 truncate">{tpl.name}</span>
+                    <span className="block mt-0.5 text-[10px] font-mono text-ink-5 truncate">
+                      {tpl.openai_base.replace(/^https?:\/\//, "")}
+                    </span>
+                  </span>
+                  <span className="text-[10px] shrink-0 text-accent">{t("添加到 {tool}", { tool })}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-t border-white/[0.08]">
@@ -3067,7 +3111,17 @@ function ToolProviderList({
                 (!installed || rowBusy) && "cursor-default opacity-60",
               )}
             >
-              <ToolIcon tool={iconOf(p)} size={19} active={installed} className="shrink-0 opacity-90" />
+              {/* 品牌图标优先用「按接口主机名解析出的品牌」（Magpie / OpenRouter 这类第三方也能认对）；
+                  解析不出来的（自定义中转）才退回 ToolIcon 的字母兜底 —— 以前 Magpie 显示的是
+                  custom-magpie 的首字母「C」，客户看着像另一家供应商。 */}
+              {(() => {
+                const pres = resolveProviderPresentation(p);
+                return pres.logo !== "unknown" ? (
+                  <ProviderLogo logo={pres.logo} label={p.name} size={19} className="shrink-0" />
+                ) : (
+                  <ToolIcon tool={iconOf(p)} size={19} active={installed} className="shrink-0 opacity-90" />
+                );
+              })()}
               <div className="min-w-0 flex-1">
                 <div className={cn("text-[13px] flex items-center gap-1.5", active ? "font-semibold text-ink-0" : "font-medium text-ink-1")}>
                   <span className="truncate">{p.name}</span>
@@ -3309,9 +3363,13 @@ function ToolProviderList({
 }
 
 /**
- * 选模型组合框（对齐 cc-switch）：一个可手填的输入框 + datalist 下拉（内置候选 + 动态拉到的
+ * 选模型组合框（对齐 cc-switch）：一个可手填的输入框 + 自绘下拉（内置候选 + 动态拉到的
  * 真实清单）+ 右侧「🔄 拉取」按钮。手填永远可用 —— 拉不到清单也不挡用户切模型（健壮优先）。
- */
+ *
+ * 🔴 为什么不用原生 `<datalist>`（2026-11-07 客户实测截图）：本机 Magpie 一次返回 248 个模型，
+ * WKWebView 的原生建议框会糊成一块半透明浮层盖住整张卡、还不能搜索、`group/` 路由排在
+ * `auto/` 后面 —— 客户只说了一句「还是很多 bug」。改成自绘面板：可输入筛选、限高滚动、
+ * 路由组置顶，并且**只在有候选时才展开**，不再无脑糊一层。 */
 function ModelPicker({
   listId,
   value,
@@ -3332,25 +3390,104 @@ function ModelPicker({
   const { t } = useI18n();
   // 贵/慎用模型成本提示（只提醒不拦截）——挡住「手填/拉取选到 gpt-5.6-sol 烧穿余额」的坑
   const pricey = priceyModelHint(value);
+  const [open, setOpen] = useState(false);
+  // 筛选词单独存：不能拿输入框的值当筛选词 —— 自动选好一个模型后再展开下拉，
+  // 那样只会剩它自己一条（客户会以为「拉到的模型都丢了」）。null = 没在筛，展开看全部。
+  const [query, setQuery] = useState<string | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  // 点面板外面就收起：不劫持整页点击，只在展开期间挂一个 document 监听。
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  // 输入即筛选（两百多条不分页，靠打字收窄最省事）；路由组置顶，其余保持原序。
+  const shown = useMemo(() => {
+    const q = (query ?? "").trim().toLowerCase();
+    const seen = new Set<string>();
+    const uniq = options.filter((o) => {
+      if (seen.has(o.id)) return false;
+      seen.add(o.id);
+      return !q || o.id.toLowerCase().includes(q) || (o.label || "").toLowerCase().includes(q);
+    });
+    return [...uniq].sort(
+      (a, b) => Number(!a.id.startsWith("group/")) - Number(!b.id.startsWith("group/")),
+    );
+  }, [options, query]);
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
         <Cpu size={13} className="text-accent shrink-0" />
-        <div className="flex-1 flex items-center h-9 rounded-lg border border-white/[0.10] bg-bg-1 px-2.5">
+        <div ref={boxRef} className="relative flex-1 flex items-center h-9 rounded-lg border border-white/[0.10] bg-bg-1 px-2.5">
           <input
-            list={listId}
             value={value}
             disabled={disabled}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onChange(e.target.value)}
+            onFocus={() => {
+              setQuery(null);
+              setOpen(true);
+            }}
+            onChange={(e) => {
+              onChange(e.target.value);
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setOpen(false);
+            }}
             placeholder={t("模型 id：下拉选，或直接手填")}
             className="flex-1 bg-transparent outline-none text-[12px] text-ink-1 font-mono placeholder:text-ink-4 disabled:opacity-50"
           />
-          <datalist id={listId}>
-            {options.map((o) => (
-              <option key={o.id} value={o.id} label={o.label === o.id ? undefined : o.label} />
-            ))}
-          </datalist>
+          {options.length > 0 && (
+            <button
+              type="button"
+              aria-label={t("展开模型清单")}
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuery(null);
+                setOpen((v) => !v);
+              }}
+              className="shrink-0 grid place-items-center w-5 h-5 rounded text-ink-4 hover:text-ink-1 disabled:opacity-40"
+            >
+              <ChevronDown size={13} className={open ? "rotate-180 transition-transform" : "transition-transform"} />
+            </button>
+          )}
+          {open && shown.length > 0 && (
+            <div
+              role="listbox"
+              data-testid={`model-menu-${listId}`}
+              className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-[240px] overflow-y-auto rounded-lg border border-white/[0.12] bg-bg-1 shadow-card"
+            >
+              <div className="px-2.5 py-1.5 text-[10px] text-ink-4 border-b border-white/[0.06]">
+                {t("共 {n} 个，输入可筛选", { n: shown.length })}
+              </div>
+              {shown.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="option"
+                  aria-selected={o.id === value}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange(o.id);
+                    setQuery(null);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "block w-full px-2.5 py-1.5 text-left text-[11.5px] font-mono truncate hover:bg-accent/[0.10]",
+                    o.id === value ? "text-accent" : "text-ink-2",
+                  )}
+                  title={o.label && o.label !== o.id ? `${o.id} · ${o.label}` : o.id}
+                >
+                  {o.id}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <button
           onClick={(e) => {

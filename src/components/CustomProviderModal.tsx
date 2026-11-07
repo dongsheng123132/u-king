@@ -227,6 +227,7 @@ export function CustomProviderModal({
       small_model: tpl.small_model ?? "",
       key_url: tpl.key_url ?? "",
       key_hint: tpl.key_hint ?? "API Key",
+      api_key: tpl.name === "Magpie" ? "magpie" : value.api_key ?? "",
     });
   };
 

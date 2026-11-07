@@ -74,6 +74,7 @@ const FALLBACK_BG: Record<string, string> = {
   iflow: "#7c3aed",
   bai: "#0891b2",
   apimart: "#ea580c",
+  magpie: "#0f766e",
   unknown: "#5e6ad2",
 };
 

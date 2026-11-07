@@ -34,7 +34,8 @@ for (const template of PROVIDER_TEMPLATES) {
   check(`${template.name}: usable base addresses and recognized brand`, () => {
     for (const base of [template.openai_base, template.anthropic_base].filter(Boolean)) {
       const url = new URL(base);
-      assert.equal(url.protocol, "https:");
+      const isMagpieLoopback = template.name === "Magpie" && url.protocol === "http:" && url.host === "127.0.0.1:3425";
+      assert.ok(url.protocol === "https:" || isMagpieLoopback, "only the local magpie gateway may use HTTP");
       assert.equal(base, base.trim());
       assert.equal(url.username, "");
       assert.equal(url.password, "");

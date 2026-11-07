@@ -128,6 +128,16 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     website: "https://openrouter.ai",
   },
   {
+    // Magpie 是本机 OpenAI / Anthropic 兼容供应商，不要求另建路由组。
+    // 不预选某个用户自定义模型；添加后从 /v1/models 拉取 Magpie 当前已有模型。
+    // `magpie` 只是满足部分 AI CLI 的非空 Key 要求，本机网关不校验它。
+    name: "Magpie",
+    openai_base: "http://127.0.0.1:3425/v1",
+    anthropic_base: "http://127.0.0.1:3425/v1",
+    key_hint: "本机 Magpie 网关，无需新建路由或申请 Key；自动填入占位值 magpie，添加后可拉取现有模型",
+    website: "https://usemagpie.ai",
+  },
+  {
     // OpenCode Zen（2026-08-23 加）：OpenCode 官方自己的模型网关，OpenAI 兼容。
     // base 取自官方文档的 Endpoints 表（`https://opencode.ai/zen/v1/chat/completions`），
     // 无 Key 直接 GET `/zen/v1/models` 能列出 64 个 id —— 拉取按钮对它天然可用。

@@ -578,4 +578,8 @@ export const settings: Record<string, string> = {
   "其他来源": "Other sources",
   "加回工具": "Restore a tool",
   "用于：{tools}": "Used by: {tools}",
+  "快速添加（还没保存进供应商库）": "Quick add (not saved to the provider library yet)",
+  "添加到 {tool}": "Add to {tool}",
+  "展开模型清单": "Show model list",
+  "共 {n} 个，输入可筛选": "{n} models — type to filter",
 };

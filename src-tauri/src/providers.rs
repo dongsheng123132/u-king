@@ -7723,6 +7723,8 @@ fn friendlier_text_error(e: String) -> String {
         "接口或模型不存在：请检查接口路径、协议和模型名称。"
     } else if low.contains("http 429") {
         "供应商限制了请求：请检查速率或套餐额度，稍后重试。"
+    } else if low.contains("退出码 28") || low.contains("timed out") || low.contains("timeout") {
+        "接口 20 秒没有响应：本机 Magpie 正在启动或重建模型清单时会这样，等它稳定后再点一次「拉取」；远端供应商请检查网络或地址。"
     } else { return e };
     format!("{hint} 原因：{e}")
 }
@@ -7762,8 +7764,17 @@ pub fn list_models_at(base_url: &str, api_key: &str) -> Result<Vec<String>, Stri
         args.push(&auth);
     }
     args.push(&url);
-    let out = curl_provider_endpoint(&url, &args)
-        .map_err(|e| redact_header_secrets(&e, &[auth.clone()]))?;
+    // 本机网关（magpie）重建模型清单时会短暂不响应：一次 20s 超时后重试一次即可拿到，
+    // 网络抖动不该表现成「这个功能不能用」。远端地址不重试（见 is_loopback_base 注释）。
+    let fetched = match curl_provider_endpoint(&url, &args) {
+        Ok(o) => Ok(o),
+        Err(first) if is_loopback_base(&base) && first.contains("退出码 28") => {
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            curl_provider_endpoint(&url, &args)
+        }
+        Err(e) => Err(e),
+    };
+    let out = fetched.map_err(|e| redact_header_secrets(&e, &[auth.clone()]))?;
     let out = redact_header_secrets(&out, &[auth.clone()]);
     let v = parse_provider_response(&out).map_err(friendlier_text_error)?;
     if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
@@ -7785,6 +7796,20 @@ pub fn list_models_at(base_url: &str, api_key: &str) -> Result<Vec<String>, Stri
         return Err("上游返回的模型清单为空".into());
     }
     Ok(ids)
+}
+
+/// 本机回环地址（magpie / Ollama / 本地桥这类，跑在客户自己机器上）。
+///
+/// 为什么单独判：本机网关的「慢」和远端 API 的「慢」不是一回事 ——
+/// magpie 重建模型清单时会短暂不响应（实测一次超过 20 秒），但下一秒就好，
+/// 这种不该让客户看到「拉取失败」然后放弃；而远端 20 秒超时多半真是对方的问题，
+/// 重试只会再赔一个超时周期。重试策略只对回环开。
+fn is_loopback_base(base: &str) -> bool {
+    let Ok(url) = tauri::Url::parse(base.trim()) else { return false };
+    matches!(
+        url.host_str(),
+        Some("localhost" | "127.0.0.1" | "[::1]" | "::1")
+    )
 }
 
 /// 经 curl 发 JSON POST。body 落临时文件（绕开命令行引号地狱 + 中文编码问题）。

@@ -7389,6 +7389,44 @@ pub fn run() {
         std::process::exit(if broken.is_empty() { 0 } else { 1 });
     }
 
+    // 供应商模型清单自检：U-King --models-test <base> [key]
+    //
+    // 走的是 GUI 点「拉取模型」时**同一条** `providers::list_models_at`（同一个 curl 分支、
+    // 同一份 PATH / 代理处理），所以能回答「界面上拉不动，到底是这条链路哪一层卡住」。
+    // 只读、不落任何配置；结果打 stderr 并追加到 ~/.uking/logs/models-test.log。
+    if let Some(i) = args.iter().position(|a| a == "--models-test") {
+        let base = args.get(i + 1).cloned().unwrap_or_default();
+        let key = args.get(i + 2).cloned().unwrap_or_default();
+        let t0 = std::time::Instant::now();
+        let r = providers::list_models_at(&base, &key);
+        let ms = t0.elapsed().as_millis();
+        let proxies: Vec<&str> = [
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+            "http_proxy", "https_proxy", "all_proxy",
+        ]
+        .into_iter()
+        .filter(|k| std::env::var_os(k).is_some())
+        .collect();
+        let line = match &r {
+            Ok(v) => format!(
+                "models-test OK {ms}ms n={} base={base} env_proxies={proxies:?} first={:?}",
+                v.len(),
+                v.first()
+            ),
+            Err(e) => format!("models-test ERR {ms}ms base={base} env_proxies={proxies:?} err={e}"),
+        };
+        eprintln!("{line}");
+        let log = installer::uking_home().join("logs").join("models-test.log");
+        if let Some(dir) = log.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log) {
+            use std::io::Write;
+            let _ = writeln!(f, "{line}");
+        }
+        std::process::exit(if r.is_ok() { 0 } else { 1 });
+    }
+
     // 终端无头验证：U-King.exe --term-test "<cmd>"（验证 PTY + PATH 注入，不依赖 GUI）
     if let Some(i) = args.iter().position(|a| a == "--term-test") {
         let cmd = args.get(i + 1).cloned().unwrap_or_else(|| "node --version".into());

@@ -770,6 +770,13 @@
       "website": "https://openrouter.ai"
     },
     {
+      "name": "Magpie",
+      "openai_base": "http://127.0.0.1:3425/v1",
+      "anthropic_base": "http://127.0.0.1:3425/v1",
+      "key_hint": "本机 Magpie 网关，无需新建路由或申请 Key；自动填入占位值 magpie，添加后可拉取现有模型",
+      "website": "https://usemagpie.ai"
+    },
+    {
       "name": "OpenCode Zen",
       "openai_base": "https://opencode.ai/zen/v1",
       "model": "x-preview-f-free",

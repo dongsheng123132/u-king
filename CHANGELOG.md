@@ -5,6 +5,28 @@
 > 版本号四处同步：`src/version.ts` / `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`，
 > 外加官网下发的更新说明（自升级判据）。
 
+## 1.4.13（2026-11-07）
+
+- **Magpie 作为一家普通供应商**：`供应商库 → 模型平台` 新增 Magpie（本机 `http://127.0.0.1:3425/v1`，
+  OpenAI 与 Anthropic 两种协议都可用）。不需要另建路由组、不需要申请 Key——添加后点「拉取模型」
+  从它当前已有的模型里选一个即可（占位 Key 自动填 `magpie`，本机网关不校验）。「工具分配」页的
+  「从供应商库添加」抽屉里也直接给了一条 Magpie 入口，不用先跑去供应商库翻「模型平台 → 展开其余」。
+- **撤掉「路由」分区**：magpie 现在就是供应商，模型就是它的路由组，再单开一页等于同一件事摆两处。
+  `Manager` 的分区栏与渲染已移除；`MagpieRoutePanel` 与其后端命令暂时保留（文件头写了如何彻底删）。
+- **选模型改成自绘下拉**：原来用原生 `<datalist>`，本机 Magpie 一次返回 248 个模型时 WKWebView 会
+  糊成一块半透明浮层盖住整张卡、不能搜索、`group/` 还排在 `auto/` 后面。现在限高滚动、输入即筛选、
+  路由组置顶、点外面自动收起；拉取成功后**自动选一个**（优先 `group/`，否则第一条），不再停在「未选模型」。
+- **供应商行用真品牌图标**：行图标改按接口主机名解析品牌（`resolveProviderPresentation`），
+  Magpie / OpenRouter 这类第三方不再掉到「首字母方块」（Magpie 以前显示的是 `custom-magpie` 的「C」）。
+- **本机网关超时重试一次**：`list_models_at` 对回环地址的 curl 超时（退出码 28）自动重试一次
+  （远端不重试，避免白等两个超时周期）；超时文案改成人话，不再只甩一段 curl 报错。
+- **新增只读自检 `--models-test <base> [key]`**：走与界面「拉取模型」**同一条**后端链路，
+  结果打 stderr 并追加到 `~/.uking/logs/models-test.log`，用于区分「网关忙 / 地址写错 / 代理劫持」。
+- 验证：模板三份一致、端点检查 47 项、`tsc`、`pnpm build`、WebKit 兼容、i18n 0 漏翻全绿；
+  headless 真点界面 27 项（模板链路）+ 9 项（行内选模型）全过；本机 Magpie 实测 248 个模型、
+  `group/smart-split` 真回话（¥0）。`cargo test --lib` 595 通过，9 条失败与 `rust-test.log`
+  记录的既有基线逐条相同（macOS 环境问题，非本次改动引入）。
+
 ## 1.4.12（2026-11-05）
 
 - **AI 设置新增「路由」分区（magpie 路由选项）**：装过 magpie 的机器上，可以直接在 U-King 里把
