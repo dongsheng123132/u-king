@@ -120,6 +120,8 @@ console.log("技能包生成器产物自检 —— 量的是解开后的字节�
   ok("gen-xlsx: -3.25 仍是数值单元格", /<c r="C3"[^>]*><v>-3\.25<\/v><\/c>/.test(sheet));
 }
 
+// 邮件技能已从当前精简版技能包中下线；技能恢复时这些检查会自动重新启用。
+if (fs.existsSync(path.join(S, "mail", "scripts", "gen-eml.mjs"))) {
 // ── 3. 邮件头注入：CRLF 必须被拒，且拒的时候不许落盘 ────────────────────────────────
 {
   const evil = w("evil.json", { to: ["victim@abc.com\r\nBcc: attacker@evil.com"], subject: "hi", text: "b" });
@@ -145,7 +147,10 @@ console.log("技能包生成器产物自检 —— 量的是解开后的字节�
   const eml = fs.readFileSync(`${D}/good.eml`, "utf8");
   ok("gen-eml: 中文显示名/主题仍走 RFC2047 编码", eml.includes("=?UTF-8?B?") && /^To: .*<zhang@abc\.com>/m.test(eml),
     eml.split("\r\n").slice(0, 6).join(" / "));
+}
+}
 
+{
   const md = w("ok.md", '# 标题\n\n正文 & <b> "引号"\n\n- 项一\n- 项二\n');
   run("docx/scripts/gen-docx.mjs", ["--md", md, "--out", `${D}/ok.docx`, "--json"]);
   const xml = unzip(`${D}/ok.docx`)["word/document.xml"] || "";
