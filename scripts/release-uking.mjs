@@ -11,8 +11,9 @@
  *   "version": "1.3.2",
  *   "artifactDir": "D:/release/1.3.2",
  *   "websiteDir": "D:/work/u-king/website",
- *   "targets": [{ "host": "release-host", "downloadDir": "/srv/download", "versionPaths": ["/srv/site/uking/version.json"],
- *     "skillPaths": ["/srv/site/uking/install-windows.json"], "modelCatalogPaths": ["/srv/site/uking/xiapan-models.json"], "sudo": false }],
+ *   "targets": [{ "host": "release-host", "downloadDir": "/srv/download", "additionalDownloadDirs": ["/srv/site/uking/download"],
+ *     "versionPaths": ["/srv/site/uking/version.json"], "skillPaths": ["/srv/site/uking/install-windows.json"],
+ *     "modelCatalogPaths": ["/srv/site/uking/xiapan-models.json"], "sudo": false }],
  *   "oss": { "binary": "ossutil", "bucketPrefix": "oss://example-bucket/uking" }
  * }
  */
@@ -170,11 +171,18 @@ async function readConfig(configArg) {
     if (host.startsWith("-")) fail(`config.targets[${index}].host 不允许以 - 开头`);
     if (host.includes("://") || /^[^@\s:]+:[^@\s]+@/.test(host)) fail(`config.targets[${index}].host 不允许内嵌凭据`);
     const downloadDir = requireRemotePath(target.downloadDir, `config.targets[${index}].downloadDir`);
+    const additionalDownloadDirs = target.additionalDownloadDirs === undefined ? [] : (() => {
+      if (!Array.isArray(target.additionalDownloadDirs)) fail(`config.targets[${index}].additionalDownloadDirs 必须是数组`);
+      return target.additionalDownloadDirs.map((entry, pathIndex) => requireRemotePath(entry, `config.targets[${index}].additionalDownloadDirs[${pathIndex}]`));
+    })();
+    const downloadDirs = [downloadDir, ...additionalDownloadDirs];
+    if (new Set(downloadDirs).size !== downloadDirs.length) fail(`config.targets[${index}] 下载目录不能重复`);
     if (!Array.isArray(target.versionPaths) || target.versionPaths.length === 0) fail(`config.targets[${index}].versionPaths 至少需要一项`);
     if (target.sudo !== undefined && typeof target.sudo !== "boolean") fail(`config.targets[${index}].sudo 必须是布尔值`);
     return {
       host,
       downloadDir,
+      downloadDirs,
       sudo: target.sudo === true,
       versionPaths: target.versionPaths.map((entry, pathIndex) => requireRemotePath(entry, `config.targets[${index}].versionPaths[${pathIndex}]`)),
       skillPaths: target.skillPaths === undefined ? [] : (() => {
@@ -481,8 +489,10 @@ async function publish(config, plan, journal, persistJournal) {
   for (let index = 0; index < config.targets.length; index += 1) {
     const target = config.targets[index];
     const staged = [];
-    for (const artifact of plan.artifacts) {
-      staged.push(await remoteStage(target, artifact.path, remoteJoin(target.downloadDir, artifact.name), artifact.sha256, releaseId));
+    for (const downloadDir of target.downloadDirs) {
+      for (const artifact of plan.artifacts) {
+        staged.push(await remoteStage(target, artifact.path, remoteJoin(downloadDir, artifact.name), artifact.sha256, releaseId));
+      }
     }
     journal.inFlight = { phase: "target-binaries", targetIndex: index };
     await persistJournal();
