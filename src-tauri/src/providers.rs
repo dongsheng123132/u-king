@@ -9326,7 +9326,20 @@ fn is_image_bytes(b: &[u8]) -> bool {
 /// 走 curl `-o` 写文件再读字节：`curl` 助手对 stdout 按 utf8 lossy 解会毁二进制，故必须落盘。
 fn ensure_b64(mut r: ImageResult) -> ImageResult {
     if r.b64.is_some() {
-        return r;
+        // 上游直接回 b64 时也要验一遍：网关把它当 JSON 字符串透传，里面**照样可能**是
+        // 错误响应体的 base64（不是图）。不验就会把它当 PNG 存进历史 —— 客户看到一块空白
+        // （2026-11-21 反馈的形状；2026-11-21 sol 6.2 审查补：原来只兜了 URL 下载那条路）。
+        if let Some(b64) = r.b64.clone() {
+            let ok = b64_decode(b64.trim())
+                .map(|bytes| is_image_bytes(&bytes))
+                .unwrap_or(false);
+            if ok {
+                return r;
+            }
+            r.b64 = None; // 让下游的 require_image_b64 给出「图没传完整，请重试」的人话
+        } else {
+            return r;
+        }
     }
     if let Some(url) = r.url.clone() {
         let tmp = std::env::temp_dir().join(format!("uking-img-{}.bin", std::process::id()));

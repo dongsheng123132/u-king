@@ -473,7 +473,19 @@ pub struct InstallToolResult {
 /// 这里要等下一次内嵌清单同步才跟上，属于「enum 略保守」而不是「凭空编了一份」。
 pub fn embedded_tool_ids() -> Vec<String> {
     let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌 install-windows.json 解析失败");
-    skill.tools.into_keys().collect()
+    skill.tools.into_keys().filter(|id| !is_retired_tool(id)).collect()
+}
+
+/// 已经下架的一方集成 / 工具 —— **清单里还留着它们的安装步骤，那是给老客户端用的兼容层**。
+///
+/// 为什么不直接从清单里删（2026-11-21 sol 6.2 审查指出）：清单是**热下发**的，
+/// 1.4.13 及更老的客户端会从同一个地址拉这份文件；那边「我的 AI」里还挂着这些工具卡，
+/// 一旦它们的 steps 被删，客户点安装就变成「skill 清单里没有工具 xxx」——点了没反应的死入口。
+/// 所以：**清单保留步骤（老客户端照常用），新客户端在代码里一律过滤**，谁都别想再装回来。
+pub const RETIRED_TOOL_IDS: &[&str] = &["magpie", "opencode", "muse-code", "antigravity-cli"];
+
+fn is_retired_tool(id: &str) -> bool {
+    RETIRED_TOOL_IDS.iter().any(|r| r.eq_ignore_ascii_case(id.trim()))
 }
 
 /// 加载 skill：先内嵌，再尝试服务器下发（version 更大才覆盖）。
@@ -488,8 +500,8 @@ fn select_skill(skill: Skill, remote: Option<Skill>) -> Skill {
     if let Some(remote) = remote {
         if remote.version > skill.version {
             let mut remote = remote;
-            // 热下发清单可以更新其它安装项和供应商，已下线的一方集成不随清单恢复。
-            remote.tools.remove("magpie");
+            // 热下发清单可以更新其它安装项和供应商，但**已下线的集成不随清单恢复**。
+            remote.tools.retain(|id, _| !is_retired_tool(id));
             remote.provider_templates.retain(|p| !p.name.trim().eq_ignore_ascii_case("magpie"));
             remote.source = "server".into();
             return remote;
@@ -2401,6 +2413,13 @@ pub fn install_tool(
     tool_id: &str,
     on_log: &(dyn Fn(&str, &str) + Send + Sync),
 ) -> InstallToolResult {
+    if is_retired_tool(tool_id) {
+        // 设计内拒绝：清单里可能还有它的 steps（给老客户端留的兼容层），但本版本不再提供它。
+        return blocked(
+            tool_id,
+            format!("「{tool_id}」已从本版本的 AI 工具目录下架，不再提供安装。已装好的仍可继续使用。"),
+        );
+    }
     if tool_id == "claude-app" && sandboxed() {
         return fail(tool_id, 0, "沙箱禁止安装系统桌面应用；请在隔离测试机验证。".into());
     }
@@ -7705,12 +7724,16 @@ mod tests {
         assert_eq!(skill.provider_templates[0].name, "示例");
     }
 
+    /// 热下发清单再新，也不许把已下线的集成恢复出来（2026-11-21 sol 6.2 审查补：原来只过滤 magpie）。
     #[test]
-    fn newer_skill_cannot_restore_retired_magpie_integration() {
+    fn newer_skill_cannot_restore_any_retired_integration() {
         let embedded: Skill = serde_json::from_str(EMBEDDED_SKILL).unwrap();
         let mut remote = embedded.clone();
-        remote.version += 1;
-        remote.tools.insert("magpie".into(), remote.tools["codex"].clone());
+        remote.version = embedded.version + 1;
+        // 模拟「服务端清单还带着这些块」（兼容老客户端，见 RETIRED_TOOL_IDS 的注释）。
+        for id in RETIRED_TOOL_IDS {
+            remote.tools.insert((*id).into(), remote.tools["codex"].clone());
+        }
         let mut retired = remote.provider_templates[0].clone();
         retired.name = " Magpie ".into();
         remote.provider_templates.push(retired);
@@ -7718,11 +7741,26 @@ mod tests {
         let selected = select_skill(embedded.clone(), Some(remote));
         assert_eq!(selected.version, embedded.version + 1);
         assert_eq!(selected.source, "server");
-        assert!(!selected.tools.contains_key("magpie"));
-        assert!(selected.tools.contains_key("codex"));
+        for id in RETIRED_TOOL_IDS {
+            assert!(!selected.tools.contains_key(*id), "{id} 不许随热下发恢复");
+        }
+        assert!(selected.tools.contains_key("codex"), "活着的工具不能被顺手删掉");
         assert_eq!(selected.provider_templates.len(), embedded.provider_templates.len());
         for name in ["DeepSeek 官方", "Kimi（月之暗面）"] {
-            assert!(selected.provider_templates.iter().any(|p| p.name == name));
+            assert!(selected.provider_templates.iter().any(|p| p.name == name), "保留的供应商模板不能丢：{name}");
+        }
+    }
+
+    /// 安装入口的硬门：哪怕清单里还留着 steps（给老客户端），本版本也拒绝装退役工具。
+    /// 这条守的是「点了会不会真去执行」—— 只靠前端隐藏卡片挡不住 `action run` / MCP / U-Chat。
+    #[test]
+    fn install_entry_refuses_retired_tools_without_reporting_a_bug() {
+        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).unwrap();
+        for id in RETIRED_TOOL_IDS {
+            let r = install_tool(&skill, id, &|_, _| {});
+            assert!(!r.ok, "{id} 不许装成功");
+            assert!(r.precheck_blocked, "{id} 是设计内下架，不该上报成 bug：{r:?}");
+            assert!(r.error.as_deref().unwrap_or_default().contains("下架"), "提示要说清是下架：{r:?}");
         }
     }
 

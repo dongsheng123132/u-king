@@ -316,12 +316,28 @@ pub fn accepts_image(model_id: &str) -> bool {
     if id.is_empty() {
         return false;
     }
+    let id = legacy_alias(id);
     catalog()
         .catalog
         .groups
         .iter()
         .flat_map(|g| g.items.iter())
         .any(|it| it.id == id && it.input.iter().any(|m| m == "image"))
+}
+
+/// 旧模型名的兼容别名（2026-11-21 默认从 `deepseek-v4-flash` 换成官方主线名 `deepseek-flash` 时加）。
+///
+/// 为什么必须有：**存量客户机的配置里写的是旧名**（`deepseek-v4-flash`），我们升级后目录里
+/// 只剩新名。若不做别名，`accepts_image("deepseek-v4-flash")` 会变 false，于是 DSH / OpenClaw
+/// 那些「目录声明了 image 才写 input」的配置会**把已装客户的识图能力悄悄摘掉** ——
+/// 界面看不出任何变化，客户只会觉得"以前能发图现在不行了"。
+/// 网关侧旧名仍然 serving 成同一个模型（实测 200、返回 model=deepseek-flash），所以只影响
+/// 我们自己的能力判定，别名只用于**查询归一**，不改用户已选中的模型字符串。
+fn legacy_alias(id: &str) -> &str {
+    match id {
+        "deepseek-v4-flash" | "deepseek-v4.1-flash" => "deepseek-flash",
+        _ => id,
+    }
 }
 
 /// 开箱即用的默认模型。
@@ -490,6 +506,20 @@ mod tests {
         assert!(by_id("gpt-image-2").edits, "gpt-image-2 作为备用改图模型保留");
         assert!(!by_id("gpt-image-2.5-flare").edits, "2.5 只实测了文生图，改图端点没测过，不许声明支持改图");
         assert_eq!(by_id("gpt-image-2.5-flare").verified, "2026-10-04", "verified 只写真实测过的日期");
+    }
+
+    /// 旧模型名不能因为换了默认名就丢掉「能看图」的判定（存量客户机的配置里写着旧名）。
+    #[test]
+    fn accepts_image_keeps_legacy_flash_alias() {
+        assert!(accepts_image("deepseek-flash"), "新默认名必须能看图");
+        assert!(accepts_image("deepseek-v4-flash"), "存量配置里的旧名也要能看图");
+        assert!(accepts_image("deepseek-v4.1-flash"), "过渡期写法同样认");
+        // 别名只作用于查询：目录里**不许**多出一份旧名条目（术语/选型仍只有一份真相源）。
+        let ids: Vec<&str> = embedded().groups.iter().flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
+        assert!(!ids.contains(&"deepseek-v4-flash"), "目录不许保留旧名条目：{ids:?}");
+        // 纯文本模型和目录外模型仍不许谎报。
+        assert!(!accepts_image("deepseek-v4-pro"));
+        assert!(!accepts_image("some-old-flash"));
     }
 
     #[test]

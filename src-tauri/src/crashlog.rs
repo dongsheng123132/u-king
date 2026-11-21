@@ -224,6 +224,21 @@ fn my_session_path(dir: &std::path::Path) -> PathBuf {
 /// 以它为准，镜像名只在老标记（没有这个字段）上做兜底。
 const APP_ID: &str = "u-king";
 
+/// 本产品自己的镜像名（去 `.exe`、忽略大小写）。
+///
+/// 为什么光有 `APP_ID` 不够（2026-11-21 sol 6.2 审查指出）：`app` 是**写标记的那个进程**的身份，
+/// 不是「现在占着这个 pid 的进程」的身份。pid 会被系统回收：老实例崩溃留下标记(pid=4321, app=u-king)，
+/// 之后 4321 被记事本占用 —— 只看 app 就会把**真崩溃**判成「兄弟还活着」而漏记，
+/// 恰好是这套账本最不该犯的错。所以复活检查要两道：**pid 活着 + 那个 pid 现在跑的是本产品的镜像**。
+const PRODUCT_IMAGE_STEMS: &[&str] = &["u-king", "u-king-mini"];
+
+/// 这个镜像名是不是本产品（忽略 `.exe`、大小写、路径前缀）。
+fn is_product_image(name: &str) -> bool {
+    let file = name.rsplit(['\\', '/']).next().unwrap_or(name);
+    let stem = file.strip_suffix(".exe").or_else(|| file.strip_suffix(".EXE")).unwrap_or(file);
+    PRODUCT_IMAGE_STEMS.iter().any(|p| p.eq_ignore_ascii_case(stem))
+}
+
 /// 本进程的镜像名（`u-king-mini.exe` / 测试二进制名 …）。
 fn my_image_name() -> Option<String> {
     Some(std::env::current_exe().ok()?.file_name()?.to_string_lossy().to_string())
@@ -275,10 +290,11 @@ fn is_live_sibling(prev: &serde_json::Value, pid: u32, probe: &dyn Fn(u32) -> Op
     }
     // 先问「那个 pid 还活着吗」——探不出来就一律当不是（失败方向仍指向多记）。
     let Some(theirs) = probe(pid) else { return false };
-    // 标记里写了产品身份：同名产品就算兄弟，**不看镜像名**（issue #279：
-    // 绿色版 U-King.exe 与安装版 u-king-mini.exe 同时在跑时，按名字比会互相误记假崩溃）。
+    // 标记里写了产品身份：产品一致 **且** 占着这个 pid 的确实是本产品的镜像，才算兄弟。
+    // 第一道解决 issue #279（绿色版 U-King.exe 与安装版 u-king-mini.exe 名字不同 → 误记假崩溃）；
+    // 第二道挡住 pid 复用（陌生进程占了这个 pid → 真崩溃必须照记，见 PRODUCT_IMAGE_STEMS 注释）。
     if let Some(app) = prev.get("app").and_then(|v| v.as_str()) {
-        return app.eq_ignore_ascii_case(APP_ID);
+        return app.eq_ignore_ascii_case(APP_ID) && is_product_image(&theirs);
     }
     // 老版本写的标记没有 app 字段：退回镜像名比对（保守，宁可多记也不漏记）。
     my_image_name().is_some_and(|mine| theirs.eq_ignore_ascii_case(&mine))
@@ -734,6 +750,19 @@ mod tests {
             d.join(format!("{SESSION_PREFIX}4321{SESSION_SUFFIX}")).exists(),
             "它的活标记必须留着"
         );
+    }
+
+    /// 🔴 pid 复用 + 新标记格式：老实例崩溃留下的标记写着 `app=u-king`，而这个 pid 已被
+    /// **陌生进程**（记事本）占用 —— 不许因此把真崩溃判成「兄弟还活着」而漏记。
+    /// 2026-11-21 sol 6.2 审查指出的漏记方向；只判 app 不看「现在跑的是谁」就会踩到。
+    #[test]
+    fn recycled_pid_does_not_hide_a_real_crash_even_with_app_field() {
+        let d = tmp("recycled-with-app");
+        stale_marker_with_app(&d, 4321, 8, 1, "u-king");
+        let stranger = |_pid: u32| Some("notepad.exe".to_string());
+        let got = settle_previous_with(&d, &stranger).expect("陌生进程占着 pid ≠ 我还活着");
+        assert!(got.looks_like_crash_loop, "8 秒就死，仍是崩溃循环");
+        assert_eq!(inspect_in(&d)["unclean_exits"], 1, "这条真崩溃必须进账本");
     }
 
     /// 反向：**别的产品**占着这个 pid 时，照旧记一笔 —— 失败方向指向多记。
