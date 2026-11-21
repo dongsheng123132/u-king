@@ -2,16 +2,16 @@
   "catalog": "xiapan-models",
   "version": 4,
   "updated": "2026-11-21",
-  "default": "deepseek-v4.1-flash",
+  "default": "deepseek-flash",
   "strong": "deepseek-v4-pro",
   "groups": [
     {
       "group": "国产",
       "items": [
         {
-          "id": "deepseek-v4.1-flash",
-          "label": "DeepSeek V4.1 Flash · 最快最省（默认）",
-          "desc": "不知道选啥就用它，装好就是它。DeepSeek 新一代 Flash：速度快、最省额度，日常聊天问答写文章都够用，也能直接发图片给它。",
+          "id": "deepseek-flash",
+          "label": "DeepSeek Flash · 最快最省（默认）",
+          "desc": "不知道选啥就用它，装好就是它。DeepSeek 最新 Flash（官方主线名 flash，内部就是 V4.1 Flash）：速度快、最省额度，日常聊天问答写文章都够用，也能直接发图片给它。",
           "recommend": true,
           "input": [
             "text",

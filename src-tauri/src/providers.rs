@@ -321,8 +321,8 @@ pub fn delegation_env(api_key: &str) -> Vec<(String, String)> {
     let xp = builtin_providers().into_iter().find(|p| p.id == "xiapan");
     let anthropic = xp.as_ref().and_then(|p| p.anthropic_base.clone()).unwrap_or_else(|| "https://api.u-claw.org.cn".into());
     let openai = xp.as_ref().map(|p| p.openai_base.clone()).unwrap_or_else(|| "https://api.u-claw.org.cn/v1".into());
-    let model = xp.as_ref().map(|p| p.model.clone()).unwrap_or_else(|| "deepseek-v4.1-flash".into());
-    let small = xp.as_ref().map(|p| p.small_model.clone()).unwrap_or_else(|| "deepseek-v4.1-flash".into());
+    let model = xp.as_ref().map(|p| p.model.clone()).unwrap_or_else(|| "deepseek-flash".into());
+    let small = xp.as_ref().map(|p| p.small_model.clone()).unwrap_or_else(|| "deepseek-flash".into());
     let mut v: Vec<(String, String)> = Vec::new();
     if !claude_owns_config() {
         v.push(("ANTHROPIC_BASE_URL".into(), anthropic));
@@ -384,8 +384,8 @@ fn builtin_providers() -> Vec<ProviderPreset> {
             // 正文返回空 → openclaw 判 incomplete turn（stopReason=length）→ 客户看到「无法生成回复，
             // 请重试」（2026-07-10 Mac 客户机实测 + curl 复现：pro 档正文空，flash 15s 完整）。
             // flash 又快(约pro一半)又省钱(约1/3)，微信助手/办公足够；要满血 pro 在「换模型」下拉里切。
-            model: "deepseek-v4.1-flash".into(),
-            small_model: "deepseek-v4.1-flash".into(),
+            model: "deepseek-flash".into(),
+            small_model: "deepseek-flash".into(),
             // Codex 走 /v1/responses（CLI 和桌面 App 都只认这个协议）。
             //
             // 默认模型 = `deepseek-v4-flash-codex`，**不是** gpt-5.3-codex：后者贵得多
@@ -4048,14 +4048,14 @@ mod managed_provider_identity_tests {
                 );
                 assert_eq!(
                     oc["agents"]["defaults"]["imageModel"]["primary"],
-                    format!("{prov}/deepseek-v4.1-flash"),
+                    format!("{prov}/deepseek-flash"),
                     "收不了图的主模型必须有 imageModel 兜底到 deepseek-v4-flash"
                 );
 
                 let models = oc["models"]["providers"][prov]["models"].as_array().unwrap();
                 let flash = models
                     .iter()
-                    .find(|m| m["id"] == "deepseek-v4.1-flash")
+                    .find(|m| m["id"] == "deepseek-flash")
                     .expect("deepseek-v4-flash 必须在 provider models 数组里声明，否则 imageModel 引用解析不到");
                 assert_eq!(flash["input"], json!(["text", "image"]), "必须声明能收图");
                 let pro = models
@@ -4076,7 +4076,7 @@ mod managed_provider_identity_tests {
             &["ClawX", ".openclaw", ".uking"],
             |root| {
                 let xiapan = custom("xiapan", "虾盘云", "https://xiapan.test/v1");
-                apply_clawx(&xiapan, "sk-xp", "deepseek-v4.1-flash").unwrap();
+                apply_clawx(&xiapan, "sk-xp", "deepseek-flash").unwrap();
 
                 let oc_path = root.join(".openclaw").join("openclaw.json");
                 let oc: Value = serde_json::from_str(&std::fs::read_to_string(&oc_path).unwrap()).unwrap();
@@ -4089,7 +4089,7 @@ mod managed_provider_identity_tests {
                 let models = oc["models"]["providers"][prov]["models"].as_array().unwrap();
                 let flash = models
                     .iter()
-                    .find(|m| m["id"] == "deepseek-v4.1-flash")
+                    .find(|m| m["id"] == "deepseek-flash")
                     .expect("主模型自己必须在数组里");
                 assert_eq!(flash["input"], json!(["text", "image"]));
             },
@@ -4101,7 +4101,7 @@ mod managed_provider_identity_tests {
     /// 都要声明 `input:["text","image"]`，且因为主模型自己能收图，不该再写 imageModel 兜底。
     #[test]
     fn xiapan_route_declares_image_for_every_catalog_vision_primary() {
-        for (n, id) in ["kimi-k3", "deepseek-v4.1-flash"]
+        for (n, id) in ["kimi-k3", "deepseek-flash"]
             .into_iter()
             .enumerate()
         {
@@ -4144,10 +4144,10 @@ mod managed_provider_identity_tests {
                     assert!(primary.get("input").is_none(), "{id} 收不了图/不在目录里，不许声明 input：{primary}");
                     assert_eq!(
                         oc["agents"]["defaults"]["imageModel"]["primary"],
-                        "custom-ukingxia/deepseek-v4.1-flash",
+                        "custom-ukingxia/deepseek-flash",
                         "{id}：imageModel 必须兜底到目录默认模型"
                     );
-                    let flash = models.iter().find(|m| m["id"] == "deepseek-v4.1-flash").expect("兜底模型必须声明");
+                    let flash = models.iter().find(|m| m["id"] == "deepseek-flash").expect("兜底模型必须声明");
                     assert_eq!(flash["input"], json!(["text", "image"]));
                 },
             );
@@ -4940,13 +4940,13 @@ mod dsh_provider_tests {
         crate::testsandbox::with_sandbox("dsh-vision-flash", &[".dsh", ".uking"], |root| {
             let settings_path = root.join(".dsh").join("settings.yaml");
             let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
-            apply_dsh(&p, "sk-device-secret", "deepseek-v4.1-flash").unwrap();
+            apply_dsh(&p, "sk-device-secret", "deepseek-flash").unwrap();
 
             let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
             assert_eq!(models.len(), 1, "只该写主模型这一条，不额外塞模型：{models:?}");
             assert_eq!(
                 at(&models[0], &["id"]).and_then(YamlValue::as_str),
-                Some("deepseek-v4.1-flash")
+                Some("deepseek-flash")
             );
             assert_eq!(
                 model_input(&models[0]),
@@ -4977,20 +4977,20 @@ mod dsh_provider_tests {
 
     /// 「收不收图」问模型目录：目录里写了 image 的（deepseek-v4-flash / kimi-k3）DSH 都要声明；写了 text 的
     /// （deepseek-v4-pro）和压根不在目录里的（qwen3.7-max、glm-5.3、10-04 下架的 glm-5.3-flash、
-    /// deepseek-flash、手填 id）一律不声明 —— 目录只回答它收录的 7 个，其余宁可不声明。
+    /// 手填 id）一律不声明 —— 目录只回答它收录的 7 个，其余宁可不声明。
     #[test]
     fn dsh_xiapan_declares_image_exactly_for_catalog_vision_models() {
         crate::testsandbox::with_sandbox("dsh-vision-catalog", &[".dsh", ".uking"], |root| {
             let settings_path = root.join(".dsh").join("settings.yaml");
             let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
             let image_input = Some(vec!["text".to_string(), "image".to_string()]);
-            for id in ["kimi-k3", "deepseek-v4.1-flash"] {
+            for id in ["kimi-k3", "deepseek-flash"] {
                 apply_dsh(&p, "sk-device-secret", id).unwrap();
                 let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
                 assert_eq!(models.len(), 1, "{id}: {models:?}");
                 assert_eq!(model_input(&models[0]), image_input, "{id} 目录里收图，必须声明：{models:?}");
             }
-            for id in ["deepseek-v4-pro", "qwen3.7-max", "glm-5.3", "glm-5.3-flash", "deepseek-flash", "some-user-typed-model"] {
+            for id in ["deepseek-v4-pro", "qwen3.7-max", "glm-5.3", "glm-5.3-flash", "some-user-typed-model"] {
                 apply_dsh(&p, "sk-device-secret", id).unwrap();
                 let models = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
                 assert_eq!(models.len(), 1, "{id}: {models:?}");
@@ -5013,15 +5013,15 @@ mod dsh_provider_tests {
                     id: id.into(),
                     name: name.into(),
                     openai_base: url.into(),
-                    model: "deepseek-v4.1-flash".into(),
+                    model: "deepseek-flash".into(),
                     ..base.clone()
                 };
-                apply_dsh(&other, "sk-other", "deepseek-v4.1-flash").unwrap();
+                apply_dsh(&other, "sk-other", "deepseek-flash").unwrap();
                 let models = dsh_route_models(&settings_path, route);
                 assert_eq!(models.len(), 1, "{route}: {models:?}");
                 assert_eq!(
                     at(&models[0], &["id"]).and_then(YamlValue::as_str),
-                    Some("deepseek-v4.1-flash"),
+                    Some("deepseek-flash"),
                     "{route}: 前提：用的就是同名 flash id",
                 );
                 assert_eq!(
@@ -5042,10 +5042,10 @@ mod dsh_provider_tests {
             let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
             let image_input = Some(vec!["text".to_string(), "image".to_string()]);
 
-            apply_dsh(&p, "sk-a", "deepseek-v4.1-flash").unwrap();
+            apply_dsh(&p, "sk-a", "deepseek-flash").unwrap();
             let first = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
-            apply_dsh(&p, "sk-b", "deepseek-v4.1-flash").unwrap();
-            apply_dsh(&p, "sk-b", "deepseek-v4.1-flash").unwrap();
+            apply_dsh(&p, "sk-b", "deepseek-flash").unwrap();
+            apply_dsh(&p, "sk-b", "deepseek-flash").unwrap();
             let again = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
             assert_eq!(again, first, "重复 apply 不许改变 models 内容");
             assert_eq!(again.len(), 1);
@@ -5056,7 +5056,7 @@ mod dsh_provider_tests {
             assert_eq!(pro.len(), 1);
             assert_eq!(model_input(&pro[0]), None, "换成 v4-pro 后不许残留 flash 的识图声明：{pro:?}");
 
-            apply_dsh(&p, "sk-b", "deepseek-v4.1-flash").unwrap();
+            apply_dsh(&p, "sk-b", "deepseek-flash").unwrap();
             let back = dsh_route_models(&settings_path, LEGACY_UKING_PROVIDER_ID);
             assert_eq!(back, first, "换回 flash 应与首次写出的完全一致");
         });
@@ -5069,7 +5069,7 @@ mod dsh_provider_tests {
             let broken = b"llm-pi-ai: [unterminated\n";
             std::fs::write(&path, broken).unwrap();
             let p = builtin_providers().into_iter().find(|p| p.id == "xiapan").unwrap();
-            let err = apply_dsh(&p, "sk-secret", "deepseek-v4.1-flash").unwrap_err();
+            let err = apply_dsh(&p, "sk-secret", "deepseek-flash").unwrap_err();
             assert!(err.contains("不是合法 YAML"));
             assert_eq!(std::fs::read(&path).unwrap(), broken, "损坏文档一个字节都不许覆盖");
             assert!(!root.join(".dsh").join(".credentials.yaml").exists());
@@ -11036,7 +11036,7 @@ mod auto_compact_window_tests {
             let get = |k: &str| v.iter().find(|(key, _)| key == k).map(|(_, val)| val.clone());
             assert_eq!(get("CLAUDE_CODE_AUTO_COMPACT_WINDOW"), Some(DEEPSEEK_AUTO_COMPACT_WINDOW.to_string()));
             assert_eq!(get("CLAUDE_CODE_MAX_CONTEXT_TOKENS"), Some(DEEPSEEK_AUTO_COMPACT_WINDOW.to_string()));
-            assert_eq!(get("ANTHROPIC_MODEL"), Some("deepseek-v4.1-flash".to_string()));
+            assert_eq!(get("ANTHROPIC_MODEL"), Some("deepseek-flash".to_string()));
         });
     }
 

@@ -451,16 +451,16 @@ mod tests {
         let ids: Vec<&str> = embedded().groups.iter().flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
         assert_eq!(
             ids,
-            ["deepseek-v4.1-flash", "deepseek-v4-pro", "kimi-k3"],
+            ["deepseek-flash", "deepseek-v4-pro", "kimi-k3"],
             "目录就是这 3 个国产对话模型（海外贵档 2026-10-21 起默认不列），顺序即下拉顺序"
         );
-        for id in ["deepseek-v4.1-flash", "kimi-k3"] {
+        for id in ["deepseek-flash", "kimi-k3"] {
             assert!(accepts_image(id), "{id} 实测能看图，目录里必须声明 image");
         }
         assert!(!accepts_image("deepseek-v4-pro"), "deepseek-v4-pro 实测回答「无法查看图片」，不许声明 image");
         // 目录外的模型：哪怕实测过能看图，也不替它声明（只回答目录里的）
         for id in [
-            "deepseek-flash", "deepseek-chat", "qwen3.7-flash", "qwen3.7-plus", "claude-opus-4-8", "gpt-5.4",
+            "deepseek-chat", "qwen3.7-flash", "qwen3.7-plus", "claude-opus-4-8", "gpt-5.4",
             "gpt-5.5", "gemini-3.1-pro-preview", "MiniMax-M3", "claude-sonnet-5", "claude-opus-5", "gpt-5.6-sol",
             "claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol",
             // 实测不能看图的 / 已下线的
@@ -469,7 +469,7 @@ mod tests {
             assert!(!ids.contains(&id), "{id} 不在这 3 个里");
             assert!(!accepts_image(id), "{id} 不在目录里，不许声明 image");
         }
-        assert_eq!(embedded().default, "deepseek-v4.1-flash", "默认已升到 V4.1 Flash（2026-11-21）");
+        assert_eq!(embedded().default, "deepseek-flash", "默认用官方主线名 flash（内部即 V4.1 Flash，2026-11-21 实测 200）");
         assert_eq!(embedded().strong, "deepseek-v4-pro");
         // 海外贵档整组下架后，目录里不该再有 pricey 组
         let pricey: Vec<&str> = embedded().groups.iter().filter(|g| g.pricey).flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn default_and_strong_come_from_the_catalog() {
-        assert_eq!(default_model(), "deepseek-v4.1-flash");
+        assert_eq!(default_model(), "deepseek-flash");
         assert_eq!(strong_model(), "deepseek-v4-pro");
         assert!(accepts_image(&default_model()));
     }
@@ -693,7 +693,7 @@ mod tests {
         assert_eq!(v["source"], "embedded");
         assert_eq!(v["catalog"], CATALOG_NAME);
         assert_eq!(v["version"], embedded().version);
-        assert_eq!(v["default"], "deepseek-v4.1-flash");
+        assert_eq!(v["default"], "deepseek-flash");
         assert!(v["groups"].as_array().is_some_and(|g| !g.is_empty()));
         // 输出能被同一个解析器读回去（hook / 影子端拿到的就是这个形状）
         let groups: Vec<Group> = serde_json::from_value(v["groups"].clone()).unwrap();

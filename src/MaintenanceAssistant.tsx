@@ -43,7 +43,7 @@ import { describeImages, fileLabel, ImageDescribeError, visionErrorText } from "
 import { PendingImageChips, usePendingImages } from "./opencodex/PendingImages";
 
 /** 与 providers.rs 虾盘云 preset 的 `model` 一致（客户装好在用的就是它）。 */
-const DEFAULT_MODEL = "deepseek-v4.1-flash";
+const DEFAULT_MODEL = "deepseek-flash";
 
 type TextItem = { type: "text"; role: "user" | "assistant"; content: string };
 type ToolItem = {
