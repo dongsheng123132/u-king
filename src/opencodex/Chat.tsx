@@ -76,7 +76,7 @@ type RightKind = "terminal";
 // 模型清单来自 `lib/models.ts`（Manager「换模型」/ ProviderSwitch 用的是同一份）——
 // 这儿原先自己抄了 5 条，其中 `gpt-5.6-luna` 正是把客户余额打穿的那一档，而抄的那份
 // 既没有「贵/慎用」提示也没有看图模型。同一事实两份实现，迟早漂移（宪法第 8 条）。
-const DEFAULT_MODEL = "deepseek-v4-flash";
+const DEFAULT_MODEL = "deepseek-v4.1-flash";
 const MODES = [
   { id: "ask", label: "每步确认（最安全）" },
   { id: "auto", label: "自动（写文件自动·命令仍问）" },

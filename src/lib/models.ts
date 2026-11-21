@@ -204,9 +204,9 @@ export function priceyModelHint(id: string): string | null {
   return null;
 }
 
-/** 作图模型 —— gpt-image-2 仍是默认与首选，但**必须留国产逃生口**。
+/** 作图模型 —— 2026-11-21 起默认与首选是 gpt-image-2.6-1k（保持 gpt-image-2 作备用），**必须留国产逃生口**。
  *
- *  2026-07 那版把列表砍到只剩 gpt-image-2（理由是省掉选择焦虑 + 清掉 wanx 尺寸越界的坑），
+ *  2026-07 那版曾把列表砍到只剩一个模型（理由是省掉选择焦虑 + 清掉 wanx 尺寸越界的坑），
  *  代价在 2026-07-28 兑现了：gpt-image-2 的上游中转商出口 IP 被 Cloudflare 限速（error 1015），
  *  全量 429 打不出图；而 `Draw.tsx` 是 `IMAGE_MODELS.length > 1` 才显示下拉，于是客户在界面上
  *  **连换个模型的地方都找不到**，报错还劝他「建议用 GPT Image 2」——他正用着它。
@@ -239,10 +239,16 @@ export const IMAGE_MODELS: {
   edits?: boolean;
 }[] = [
   {
+    id: "gpt-image-2.6-1k",
+    label: "GPT Image 2.6 · 1K",
+    desc: "最新作图模型（1K 档）：画质和听指令都比 2 代强，改图也支持。默认用它。",
+    recommend: true,
+    edits: true,
+  },
+  {
     id: "gpt-image-2",
     label: "GPT Image 2 · OpenAI",
-    desc: "最稳定、最听话，改图 / 多图融合最强，标准图还最便宜。",
-    recommend: true,
+    desc: "上一代，最稳定、多图融合最强。2.6 哪天不可用就切回它。",
     edits: true,
   },
   {

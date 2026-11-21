@@ -451,10 +451,10 @@ mod tests {
         let ids: Vec<&str> = embedded().groups.iter().flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
         assert_eq!(
             ids,
-            ["deepseek-v4-flash", "deepseek-v4-pro", "kimi-k3"],
+            ["deepseek-v4.1-flash", "deepseek-v4-pro", "kimi-k3"],
             "目录就是这 3 个国产对话模型（海外贵档 2026-10-21 起默认不列），顺序即下拉顺序"
         );
-        for id in ["deepseek-v4-flash", "kimi-k3"] {
+        for id in ["deepseek-v4.1-flash", "kimi-k3"] {
             assert!(accepts_image(id), "{id} 实测能看图，目录里必须声明 image");
         }
         assert!(!accepts_image("deepseek-v4-pro"), "deepseek-v4-pro 实测回答「无法查看图片」，不许声明 image");
@@ -469,7 +469,7 @@ mod tests {
             assert!(!ids.contains(&id), "{id} 不在这 3 个里");
             assert!(!accepts_image(id), "{id} 不在目录里，不许声明 image");
         }
-        assert_eq!(embedded().default, "deepseek-v4-flash", "本次不改默认模型");
+        assert_eq!(embedded().default, "deepseek-v4.1-flash", "默认已升到 V4.1 Flash（2026-11-21）");
         assert_eq!(embedded().strong, "deepseek-v4-pro");
         // 海外贵档整组下架后，目录里不该再有 pricey 组
         let pricey: Vec<&str> = embedded().groups.iter().filter(|g| g.pricey).flat_map(|g| g.items.iter()).map(|i| i.id.as_str()).collect();
@@ -481,12 +481,13 @@ mod tests {
     fn embedded_image_models_are_separate_and_conservative() {
         let ids: Vec<&str> = embedded().image_models.iter().map(|m| m.id.as_str()).collect();
         // 2.5 选 flare 不选 1k：2026-10-04 实测 2.5-1k 只走百度渠道、9/27 后再没成功过，flare 另有可用渠道。
-        assert_eq!(ids, ["gpt-image-2", "gpt-image-2.5-flare"]);
+        assert_eq!(ids, ["gpt-image-2.6-1k", "gpt-image-2", "gpt-image-2.5-flare"]);
         for id in &ids {
             assert!(!accepts_image(id), "{id} 是作图模型，不属于「对话模型收不收图」");
         }
         let by_id = |id: &str| embedded().image_models.iter().find(|m| m.id == id).cloned().unwrap();
-        assert!(by_id("gpt-image-2").edits, "gpt-image-2 是已验证的改图默认模型");
+        assert!(by_id("gpt-image-2.6-1k").edits, "2.6-1k 是已验证的改图默认模型（2026-11-21 实测 edits 200）");
+        assert!(by_id("gpt-image-2").edits, "gpt-image-2 作为备用改图模型保留");
         assert!(!by_id("gpt-image-2.5-flare").edits, "2.5 只实测了文生图，改图端点没测过，不许声明支持改图");
         assert_eq!(by_id("gpt-image-2.5-flare").verified, "2026-10-04", "verified 只写真实测过的日期");
     }
@@ -505,7 +506,7 @@ mod tests {
 
     #[test]
     fn default_and_strong_come_from_the_catalog() {
-        assert_eq!(default_model(), "deepseek-v4-flash");
+        assert_eq!(default_model(), "deepseek-v4.1-flash");
         assert_eq!(strong_model(), "deepseek-v4-pro");
         assert!(accepts_image(&default_model()));
     }
@@ -692,7 +693,7 @@ mod tests {
         assert_eq!(v["source"], "embedded");
         assert_eq!(v["catalog"], CATALOG_NAME);
         assert_eq!(v["version"], embedded().version);
-        assert_eq!(v["default"], "deepseek-v4-flash");
+        assert_eq!(v["default"], "deepseek-v4.1-flash");
         assert!(v["groups"].as_array().is_some_and(|g| !g.is_empty()));
         // 输出能被同一个解析器读回去（hook / 影子端拿到的就是这个形状）
         let groups: Vec<Group> = serde_json::from_value(v["groups"].clone()).unwrap();

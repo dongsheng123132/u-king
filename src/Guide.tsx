@@ -28,12 +28,12 @@ const RECHARGE = "https://u-claw.org.cn/recharge";
  *     （有客户拿它一天烧掉 ¥169），而这排 chip 是「点一下就复制」，没有地方挂成本警告。
  *     要用前沿档的，从下面「展开全部模型清单」里挑，那里有 desc 说清楚多贵。 */
 const HOT_MODELS: { id: string; tag: string }[] = [
-  { id: "deepseek-v4-flash", tag: "最快最省" },
+  { id: "deepseek-v4.1-flash", tag: "最快最省" },
   { id: "claude-sonnet-5", tag: "编程之王" },
   { id: "gpt-5.4", tag: "OpenAI 旗舰" },
   { id: "gemini-3.1-pro-preview", tag: "谷歌" },
   { id: "kimi-k3", tag: "超长上下文" },
-  { id: "gpt-image-2", tag: "画图" },
+  { id: "gpt-image-2.6-1k", tag: "画图" },
 ];
 
 /** 「复制配置文档」生成的 markdown —— 整段粘给任意 AI（ClawX/Claude/Codex/任意聊天框），
@@ -57,10 +57,10 @@ function buildConfigBlob(key: string): string {
     `视频模型：${videoIds.join(", ")}`,
     "",
     "## 选哪个",
-    "- 日常最快最省：deepseek-v4-flash",
+    "- 日常最快最省：deepseek-v4.1-flash",
     "- 写代码 / 改 bug：claude-sonnet-5",
     "- 综合最强：gpt-5.4",
-    "- 作图默认：gpt-image-2",
+    "- 作图默认：gpt-image-2.6-1k",
     "- 文生视频：doubao-seedance-2-0-mini-260615（火山 Seedance，中文好、国内直连）",
     "- 图生视频 / 让图片动起来：也用 doubao-seedance-2-0-mini-260615（要更清晰换 doubao-seedance-2-0-fast-260128）",
     "",
@@ -82,7 +82,7 @@ function buildConfigBlob(key: string): string {
     "",
     "## SkillHub 图片技能（ch12893719743826428329324）",
     `- Base URL：${BASE_OPENAI}`,
-    `- Model：gpt-image-2`,
+    `- Model：gpt-image-2.6-1k`,
     "- API Type：openai",
     "- 参考图：这个 SkillHub 技能走 OpenAI/GPT-Image 图片接口；视频不要用它，视频请用 U-King AIGC 的 gen-video.mjs。",
     "",
@@ -289,7 +289,7 @@ export function Guide({
               </span>
               {/* 给客户一眼看出"复制的是文本"：缩略示意，不是真要读的内容 */}
               <span className="mt-1.5 block rounded-md bg-bg-0/70 border border-white/[0.06] px-2 py-1 font-mono text-[9.5px] text-ink-4 leading-tight truncate">
-                {t("# 虾盘云配置 · 地址 https://api.u-claw.org.cn/v1 · Key sk-… · 模型 deepseek-v4-flash …")}
+                {t("# 虾盘云配置 · 地址 https://api.u-claw.org.cn/v1 · Key sk-… · 模型 deepseek-v4.1-flash …")}
               </span>
             </span>
           </button>

@@ -53,8 +53,8 @@ export const onboarding: Record<string, string> = {
   "复制一段说明文字": "copies a block of instructions",
   "到剪贴板——里面是地址+Key+全部模型。粘到任意 AI 对话框（ClawX / 聊天框），它照着自己配。":
     " to the clipboard — it contains the URL + key + all models. Paste it into any AI chat box (ClawX / a chat window) and it configures itself.",
-  "# 虾盘云配置 · 地址 https://api.u-claw.org.cn/v1 · Key sk-… · 模型 deepseek-v4-flash …":
-    "# Xiapan Cloud config · URL https://api.u-claw.org.cn/v1 · Key sk-… · Model deepseek-v4-flash …",
+  "# 虾盘云配置 · 地址 https://api.u-claw.org.cn/v1 · Key sk-… · 模型 deepseek-v4.1-flash …":
+    "# Xiapan Cloud config · URL https://api.u-claw.org.cn/v1 · Key sk-… · Model deepseek-v4.1-flash …",
 
   // Relay-station section
   "下面是进阶手动配置，普通用户不用看": "Below is advanced manual setup — regular users can skip it",

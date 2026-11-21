@@ -4563,7 +4563,7 @@ fn generate_image_core(
     quality: Option<String>,
 ) -> Result<providers::ImageResult, String> {
     let key = device::device_key_offline()?;
-    let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "gpt-image-2".into());
+    let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "gpt-image-2.6-1k".into());
     let size = size.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "1024x1024".into());
     let r = require_image_b64(providers::generate_image(&key, &prompt, &model, &size, quality.as_deref()));
     match &r {
@@ -4583,7 +4583,7 @@ async fn generate_image_edit(
 ) -> Result<providers::ImageResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let key = device::device_key_offline()?;
-        let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "gpt-image-2".into());
+        let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "gpt-image-2.6-1k".into());
         let size = size.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "1024x1024".into());
         let r = require_image_b64(providers::generate_image_edit(&key, &prompt, &model, &size, &images));
         // 成功/失败都落历史（与文生图一致）。出图本体落 png，历史只留文件名。
