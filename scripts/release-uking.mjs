@@ -23,6 +23,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readPeFileVersion } from "./lib/pe-file-version.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..");
@@ -313,11 +314,29 @@ function normalizeWindowsFileVersion(raw, artifactName) {
   return parts.join(".");
 }
 
+/**
+ * 读 Windows 产物的 FileVersion。
+ *
+ * Windows 上仍走 PowerShell（这条路径是历史验证过的）。**非 Windows 不再拒绝发布** ——
+ * 直接按 PE 结构读版本资源里的 VS_FIXEDFILEINFO（`scripts/lib/pe-file-version.mjs`）。
+ * 为什么要改：Mac 包本来就在这台 Mac 上出，发布器却因为一个数字强制要 Windows 机，
+ * 于是每次发版都得把产物搬去另一台机器才能校验；一旦有人图省事跳过，这个门禁就等于不存在。
+ * 解析器已用 1.4.13 的已知产物对过（Setup/便携 都读出 1.4.13.0），不是"读个大概"。
+ */
 async function windowsFileVersion(filePath, artifactName) {
-  if (process.platform !== "win32") fail(`校验 ${artifactName} 的 FileVersion 需要在 Windows 发布机运行`);
-  const command = `$ErrorActionPreference='Stop'; [Console]::Write((Get-Item -LiteralPath ${powershellQuote(filePath)}).VersionInfo.FileVersion)`;
-  const raw = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command]);
-  return normalizeWindowsFileVersion(raw, artifactName);
+  if (process.platform === "win32") {
+    const command = `$ErrorActionPreference='Stop'; [Console]::Write((Get-Item -LiteralPath ${powershellQuote(filePath)}).VersionInfo.FileVersion)`;
+    const raw = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command]);
+    return normalizeWindowsFileVersion(raw, artifactName);
+  }
+  let version;
+  try {
+    version = readPeFileVersion(await fs.readFile(filePath));
+  } catch (error) {
+    // 读不出来 ≠ 版本对：一律拦住发布，并说清是哪个产物。
+    fail(`${artifactName} 的 FileVersion 读不出来（${error.message}）`);
+  }
+  return normalizeWindowsFileVersion(version, artifactName);
 }
 
 async function readMacReleaseProof(config, source, artifacts) {
