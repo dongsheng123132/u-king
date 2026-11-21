@@ -216,6 +216,14 @@ fn my_session_path(dir: &std::path::Path) -> PathBuf {
     dir.join(format!("{SESSION_PREFIX}{}{SESSION_SUFFIX}", std::process::id()))
 }
 
+/// 产品身份：跨「改名/换构建」稳定不变。
+///
+/// 为什么不能只靠镜像名（issue #279）：绿色版叫 `U-King.exe`、安装版叫 `u-king-mini.exe`，
+/// 两个构建同时在跑时，镜像名一比就是「不是兄弟」，于是**给还活着的那份记一笔假崩溃、还删掉它的活标记**。
+/// 名字是可变的（改名、便携版重命名、测试构建），产品身份不是 —— 所以判「是不是另一个自己」
+/// 以它为准，镜像名只在老标记（没有这个字段）上做兜底。
+const APP_ID: &str = "u-king";
+
 /// 本进程的镜像名（`u-king-mini.exe` / 测试二进制名 …）。
 fn my_image_name() -> Option<String> {
     Some(std::env::current_exe().ok()?.file_name()?.to_string_lossy().to_string())
@@ -251,19 +259,29 @@ fn stale_session_files(dir: &std::path::Path) -> Vec<(PathBuf, serde_json::Value
 
 /// 这份标记的主人是不是**另一个还活着的自己**（= 多开，不是异常退出）。
 ///
-/// 两道都得过：pid 还在 **且** 镜像名跟自己一样。只判前者会栽在 pid 复用上 ——
-/// 把一次真崩溃说成「那是并行实例」，恰好漏掉最该报的那一类。
+/// 判据（两道都要过）：
+///   ① pid 还在（探不出来一律当「不在」）；
+///   ② 那份标记带的**产品身份**（`app`）跟我们一样 —— 老标记没有这个字段时退化成
+///      「镜像名一样」。issue #279 就是只看镜像名的后果：绿色版 `U-King.exe` 与安装版
+///      `u-king-mini.exe` 同时在跑时互相认不出，给还活着的那份记假崩溃、还删它的活标记。
+///
+/// 只判 ① 会栽在 pid 复用上 —— 把一次真崩溃说成「那是并行实例」，恰好漏掉最该报的那一类。
 ///
 /// 探不出来（`probe` 返回 `None`）一律判 `false` → 照旧记一笔异常退出。
 /// **失败方向必须指向多记**：多记只是多看一眼，漏记会让人得出「没崩过」的错误结论。
-fn is_live_sibling(pid: u32, probe: &dyn Fn(u32) -> Option<String>) -> bool {
+fn is_live_sibling(prev: &serde_json::Value, pid: u32, probe: &dyn Fn(u32) -> Option<String>) -> bool {
     if pid == 0 || pid == std::process::id() {
         return false;
     }
-    match (my_image_name(), probe(pid)) {
-        (Some(mine), Some(theirs)) => theirs.eq_ignore_ascii_case(&mine),
-        _ => false,
+    // 先问「那个 pid 还活着吗」——探不出来就一律当不是（失败方向仍指向多记）。
+    let Some(theirs) = probe(pid) else { return false };
+    // 标记里写了产品身份：同名产品就算兄弟，**不看镜像名**（issue #279：
+    // 绿色版 U-King.exe 与安装版 u-king-mini.exe 同时在跑时，按名字比会互相误记假崩溃）。
+    if let Some(app) = prev.get("app").and_then(|v| v.as_str()) {
+        return app.eq_ignore_ascii_case(APP_ID);
     }
+    // 老版本写的标记没有 app 字段：退回镜像名比对（保守，宁可多记也不漏记）。
+    my_image_name().is_some_and(|mine| theirs.eq_ignore_ascii_case(&mine))
 }
 
 /// 把一份没销账的标记记成 `unclean_exit`。
@@ -316,7 +334,7 @@ fn settle_previous_with(dir: &std::path::Path, probe: &dyn Fn(u32) -> Option<Str
     let mut worst: Option<UncleanExit> = None;
     for (path, prev) in stale_session_files(dir) {
         let pid = prev.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        if is_live_sibling(pid, probe) {
+        if is_live_sibling(&prev, pid, probe) {
             // 另一个实例正跑着。**标记留着别删** —— 那是它的命，得由它自己销账。
             continue;
         }
@@ -337,6 +355,7 @@ fn write_marker(dir: &std::path::Path, started: u64) {
         &my_session_path(dir),
         &serde_json::json!({
             "pid": std::process::id(),
+            "app": APP_ID,
             "version": env!("CARGO_PKG_VERSION"),
             "started_at": started,
             "beat_at": now(),
@@ -501,7 +520,7 @@ fn live_sessions(dir: &std::path::Path) -> Vec<serde_json::Value> {
     }
     for (_, v) in stale_session_files(dir).into_iter().take(8) {
         let pid = v.get("pid").and_then(|x| x.as_u64()).unwrap_or(0) as u32;
-        if is_live_sibling(pid, &crate::installer::pid_image_name) {
+        if is_live_sibling(&v, pid, &crate::installer::pid_image_name) {
             out.push(v);
         }
     }
@@ -564,6 +583,17 @@ mod tests {
     }
     fn alive_sibling(_pid: u32) -> Option<String> {
         my_image_name() // 跟自己同名 = 另一个 U-King 实例
+    }
+
+    /// 写一份「带产品身份」的陈旧标记 —— 新版本才会写这个字段。
+    fn stale_marker_with_app(dir: &std::path::Path, pid: u32, lived: u64, dead_ago: u64, app: &str) {
+        let beat = now() - dead_ago;
+        write_json(
+            &dir.join(format!("{SESSION_PREFIX}{pid}{SESSION_SUFFIX}")),
+            &serde_json::json!({
+                "pid": pid, "app": app, "version": "1.4.14", "started_at": beat - lived, "beat_at": beat
+            }),
+        );
     }
 
     /// ★ 本模块存在的理由（pc-*** 回归测试）：崩溃必须**落盘**，不能只发网络。
@@ -682,6 +712,38 @@ mod tests {
             d.join(format!("{SESSION_PREFIX}4321{SESSION_SUFFIX}")).exists(),
             "别人的标记必须留着 —— 那是它的命，得由它自己销账"
         );
+    }
+
+    /// 🔴 issue #279：**同一产品的两个不同构建**同时在跑，不许互相记假崩溃。
+    ///
+    /// 现场形状：绿色版 `U-King.exe` 与安装版 `u-king-mini.exe` 并存。旧实现拿镜像名比，
+    /// 一比就「不是兄弟」→ 给还活着的那份记 `unclean_exit`，还删掉它的活标记
+    /// （于是它自己后面真崩了也查不到）。改看标记里的产品身份后，名字不同也认得出。
+    #[test]
+    fn sibling_with_different_image_name_is_still_a_sibling() {
+        let d = tmp("sibling-renamed");
+        stale_marker_with_app(&d, 4321, 600, 1, "u-king");
+        let other_build = |_pid: u32| Some("U-King.exe".to_string());
+
+        assert!(
+            settle_previous_with(&d, &other_build).is_none(),
+            "同产品不同镜像名 = 另一个自己，不许记成异常退出（issue #279）"
+        );
+        assert_eq!(inspect_in(&d)["unclean_exits"], 0, "账本里一条都不该有");
+        assert!(
+            d.join(format!("{SESSION_PREFIX}4321{SESSION_SUFFIX}")).exists(),
+            "它的活标记必须留着"
+        );
+    }
+
+    /// 反向：**别的产品**占着这个 pid 时，照旧记一笔 —— 失败方向指向多记。
+    #[test]
+    fn marker_from_another_product_is_still_recorded() {
+        let d = tmp("sibling-other-product");
+        stale_marker_with_app(&d, 4321, 30, 1, "some-other-app");
+        let alive = |_pid: u32| Some("u-king-mini.exe".to_string());
+        let got = settle_previous_with(&d, &alive).expect("别的产品 ≠ 另一个自己");
+        assert!(got.looks_like_crash_loop, "30 秒就没了，仍是崩溃循环");
     }
 
     /// 探不出来（`tasklist` 挂了 / 被杀软钩住 / 非 Windows 上没有 ps）时的失败方向：
