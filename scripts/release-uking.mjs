@@ -403,8 +403,29 @@ function remoteCommand(target, command) {
   return target.sudo ? `sudo -n sh -c ${shQuote(command)}` : command;
 }
 
+/**
+ * 远端那个路径现在的哈希；文件不在或读不出来一律返回 null（= 当不一致，照常上传）。
+ *
+ * 为什么要有：发布链路要能**接着上次跑**。2026-11-21 实测新加坡机直连只有 ~11KB/s，
+ * 一次 40MB 上传要几十分钟，命令 10 分钟超时就会中断；而发布器原来对每个目标、每个目录
+ * 无条件重传，等于「断了就只能从头再来」。有了这一步，重跑时已经一致的文件直接跳过，
+ * 中断也不至于把时间全花在重复上传上。**只跳过哈希相同**的，内容不同仍然上传。
+ */
+async function remoteFileHash(target, remotePath) {
+  const script = `set -eu; if [ -f ${shQuote(remotePath)} ]; then sha256sum -- ${shQuote(remotePath)} | awk '{print $1}'; fi`;
+  try {
+    const out = (await run("ssh", sshArgs(target, remoteCommand(target, script)))).trim().split(/\s+/)[0];
+    return /^[a-f0-9]{64}$/i.test(out ?? "") ? out : null;
+  } catch {
+    return null;
+  }
+}
+
 async function remoteStage(target, localPath, remotePath, expectedHash, releaseId) {
   if (await sha256(localPath) !== expectedHash) fail(`本地冻结快照已变化：${path.basename(localPath)}`);
+  if (await remoteFileHash(target, remotePath) === expectedHash) {
+    return { remotePath, expectedHash, skip: true };
+  }
   const directory = path.posix.dirname(remotePath);
   const temporaryDir = path.posix.join(directory, ".uking-release-tmp", releaseId);
   const temporaryPath = path.posix.join(temporaryDir, path.posix.basename(remotePath));
@@ -415,12 +436,14 @@ async function remoteStage(target, localPath, remotePath, expectedHash, releaseI
   const stageScript = `set -eu; mkdir -p -- ${shQuote(temporaryDir)}; install -m 0644 -- ${shQuote(userStagingPath)} ${shQuote(temporaryPath)}; sha256sum -- ${shQuote(temporaryPath)} | awk '{print $1}'`;
   const actual = (await run("ssh", sshArgs(target, remoteCommand(target, stageScript)))).trim().split(/\s+/)[0];
   if (actual !== expectedHash) fail(`目标暂存文件哈希不匹配：${path.posix.basename(remotePath)}`);
-  return { remotePath, temporaryPath, expectedHash, backupPath: path.posix.join(directory, ".uking-backup", releaseId, path.posix.basename(remotePath)) };
+  return { remotePath, temporaryPath, expectedHash, skip: false, backupPath: path.posix.join(directory, ".uking-backup", releaseId, path.posix.basename(remotePath)) };
 }
 
 async function remoteCommit(target, staged) {
+  const pending = staged.filter((file) => !file.skip);
+  if (pending.length === 0) return; // 目标上已经全是本次要发的字节，什么都不用做
   const commands = ["set -eu"];
-  for (const file of staged) {
+  for (const file of pending) {
     commands.push(`mkdir -p -- ${shQuote(path.posix.dirname(file.backupPath))}`);
     commands.push(`if [ -f ${shQuote(file.remotePath)} ]; then cp -p -- ${shQuote(file.remotePath)} ${shQuote(file.backupPath)}; fi`);
     commands.push(`mv -f -- ${shQuote(file.temporaryPath)} ${shQuote(file.remotePath)}`);
