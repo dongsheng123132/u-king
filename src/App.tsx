@@ -22,7 +22,6 @@ import {
   Cpu,
   Download,
   FolderTree,
-  Gift,
   LifeBuoy,
   MoreHorizontal,
   PanelTopClose,
@@ -1405,10 +1404,6 @@ export function App() {
                 onGoInstall={() => setTab("setup")}
                 onInstallAll={startInstallAll}
                 onGoManage={() => setTab("manage")}
-                onGoManageFree={() => {
-                  setManageInitialTab("free");
-                  setTab("manage");
-                }}
                 onApplyXiapan={applyXiapan}
                 onRecharge={() => openRechargeAndWatch(deviceKey?.recharge_url)}
                 onSelfUpdate={doSelfUpdate}
@@ -2194,7 +2189,6 @@ function MyAI({
   onGoInstall,
   onInstallAll,
   onGoManage,
-  onGoManageFree,
   onApplyXiapan,
   onRecharge,
   onSelfUpdate,
@@ -2214,8 +2208,6 @@ function MyAI({
   onGoInstall: () => void;
   onInstallAll: () => void;
   onGoManage: () => void;
-  /** 免费模型导流卡专用：跳「AI 设置」并直接落在「免费算力」分区（见 App 里 manageInitialTab）。 */
-  onGoManageFree?: () => void;
   onApplyXiapan: () => void;
   onRecharge: () => void;
   /** 本体一键升级（App 的 doSelfUpdate，带进度/失败账本/重启流程）—— 传给顶部 DoctorCard。 */
@@ -2309,33 +2301,11 @@ function MyAI({
         <span className="flex-1 min-w-0">
           <span className="block text-[14px] font-semibold text-ink-0">{tr("AI 设置")}</span>
           <span className="block text-[11.5px] text-ink-3 truncate">
-            {tr("换模型 · 余额 · 免费额度 · 用自己的 Key")}
+            {tr("换模型 · 余额 · 用自己的 Key")}
           </span>
         </span>
         <ChevronRight size={16} className="text-ink-4 shrink-0" />
       </button>
-      {/* 免费模型导流卡（2026-09-06）—— 竞品主打免费入口（实测是 OpenRouter :free 聚合，
-          国内要梯子且 50 次/天），我们调研后决定主推国产直连免费。轻量一条，紧跟在「AI 设置」
-          常驻卡之后：不抢虾盘云充值引导（XiapanGuide，位置在本卡之前）的位置，只是给
-          「不想花钱先跑通」的用户多一条路。点击跳「AI 设置 → 免费算力」分区，同一套
-          onGoManage 深链机制（见 onGoManageFree），不新建跳转通道。 */}
-      {onGoManageFree && (
-        <button
-          onClick={onGoManageFree}
-          className="w-full flex items-center gap-3 rounded-card border border-success-500/25 bg-success-500/[0.06] px-4 py-3.5 text-left shadow-card hover:border-success-500/40 hover:bg-success-500/[0.09] transition-colors"
-        >
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-success-500/[0.14] shrink-0">
-            <Gift size={20} className="text-success-400" />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-[14px] font-semibold text-ink-0">{tr("免费模型 · 不花钱先跑通")}</span>
-            <span className="block text-[11.5px] text-ink-3 truncate">
-              {tr("国产直连免费额度，手机号注册就能领")}
-            </span>
-          </span>
-          <ChevronRight size={16} className="text-ink-4 shrink-0" />
-        </button>
-      )}
             {/* ★ 主推三件套（2026-08-03 定，替换掉原「ClawX 图形版 + Hermes 终端」双入口）。
           数据驱动渲染而不是三段复制粘贴的 JSX：加/减一个只改 CORE_TRIO 数组。 */}
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -508,8 +508,8 @@ export const settings: Record<string, string> = {
   "已配好": "Ready",
   "未接 AI": "Not connected",
   // 「已自行配置」28 行已有（Self-managed），这里不再重复 —— 同一中文映射同一英文
-  "标黄的还没接 AI —— 用上方「一键配好」或到「免费算力」页接入":
-    "Amber items are not connected yet — use “One-click setup” above or the Free compute tab",
+  "标黄的还没接 AI —— 用上方「一键配好」或到「AI 设置 → 供应商库」接入":
+    "Amber items are not connected yet — use “One-click setup” above, or add a provider under AI Settings → Providers",
   // 升级跳过（未安装）提示 —— 后端返回中文原句，前端按「未安装」关键词分流
   "未安装 —— 先去装机向导安装，装了才谈得上升级":
     "Not installed — install it first from the setup wizard; there is nothing to update yet",

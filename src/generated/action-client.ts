@@ -136,7 +136,7 @@ export type ActionId = (typeof ACTION)[keyof typeof ACTION];
 export type ActionInputMap = {
   "media.image.describe": { expected_state_version?: string; image: string; mode?: "describe" | "ocr"; question?: string; request_id: string; };
   "runtime.ai_process.inspect": Record<string, never>;
-  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-code" | "codex" | "codex-app" | "dsh" | "hermes" | "magpie" | "muse-code" | "openclaw" | "opencode" | "pi"; };
+  "runtime.aitool.install": { expected_state_version?: string; tool_id: "agent-browser" | "antigravity-cli" | "claude-code" | "codex" | "codex-app" | "dsh" | "hermes" | "muse-code" | "openclaw" | "opencode" | "pi"; };
   "runtime.aitool.uninstall": { expected_state_version?: string; tool_id: string; };
   "runtime.browser.install": { expected_state_version?: string; };
   "runtime.chat.inspect": Record<string, never>;

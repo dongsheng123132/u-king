@@ -14,7 +14,6 @@ import piLogo from "../assets/logos/pi.svg"; // pi.dev 官方标记 + 深色圆�
 import opencodeLogo from "../assets/logos/opencode.svg"; // 官方 mark，自带 #131010 方形深底（圆角由 ROUNDED_IMG 补）
 import uuRemoteLogo from "../assets/logos/uu-remote.png"; // 网易官方 app icon（512 缩到 256、白底抠透明）
 import workbuddyLogo from "../assets/logos/workbuddy.png"; // WorkBuddy 官方 app icon（codebuddy.cn/work 页面 CDN 的 400px 原件）
-import magpieLogo from "../assets/logos/magpie.png"; // yetone/magpie 仓库自带官方 icon-256.png（UI 隐藏，备用）
 
 import mimoLogo from "../assets/logos/mimo.svg";
 import codebuddyLogo from "../assets/logos/codebuddy.svg";
@@ -44,7 +43,6 @@ const LOGO: Record<string, string> = {
   opencode: opencodeLogo,
   "uu-remote": uuRemoteLogo,
   workbuddy: workbuddyLogo,
-  magpie: magpieLogo,
 };
 
 /** 素材本身是直角方形底的 logo：用 CSS 补圆角，跟 Codex / pi 的 24% 圆角块保持一致。 */

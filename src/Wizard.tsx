@@ -140,7 +140,6 @@ export const TOOL_NAMES: Record<string, string> = {
   openclaw: "OpenClaw CLI（原版）",
   opencode: "OpenCode",
   clawx: "ClawX",
-  magpie: "magpie",
   workbuddy: "WorkBuddy",
   "uu-remote": "UU 远程",
 };

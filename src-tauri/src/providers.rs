@@ -7724,7 +7724,7 @@ fn friendlier_text_error(e: String) -> String {
     } else if low.contains("http 429") {
         "供应商限制了请求：请检查速率或套餐额度，稍后重试。"
     } else if low.contains("退出码 28") || low.contains("timed out") || low.contains("timeout") {
-        "接口 20 秒没有响应：本机 Magpie 正在启动或重建模型清单时会这样，等它稳定后再点一次「拉取」；远端供应商请检查网络或地址。"
+        "接口 20 秒没有响应：如果你接的是本机网关，它启动或重建模型清单时会这样，等稳定后再点一次「拉取」；远端供应商请检查网络或地址。"
     } else { return e };
     format!("{hint} 原因：{e}")
 }

@@ -511,14 +511,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         route_tab: None,
     },
     ToolSpec {
-        // magpie：GUI 程序（点开直接开窗，跟 DSH 一样），CLI 能力仍保留在工具中心。
-        // config_target=None、in_list_tools=false —— 不进「AI 设置」页（providers.rs 不写它）。
-        // 桌面版按专用落点探测；旧 CLI 不算已安装 GUI。
-        id: "magpie", cmd: "magpie", config_target: None,
-        in_list_tools: false, in_checkup: None, probe_args: None,
-        launch_mode: LaunchMode::GuiApp, route_tab: None,
-    },
-    ToolSpec {
         id: "uu-remote",
         cmd: "",
         config_target: None,
@@ -561,13 +553,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
 mod tool_specs_tests {
     use super::*;
     use std::collections::BTreeSet;
-
-    #[test]
-    fn magpie_gui_shortcut_uses_native_window_entry_and_preserves_cli() {
-        let spec = TOOL_SPECS.iter().find(|spec| spec.id == "magpie").unwrap();
-        assert_eq!(spec.launch_mode, LaunchMode::GuiApp, "GUI 程序点开直接开窗（2026-10-21 用户口径）");
-        assert!(crate::term::validate_cmd("magpie ls"));
-    }
 
     /// `TOOL_SPECS` 的 id 集合必须和 `list_tools()` 实际构造出的 `ToolInfo.id` 集合完全一致
     /// ——加/删一个工具，两边有一边忘了同步，这条测试就会红，而不是等到运行时才发现
@@ -998,24 +983,6 @@ fn catalog_with_probes(
 ) -> Vec<ToolInfo> {
     let mut v = vec![
         ToolInfo {
-            // magpie（yetone/magpie，MIT，Go 单二进制）：配置委托层——把 AI 工具的
-            // provider/模型配置交给 magpie 维护，U-King 只做下载/校验/落地/回滚与钱包计费。
-            // 安装官方桌面发行物。config_target=None：
-            // magpie 不是 U-King 的驱动配置目标（providers.rs 不认识它，也不写它的配置）。
-            // ★ 2026-10-22 重新上架（撤销 10-21 的 hidden=true 下架）：装不装都必须露出。
-            id: "magpie".into(),
-            name: "magpie".into(),
-            summary: "AI 模型与供应商配置、用量和路由管理。安装官方桌面版后直接打开独立窗口；模型和账号由 magpie 管理。".into(),
-            kind: "utility".into(),
-            installed: false,
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "magpie".into(),
-            launch_app: "magpie".into(),
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
             id: "claude-code".into(),
             name: "Claude Code CLI".into(),
             summary: "Anthropic 官方命令行编程助手。一键安装 + 国内驱动直连。".into(),
@@ -1266,7 +1233,6 @@ fn probe_tool(id: &str) -> Option<bool> {
             },
         "uu-remote" => crate::installer::managed_desktop_installed("uu-remote"),
         "codex-app" => crate::installer::codex_app_installed(),
-        "magpie" => crate::installer::managed_desktop_installed("magpie"),
         "workbuddy" => crate::installer::managed_desktop_installed("workbuddy"),
         // 没写分支的 id 一律到这里。编译期不报错，所以靠下面那条单测盯。
         _ => return None,
@@ -1330,14 +1296,6 @@ mod catalog_probe_tests {
         let clawx = catalog.iter().find(|tool| tool.id == "clawx").unwrap();
         assert_eq!(clawx.action, "url", "ClawX installer is not verified; offer the official download");
         assert_eq!(clawx.config_target.as_deref(), Some("clawx"), "ClawX keeps its provider target");
-        // 2026-10-22 magpie 重新上架：装没装都必须露出。前端是 `raw.filter(x => !x.hidden)`
-        // 全局过滤，hidden=true 等于装完一个像素都看不到、连卸载入口都没有（opencode 08-24 的旧账）。
-        let magpie = catalog.iter().find(|tool| tool.id == "magpie").expect("magpie 必须还在目录里");
-        assert!(magpie.installed && !magpie.hidden, "magpie 装完必须可见");
-        let empty = catalog_with_probes(None, |_| false, |_| None);
-        let magpie = empty.iter().find(|tool| tool.id == "magpie").expect("uninstalled magpie still shows");
-        assert!(!magpie.installed, "uninstalled magpie still shows");
-        assert!(!magpie.hidden, "magpie 上架后未装也要露出，才能引导安装");
     }
 
     #[cfg(windows)]

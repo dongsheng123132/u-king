@@ -115,7 +115,6 @@ export function ProviderManager({
         onSave={handleSave}
         onClose={() => setEditing(null)}
         onPurge={editing.id && !editing.builtin ? del : undefined}
-        variant="modal"
       />
     );
   }
