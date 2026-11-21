@@ -6569,7 +6569,7 @@ pub const EXTRA_APPLY_TOOLS: &[&str] = &[];
 /// 一个工具从 `EXTRA_APPLY_TOOLS` 挪走 = **从弹窗里静默消失**（两处入口只剩一处）。
 /// pi 那次是在 `driver_status()` 里硬写了两行补上的；opencode 再来一次就会是第二份复制。
 /// 抽成数组之后，下一个工具升级只要在这里加一个词。
-pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode"];
+pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi"];
 
 /// 2026-10-21：「我的 AI」工具目录收敛后从 `TOOL_SPECS` 删除、但存量客户机上可能还装着的工具。
 ///
@@ -6577,7 +6577,7 @@ pub const PROMOTED_TO_LIST_TOOLS: &[&str] = &["pi", "opencode"];
 /// 这里只保留 `driver_status()` 里 `active` / `extra_installed` 的回显记录，好让设备钱包
 /// 换 Key 时仍能同步到老配置 —— 目录收窄不该把已装用户的配置饿死。新装用户不会再有这两个
 /// 工具，也就不会有记录，这个兼容层对他们是空转。
-pub const LEGACY_RETIRED_TARGETS: &[&str] = &["qwen", "crush"];
+pub const LEGACY_RETIRED_TARGETS: &[&str] = &["qwen", "crush", "opencode"];
 
 /// 🔴 **「一键配好全部」真正会配的全部目标 —— 动作契约 `targets` 那份 enum 的唯一真相源。**
 ///
@@ -6600,7 +6600,7 @@ pub const LEGACY_RETIRED_TARGETS: &[&str] = &["qwen", "crush"];
 /// 2026-10-21：「我的 AI」工具目录收敛到 11 项，qwen / crush 已随 TOOL_SPECS 删除，
 /// 所以这里也只剩 7 个目标（`list_tools_targets()` 自动派生，不再含 qwen/crush）。
 pub const APPLY_ALL_TARGETS: &[&str] = &[
-    "claude", "codex", "clawx", "hermes", "dsh", "pi", "opencode",
+    "claude", "codex", "clawx", "hermes", "dsh", "pi",
 ];
 
 /// 「我们写的配置，那个工具真的会照着跑吗」—— **回读工具自己的配置文件**，解析出它启动时

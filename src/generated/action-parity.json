@@ -1774,8 +1774,7 @@
                 "clawx",
                 "hermes",
                 "dsh",
-                "pi",
-                "opencode"
+                "pi"
               ],
               "type": "string"
             },
@@ -1893,8 +1892,7 @@
               "clawx",
               "hermes",
               "dsh",
-              "pi",
-              "opencode"
+              "pi"
             ],
             "type": "string"
           }
@@ -1955,8 +1953,7 @@
               "clawx",
               "hermes",
               "dsh",
-              "pi",
-              "opencode"
+              "pi"
             ],
             "type": "string"
           }
@@ -2009,8 +2006,7 @@
               "clawx",
               "hermes",
               "dsh",
-              "pi",
-              "opencode"
+              "pi"
             ],
             "type": "string"
           }
@@ -3027,15 +3023,12 @@
             "description": "Tool id from the home page cards, e.g. claude-code, codex, openclaw, hermes.",
             "enum": [
               "agent-browser",
-              "antigravity-cli",
               "claude-code",
               "codex",
               "codex-app",
               "dsh",
               "hermes",
-              "muse-code",
               "openclaw",
-              "opencode",
               "pi"
             ],
             "type": "string"

@@ -13,7 +13,7 @@
 // 注意：codex 用 "codex-cli" 避免和现有 TabId 的 "codex"（Codex 专区）冲突。
 // 「openclaw」仍留在联合类型里只为兼容存量代码（ToolAppView / SessionList 里还有它的比较
 // 字面量），TUI_APPS 里已无该条目 —— OpenClaw CLI 按用户要求不出现在「我的 AI」。
-export type TuiAppId = "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "opencode" | "pi";
+export type TuiAppId = "claude" | "codex-cli" | "openclaw" | "hermes" | "dsh" | "pi";
 
 export type TuiApp = {
   id: TuiAppId; // 路由 key + PTY tool tag
@@ -100,29 +100,6 @@ export const TUI_APPS: TuiApp[] = [
     // uking-managed route，Web / terminal 共用同一份 `$DSH_HOME`。
     configTargets: ["dsh"],
     group: "cli",
-  },
-  {
-    // ★ 2026-08-03 上架，但**只当交互式 TUI 用**（★192k，社区最大的开源 coding agent）。
-    // 🔴 它的非交互入口 `opencode run` 在本机三轮实测**恒定挂满超时、零字节输出**：
-    // 1.4.3 沙箱挂 90s → 升 1.18.11 挂 100s → **真实 HOME + 用户自己配好且缓存过的
-    // provider (`-m z/glm-5`) 仍挂 100s** → 去掉 --format 裸跑挂 45s。第三条是决定性的：
-    // 排除了「我们的配置 / 沙箱 / 版本」三种解释，是它 run 子命令本身在这台 Windows 上起不来。
-    // 所以这里**故意不给非交互提示词**，竞技场也不带它 —— 带一个必挂的选手去比，比出来的
-    // 不是「谁干活利索」，是「我们的跑道有 bug」。哪天上游修好了，加个 prompts 项即可。
-    id: "opencode",
-    toolId: "opencode",
-    name: "OpenCode",
-    tool: "opencode",
-    prompts: [
-      { label: "启动", cmd: "opencode" },
-      { label: "继续上次", cmd: "opencode --continue" },
-    ],
-    configTargets: ["opencode"],
-    group: "cli",
-    // ★ 2026-08-24 取消隐藏（用户点名要 opencode 出现在「我的 AI」和「AI 设置」里，
-    // 同批把 `tools.rs` 的 hidden 也翻了）。「装得慢」是安装时才付的代价，
-    // 换来「装完在工作台 Dock 里也找不到它」不划算。
-    hidden: false,
   },
   {
     // ★ 2026-08-03 上架。四条门槛本机实测**全过**（用便携 Node 22.20 + npmmirror + 沙箱 HOME）：

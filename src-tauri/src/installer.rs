@@ -2997,7 +2997,6 @@ const CLI_TOOL_COMMANDS: &[(&str, &str)] = &[
     ("pi", "pi"),
     ("openclaw", "openclaw"),
     ("hermes", "hermes"),
-    ("opencode", "opencode"),
 ];
 
 /// 这个工具装完后是否会在 npm / 便携 Node 目录里留下需要转发器的 CLI 命令。
@@ -6072,7 +6071,7 @@ pub fn inspect_ai_process_health() -> AiProcessInspection {
 /// 2026-10-21：「我的 AI」工具目录收敛到 11 项，qwen / crush / kimi / mimo / codebuddy / qodercn
 /// 已从工具目录与装机清单删除，这里同步摘掉——保留它们只会让守卫表把已删工具又「认」回来。
 #[cfg_attr(not(windows), allow(dead_code))]
-const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes", "opencode"];
+const GUARDED_CLIS: &[&str] = &["claude", "codex", "pi", "openclaw", "hermes"];
 
 #[cfg(windows)]
 /// Build an ACP-safe `.cmd` body. Never interpolate a Unicode absolute path: Rust writes UTF-8
@@ -8937,28 +8936,6 @@ mod tests {
 
     /// 反向判据：内嵌清单里 OpenCode 必须真的带上门禁和冒烟。
     /// 只改代码不改清单 = 两层验收对它仍然是空转。
-    #[test]
-    fn embedded_manifest_gates_opencode_bun_shell() {
-        let skill: Skill = serde_json::from_str(EMBEDDED_SKILL).expect("内嵌清单应能解析");
-
-        let oc = skill.tools.get("opencode").expect("内嵌清单应含 opencode");
-        // Bun 壳的 `--version` 只吐 `1.3.14`，必须把 `--help` 拉进同一道门禁才拦得住。
-        assert!(
-            oc.verify_cmd.contains("--help"),
-            "OpenCode 的 verify_cmd 必须覆盖 --help，否则 Bun 壳假通过：{}",
-            oc.verify_cmd
-        );
-        assert_eq!(oc.verify_reject.as_deref(), Some("bun is a fast"), "OpenCode 必须钉死 Bun 指纹");
-        assert_eq!(oc.smoke_cmd.as_deref(), Some("opencode --help"));
-        assert_eq!(oc.smoke_expect.as_deref(), Some("opencode"));
-        assert_eq!(oc.smoke_reject.as_deref(), Some("bun is a fast"));
-        // 平台二进制是 optionalDependency，不拉会剩 Bun 壳（同 claude.exe 占位壳病根）。
-        for step in &oc.steps {
-            if let Step::NpmInstall { with_optional, .. } = step {
-                assert!(*with_optional, "opencode 的 npm_install 必须 with_optional");
-            }
-        }
-    }
 
     #[test]
     fn npm_bare_name_only_strips_version_not_scope() {

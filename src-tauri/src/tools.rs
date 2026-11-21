@@ -482,11 +482,11 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         launch_mode: if cfg!(windows) { LaunchMode::GuiApp } else { LaunchMode::RouteTab },
         route_tab: if cfg!(windows) { None } else { Some("dsh") },
     },
-    // 🔴 下面 pi/opencode 在 `TOOL_SPECS` 里的相对顺序不是随意的：
+    // 🔴 下面 pi 在 `TOOL_SPECS` 里的相对顺序不是随意的：
     // `providers::list_tools_targets()` 按本表原有顺序过滤派生 `LIST_TOOLS`，而
     // `apply_everywhere_contract_lists_every_target_the_backend_configures` 用例要求
     // 派生结果的**顺序**严格等于历史上手写的 `["claude","codex","clawx","hermes","dsh",
-    // "pi","opencode"]`（跟 `APPLY_ALL_TARGETS` 字面量顺序对齐）。这里的顺序
+    // "pi"]`（跟 `APPLY_ALL_TARGETS` 字面量顺序对齐）。这里的顺序
     // 就是照那份历史顺序摆的，挪动会让那条用例返工——不是巧合，动之前先看那条用例。
     ToolSpec {
         id: "pi",
@@ -496,17 +496,6 @@ pub const TOOL_SPECS: &[ToolSpec] = &[
         in_checkup: Some("pi"),
         probe_args: Some(&["-p", crate::toolprobe::PROMPT]),
         // apps.ts::TUI_APPS 专属 tab id 是 "pi" —— 有内嵌终端。
-        launch_mode: LaunchMode::EmbeddedPty,
-        route_tab: None,
-    },
-    ToolSpec {
-        id: "opencode",
-        cmd: "opencode",
-        config_target: Some("opencode"),
-        in_list_tools: true,
-        in_checkup: Some("OpenCode"),
-        probe_args: Some(&["run", crate::toolprobe::PROMPT]),
-        // apps.ts::TUI_APPS 专属 tab id 是 "opencode" —— 有内嵌终端。
         launch_mode: LaunchMode::EmbeddedPty,
         route_tab: None,
     },
@@ -604,7 +593,6 @@ mod tool_specs_tests {
         assert_eq!(target_of("claude-code").as_deref(), Some("claude"));
         assert_eq!(target_of("dsh").as_deref(), Some("dsh"));
         assert_eq!(target_of("pi").as_deref(), Some("pi"));
-        assert_eq!(target_of("opencode").as_deref(), Some("opencode"));
         assert_eq!(target_of("hermes").as_deref(), Some("hermes"));
         assert_eq!(target_of("uu-remote"), None);
 
@@ -1026,28 +1014,6 @@ fn catalog_with_probes(
             config_target: None, version: None, launch_mode: LaunchMode::None,
         },
         ToolInfo {
-            // ★ 2026-08-03 上架，**仅 TUI**。社区最大的开源 coding agent（★192k），
-            // 交互式界面成熟；但非交互 `opencode run` 本机三轮实测恒定挂死零输出
-            // （详见 apps.ts / providers::apply_opencode 的注释），所以它不进竞技场。
-            id: "opencode".into(),
-            name: "OpenCode".into(),
-            summary: "社区最大的开源终端编程 agent（★19 万）。交互式界面成熟、生态插件多，一键接虾盘云。注：装包 153MB、文件多，慢网要等一会儿；它的非交互模式在 Windows 上跑不起来，只当终端界面用。".into(),
-            kind: "standalone".into(),
-            installed: false,
-            action: "install".into(),
-            target: "".into(),
-            launch_cmd: "opencode".into(),
-            launch_app: "".into(),
-            // 2026-08-05 隐藏：与主推线重叠 + 153MB/18718 文件，慢网装得最久。
-            // 2026-08-24 取消隐藏（用户点名：「在我的 ai 里边也要一个」）——
-            // 🔴 隐藏它的代价一直没被算进来：`App.tsx` 是 `raw.filter(x => !x.hidden)` 全局过滤，
-            // 所以**连已经装了 opencode 的用户也一个像素都看不到它**，既不能启动也不能卸载。
-            // 「装得慢」是安装时才付的代价，不该换来「装完也找不到」。慢的那条已写进 summary
-            // 里明说（153MB），让用户自己决定，而不是替他决定看不见。
-            hidden: false,
-            config_target: None, version: None, launch_mode: LaunchMode::None,
-        },
-        ToolInfo {
             // OpenClaw 的「桌面版」= ClawX（官方 Electron GUI）。261MB，不在 app 内装，
             // action=url 跳官方国内 OSS 直链下载；装完 U-King 能检测(clawx_app_installed)
             // + 切驱动(providers::apply_clawx 写 ~/.openclaw/openclaw.json) + 一键启动(launch_app=clawx)。
@@ -1223,7 +1189,6 @@ fn probe_tool(id: &str) -> Option<bool> {
         "claude-code" => crate::installer::tool_installed("claude"),
         "codex" => crate::installer::tool_installed("codex"),
         "pi" => crate::installer::tool_installed("pi"),
-        "opencode" => crate::installer::tool_installed("opencode"),
         "clawx" => crate::providers::clawx_app_installed(),
         "hermes" => crate::installer::tool_installed("hermes") || tool_dir_installed("hermes"),
         "dsh" => if cfg!(windows) {
@@ -1287,7 +1252,7 @@ mod catalog_probe_tests {
     #[test]
     fn installed_agents_remain_visible_and_allowed_to_launch() {
         let catalog = catalog_with_probes(None, |_| true, |_| None);
-        for id in ["claude-code", "codex", "pi", "opencode"] {
+        for id in ["claude-code", "codex", "pi"] {
             let tool = catalog.iter().find(|tool| tool.id == id).expect("registered agent missing from catalog");
             assert!(tool.installed && !tool.hidden, "{id} must be visible after detection");
             assert_eq!(tool.launch_mode, LaunchMode::EmbeddedPty, "{id} needs a terminal launcher");
