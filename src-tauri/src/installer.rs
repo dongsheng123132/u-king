@@ -481,10 +481,16 @@ pub fn load_skill() -> Skill {
     let mut skill: Skill =
         serde_json::from_str(EMBEDDED_SKILL).expect("内嵌 install-windows.json 解析失败");
     skill.source = "embedded".into();
+    select_skill(skill, fetch_remote_skill())
+}
 
-    if let Some(remote) = fetch_remote_skill() {
+fn select_skill(skill: Skill, remote: Option<Skill>) -> Skill {
+    if let Some(remote) = remote {
         if remote.version > skill.version {
             let mut remote = remote;
+            // 热下发清单可以更新其它安装项和供应商，已下线的一方集成不随清单恢复。
+            remote.tools.remove("magpie");
+            remote.provider_templates.retain(|p| !p.name.trim().eq_ignore_ascii_case("magpie"));
             remote.source = "server".into();
             return remote;
         }
@@ -7698,6 +7704,27 @@ mod tests {
         assert_eq!(skill.skill, "uking-install-windows");
         assert_eq!(skill.provider_templates.len(), 1);
         assert_eq!(skill.provider_templates[0].name, "示例");
+    }
+
+    #[test]
+    fn newer_skill_cannot_restore_retired_magpie_integration() {
+        let embedded: Skill = serde_json::from_str(EMBEDDED_SKILL).unwrap();
+        let mut remote = embedded.clone();
+        remote.version += 1;
+        remote.tools.insert("magpie".into(), remote.tools["codex"].clone());
+        let mut retired = remote.provider_templates[0].clone();
+        retired.name = " Magpie ".into();
+        remote.provider_templates.push(retired);
+
+        let selected = select_skill(embedded.clone(), Some(remote));
+        assert_eq!(selected.version, embedded.version + 1);
+        assert_eq!(selected.source, "server");
+        assert!(!selected.tools.contains_key("magpie"));
+        assert!(selected.tools.contains_key("codex"));
+        assert_eq!(selected.provider_templates.len(), embedded.provider_templates.len());
+        for name in ["DeepSeek 官方", "Kimi（月之暗面）"] {
+            assert!(selected.provider_templates.iter().any(|p| p.name == name));
+        }
     }
 
     /// 反向判据：真正跑在 exe 里的那份内嵌清单（`skills/install-windows.json`）
