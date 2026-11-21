@@ -418,28 +418,12 @@ fn builtin_providers() -> Vec<ProviderPreset> {
             summary: "国内最快最便宜，需自行注册拿 Key。官方支持 Claude Code 和 Codex 接入。".into(),
             openai_base: "https://api.deepseek.com/v1".into(),
             anthropic_base: Some("https://api.deepseek.com/anthropic".into()),
-            // deepseek-chat/deepseek-reasoner 官方 2026/07/24 弃用且无兜底 → 用现役 v4 名字
-            model: "deepseek-v4-flash".into(),
-            small_model: "deepseek-v4-flash".into(),
-            // ★ Codex 可用（2026-08-11 在客户机 pc-*** 用他自己的 Key 实测）。
-            //
-            // 这里曾经写着「DeepSeek 官方无 /v1/responses，新版 Codex 接不了」——
-            // 那句在 2026-07-31 之前是对的，之后就过期了：官方那天上线 V4-Flash 正式版，
-            // **原生支持 OpenAI Responses API**，Codex CLI / 桌面 App / VS Code 扩展直连即可，
-            // 不再需要本地翻译代理（`codex_proxy.rs` 那条路是那段空窗期的唯一解法）。
-            //
-            // 实测（客户机 curl，我们写出去的配置原样打）：
-            //   /v1/responses + deepseek-v4-flash            → 200 ✅（带不带 /v1 都通）
-            //   再加 store:false / 我们那个自定义头          → 200 ✅（两个额外键都不碍事）
-            //   /v1/responses + deepseek-v4-pro              → 400 ❌ 官方原话：
-            //     "Codex integration with deepseek-v4-pro will be available starting
-            //      early August 2026. Please use deepseek-v4-flash instead for now."
-            //
-            // 🔴 所以 `codex_model` **显式钉死 flash，不能留空**。留空会回退到 `model` ——
-            // 今天两者恰好相同，但哪天有人把 `model` 升成 v4-pro（很有诱惑力，它更强），
-            // Codex 就会**静默 400**，而 Claude Code 那条链路照常能用，
-            // 排查的人根本想不到是被隔壁一行改坏的。v4-pro 的 Codex 支持上线后再改这里。
-            codex_model: "deepseek-v4-flash".into(),
+            // 官方推荐 Flash 别名：https://api-docs.deepseek.com/zh-cn/quick_start/your_first_api_call
+            model: "deepseek-flash".into(),
+            small_model: "deepseek-flash".into(),
+            // Codex 使用官方 Responses API 指南中的 Flash 模型。
+            // https://api-docs.deepseek.com/zh-cn/guides/responses_api
+            codex_model: "deepseek-flash".into(),
             codex_wire_api: WIRE_API.into(),
             key_url: "https://platform.deepseek.com/api_keys".into(),
             key_hint: "sk- 开头".into(),
