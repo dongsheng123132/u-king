@@ -2398,6 +2398,19 @@ pub fn install_tool(
     if tool_id == "claude-app" && sandboxed() {
         return fail(tool_id, 0, "沙箱禁止安装系统桌面应用；请在隔离测试机验证。".into());
     }
+    // Codex 桌面版：微软商店 / MSIX 两条路都只有 Windows 有。
+    //
+    // 不加这道门会是什么样（issue #283，macOS v1.4.13 实测）：清单里 codex-app 的 steps
+    // 全带 `os: windows`，非 Windows 上一律「跳过」；但 `verify_cmd` 是裸 `powershell`，
+    // 平台判断只作用于 steps、管不到它 —— 于是验证必然报
+    // 「退出码 127：sh: powershell: command not found」→ 白跑一轮 repair（还是全跳过）→
+    // 再失败一次 → 还给 bug 仓库上报一条「install_failed」。客户看到的就是「装不上」。
+    //
+    // 这是**设计内拦截**（这台机器的平台就不支持一键装），所以走 `blocked`：不打 issue、
+    // 不进修复循环，直接给能照做的下一步。macOS 的官方 DMG 路径在目录里是 action=url。
+    if tool_id == "codex-app" && !codex_app_installable_on(cfg!(windows)) {
+        return blocked(tool_id, CODEX_APP_NON_WINDOWS.into());
+    }
     // DeepSeek Harness（Windows）：不再用 npm 全局包，走官方桌面版静默安装（见 `dshdesk.rs`
     // 模块头注释）。这样向导 / `action run` / MCP 全都走同一条实现，不在前端再写一份安装逻辑。
     // Mac/Linux 未改，落到下面的 `install_tool_inner`（仍是 npm 清单那条路）。
@@ -3376,6 +3389,20 @@ fn fail(tool: &str, attempts: u32, err: String) -> InstallToolResult {
 fn blocked(tool: &str, err: String) -> InstallToolResult {
     InstallToolResult { precheck_blocked: true, ..fail(tool, 0, err) }
 }
+
+/// Codex 桌面版（微软商店 / MSIX）的一键装**只存在于 Windows**。
+///
+/// 抽成接受 `is_windows` 的纯函数而不是直接 `cfg!(windows)`：CI 只在
+/// windows-latest 上跑 `cargo test`（见 .github/workflows/ci.yml），
+/// 写成 `#[cfg(not(windows))]` 的用例在 CI 里根本不会执行 —— 那等于没测。
+/// 注入平台之后，两条分支在任何机器上都能断言。
+fn codex_app_installable_on(is_windows: bool) -> bool {
+    is_windows
+}
+
+/// 非 Windows 上试图一键装 Codex 桌面版时的提示。**必须说清下一步能照做什么** ——
+/// 客户点的是「安装」，回了句「不支持」等于把人晾在门口。
+const CODEX_APP_NON_WINDOWS: &str = "Codex 桌面版只有 Windows 能一键装（微软商店 / MSIX）。macOS 请到 https://developers.openai.com/codex/app 下载官方 DMG 手动安装——装好后回到「我的 AI」会自动识别，不用再点这里。";
 
 fn run_steps(
     skill: &Skill,
@@ -7884,6 +7911,24 @@ mod tests {
             "这些步骤是 Windows 专属写法却没标 os=windows，Mac 上会把整条安装拖垮：\n{}",
             untagged.join("\n")
         );
+    }
+
+    /// Codex 桌面版的一键装只在 Windows 成立；非 Windows 必须**在预检阶段就拦下**。
+    ///
+    /// issue #283（macOS v1.4.13）的链路：steps 全带 os=windows 被跳过 → 但 `verify_cmd`
+    /// 是裸 `powershell`，平台标签管不到它 → 必然 `退出码 127: sh: powershell: command not found`
+    /// → 白跑一轮 repair（同样全跳过）→ 再失败 → 还给 bug 仓库报一条 install_failed。
+    ///
+    /// 判据三件事一起钉：① 非 Windows 不支持；② Windows 仍支持（别把好的也拦了）；
+    /// ③ 提示里必须给出**能照做的下一步**（只有网址够不够？不够 —— 得说清装完会自动识别）。
+    #[test]
+    fn codex_app_one_click_install_is_windows_only_but_keeps_a_next_step() {
+        assert!(!codex_app_installable_on(false), "非 Windows 不该声称能一键装 Codex 桌面版");
+        assert!(codex_app_installable_on(true), "Windows 必须保留一键装");
+        let msg = CODEX_APP_NON_WINDOWS;
+        assert!(msg.contains("Windows"), "提示得说清是平台限制，否则客户以为是自己电脑坏了");
+        assert!(msg.contains("https://"), "提示里要给可点的下载入口");
+        assert!(msg.contains("自动识别"), "得告诉客户装完回来会发生什么，别让他以为还要再点一次");
     }
 
     /// 平台标签只认这三个值 —— 写错（比如 "win"）会被当成「和本机不匹配」**静默跳过**，
