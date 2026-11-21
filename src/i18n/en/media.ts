@@ -63,6 +63,10 @@ export const media: Record<string, string> = {
     "e.g. an orange cat in a spacesuit standing on the moon, cyberpunk style, neon glow",
   "想改一张已有的图？把它拖进来当参考图": "Want to edit an existing image? Drag it in as a reference",
   "AI 出图": "AI-generated image",
+  "这张图在本机存坏了，显示不出来（多半是上次出图回来时没传完整）。点下面的「再画一版」重画一次；反复这样就把作图模型换一个再试。":
+    "This image is corrupted on this computer, so it can't be shown (the download most likely came back incomplete). Hit “Regenerate” below to draw it again; if it keeps happening, switch to another image model.",
+  "这条记录既没有图片、也没有错误说明（可能是历史文件丢了）。点「再画一版」重画一次即可。":
+    "This record has neither an image nor an error message (the history file may have gone missing). Just hit “Regenerate” to draw it again.",
   "点击放大": "Click to enlarge",
   "改写：": "Rewritten: ",
   // 出图失败后的建议（Draw.tsx::failureHint，按「哪种失败 + 哪个模型」分支给）

@@ -342,6 +342,17 @@ export function Draw({
   // 拖文件进来 = 加参考图（统一走 Tauri 原生拖放，拿真实路径）；over 用于高亮遮罩
   const { ref: dropRef, over: dragOver } = useDropZone<HTMLDivElement>((paths) => void addRefsFromPaths(paths, onToast, t));
   const [lb, setLb] = useState<{ src: string; name: string; id?: number } | null>(null);
+  /**
+   * 哪几条历史记录的本机图片**解不出来**（`<img>` 触发 onError）。
+   *
+   * 为什么要有它：历史里的 `src` 是后端把磁盘上的 `.png` 读成 data URL 拼出来的，
+   * 只要文件在就非空——但文件内容可能根本不是图（早期下载 404/500 错误页被当成 PNG 落盘，
+   * 见 providers.rs::is_image_bytes 的注释）。那种记录按钮全在、`<img>` 高度却塌成 0，
+   * 界面上只剩一块**没有任何报错的空白**，客户只能说「作图的地方看不到了」。
+   * 后端已堵住新坏图，这里兜住**已经存坏的老记录**：当场说清坏在哪、下一步点什么。
+   */
+  const [broken, setBroken] = useState<Record<number, true>>({});
+  const markBroken = (id: number) => setBroken((m) => (m[id] ? m : { ...m, [id]: true }));
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -572,18 +583,29 @@ export function Draw({
               {it.src ? (
                 <div className="max-w-[78%] rounded-2xl rounded-bl-sm bg-bg-2 border border-white/[0.06] p-2 space-y-2">
                   <div className="rounded-lg overflow-hidden bg-bg-1 grid place-items-center">
-                    <img
-                      src={it.src}
-                      alt={t("AI 出图")}
-                      title={t("点击放大")}
-                      onClick={() => openImage(it.src!, `uking-draw-${it.id}.png`, it.id)}
-                      onContextMenu={(e) => {
-                        // 屏蔽 WebView2 原生「放大图片」（对 data URL 卡死），改用 app 内灯箱
-                        e.preventDefault();
-                        openImage(it.src!, `uking-draw-${it.id}.png`, it.id);
-                      }}
-                      className="max-w-full max-h-[48vh] object-contain cursor-zoom-in"
-                    />
+                    {broken[it.id] ? (
+                      // 解不出来的图别留白：说清是「本机这张存坏了」，并指到重画入口。
+                      <div className="flex items-start gap-2 px-3.5 py-3 text-[11.5px] text-warning-400 max-w-full">
+                        <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                        <div className="leading-snug">
+                          {t("这张图在本机存坏了，显示不出来（多半是上次出图回来时没传完整）。点下面的「再画一版」重画一次；反复这样就把作图模型换一个再试。")}
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={it.src}
+                        alt={t("AI 出图")}
+                        title={t("点击放大")}
+                        onClick={() => openImage(it.src!, `uking-draw-${it.id}.png`, it.id)}
+                        onError={() => markBroken(it.id)}
+                        onContextMenu={(e) => {
+                          // 屏蔽 WebView2 原生「放大图片」（对 data URL 卡死），改用 app 内灯箱
+                          e.preventDefault();
+                          openImage(it.src!, `uking-draw-${it.id}.png`, it.id);
+                        }}
+                        className="max-w-full max-h-[48vh] object-contain cursor-zoom-in"
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <button
@@ -622,7 +644,9 @@ export function Draw({
                 <div className="max-w-[78%] flex items-start gap-2 rounded-2xl rounded-bl-sm bg-danger-500/[0.08] border border-danger-500/25 px-3.5 py-2.5 text-[11.5px] text-danger-400">
                   <AlertCircle size={14} className="shrink-0 mt-0.5" />
                   <div className="leading-snug">
-                    {t("出图失败：")}{it.error}
+                    {/* `error` 为空 = 历史里这条既没有图、也没留下失败原因（老版本写坏过）。
+                        别渲染成「出图失败：」后面一片空白 —— 那就是客户报的「看不到」。 */}
+                    {it.error ? t("出图失败：") + it.error : t("这条记录既没有图片、也没有错误说明（可能是历史文件丢了）。点「再画一版」重画一次即可。")}
                     {/* 建议按「哪种失败 + 用的哪个模型」给（failureHint），别再一律钦定 GPT Image 2 ——
                         它自己挂的时候，那句话正好把客户劝进死胡同。 */}
                     {(() => {

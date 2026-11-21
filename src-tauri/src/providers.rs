@@ -9322,6 +9322,21 @@ fn parse_image_response(v: &Value, model: &str) -> Result<ImageResult, String> {
     })
 }
 
+/// 下载回来的字节到底是不是一张图？——PNG / JPEG / GIF / WebP 的魔数。
+///
+/// 为什么必须有这道门：`curl` 助手只按**退出码**判成败（`installer::curl`），而且不带 `-f`
+/// 时 HTTP 404/500 也是 exit 0，错误响应体（JSON / HTML）照样被 `-o` 写进临时文件。
+/// 于是「出图成功」的记录里会留下一份几百字节的 JSON 冒充 PNG：前端拿到的 data URL 解不出图，
+/// `<img>` 高度塌成 0 —— 客户看到的正是**作图区一块空白，且没有任何报错**
+/// （2026-11-21 客户反馈「作图的地方看不到了」；issue #243 的 HTTP 404 就是同一条链路）。
+fn is_image_bytes(b: &[u8]) -> bool {
+    b.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A])
+        || b.starts_with(&[0xFF, 0xD8, 0xFF])
+        || b.starts_with(b"GIF87a")
+        || b.starts_with(b"GIF89a")
+        || (b.len() > 12 && b.starts_with(b"RIFF") && &b[8..12] == b"WEBP")
+}
+
 /// 上游若只回 url（不回 b64），把图下载下来转 b64 —— 保证历史能落盘、离线也能看。
 /// best-effort：下载失败保留 url（前端在线时仍能直接渲染）。
 /// 走 curl `-o` 写文件再读字节：`curl` 助手对 stdout 按 utf8 lossy 解会毁二进制，故必须落盘。
@@ -9341,7 +9356,9 @@ fn ensure_b64(mut r: ImageResult) -> ImageResult {
         // 不够，客户端先掐断就会误报「境外CDN」。与出图等待 600s 对齐放宽到 180s。
         if curl(&["-sS", "-m", "180", "-L", "--ssl-no-revoke", "-o", &path, &url]).is_ok() {
             if let Ok(bytes) = std::fs::read(&tmp) {
-                if !bytes.is_empty() {
+                // 只有**真的是图**才认：404/500 的错误页能以 exit 0 落进这个临时文件，
+                // 不校验的话它会被当成 PNG 存进历史，前端就是一块解不出来的空白（见 is_image_bytes）。
+                if !bytes.is_empty() && is_image_bytes(&bytes) {
                     r.b64 = Some(b64_encode(&bytes));
                 }
             }
@@ -11793,5 +11810,32 @@ mod draw_route_tests {
             let json = serde_json::to_string(&v).unwrap();
             assert!(!json.contains("sk-secret-abc"), "回显把 Key 带出去了：{json}");
         });
+    }
+}
+
+#[cfg(test)]
+mod image_bytes_tests {
+    use super::is_image_bytes;
+
+    /// 真图必须认出来：PNG / JPEG / GIF / WebP 的典型头。
+    #[test]
+    fn accepts_real_image_headers() {
+        assert!(is_image_bytes(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0]));
+        assert!(is_image_bytes(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]));
+        assert!(is_image_bytes(b"GIF89a......"));
+        let mut webp = Vec::from(*b"RIFF");
+        webp.extend_from_slice(&[0, 0, 0, 0]);
+        webp.extend_from_slice(b"WEBPVP8 ");
+        assert!(is_image_bytes(&webp));
+    }
+
+    /// 404/500 的错误响应体能被 curl 以 exit 0 写进下载临时文件 —— 必须拒收。
+    /// 不拒的话它会被当成 PNG 存进历史：前端 `<img>` 解不出图、高度塌成 0，
+    /// 客户看到的就是「作图的地方看不到了」（2026-11-21 那条反馈的形状）。
+    #[test]
+    fn rejects_error_bodies_and_empty() {
+        assert!(!is_image_bytes(br#"{"error":{"message":"File Not Found"}}"#));
+        assert!(!is_image_bytes(b"<!DOCTYPE html><h1>404</h1>"));
+        assert!(!is_image_bytes(b""));
     }
 }
