@@ -691,12 +691,21 @@ export function ChatPanel({
           // 走 ref 不走闭包：`applyEvent` 被挂在 Channel 的 onmessage 上，一轮里不会重挂 ——
           // 直接闭 `ready` 会永远读到发这一轮时的旧值（首轮就是 null，403 会走错分支）。
           const known = humanizeError(raw, !!readyRef.current?.ownAccount);
+          // 🔴 后端确认「本机配置把上下文上限写死成很小的值」时，**别再说「聊太长了」**：
+          // 那种情况开新会话照样撞墙（2026-11-23 客户实拍：一句「你好」必挂）。
+          // 结构化诊断只读配置文件，改不改由人决定 —— 这里只把「在哪个文件的哪个键」说清楚。
+          const ctxHint = ev.hint && ev.hint.kind === "context_limit" ? ev.hint : null;
           // 原始报错**永远保留**（折进代码块）：人话是给客户看的，原文是给排障看的，
           // 谁也不能替谁。截断留尾 —— 报错的关键信息通常在最后几行。
           const detail = "\n\n```\n" + (raw.length > 600 ? "…" + raw.slice(-600) : raw) + "\n```";
-          const text = known
-            ? t("⚠️ {what}\n\n**怎么办**：{how}", { what: t(known[0]), how: t(known[1], known[2]) }) + detail
-            : t("⚠️ {agent} 这一轮没跑成，但**不是没装好，也不用重装**。\n\n可以按顺序试：\n1. 隔一会儿重发一次 —— 多半是上游一时没接住；\n2. 还不行就在顶栏「换模型」换成 DeepSeek Flash 再发；\n3. 都不行就点上方「技术支持」，把下面这段原文发给我们（**这段原文别删**，它是唯一能定位问题的东西）。", { agent }) + detail;
+          const text = ctxHint
+            ? t(
+                "⚠️ 检测到这台机器的 Claude 配置里有一个很小的上下文上限（`{file}` 的 `{key}` = {value}）—— 这很可能就是这次被拒的原因：这个值连一句「你好」都装不下，新会话也很可能在发出请求前就被拒。\n\n如果你没主动设过它：先备份这个文件，再把这一项删掉（或改回 200000），然后把这句重发一次 —— 不用重装。\n\n如果这段对话本来就确实很长，也可能是它自己超了：那种情况开新会话是安全的（界面上之前的聊天记录会清掉，需要的话先另存）。",
+                { value: String(ctxHint.value), file: String(ctxHint.file), key: String(ctxHint.key) },
+              ) + detail
+            : known
+              ? t("⚠️ {what}\n\n**怎么办**：{how}", { what: t(known[0]), how: t(known[1], known[2]) }) + detail
+              : t("⚠️ {agent} 这一轮没跑成，但**不是没装好，也不用重装**。\n\n可以按顺序试：\n1. 隔一会儿重发一次 —— 多半是上游一时没接住；\n2. 还不行就在顶栏「换模型」换成 DeepSeek Flash 再发；\n3. 都不行就点上方「技术支持」，把下面这段原文发给我们（**这段原文别删**，它是唯一能定位问题的东西）。", { agent }) + detail;
           setItems((prev) => [...prev, { kind: "text", role: "assistant", text }]);
           void checkReady();
         }

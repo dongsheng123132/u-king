@@ -355,6 +355,33 @@ pub fn delegation_env(api_key: &str) -> Vec<(String, String)> {
     v
 }
 
+/// 小到「连一句招呼都放不下」的上下文上限阈值。**只做提示，不据此改任何配置。**
+///
+/// 参照：真实一轮的系统提示 + 技能清单 + CLAUDE.md 通常 1 万 token 上下 —— 4000 这种值
+/// 会让每个会话在发请求前就被 Claude Code 本地判死（2026-11-23 实拍，`Prompt is too long`）。
+pub const LOW_CONTEXT_TOKENS: u32 = 32_000;
+
+/// 只读探针：`~/.claude/settings.json` 里是不是被人写死了一个很小的上下文上限。
+///
+/// 返回 `(文件路径, 键名, 原值)`，**只读、不改** —— 那个值是用户的配置，U-King 这边
+/// 只负责在他撞上 `Prompt is too long` 时说清楚是它、在哪，不做静默修正
+/// （[`apply_claude`] 的「用户自配的键让路」是同一条纪律）。
+///
+/// 读不到 / 解析不了 / 值是正常大小 → `None`（**不许把「没看到」说成「没问题」**，
+/// 调用方拿 None 时保持原来的报错行为）。
+pub fn claude_context_limit_probe() -> Option<(String, String, String)> {
+    let path = claude_settings_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let v: Value = serde_json::from_str(&raw).ok()?;
+    let val = v.get("env")?.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS")?.as_str()?;
+    let n: u32 = val.trim().parse().ok()?;
+    if n >= LOW_CONTEXT_TOKENS {
+        return None;
+    }
+    // 回**原值**（不 trim）：界面上要给客户看的就是文件里那一串，方便他对着一字不差地改。
+    Some((path.display().to_string(), "CLAUDE_CODE_MAX_CONTEXT_TOKENS".into(), val.to_string()))
+}
+
 /// 这一轮（对某个大脑）是不是虾盘云委托：`delegation_env` 对**这个工具**真注了 env 才算。
 ///
 /// 🔴 判据必须按工具分开 —— `delegation_env` 返回的列表是 claude 半边 + codex 半边拼的，
@@ -11835,4 +11862,57 @@ mod image_bytes_tests {
         assert!(!is_image_bytes(b"<!DOCTYPE html><h1>404</h1>"));
         assert!(!is_image_bytes(b""));
     }
+}
+
+/// 「本机 Claude 配置把上下文上限写死成很小的值」这条诊断的只读探针
+/// （2026-11-23 `Prompt is too long` 事故：settings.json 里 4000，任何一句话都发不出去）。
+#[cfg(test)]
+mod claude_window_probe_tests {
+    use super::*;
+
+    /// 在隔离的假 home 里摆一份 settings.json 再跑断言。
+    fn with_settings(tag: &str, body: Option<&str>, f: impl FnOnce()) {
+        crate::testsandbox::with_sandbox(&format!("claude-window-{tag}"), &[".claude"], |root| {
+            if let Some(b) = body {
+                std::fs::write(root.join(".claude").join("settings.json"), b).unwrap();
+            }
+            f();
+        });
+    }
+
+    /// ★ 客户现场那条：4000 ⇒ 探针必须把它连同「哪个文件、哪个键」一起交出来，
+    /// 否则界面只能说一句「聊太长了」，而开新会话照样撞墙。
+    #[test]
+    fn tiny_limit_is_reported_with_file_and_key() {
+        with_settings("tiny", Some(r#"{"env":{"CLAUDE_CODE_MAX_CONTEXT_TOKENS":"4000"}}"#), || {
+            let (file, key, value) = claude_context_limit_probe().expect("4000 必须被探到");
+            assert_eq!(key, "CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+            assert_eq!(value, "4000");
+            assert!(file.ends_with("settings.json"), "要能说清是哪个文件: {file}");
+        });
+    }
+
+    /// 正常值（U-King 自己注入的 200000）不是故障 —— 探针不许乱报。
+    #[test]
+    fn normal_limit_is_not_flagged() {
+        with_settings("normal", Some(r#"{"env":{"CLAUDE_CODE_MAX_CONTEXT_TOKENS":"200000"}}"#), || {
+            assert!(claude_context_limit_probe().is_none());
+        });
+    }
+
+    /// 读不到 / 解析不了 / 值不是数字 ⇒ None（「没看到」不等于「有问题」）。
+    #[test]
+    fn unreadable_values_are_unknown_not_flagged() {
+        for body in [
+            Some(r#"{"env":{}}"#),
+            Some(r#"{"env":{"CLAUDE_CODE_MAX_CONTEXT_TOKENS":"abc"}}"#),
+            Some("not json at all"),
+            None,
+        ] {
+            with_settings("unknown", body, || {
+                assert!(claude_context_limit_probe().is_none(), "不许把未知说成有故障");
+            });
+        }
+    }
+
 }

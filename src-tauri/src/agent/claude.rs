@@ -218,6 +218,90 @@ fn build_args(
     (args, teach, inlined)
 }
 
+/// 「换了模型」这句提示 —— **只在两个模型都确知、且真的不同**时用它。
+const MODEL_SWITCH_NOTE: &str =
+    "换了模型，上一轮（旧模型建的会话）接不上 —— 这一轮从头开始（之前的记录还在，换回原来那个模型就能接上）。";
+/// 本轮模型无法确知时改说这句。两种来源都可能：客户自己配了 Claude（我们不注入模型），
+/// 或这一轮压根没拿到设备 Key（注入列表为空）。文案**只陈述「没确认到」**，不猜原因 ——
+/// 断上文这个动作照旧（安全的降级方向），但**不许谎称**他「换了模型」。
+const MODEL_UNKNOWN_NOTE: &str =
+    "这一轮没确认到实际用的是哪个模型，为了不把两种模型的记录混到一起，这一轮先不接上文。";
+
+/// 要不要拿上一轮的 sid 继续 `--resume`（纯函数，回归钉在 `resume_guard_tests`）。
+///
+/// 三个分支刻意分开：真的换了模型 → 说换模型；模型未知 → 只说不确定；老盘没记过模型
+/// （`stored_model = None`）→ 保持原来「照常续接」的行为，发版后不许让存量客户无辜掉一次上文。
+fn decide_resume(
+    resume: Option<String>,
+    stored_model: Option<String>,
+    cur_model: Option<String>,
+) -> (Option<String>, Option<&'static str>) {
+    match (resume, stored_model, cur_model) {
+        (None, _, _) => (None, None),
+        // 这里 `_` 不绑定 sid：这一支的结果就是 None，绑了只会换来一条 unused_variables。
+        (Some(_), Some(stored), Some(cur)) if stored != cur => (None, Some(MODEL_SWITCH_NOTE)),
+        (Some(_), Some(_), None) => (None, Some(MODEL_UNKNOWN_NOTE)),
+        (r, _, _) => (r, None),
+    }
+}
+
+/// 这一轮收到的 session id 要不要写进账本（`threads.rs`）。
+///
+/// 🔴 **失败轮不许覆盖上一次能用的 sid**（sol 会审 2026-11-23，P1）：以前收到 init 里的
+/// session id 就立刻记账，而「只收到 init 就被上游拒掉」的轮次也照样记 —— 于是原来那条
+/// 能续上的会话被一条**从没成功过的**新 id 顶掉，界面上还写着「换回原来那个模型就能接上」。
+/// 判据：这一轮真的跑成了（`code == Some(0)`），或者人按了停止但已经出过内容（那条会话有东西）；
+/// 看门狗判死的超时轮**一律不记**（它也没有退出码，跟「人按停止」在进程状态上无法区分）。
+/// 另外收尾前若客户**在本会话**点过「清空对话」（[`super::threads::reset_epoch`] 变了），这一笔也不写。
+fn should_remember_session(code: Option<i32>, stalled: bool, interrupted: bool, saw_output: bool) -> bool {
+    if stalled {
+        // 看门狗杀进程也「没有退出码」，但它判的是**这一轮挂了**（timeout）——
+        // 跟「人按了停止」在进程状态上长得一模一样，必须靠 stalled 分开，否则超时轮也会记账。
+        return false;
+    }
+    if code == Some(0) {
+        return true;
+    }
+    interrupted && saw_output
+}
+
+/// 收尾事件（`done`）的构造 —— 纯函数，**只有一个出口**。
+///
+/// 抽出来的理由：`hint` 是「什么时候许带、带什么」的判断，藏在一个 60 行的 `run_turn` 里
+/// 就没法回归（要验它得真起一个 claude 进程、还得让上游配合报错）。抽成纯函数后，
+/// 「超时不带」「成功不带」「真聊太长（探针没命中）不带」「命中配置才带」四条都能钉住。
+fn settle_event(
+    stalled: bool,
+    interrupted: bool,
+    code: Option<i32>,
+    err_text: String,
+    ctx_hint: Option<(String, String, String)>,
+) -> Value {
+    if stalled {
+        return serde_json::json!({
+            "kind": "done", "status": "timeout",
+            "stall_secs": STALL_SECS,
+        });
+    }
+    if interrupted {
+        return serde_json::json!({ "kind": "done", "status": "interrupted" });
+    }
+    if code == Some(0) {
+        return serde_json::json!({ "kind": "done", "status": "ok" });
+    }
+    match ctx_hint {
+        Some((file, key, value)) => serde_json::json!({
+            "kind": "done", "status": "error",
+            "code": code, "message": err_text,
+            "hint": { "kind": "context_limit", "file": file, "key": key, "value": value }
+        }),
+        None => serde_json::json!({
+            "kind": "done", "status": "error",
+            "code": code, "message": err_text
+        }),
+    }
+}
+
 fn run_turn(
     task_id: String,
     prompt: String,
@@ -229,11 +313,31 @@ fn run_turn(
     // 取上一轮 session_id（有则 --resume 续接）。**从盘上取** —— 关掉 U-King 再打开、
     // 甚至重启电脑，这个会话依旧接着上文说。以前记在进程内存里，界面上会话和聊天记录
     // 都还在、只有模型不知道「刚才」是什么，看起来像 AI 变笨了。见 `threads.rs`。
+    // 「清空对话」计数快照：收尾写账本时由 `threads` 在同一把锁里比对（见 `File::resets`）。
+    let epoch_at_start = super::threads::reset_epoch(&task_id);
     let stored = super::threads::recall_with_model(AGENT, &task_id);
     let resume = stored.as_ref().map(|(sid, _)| sid.clone());
     let stored_model = stored.as_ref().and_then(|(_, m)| m.clone());
-    // 本轮顶栏"换模型"的值（归一化口径与 remember 存的一致，见 threads::norm_model）。
-    let cur_model = super::threads::norm_model(model.as_deref());
+    // 本轮顶栏"换模型"的值 —— **归一化一次，argv、账本、比对三处同源**
+    //（以前 argv 用原值、比对用 trim 值：手填里多打一个空格，两边就会各说各话）。
+    let explicit_model = super::threads::norm_model(model.as_deref());
+    // 这一轮**真的会注入**给子进程的 env（只算一次，下面 spawn 前直接套用）。
+    // 拿不到设备 Key 时这里是空的 —— 那就等于「模型不由我们决定」，口径必须是未知，
+    // 不能拿预置值去猜（否则会把不是这个模型的 sid 记成这个模型）。
+    let delegation_env: Vec<(String, String)> = match crate::device::device_key_offline() {
+        Ok(key) => crate::providers::delegation_env(&key),
+        Err(_) => Vec::new(),
+    };
+    let injected_model = delegation_env
+        .iter()
+        .find(|(k, _)| k == "ANTHROPIC_MODEL")
+        .map(|(_, v)| v.clone());
+    // 「跟随驱动设置」与显式填同一个模型时不算换模型 —— 归一口径就这一处：
+    //   显式 `--model` → 就是它；
+    //   跟随驱动 → **这一轮实际注入了什么**（`injected_model`）；没注入就是未知，不猜。
+    // 实测依据（2026-11-23 本机）：settings.json 的 `model` 是 `sonnet[1m]`，不带 `--model` 跑一轮，
+    // transcript 里落的是 `deepseek-flash` ⇒ 注入的 `ANTHROPIC_MODEL` 确实压过 settings.json 的 model。
+    let cur_model = explicit_model.clone().or(injected_model);
 
     // 🔴 **续接前先看这个会话在不在这个目录下**（2026-08-18 客户实拍：
     // 「一旦我中途切换文件夹，就会出现报错」，底层命令 `claude --resume <sid>`
@@ -262,19 +366,15 @@ fn run_turn(
     // 但旧 sid 里躺着旧模型的 thinking 块 —— 拿它去 --resume，新模型在网关翻译层必 400
     //（new-api#6939 / PR#6998 同类：thinking signature 回放对不上）。model 变了不断不断，
     // 而是明说一句开新轮 —— 静默断等于上下文归零还不告诉人（Opus 评审 B）。
-    // 只认"两边都已知且不一样"：老数据没记过模型（stored None）不断，避免发版后全员无辜掉一次上文。
-    let (resume, thread_note) = match (resume, stored_model, cur_model.clone(), thread_note) {
-        (Some(_), Some(stored), cur, _) if Some(stored.as_str()) != cur.as_deref() => (
-            None,
-            Some("换了模型，上一轮（旧模型建的会话）接不上 —— 这一轮从头开始（之前的记录还在，换回原来那个模型就能接上）。".to_string()),
-        ),
-        (r, _, _, n) => (r, n),
-    };
+    // 只认"两边都已知且不一样"：老数据没记过模型（stored None）不断，避免发版后全员无辜掉一次上文；
+    // 本轮模型无法确知（客户自持配置）时断但不撒谎说「换了模型」，见 `decide_resume`。
+    let (resume, model_note) = decide_resume(resume, stored_model, cur_model.clone());
+    let thread_note = thread_note.or(model_note.map(str::to_string));
     if let Some(n) = &thread_note {
         let _ = on_event.send(serde_json::json!({ "kind": "text", "text": n }));
     }
 
-    let mut tlog = TurnLog::start("chat", "claude", &task_id, model.as_deref(), resume.is_some());
+    let mut tlog = TurnLog::start("chat", "claude", &task_id, explicit_model.as_deref(), resume.is_some());
 
     // 并发闸：同一任务已有一轮在跑时，这条消息响亮地失败（根因与取舍见 mod.rs::TurnSlot）。
     // 放在 TurnLog 之后（账本先记下「来过一轮」，再拦），拦的是真正的进程竞态，不是日志。
@@ -290,10 +390,9 @@ fn run_turn(
     let mut c = base_command(&l);
     // 注入虾盘云端点 + 设备 Key：让 Claude Code 大脑**免客户单独配置**直接用同一套计费
     //（同 agent/chat.rs 委派 run_command 的做法）。仅子进程 env，不碰用户 ~/.claude 文件。
-    if let Ok(key) = crate::device::device_key_offline() {
-        for (k, v) in crate::providers::delegation_env(&key) {
-            c.env(k, v);
-        }
+    // 用的是开轮时算好的同一份 `delegation_env`——模型口径与真正注入的东西必须是同一个事实。
+    for (k, v) in &delegation_env {
+        c.env(k, v);
     }
     // ★ **北桥：把任务本象编译进系统提示。**
     //
@@ -315,7 +414,8 @@ fn run_turn(
         None => system,
     };
     let perm = user_permission_mode();
-    let (args, teach, inlined) = build_args(&prompt, model.as_deref(), system.as_deref(), resume.as_deref(), perm.as_deref());
+    let (args, teach, inlined) =
+        build_args(&prompt, explicit_model.as_deref(), system.as_deref(), resume.as_deref(), perm.as_deref());
     c.args(&args);
 
     // 「看命令」：真实命令 + 终端交互式等价写法，**在 spawn 之前**发 —— claude 没装时进程起不来，
@@ -378,6 +478,10 @@ fn run_turn(
 
     // stdout 逐行解析 stream-json
     let mut state = ProtocolState::new(resume.is_some());
+    // 这一轮收到的 session id 先暂存，**收尾时按成败决定记不记**（见 `should_remember_session`）。
+    let mut pending_sid: Option<String> = None;
+    // 有没有真的出过内容（文本/工具）。中断前只出过 init 的那些轮，不算「这条会话有东西」。
+    let mut saw_output = false;
     if let Some(so) = stdout {
         for line in BufReader::new(so).lines().map_while(Result::ok) {
             let line = line.trim();
@@ -400,11 +504,18 @@ fn run_turn(
                     ev.get("kind").and_then(|k| k.as_str()).unwrap_or(""),
                     ev.get("name").and_then(|n| n.as_str()),
                 );
-                // 记住 session_id 供下轮 --resume（落盘，见 threads.rs）
-                if ev.get("kind").and_then(|k| k.as_str()) == Some("session") {
-                    if let Some(sid) = ev.get("session_id").and_then(|s| s.as_str()) {
-                        super::threads::remember_with_model(AGENT, &task_id, sid, cur_model.as_deref());
+                // 记住 session_id 供下轮 --resume（落盘，见 threads.rs）——
+                // **只暂存**，成功收尾时才写账本（失败轮不许顶掉上一次能用的 sid）。
+                match ev.get("kind").and_then(|k| k.as_str()).unwrap_or("") {
+                    "session" => {
+                        if let Some(sid) = ev.get("session_id").and_then(|s| s.as_str()) {
+                            pending_sid = Some(sid.to_string());
+                        }
                     }
+                    // `text_done` 也算：整段回复一次性回来（没有流式 text 分片）时只有它，
+                    // 漏掉它会把「看到回复后按停止」的那种轮判成「没出过内容」（sol 第三轮）。
+                    "text" | "text_done" | "tool_start" | "tool_input" | "tool_end" => saw_output = true,
+                    _ => {}
                 }
                 let _ = on_event.send(ev);
             }
@@ -433,6 +544,22 @@ fn run_turn(
             // 被中断移走了
             interrupted = true;
             code = None;
+        }
+    }
+
+    // 账本只在**这一轮真跑成**（或人按停止但已经出过内容）时才前移 —— 理由见
+    // `should_remember_session`：失败轮把 sid 记进去，会顶掉上一次那条能续上的会话。
+    // 客户在这一轮跑的中途点过「清空对话」→ 这一笔不记（否则刚清的会话又被接上）。
+    // 快照交给 `threads`，**在它那把锁里比对再写**——分两次上锁仍会漏同一个交错。
+    if should_remember_session(code, wd.stalled(), interrupted, saw_output) {
+        if let Some(sid) = pending_sid.as_deref() {
+            super::threads::remember_with_model_at_epoch(
+                AGENT,
+                &task_id,
+                sid,
+                cur_model.as_deref(),
+                Some(epoch_at_start),
+            );
         }
     }
 
@@ -474,21 +601,17 @@ fn run_turn(
     // 收尾事件：卡死/成功/中断/错误。
     // **卡死判定必须排在 interrupted 前面** —— 看门狗是靠杀进程收场的，进程状态上跟「人按了停止」
     // 长得一模一样。谁在前面谁定性，摆错顺序就会把「它挂了」报成「你停了它」，客户再也不会告诉我们。
-    let done = if wd.stalled() {
-        serde_json::json!({
-            "kind": "done", "status": "timeout",
-            "stall_secs": STALL_SECS,
-        })
-    } else if interrupted {
-        serde_json::json!({ "kind": "done", "status": "interrupted" })
-    } else if code == Some(0) {
-        serde_json::json!({ "kind": "done", "status": "ok" })
+    // 上下文上限被本机配置写死 → 给界面一个**结构化**的诊断（2026-11-23 实拍）。
+    //
+    // 只在这条错误上探针：`Prompt is too long` 有真有假 —— 真聊太长时配置是正常的，
+    // 探针返回 None，界面保持原来的报错。探针**只读**用户的 `~/.claude/settings.json`，
+    // 不改它（那可能是客户自己写的小窗口，改配置这种事必须人点头）。
+    let ctx_hint = if err_text.to_ascii_lowercase().contains("prompt is too long") {
+        crate::providers::claude_context_limit_probe()
     } else {
-        serde_json::json!({
-            "kind": "done", "status": "error",
-            "code": code, "message": err_text
-        })
+        None
     };
+    let done = settle_event(wd.stalled(), interrupted, code, err_text, ctx_hint);
     // 日志里的定性**读同一个 done 事件**，不另起一套判断 —— 否则界面说「你停了它」、
     // 日志说「它挂了」，两边都不可信（同一事实只留一份，宪法第 8 条）。
     tlog.finish(
@@ -901,5 +1024,127 @@ mod protocol_tests {
         assert_eq!(unknown.len(), 1);
         assert_eq!(unknown[0]["kind"], "tool_end");
         assert_eq!(unknown[0]["name"], "");
+    }
+}
+
+/// 「这一轮要不要续接上文」「这条 sid 要不要写进账本」的回归钉
+/// （2026-11-23 `Prompt is too long` 事故里一起暴露的两条：误报换模型、失败轮顶掉可用 sid）。
+#[cfg(test)]
+mod thread_identity_tests {
+    use super::*;
+
+    fn s(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    /// ★ 客户现场那条：显式 `deepseek-flash` 与「跟随驱动设置」实际是同一个模型，
+    /// 以前被判成换模型 —— 上文白丢，还弹一句误导人的提示。
+    #[test]
+    fn follow_driver_matching_stored_model_keeps_context() {
+        let (resume, note) = decide_resume(s("sid-1"), s("deepseek-flash"), s("deepseek-flash"));
+        assert_eq!(resume.as_deref(), Some("sid-1"), "同一个模型不许断上文");
+        assert!(note.is_none(), "同一个模型不许报「换了模型」");
+    }
+
+    /// 真换模型（kimi → deepseek）必须断，并**明说**是换模型（thinking-400 那条红线）。
+    #[test]
+    fn real_model_switch_drops_resume_and_says_so() {
+        let (resume, note) = decide_resume(s("sid-1"), s("kimi-k3"), s("deepseek-flash"));
+        assert!(resume.is_none());
+        assert_eq!(note, Some(MODEL_SWITCH_NOTE));
+    }
+
+    /// 客户自持 Claude 配置时我们不知道本轮用哪个模型：断（安全方向），但**不许谎称换了模型**。
+    #[test]
+    fn unknown_current_model_drops_without_claiming_a_switch() {
+        let (resume, note) = decide_resume(s("sid-1"), s("deepseek-flash"), None);
+        assert!(resume.is_none());
+        assert_eq!(note, Some(MODEL_UNKNOWN_NOTE));
+        assert_ne!(note, Some(MODEL_SWITCH_NOTE));
+    }
+
+    /// 老盘数据没记过模型（`model: null`）→ 保持老行为照常续接，不许发版后让存量客户无辜掉一次上文。
+    #[test]
+    fn legacy_unknown_stored_model_still_resumes() {
+        let (resume, note) = decide_resume(s("sid-1"), None, s("deepseek-flash"));
+        assert_eq!(resume.as_deref(), Some("sid-1"));
+        assert!(note.is_none());
+    }
+
+    /// 前面几道闸已经把 resume 摘掉时（换过文件夹 / 陈旧 sid），不再叠加「换模型」的提示。
+    #[test]
+    fn no_model_note_when_resume_already_dropped() {
+        let (resume, note) = decide_resume(None, s("kimi-k3"), s("deepseek-flash"));
+        assert!(resume.is_none());
+        assert!(note.is_none(), "一条失败轮只该有一句原因");
+    }
+
+    /// ★ 失败轮不许把 sid 写进账本 —— 只收到 init 就被上游拒掉的那一轮，
+    /// 会把上一次那条**能续上的**会话顶掉（界面上还写着「换回原来那个模型就能接上」）。
+    #[test]
+    fn failed_turn_does_not_overwrite_the_usable_session() {
+        // code=None 且不是中断（例如上游报错退出但拿不到退出码）
+        assert!(!should_remember_session(None, false, false, true), "失败轮不许记账");
+        assert!(!should_remember_session(Some(1), false, false, true), "非 0 退出不许记账");
+        assert!(should_remember_session(Some(0), false, false, false), "跑成了才记账");
+        assert!(
+            should_remember_session(None, false, true, true),
+            "人按停止但已经出过内容 —— 那条会话有东西，接着聊是正当需求"
+        );
+        assert!(!should_remember_session(None, false, true, false), "只出了 init 就被停：不算有内容");
+    }
+
+    /// ★ 看门狗判死的超时轮**也没有退出码** —— 不能靠「没有退出码 + 有输出」把它当成中断
+    /// 去记账（那一轮界面报的是 timeout，记进去等于把一条判死的会话留给下一轮）。
+    #[test]
+    fn stalled_turn_is_never_recorded_even_with_output() {
+        assert!(!should_remember_session(None, true, true, true), "超时轮不许记账");
+        assert!(!should_remember_session(Some(0), true, false, true), "卡死判定优先于退出码");
+    }
+}
+
+/// 收尾事件里 `hint` 的带与不带（2026-11-23 事故：一句「你好」被说成「聊太长了」）。
+#[cfg(test)]
+mod settle_event_tests {
+    use super::*;
+
+    fn hint() -> Option<(String, String, String)> {
+        Some(("/h/.claude/settings.json".into(), "CLAUDE_CODE_MAX_CONTEXT_TOKENS".into(), "4000".into()))
+    }
+
+    /// ★ 客户现场那条：报错 + 探针命中本机的小上限 ⇒ 必须带结构化 hint，
+    /// 界面才有依据说「不是聊天记录太长」。
+    #[test]
+    fn context_limit_hint_rides_along_with_the_error() {
+        let ev = settle_event(false, false, Some(1), "Prompt is too long".into(), hint());
+        assert_eq!(ev["status"], "error");
+        assert_eq!(ev["hint"]["kind"], "context_limit");
+        assert_eq!(ev["hint"]["value"], "4000");
+        assert_eq!(ev["hint"]["key"], "CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+        assert_eq!(ev["message"], "Prompt is too long", "原始报错必须原样保留");
+    }
+
+    /// 真聊太长（探针没命中）⇒ 不带 hint，界面保持原来的分类建议。
+    #[test]
+    fn genuine_long_conversation_gets_no_hint() {
+        let ev = settle_event(false, false, Some(1), "Prompt is too long".into(), None);
+        assert_eq!(ev["status"], "error");
+        assert!(ev.get("hint").is_none(), "配置正常时不许乱指配置");
+    }
+
+    /// 成功 / 中断 / 超时都不该带 hint —— 它们根本不是这个病。
+    #[test]
+    fn other_outcomes_never_carry_the_hint() {
+        let ok = settle_event(false, false, Some(0), String::new(), hint());
+        assert_eq!(ok["status"], "ok");
+        assert!(ok.get("hint").is_none());
+
+        let interrupted = settle_event(false, true, None, "x".into(), hint());
+        assert_eq!(interrupted["status"], "interrupted");
+
+        let timeout = settle_event(true, false, None, String::new(), hint());
+        assert_eq!(timeout["status"], "timeout");
+        assert_eq!(timeout["stall_secs"], STALL_SECS);
+        assert!(timeout.get("hint").is_none());
     }
 }
