@@ -264,6 +264,43 @@ fn should_remember_session(code: Option<i32>, stalled: bool, interrupted: bool, 
     interrupted && saw_output
 }
 
+/// 收尾事件（`done`）的构造 —— 纯函数，**只有一个出口**。
+///
+/// 抽出来的理由：`hint` 是「什么时候许带、带什么」的判断，藏在一个 60 行的 `run_turn` 里
+/// 就没法回归（要验它得真起一个 claude 进程、还得让上游配合报错）。抽成纯函数后，
+/// 「超时不带」「成功不带」「真聊太长（探针没命中）不带」「命中配置才带」四条都能钉住。
+fn settle_event(
+    stalled: bool,
+    interrupted: bool,
+    code: Option<i32>,
+    err_text: String,
+    ctx_hint: Option<(String, String, String)>,
+) -> Value {
+    if stalled {
+        return serde_json::json!({
+            "kind": "done", "status": "timeout",
+            "stall_secs": STALL_SECS,
+        });
+    }
+    if interrupted {
+        return serde_json::json!({ "kind": "done", "status": "interrupted" });
+    }
+    if code == Some(0) {
+        return serde_json::json!({ "kind": "done", "status": "ok" });
+    }
+    match ctx_hint {
+        Some((file, key, value)) => serde_json::json!({
+            "kind": "done", "status": "error",
+            "code": code, "message": err_text,
+            "hint": { "kind": "context_limit", "file": file, "key": key, "value": value }
+        }),
+        None => serde_json::json!({
+            "kind": "done", "status": "error",
+            "code": code, "message": err_text
+        }),
+    }
+}
+
 fn run_turn(
     task_id: String,
     prompt: String,
@@ -573,27 +610,7 @@ fn run_turn(
     } else {
         None
     };
-    let done = if wd.stalled() {
-        serde_json::json!({
-            "kind": "done", "status": "timeout",
-            "stall_secs": STALL_SECS,
-        })
-    } else if interrupted {
-        serde_json::json!({ "kind": "done", "status": "interrupted" })
-    } else if code == Some(0) {
-        serde_json::json!({ "kind": "done", "status": "ok" })
-    } else if let Some((file, key, value)) = ctx_hint {
-        serde_json::json!({
-            "kind": "done", "status": "error",
-            "code": code, "message": err_text,
-            "hint": { "kind": "context_limit", "file": file, "key": key, "value": value }
-        })
-    } else {
-        serde_json::json!({
-            "kind": "done", "status": "error",
-            "code": code, "message": err_text
-        })
-    };
+    let done = settle_event(wd.stalled(), interrupted, code, err_text, ctx_hint);
     // 日志里的定性**读同一个 done 事件**，不另起一套判断 —— 否则界面说「你停了它」、
     // 日志说「它挂了」，两边都不可信（同一事实只留一份，宪法第 8 条）。
     tlog.finish(
@@ -1082,5 +1099,51 @@ mod thread_identity_tests {
     fn stalled_turn_is_never_recorded_even_with_output() {
         assert!(!should_remember_session(None, true, true, true), "超时轮不许记账");
         assert!(!should_remember_session(Some(0), true, false, true), "卡死判定优先于退出码");
+    }
+}
+
+/// 收尾事件里 `hint` 的带与不带（2026-11-23 事故：一句「你好」被说成「聊太长了」）。
+#[cfg(test)]
+mod settle_event_tests {
+    use super::*;
+
+    fn hint() -> Option<(String, String, String)> {
+        Some(("/h/.claude/settings.json".into(), "CLAUDE_CODE_MAX_CONTEXT_TOKENS".into(), "4000".into()))
+    }
+
+    /// ★ 客户现场那条：报错 + 探针命中本机的小上限 ⇒ 必须带结构化 hint，
+    /// 界面才有依据说「不是聊天记录太长」。
+    #[test]
+    fn context_limit_hint_rides_along_with_the_error() {
+        let ev = settle_event(false, false, Some(1), "Prompt is too long".into(), hint());
+        assert_eq!(ev["status"], "error");
+        assert_eq!(ev["hint"]["kind"], "context_limit");
+        assert_eq!(ev["hint"]["value"], "4000");
+        assert_eq!(ev["hint"]["key"], "CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+        assert_eq!(ev["message"], "Prompt is too long", "原始报错必须原样保留");
+    }
+
+    /// 真聊太长（探针没命中）⇒ 不带 hint，界面保持原来的分类建议。
+    #[test]
+    fn genuine_long_conversation_gets_no_hint() {
+        let ev = settle_event(false, false, Some(1), "Prompt is too long".into(), None);
+        assert_eq!(ev["status"], "error");
+        assert!(ev.get("hint").is_none(), "配置正常时不许乱指配置");
+    }
+
+    /// 成功 / 中断 / 超时都不该带 hint —— 它们根本不是这个病。
+    #[test]
+    fn other_outcomes_never_carry_the_hint() {
+        let ok = settle_event(false, false, Some(0), String::new(), hint());
+        assert_eq!(ok["status"], "ok");
+        assert!(ok.get("hint").is_none());
+
+        let interrupted = settle_event(false, true, None, "x".into(), hint());
+        assert_eq!(interrupted["status"], "interrupted");
+
+        let timeout = settle_event(true, false, None, String::new(), hint());
+        assert_eq!(timeout["status"], "timeout");
+        assert_eq!(timeout["stall_secs"], STALL_SECS);
+        assert!(timeout.get("hint").is_none());
     }
 }
