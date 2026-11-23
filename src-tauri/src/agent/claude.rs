@@ -238,7 +238,8 @@ fn decide_resume(
 ) -> (Option<String>, Option<&'static str>) {
     match (resume, stored_model, cur_model) {
         (None, _, _) => (None, None),
-        (Some(sid), Some(stored), Some(cur)) if stored != cur => (None, Some(MODEL_SWITCH_NOTE)),
+        // 这里 `_` 不绑定 sid：这一支的结果就是 None，绑了只会换来一条 unused_variables。
+        (Some(_), Some(stored), Some(cur)) if stored != cur => (None, Some(MODEL_SWITCH_NOTE)),
         (Some(_), Some(_), None) => (None, Some(MODEL_UNKNOWN_NOTE)),
         (r, _, _) => (r, None),
     }
