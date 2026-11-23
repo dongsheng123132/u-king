@@ -93,6 +93,8 @@ export const panels: Record<string, string> = {
   "这一轮聊太长了，超出了模型能记住的上限": "This conversation exceeded the model's context limit",
   "点输入框旁边的「清空对话」开个新会话，把关键信息重说一遍。":
     "Use “Clear chat” next to the input box to start fresh, then restate the key points.",
+  "⚠️ 检测到这台机器的 Claude 配置里有一个很小的上下文上限（`{file}` 的 `{key}` = {value}）—— 这很可能就是这次被拒的原因：这个值连一句「你好」都装不下，新会话也很可能在发出请求前就被拒。\n\n如果你没主动设过它：先备份这个文件，再把这一项删掉（或改回 200000），然后把这句重发一次 —— 不用重装。\n\n如果这段对话本来就确实很长，也可能是它自己超了：那种情况开新会话是安全的（界面上之前的聊天记录会清掉，需要的话先另存）。":
+    "⚠️ A very small context limit was found in this machine's Claude config (`{file}`, `{key}` = {value}) — that is very likely why this turn was rejected: this value cannot even hold a simple “hello”, so a new session will very likely also be refused before it is sent.\n\nIf you never set it yourself: back up that file, then delete this entry (or set it back to 200000) and send this message again — no reinstall needed.\n\nIf this conversation really was long, it may simply be over the limit: starting a new session is safe (the chat history shown here is cleared, so save it first if you need it).",
 
   // 成品卡片（办公产物：右侧渲染不了，客户要的是「打开」）
   // 注意「打开」的翻译在下面「预览独立窗口」那节已有一条，别再加 —— 同名键会让 tsc 直接报 TS1117

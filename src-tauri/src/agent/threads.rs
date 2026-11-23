@@ -66,6 +66,17 @@ struct File {
     /// agent（`claude` / `codex`）→ task_id → 线程。
     #[serde(default)]
     agents: HashMap<String, HashMap<String, Thread>>,
+    /// 每个会话「客户显式要求断开」的次数（[`forget`] 每调一次 +1）。
+    ///
+    /// 🔴 跟账本放进**同一个结构、同一把锁**：一轮对话从开轮读到旧 sid、到收尾写新 sid
+    /// 之间隔着几十秒 —— 客户在这个窗口里点了「清空对话」，收尾那一笔再写回去，等于刚清
+    /// 的会话又被接上（人看到的是「清了还在」）。检查和写入必须在同一把锁里，否则
+    /// 「查了没变 → 对方清空 → 这边写回」这个交错照样漏（sol 会审 2026-11-23 第三轮）。
+    ///
+    /// 按 task_id 记而不是全局一个数：全局计数会让「在 A 会话点清空」误伤 B 会话正在跑的那一轮。
+    /// `serde(default)`：老盘没有这个键照样装得上。
+    #[serde(default)]
+    resets: HashMap<String, u64>,
 }
 
 fn path() -> PathBuf {
@@ -122,7 +133,7 @@ fn salvage(s: &str) -> Option<File> {
             agents.insert(agent.clone(), m);
         }
     }
-    Some(File { version: 1, agents })
+    Some(File { version: 1, agents, resets: HashMap::new() })
 }
 
 /// 进程内缓存。首次访问时从盘上装载并顺手清过期。
@@ -212,11 +223,45 @@ pub fn remember(agent: &str, task_id: &str, id: &str) {
 
 /// 连模型一起记。model = 本轮顶栏"换模型"的值（None = 跟 preset 默认）。
 pub fn remember_with_model(agent: &str, task_id: &str, id: &str, model: Option<&str>) {
+    remember_with_model_at_epoch(agent, task_id, id, model, None);
+}
+
+/// 带上「开轮时的断开计数」的快照：收尾时如果客户在本会话点过「清空对话」，这一笔不写。
+///
+/// **检查与写入在同一把锁里**（这是它存在的原因，不是风格问题）：分成两次上锁就仍能漏。
+/// `epoch = None` = 不检查（供不关心这个窗口的调用方，如 codex 路径）。
+pub fn remember_with_model_at_epoch(
+    agent: &str,
+    task_id: &str,
+    id: &str,
+    model: Option<&str>,
+    epoch: Option<u64>,
+) {
     let id = id.trim();
     if id.is_empty() || task_id.is_empty() {
         return;
     }
     let Ok(mut f) = cache().lock() else { return };
+    if remember_into(&mut f, agent, task_id, id, model, epoch) {
+        flush(&f);
+    }
+}
+
+/// [`remember_with_model_at_epoch`] 的本体：只改传进来的这份账本，返回「有没有变」。
+/// 同样为了测试能对**临时 File** 断言，不碰真实账本。
+fn remember_into(
+    f: &mut File,
+    agent: &str,
+    task_id: &str,
+    id: &str,
+    model: Option<&str>,
+    epoch: Option<u64>,
+) -> bool {
+    if let Some(e) = epoch {
+        if f.resets.get(task_id).copied().unwrap_or(0) != e {
+            return false; // 这一轮跑的期间客户清空过这个会话 —— 不许把 sid 接回去
+        }
+    }
     let m = f.agents.entry(agent.to_string()).or_default();
     let now = now_ms();
     match m.get_mut(task_id) {
@@ -231,24 +276,44 @@ pub fn remember_with_model(agent: &str, task_id: &str, id: &str, model: Option<&
                 t.model = nm;
             }
             if !stale && !model_changed {
-                return;
+                return false;
             }
         }
         _ => {
             m.insert(task_id.to_string(), Thread { id: id.to_string(), at: now, model: norm_model(model) });
         }
     }
-    flush(&f);
+    true
 }
 
 /// 忘掉这个会话的上下文（「新对话」按钮）。下一轮从零开始。
+///
+/// 同时把该会话的「显式断开」计数 +1 —— 正在跑的那一轮收尾时会看到计数变了、不写回 sid
+/// （见 [`File::resets`]）。
 pub fn forget(agent: &str, task_id: &str) {
     let Ok(mut f) = cache().lock() else { return };
-    if let Some(m) = f.agents.get_mut(agent) {
-        if m.remove(task_id).is_some() {
-            flush(&f);
-        }
+    if forget_in(&mut f, agent, task_id) {
+        flush(&f);
     }
+}
+
+/// [`forget`] 的本体：只改传进来的这份账本。
+/// 返回值 = **有没有删掉一条旧线程**（决定要不要落盘）；只递增断开计数时返回 false ——
+/// 计数涨了也要拦住正在跑的那一轮，但不必为它写盘。
+/// 抽出来是为了让测试能拿一个**临时 File** 跑，而不是往用户真实的
+/// `~/.uking/agent-threads.json` 里写测试数据（sol 第四轮堵下来的那条）。
+fn forget_in(f: &mut File, agent: &str, task_id: &str) -> bool {
+    *f.resets.entry(task_id.to_string()).or_insert(0) += 1;
+    f.agents.get_mut(agent).and_then(|m| m.remove(task_id)).is_some()
+}
+
+/// 某个会话当前的「显式断开」计数（开轮时取快照，收尾时比对）。
+pub fn reset_epoch(task_id: &str) -> u64 {
+    cache()
+        .lock()
+        .ok()
+        .and_then(|f| f.resets.get(task_id).copied())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -493,6 +558,63 @@ mod tests {
         assert_eq!(
             recall_with_model("test-model-agent", "t1").unwrap().1.as_deref(),
             Some("qwen3.8-flash")
+        );
+    }
+}
+
+#[cfg(test)]
+mod reset_epoch_tests {
+    use super::*;
+
+    /// ★ 所有用例只在**本地 File 值**上跑：不碰全局 `cache()`、不落盘。
+    /// （sol 第四轮堵下来的真实事故：早先的写法会把 `sid-ok` 写进用户真实的
+    /// `~/.uking/agent-threads.json`。）
+    fn fresh() -> File {
+        File::default()
+    }
+
+    /// 「清空对话」必须能被**正在跑的那一轮**看见：开轮时取快照，收尾时再取后如果变了，
+    /// 就不许把 sid 写回去（否则客户刚清的会话又被接上，人看到的是「清了还在」）。
+    #[test]
+    fn clearing_bumps_so_an_inflight_turn_knows() {
+        let mut f = fresh();
+        let before = f.resets.get("task-epoch-write").copied().unwrap_or(0);
+        forget_in(&mut f, "claude", "task-epoch-write");
+        assert_ne!(f.resets.get("task-epoch-write").copied().unwrap_or(0), before);
+    }
+
+    /// ★ 清空是**按会话**的：在 A 会话点清空，不许让 B 会话正在跑的那一轮跟着丢 sid。
+    #[test]
+    fn clearing_one_session_does_not_touch_another() {
+        let mut f = fresh();
+        f.resets.insert("task-a".into(), 3);
+        f.resets.insert("task-b".into(), 7);
+        forget_in(&mut f, "claude", "task-a");
+        assert_eq!(f.resets.get("task-a").copied(), Some(4));
+        assert_eq!(f.resets.get("task-b").copied(), Some(7), "别的会话不许被误伤");
+    }
+
+    /// ★★ 收尾写账本必须**看得见**开轮之后发生的清空（sol 第三轮点出的 TOCTOU：
+    /// 检查与写入若分两次上锁，「查了没变 → 对方清空 → 这边写回」照样漏）。
+    #[test]
+    fn writes_are_refused_when_the_session_was_cleared_mid_turn() {
+        let mut f = fresh();
+        // 开轮：取快照（此时计数 0）
+        let epoch_at_start = f.resets.get("task-x").copied().unwrap_or(0);
+        // 中途客户点了「清空对话」
+        forget_in(&mut f, "claude", "task-x");
+        // 收尾：带着旧快照来写 —— 必须被拒
+        let wrote = remember_into(&mut f, "claude", "task-x", "sid-forbidden", Some("deepseek-flash"), Some(epoch_at_start));
+        assert!(!wrote, "清空之后收尾不许写账");
+        assert!(f.agents.get("claude").and_then(|m| m.get("task-x")).is_none(), "账本里不许出现这条 sid");
+
+        // 反向：没发生清空时照常写（守卫不能把正常续接一起废掉）
+        let epoch_ok = f.resets.get("task-y").copied().unwrap_or(0);
+        let wrote_ok = remember_into(&mut f, "claude", "task-y", "sid-ok", Some("deepseek-flash"), Some(epoch_ok));
+        assert!(wrote_ok);
+        assert_eq!(
+            f.agents.get("claude").and_then(|m| m.get("task-y")).map(|t| t.id.clone()).as_deref(),
+            Some("sid-ok")
         );
     }
 }
